@@ -331,8 +331,8 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
       let u;
       if (isUnitObject(item)) u = initUnit(item);
       else if (typeof item === 'string' || (item && item.hp != null && !item.race)) {
-        u = initUnit(buildEnemy(item, { data: D, team, kind: kind === 'enemy' ? 'enemy' : 'ally' }));
-      } else u = initUnit(buildCreature({ ...item, data: D, team }));
+        u = initUnit(buildEnemy(item, { data: D, team, kind: kind === 'enemy' ? 'enemy' : 'ally', id: `${kind[0]}${i + 1}` }));
+      } else u = initUnit(buildCreature({ ...item, data: D, team, id: item.id || `${kind[0]}${i + 1}` }));
       if (kind === 'ally' && u.kind !== 'hero') u.kind = 'ally';
       u.team = team;
       const pos = starts[i] || starts[starts.length - 1] || { x: 1, y: 1 };
@@ -1112,10 +1112,7 @@ export function applyOp(b, caster, t, op, ctx = {}) {
       break;
     }
     case 'buff':
-      if (op.cumulative) {
-        // treat like a stacking status-less modifier (rare outside ticks): add a 1-turn buff
-        addBuff(b, caster, t, op.stat, op.value || 0, op.turns ?? 1);
-      } else addBuff(b, caster, t, op.stat, op.value || 0, op.turns);
+      addBuff(b, caster, t, op.stat, op.value || 0, op.turns); // cumulative buffs are handled in status ticks
       break;
     case 'push':
       pushUnit(b, caster, t, op.tiles || 1);

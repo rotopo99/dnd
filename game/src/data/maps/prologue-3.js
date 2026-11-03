@@ -1,7 +1,7 @@
 // Battle 3 — Harmony Reactor (prologue boss). Reactor core = solid wall block, blocks line of sight:
 // the acolyte stands behind it, the hero has to flank. Gans (A) is pinned by a cultist at the west wall.
 // 22x12. E order (row-major): r1 acolyte, r4 cultist (next to Gans), r5 cultist.
-// allies: Gans has no stat block yet — 'scavenger' is a placeholder (human, no augments);
+// allies: Gans (npc-gans) — Hans from canon (docs/canon/lore/history.md).
 // display name — PROLOGUE.b3_ally_name. Needs an NPC id from the director (e.g. 'npc-gans').
 export default {
   id: 'prologue-3',
@@ -22,7 +22,7 @@ export default {
     '######################',
   ],
   enemies: ['acolyte', 'cultist', 'cultist'],
-  allies: ['scavenger'],
+  allies: ['npc-gans'],
   win: 'killAll',
   lose: 'heroDown',
 };
