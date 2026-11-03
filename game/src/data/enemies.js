@@ -397,7 +397,7 @@ export const ENEMIES = {
 export const ENCOUNTERS = {
   standard1: {
     id: 'standard1', name: 'Стандартный бой (ур. 1)', level: 1, targetWinRate: 0.55,
-    enemies: ['cultist', 'cultist-gunner', 'crawler'],
+    enemies: ['cultist', 'cultist', 'cultist-gunner', 'crawler'],
   },
   standard5: {
     id: 'standard5', name: 'Стандартный бой (ур. 5)', level: 5, targetWinRate: 0.55,
