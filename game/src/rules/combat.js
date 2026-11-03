@@ -47,6 +47,10 @@
 //     regen still work). Passive regen with every 'battleEnd' is not handled here.
 // 15. Summons last `turns` of their own turns (else def.defaultTurns, else 3) and act right after the summoner.
 //     A summon may be any enemy id: it fights for the summoner's team. Decoys (noAttack) just stand.
+// 16. v1.2: «Срыв» 11–20 on a non-boss enemy/summon (kind not hero/ally, boss !== true) -> «Сломлен»: event
+//     'broken', unit.removed = unit.broken = true, leaves the grid, counts as defeated. Overcast at most
+//     OVERCAST_LIMIT (2) times per unit per battle (unit.overcastsUsed). Ranged attack rolls (weapon or ability,
+//     range > 1) have disadvantage while a standing hostile is adjacent to the attacker (enemyAdjacent).
 
 import { createRng } from './rng.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';

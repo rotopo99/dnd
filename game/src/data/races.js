@@ -104,7 +104,7 @@ export const RACES = {
 
   tekhonok: {
     id: 'tekhonok', name: 'Техонёк', icon: null, tags: ['hybrid'],
-    playable: true,
+    playable: false, // не играбельна по лору: NPC-раса (см. docs/GDD.md)
     statBonus: { wil: 1 },
     hpBonus: 0, mrlBonus: 0, enrBonus: 0, speed: 6,
     resist: { proxy: 'resist', cyber: 'vuln' },
@@ -136,7 +136,7 @@ export const RACES = {
 
   cringegon: {
     id: 'cringegon', name: 'Кринжгон-отступник', icon: null, tags: ['organic'],
-    playable: true,
+    playable: false, // не играбельна по лору: NPC-раса (см. docs/GDD.md)
     statBonus: { cha: 1 },
     hpBonus: 0, mrlBonus: 4, enrBonus: 0, speed: 6,
     resist: { cringe: 'resist', psychic: 'resist', proxy: 'immune' },
@@ -164,7 +164,7 @@ export const RACES = {
 
   skrilet: {
     id: 'skrilet', name: 'Перепрограммированный скрилет', icon: null, tags: ['hybrid'],
-    playable: true,
+    playable: false, // не играбельна по лору: NPC-раса (см. docs/GDD.md)
     statBonus: { dex: 1 },
     hpBonus: -4, mrlBonus: 0, enrBonus: 0, speed: 6,
     resist: { cyber: 'vuln' },

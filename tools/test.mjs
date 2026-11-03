@@ -288,6 +288,90 @@ test('AI returns a legal action', () => {
   assert.ok(perform(b, a).ok);
 });
 
+console.log('rules v1.2');
+test('v1.2 «Сломлен»: non-boss enemy on 11-20 leaves the battle; boss and hero lose control', () => {
+  let { b, H, E } = duel();
+  b.rng = stubRng([nat(15)]);
+  dealDamage(b, H, E, 999, 'cringe');
+  assert.equal(events(b, 'breakdown').pop().result, 'broken');
+  assert.equal(events(b, 'broken').length, 1);
+  assert.equal(E.removed, true);
+  assert.equal(E.broken, true);
+  assert.equal(b.winner, 'heroes'); // the only enemy is broken -> counts as defeated
+  ({ b, H, E } = duel());
+  E.boss = true;
+  b.rng = stubRng([nat(15)]);
+  dealDamage(b, H, E, 999, 'cringe');
+  assert.equal(events(b, 'breakdown').pop().result, 'lostControl');
+  assert.equal(E.removed, false);
+  assert.equal(E.lostControl, 1);
+  ({ b, H, E } = duel());
+  b.rng = stubRng([nat(4)]);
+  dealDamage(b, H, E, 999, 'cringe');
+  assert.equal(events(b, 'breakdown').pop().result, 'heartbreak');
+  assert.equal(E.removed, false);
+});
+test('v1.2 overcast: at most 2 per battle per unit', () => {
+  const r = buildCreature({ race: 'human', cls: 'itishnik', path: 'hacker', data: DATA });
+  const b = createBattle({ map: { grid: ['#######', '#P...E#', '#######'] }, heroes: [r], enemies: ['thug'], data: DATA, seed: 2, autoReactions: false });
+  const R = b.units[0], E = b.units[1];
+  E.hp = E.maxHp = 500;
+  R.enr = 0; R.hp = R.maxHp = 500;
+  for (let i = 0; i < 2; i++) {
+    forceTurn(b, R);
+    assert.ok(perform(b, { type: 'ability', unit: R.id, ability: 'zap', target: E.id }).ok, `overcast ${i + 1}`);
+  }
+  assert.equal(events(b, 'overcast').length, 2);
+  forceTurn(b, R);
+  const res = perform(b, { type: 'ability', unit: R.id, ability: 'zap', target: E.id });
+  assert.equal(res.ok, false);
+  assert.equal(res.error, 'energy');
+  assert.ok(!getLegalActions(b, R.id).some((a) => a.ability === 'zap'));
+  R.enr = 5; // with enough ENR the ability works again
+  forceTurn(b, R);
+  assert.ok(perform(b, { type: 'ability', unit: R.id, ability: 'zap', target: E.id }).ok);
+  assert.equal(events(b, 'overcast').length, 2);
+});
+test('v1.2 ranged attack with an adjacent enemy has disadvantage', () => {
+  // adjacent: gunner next to the hero
+  let { b, H, E } = duel('gunner');
+  forceTurn(b, E);
+  b.rng = stubRng([nat(18), nat(3)]);
+  perform(b, { type: 'attack', unit: E.id, target: H.id });
+  let ev = events(b, 'attack').pop();
+  assert.equal(ev.melee, false);
+  assert.equal(ev.roll.mode, 'dis');
+  assert.equal(ev.roll.natural, 3);
+  // ranged spell attack too
+  const r = buildCreature({ race: 'human', cls: 'itishnik', path: 'hacker', data: DATA });
+  ({ b, H, E } = duel('thug', r));
+  forceTurn(b, H);
+  b.rng = stubRng([nat(18), nat(3)]);
+  perform(b, { type: 'ability', unit: H.id, ability: 'zap', target: E.id });
+  assert.equal(events(b, 'attack').pop().roll.mode, 'dis');
+  // not adjacent: normal
+  ({ b, H, E } = duel('gunner', hero(), { grid: ['#######', '#P...E#', '#######'] }));
+  forceTurn(b, E);
+  b.rng = stubRng([nat(18), nat(3)]);
+  perform(b, { type: 'attack', unit: E.id, target: H.id });
+  ev = events(b, 'attack').pop();
+  assert.equal(ev.roll.mode, 'normal');
+  assert.equal(ev.roll.natural, 18);
+  // melee attack next to an enemy stays normal
+  ({ b, H, E } = duel());
+  forceTurn(b, H);
+  b.rng = stubRng([nat(18), nat(3)]);
+  perform(b, { type: 'attack', unit: H.id, target: E.id });
+  assert.equal(events(b, 'attack').pop().roll.mode, 'normal');
+});
+test('v1.2 AI: ranged unit steps away from an adjacent melee enemy before shooting', () => {
+  const map = { grid: ['##########', '#........#', '#.PE.....#', '#........#', '##########'] };
+  const { b, E } = duel('gunner', hero(), map);
+  forceTurn(b, E);
+  const a = chooseAction(b, E.id);
+  assert.ok(a.type === 'disengage' || a.type === 'move', `got ${a.type}`);
+});
+
 console.log('simulation');
 const party = () => [hero(), buildCreature({ race: 'skeleton', cls: 'itishnik', path: 'mechanic', data: DATA })];
 test('determinism: same seed -> same outcome and log', () => {

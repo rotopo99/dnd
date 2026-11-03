@@ -12,7 +12,7 @@ export default {
   // 9 + 4 + 7 + 0 + 4 + 0 + 3 = 27
   recommended: { str: 15, dex: 12, con: 14, int: 8, wil: 12, cha: 8, per: 11 },
   overcast: null,
-  allowedRaces: null,
+  allowedRaces: ['human', 'mutant-beast', 'mutant-plant'], // лор: вирус «Химера» мутирует только живые организмы
   paths: [
     {
       id: 'beast', name: 'Путь Зверя', role: 'melee',
