@@ -16,6 +16,8 @@
 - `title.js` — `titleScene`, заставка. Вызывает: `main.js`.
 
 ## Данные
+- `game/src/data/factions.js` — `FACTIONS`, `STANCES`, `RELATIONS[a][b]` (кем b является для a), `stance(a,b)`. 14 фракций из канона.
+- `game/assets/icons/*.png` — 256×256: `class_{face,fighter,rogue,tech}`, `race_{human,mutant,skeleton,synth}`, `res_{hp,energy,morale}`.
 - `game/src/data/text/index.js` — `t(key)`, все строки интерфейса (ru).
 
 ## Инструменты
