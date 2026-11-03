@@ -116,17 +116,23 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   if (!race) throw new Error('buildCreature: unknown race');
   if (!cls) throw new Error('buildCreature: unknown class');
   if (!path) path = cls.paths && cls.paths.length ? cls.paths[0].id : null;
+  if (!isAllowed(race, cls)) throw new Error(`buildCreature: race "${race.id}" is not allowed for class "${cls.id}"`);
+  const pathDef = (cls.paths || []).find((p) => p.id === path) || {};
+  const weaponDef = pathDef.weapon || cls.weapon;
+  const armorDef = pathDef.armor || cls.armor;
+  const role = pathDef.role || cls.role;
 
   const passives = [...(race.passives || []), ...(cls.passives || [])].filter((p) => passiveApplies(p, level, path));
   const P = collectPassives(passives);
 
-  const base = { ...(stats || cls.recommended || {}) };
+  const base = { ...(stats || pathDef.recommended || cls.recommended || {}) };
   const st = {};
   for (const k of STATS) st[k] = base[k] ?? 8;
   const rb = race.statBonus || {};
   for (const k in rb) {
     if (k === 'any') {
-      const target = anyStat || cls.castStat || cls.weapon?.stat || 'str';
+      const casterRole = role === 'caster' || role === 'support' || role === 'control';
+      const target = anyStat || (casterRole && cls.castStat) || weaponDef?.stat || cls.castStat || 'str';
       st[target] += rb.any;
     } else if (k in st) st[k] += rb[k];
   }
@@ -137,7 +143,8 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.name = name || `${cls.name || cls.id}`;
   u.kind = 'hero';
   u.team = team;
-  u.ai = ROLE_TO_AI[cls.role] || 'melee';
+  u.ai = ROLE_TO_AI[role] || 'melee';
+  u.role = role || null;
   u.raceId = race.id;
   u.classId = cls.id;
   u.level = level;
@@ -153,7 +160,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.mrl = u.maxMrl;
   u.enr = u.maxEnr;
 
-  const armor = cls.armor || { type: 'cloth', kb: 0 };
+  const armor = armorDef || { type: 'cloth', kb: 0 };
   u.armorType = armor.type || 'cloth';
   u.armorKb = armor.kb || 0;
   u.kbBonus = P.kb;
@@ -161,7 +168,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
 
   u.speed = (race.speed ?? 6) + P.speed;
   u.initBonus = P.init;
-  u.weapon = cls.weapon ? { ...cls.weapon } : { name: 'Кулак', dice: '1d2', dmgType: 'blunt', stat: 'str', range: 1, hit: 0 };
+  u.weapon = weaponDef ? { ...weaponDef } : { name: 'Кулак', dice: '1d2', dmgType: 'blunt', stat: 'str', range: 1, hit: 0 };
   u.weaponTier = weaponTier || START_WEAPON_TIER;
   u.castStat = cls.castStat || null;
   u.saves = [...(cls.saves || [])];
@@ -176,6 +183,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.deathSaves = P.deathSave;
   u.regen = P.regen;
   u.overcast = cls.overcast || null;
+  u.soulless = !!race.soulless;
   return u;
 }
 
@@ -213,8 +221,8 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
   u.speed = (def.speed ?? 6) + P.speed;
   u.initBonus = (def.init || 0) + P.init;
   u.weapon = def.weapon ? { ...def.weapon } : null;
-  u.weaponTier = 2;
-  u.attackBonus = def.attackBonus ?? null;
+  u.weaponTier = 3;
+  u.attackBonus = def.attackBonus ?? def.weapon?.attack ?? null;
   u.castStat = def.castStat || (['int', 'wil', 'cha'].reduce((a, b) => (st[b] > st[a] ? b : a), 'int'));
   u.dcOverride = def.dc ?? null;
   u.saves = [...(def.saves || [])];
@@ -229,8 +237,18 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
   u.deathSaves = P.deathSave;
   u.regen = P.regen;
   u.noAttack = !!def.noAttack || !def.weapon;
+  u.decoy = !!def.decoy;
+  u.boss = !!def.boss;
+  u.defaultTurns = def.defaultTurns ?? null;
+  u.soulless = !!def.soulless;
   u.xp = def.xp || 0;
   return u;
+}
+
+/** Class restriction by lore: cls.allowedRaces null = any race. */
+export function isAllowed(race, cls) {
+  const id = typeof race === 'string' ? race : race?.id;
+  return !cls.allowedRaces || cls.allowedRaces.includes(id);
 }
 
 /** Point-buy cost of a stat layout (27 by canon). 9–13: 1/pt, 14–15: 2/pt. */
