@@ -61,7 +61,7 @@ export const ENEMIES = {
     id: 'cultist-gunner', name: 'Культист-стрелок', level: 1, tags: ['organic'],
     stats: { str: 8, dex: 12, con: 10, int: 10, wil: 10, cha: 8, per: 12 },
     hp: 8, mrl: 8, enr: 0, kb: 12, speed: 6, castStat: 'dex',
-    weapon: { name: 'Самопал', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 10, hit: -1, attack: 3 },
+    weapon: { name: 'Самопал', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 10, hit: -1, attack: 2 },
     abilities: [
       ability({ id: 'incendiary', name: 'Зажигательный заряд', range: 8, target: 'tile',
         area: { shape: 'radius', size: 1 }, roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 1,
@@ -89,7 +89,7 @@ export const ENEMIES = {
   acolyte: {
     id: 'acolyte', name: 'Аколит Судьи', level: 1, tags: ['organic'], boss: true,
     stats: { str: 8, dex: 12, con: 12, int: 12, wil: 15, cha: 13, per: 10 },
-    hp: 26, mrl: 24, enr: 12, kb: 12, speed: 6, castStat: 'wil',
+    hp: 40, mrl: 30, enr: 12, kb: 13, speed: 6, castStat: 'wil',
     weapon: { name: 'Ритуальный кинжал', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 1, hit: -1, attack: 3 },
     abilities: [
       ability({ id: 'judge-whisper', name: 'Шёпот Судьи', range: 10, roll: 'save', save: 'wil', onSave: 'half',
