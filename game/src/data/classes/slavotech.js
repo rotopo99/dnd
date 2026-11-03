@@ -25,6 +25,8 @@ export default {
     { id: 'proxy-master', name: 'Путь Прокси-Мастера', desc: 'Прокси — магия Старого бога: крушит механизмы, слабо берёт живую плоть.' },
   ],
   passives: [
+    { id: 'blessed-wrench', name: 'Освящённое железо', level: 1, path: null,
+      desc: 'Старый бог направляет руку: +1 к урону оружием и способностями. Вне канона, не противоречит: баланс.', op: { dmg: { all: 1 } } },
     { id: 'proxy-hunter', name: 'Прокси-охотник', level: 1, path: 'proxy-master',
       desc: 'Видит слабые места: +1 к атаке.', op: { hit: 1 } },
     { id: 'system-restore', name: 'Системное восстановление', level: 1, path: 'healing',

@@ -89,7 +89,7 @@ export const ENEMIES = {
   acolyte: {
     id: 'acolyte', name: 'Аколит Судьи', level: 1, tags: ['organic'], boss: true,
     stats: { str: 8, dex: 12, con: 12, int: 12, wil: 15, cha: 13, per: 10 },
-    hp: 46, mrl: 34, enr: 12, kb: 13, speed: 6, castStat: 'wil',
+    hp: 42, mrl: 34, enr: 12, kb: 14, speed: 6, castStat: 'wil',
     weapon: { name: 'Ритуальный кинжал', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 1, hit: -1, attack: 3 },
     abilities: [
       ability({ id: 'judge-whisper', name: 'Шёпот Судьи', range: 10, roll: 'save', save: 'wil', onSave: 'half',
