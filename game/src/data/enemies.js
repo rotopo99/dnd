@@ -28,8 +28,8 @@ export const ENEMIES = {
   cultist: {
     id: 'cultist', name: 'Культист-фанатик', level: 1, tags: ['organic'],
     stats: { str: 13, dex: 12, con: 12, int: 8, wil: 10, cha: 8, per: 10 },
-    hp: 11, mrl: 9, enr: 0, kb: 12, speed: 6, castStat: 'wil',
-    weapon: { name: 'Шоковая дубинка', dice: '1d6', dmgType: 'blunt', stat: 'str', range: 1, hit: -1, attack: 3 },
+    hp: 10, mrl: 9, enr: 0, kb: 12, speed: 6, castStat: 'wil',
+    weapon: { name: 'Шоковая дубинка', dice: '1d6', dmgType: 'blunt', stat: 'str', range: 1, hit: -1, attack: 2 },
     abilities: [
       ability({ id: 'shock-baton', name: 'Разряд дубинки', usesPerBattle: 1,
         effects: [{ op: 'weapon', extraDice: '1d4', extraType: 'electric' }],
@@ -89,12 +89,12 @@ export const ENEMIES = {
   acolyte: {
     id: 'acolyte', name: 'Аколит Судьи', level: 1, tags: ['organic'], boss: true,
     stats: { str: 8, dex: 12, con: 12, int: 12, wil: 15, cha: 13, per: 10 },
-    hp: 40, mrl: 30, enr: 12, kb: 13, speed: 6, castStat: 'wil',
+    hp: 46, mrl: 34, enr: 12, kb: 13, speed: 6, castStat: 'wil',
     weapon: { name: 'Ритуальный кинжал', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 1, hit: -1, attack: 3 },
     abilities: [
       ability({ id: 'judge-whisper', name: 'Шёпот Судьи', range: 10, roll: 'save', save: 'wil', onSave: 'half',
-        effects: [{ op: 'damage', dice: '2d6', dmgType: 'psychic' }],
-        desc: 'Голос из статических помех: 2d6 пси-урона по МРЛ (спас ТВД, СЛ 12 — половина). При «Надломе» спас с помехой.',
+        effects: [{ op: 'damage', dice: '3d6', dmgType: 'psychic' }],
+        desc: 'Голос из статических помех: 3d6 пси-урона по МРЛ (спас ТВД, СЛ 12 — половина). При «Надломе» спас с помехой.',
         canon: 'rules/effects.md' }),
       ability({ id: 'judge-curse', name: 'Проклятие Судьи', cost: 3, range: 8, roll: 'save', save: 'wil', onSave: 'none',
         effects: [{ op: 'status', id: 'curse', turns: 2 }],
