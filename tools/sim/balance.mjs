@@ -11,6 +11,7 @@ import { ENEMIES, ENCOUNTERS } from '../../game/src/data/enemies.js';
 import { CLASSES, CLASS_ORDER } from '../../game/src/data/classes/index.js';
 import { buildCreature, isAllowed } from '../../game/src/rules/character.js';
 import { simulateBattle } from '../../game/src/rules/simulate.js';
+import { MAPS } from '../../game/src/data/index.js';
 import { createRng } from '../../game/src/rules/rng.js';
 
 const args = process.argv.slice(2);
@@ -120,10 +121,35 @@ function printRaces(level) {
   console.log('race mean effect: ' + Object.entries(raceSum).map(([k, v]) => `${k} ${pp(v.reduce((a, b) => a + b, 0) / v.length)}`).join(' | '));
 }
 
+function printPrologue() {
+  console.log(`\n=== Prologue maps: solo level-1 hero, class x path x races rotating (n=${N} per build, seed ${SEED}) ===`);
+  const res = {};
+  for (const mid of Object.keys(MAPS)) {
+    const perClass = {}; let tw = 0, tn = 0;
+    for (const b of builds) {
+      if (ONLY && b.cid !== ONLY) continue;
+      const ok = races.filter((r) => isAllowed(r, CLASSES[b.cid]));
+      let w = 0;
+      for (let i = 0; i < N; i++) {
+        const hero = mk(b.cid, b.path, ok[i % ok.length], 1);
+        w += simulateBattle({ map: MAPS[mid], heroes: [hero], data, seed: SEED * 1000 + i, maxRounds: 30 }).winner === 'heroes' ? 1 : 0;
+      }
+      (perClass[b.cid] ||= []).push(w / N); tw += w; tn += N;
+    }
+    res[mid] = { avg: tw / tn, perClass };
+  }
+  for (const mid of Object.keys(res)) console.log(`${mid}: avg ${pc(res[mid].avg)}`);
+  console.log('class'.padEnd(12) + Object.keys(res).map((m) => m.padStart(12)).join(''));
+  for (const cid of CLASS_ORDER) {
+    if (ONLY && cid !== ONLY) continue;
+    console.log(cid.padEnd(12) + Object.keys(res).map((m) => { const a = res[m].perClass[cid]; return pc(a.reduce((x, y) => x + y, 0) / a.length).padStart(12); }).join(''));
+  }
+}
 const t0 = Date.now();
 for (const L of levels) {
   if (MODE === 'party' || MODE === 'all') printParty(L);
   if (MODE === 'solo' || MODE === 'all') printSolo(L);
   if (MODE === 'races') printRaces(L);
 }
+if (MODE === 'prologue' || MODE === 'all') printPrologue();
 console.log(`\n(${((Date.now() - t0) / 1000).toFixed(1)}s)`);
