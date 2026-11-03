@@ -8,7 +8,7 @@ import {
   getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive,
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
-  abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource,
+  abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent,
 } from './combat.js';
 
 const STATUS_VALUE = {
@@ -35,7 +35,11 @@ function dmgValue(b, t, amt, dmgType) {
   if (resource === 'mrl') {
     // value of «Срыв»: 50% heartbreak (70% of current HP, never kills) + 50% lost control (a turn of its threat)
     const left = Math.max(1, t.mrl);
-    const bv = 0.5 * Math.floor(t.hp * 0.7) * (1 + 0.5 * (1 - t.hp / t.maxHp)) + 0.5 * threat(t) * 0.8;
+    // v1.2: non-boss enemies/summons on 11–20 are «Сломлен» (out of the battle) — worth as much as a kill
+    const prio = 1 + 0.5 * (1 - t.hp / t.maxHp);
+    const breakable = t.kind !== 'hero' && t.kind !== 'ally' && !t.boss;
+    const second = breakable ? (t.hp + (t.shield ? t.shield.value : 0)) * prio + 0.5 * threat(t) + 3 : threat(t) * 0.8;
+    const bv = (0.5 * Math.floor(t.hp * 0.7) * prio + 0.5 * second) * (t.decoy ? 0.3 : 1);
     return (Math.min(eff, left) / Math.max(1, t.maxMrl)) * bv * 0.8 + (eff >= left ? bv : 0);
   }
   if (t.down) return eff * 0.05;
@@ -278,9 +282,14 @@ export function planTile(b, u, opts) {
   const pref = preferredRange(b, u);
   let best = null;
   let current = null;
+  // v1.2: ranged attack rolls with an enemy adjacent have disadvantage (~0.55 of the EV); option EVs were
+  // computed from the current tile, so rescale relative to it
+  const adjNow = enemyAdjacent(b, u);
   for (const idx of reach.list) {
     const x = idx % g.w, y = (idx / g.w) | 0;
     if (reach.dist[idx] > 0 && !approachOk(b, u, x, y)) continue;
+    const adjHere = reach.dist[idx] === 0 ? adjNow : enemyAdjacent(b, u, x, y);
+    const rangedMul = adjHere === adjNow ? 1 : adjHere ? 0.55 : 1 / 0.55;
     let potA = 0, potB = 0;
     for (const o of options) {
       for (const it of o.list) {
@@ -289,6 +298,7 @@ export function planTile(b, u, opts) {
         if (!o.noLos && d > 1 && !lineOfSight(g, x, y, it.t.x, it.t.y)) continue;
         let v = it.v;
         if (o.ranged && d > 1 && hasCover(g, x, y, it.t.x, it.t.y)) v *= 0.8;
+        if (o.ranged) v *= rangedMul;
         if (o.action) { if (v > potA) potA = v; } else if (v > potB) potB = v;
         break;
       }

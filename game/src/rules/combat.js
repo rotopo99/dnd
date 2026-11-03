@@ -272,6 +272,7 @@ function initUnit(u) {
   c.reactionUsed = false; c.roundHpLoss = 0; c.bigHitRound = -1;
   c.deathSavesLeft = u.deathSaves || 0; c.lostControl = 0; c.lostControlFresh = false;
   c.summonTurns = null; c.summoner = null; c.nadlom = false; c.initiative = 0;
+  c.overcastsUsed = 0; c.broken = false;
   if (c.hp <= 0 && HERO_KINDS[c.kind]) c.down = true;
   return c;
 }
