@@ -29,6 +29,8 @@ export default {
     },
   ],
   passives: [
+    { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
+      desc: 'Ступень владения «мастерство»: +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { ranged: 2 } } },
     { id: 'marksman', name: 'Меткий стрелок', level: 1, path: 'hunter',
       desc: '+2 к броску атаки.', op: { hit: 2 } },
     { id: 'wasteland-skin', name: 'Кожа пустошей', level: 1, path: 'survivor',

@@ -11,7 +11,7 @@ export default {
   id: 'slavotech', name: 'СлавоТех', analog: 'Жрец', icon: 'class_tech',
   role: 'support',
   castStat: 'wil',
-  hpPerLevel: 2,
+  hpPerLevel: 1,
   saves: ['wil', 'con'],
   armor: { name: 'Ритуальный нагрудник', type: 'medium', kb: 4 },
   weapon: { name: 'Освящённый гаечный ключ', dice: '1d8', dmgType: 'blunt', stat: 'str', range: 1, hit: 0 },

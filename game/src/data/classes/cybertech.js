@@ -11,7 +11,7 @@ export default {
   id: 'cybertech', name: 'КиберТех', analog: 'Колдун', icon: 'class_tech',
   role: 'caster',
   castStat: 'int',            // контроль киберпространства и код Судьи
-  hpPerLevel: 1,
+  hpPerLevel: 0,
   saves: ['wil', 'int'],
   armor: { name: 'Плащ с вшитой сеткой', type: 'light', kb: 2 },
   weapon: { name: 'Ритуальный клинок', dice: '1d6', dmgType: 'slash', stat: 'dex', range: 1, hit: 0 },

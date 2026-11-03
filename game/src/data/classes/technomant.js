@@ -5,7 +5,7 @@ export default {
   id: 'technomant', name: 'Техномант', analog: 'Волшебник', icon: 'class_tech',
   role: 'caster',
   castStat: 'int',
-  hpPerLevel: 0,
+  hpPerLevel: 2,
   saves: ['int', 'wil'],
   armor: { name: 'Куртка с экранирующей подкладкой', type: 'cloth', kb: 1 },
   weapon: { name: 'Самопальный пистолет', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 8, hit: 0 },
@@ -32,7 +32,7 @@ export default {
     // ---------- Общие ----------
     {
       id: 'energy-beam', name: 'Энергетический луч', level: 1, path: null,
-      cost: 3, action: 'action', trigger: null, range: 20, target: 'enemy', area: null,
+      cost: 2, action: 'action', trigger: null, range: 20, target: 'enemy', area: null,
       roll: 'attack', save: null, onSave: 'none', usesPerBattle: null,
       effects: [{ op: 'damage', dice: '1d8', dmgType: 'energy', bonus: 'castMod' }],
       desc: 'Луч энергии: 1d8 + ИНТ энергоурона, дальность 20 клеток.',
@@ -64,7 +64,7 @@ export default {
     },
     {
       id: 'cyber-storm', name: 'Кибер-буря', level: 5, path: null,
-      cost: 6, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
+      cost: 7, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: null,
       effects: [{ op: 'damage', dice: '2d8', dmgType: 'electric' }],
       desc: 'Буря разрядов: 2d8 электроурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина.',
@@ -148,7 +148,7 @@ export default {
     },
     {
       id: 'energy-blast', name: 'Энергетический взрыв', level: 5, path: 'energetic',
-      cost: 8, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
+      cost: 10, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 2,
       effects: [{ op: 'damage', dice: '3d8', dmgType: 'energy' }],
       desc: '3d8 энергоурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина.',

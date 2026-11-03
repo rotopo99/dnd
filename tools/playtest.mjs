@@ -48,7 +48,7 @@ const url = `http://localhost:${server.address().port}/game/index.html`;
 
 const errors = [];
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 800, height: 460 } });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`));
 page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
 page.on('requestfailed', (r) => errors.push(`request failed: ${r.url()}`));

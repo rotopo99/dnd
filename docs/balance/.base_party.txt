@@ -1,0 +1,96 @@
+
+=== Sim A: party vs party1  (n=150 trios x builds, seed 1); party winrate avg  54%  ===
+zabivnoy    [tank   ] class  60% contrib   +6.6
+   mech-killer                {melee  }  57% contrib   +3.8 
+   wasteland-sniper           {ranged }  63% contrib   +9.1  <-- OUT
+   iron-titan                 {tank   }  61% contrib   +7.1  <-- OUT
+technomant  [caster ] class  33% contrib  -20.5
+   coder                      {control}  33% contrib  -20.2  <-- OUT
+   illusionist                {control}  31% contrib  -22.2  <-- OUT
+   energetic                  {caster }  35% contrib  -18.9  <-- OUT
+mutant      [melee  ] class  57% contrib   +3.8
+   beast                      {melee  }  53% contrib   -0.2 
+   titan                      {tank   }  59% contrib   +5.8  <-- OUT
+   predator                   {melee  }  59% contrib   +5.8  <-- OUT
+itishnik    [support] class  70% contrib  +16.2
+   inventor                   {support}  69% contrib  +15.8  <-- OUT
+   sapper                     {control}  67% contrib  +13.8  <-- OUT
+   mechanic                   {support}  73% contrib  +19.1  <-- OUT
+ranger      [ranged ] class  51% contrib   -2.5
+   hunter                     {ranged }  50% contrib   -3.6 
+   survivor                   {tank   }  51% contrib   -2.9 
+   saboteur                   {control}  53% contrib   -0.9 
+arbiter     [tank   ] class  53% contrib   -0.2
+   defender                   {tank   }  56% contrib   +2.4 
+   avenger                    {melee  }  51% contrib   -2.2 
+   judge                      {control}  53% contrib   -0.9 
+ugolovnik   [melee  ] class  48% contrib   -5.1
+   breaker                    {melee  }  50% contrib   -3.6 
+   ghost                      {melee  }  45% contrib   -8.2  <-- OUT
+   manipulator                {melee  }  50% contrib   -3.6 
+ecolog      [control] class  58% contrib   +4.2
+   nature                     {control}  59% contrib   +5.8  <-- OUT
+   spirits                    {control}  57% contrib   +3.1 
+   techno-shaman              {control}  57% contrib   +3.8 
+reper       [support] class  49% contrib   -4.9
+   inspirer                   {support}  55% contrib   +1.1 
+   manipulator                {support}  51% contrib   -2.9 
+   techno-musician            {support}  41% contrib  -12.9  <-- OUT
+slavotech   [support] class  58% contrib   +4.4
+   healing                    {support}  59% contrib   +5.8  <-- OUT
+   balance                    {support}  56% contrib   +2.4 
+   proxy-master               {support}  59% contrib   +5.1  <-- OUT
+cybertech   [caster ] class  52% contrib   -2.0
+   soul-eater                 {caster }  49% contrib   -4.2 
+   cyber-demon                {caster }  58% contrib   +4.4 
+   curses                     {caster }  47% contrib   -6.2  <-- OUT
+paths out of ±5pp: 16/33; rms 9.2pp; noise per build ≈ ±8.0pp (95%)
+
+=== Sim A: party vs party5  (n=150 trios x builds, seed 1); party winrate avg  57%  ===
+zabivnoy    [tank   ] class  55% contrib   -2.3
+   mech-killer                {melee  }  55% contrib   -1.7 
+   wasteland-sniper           {ranged }  56% contrib   -1.0 
+   iron-titan                 {tank   }  53% contrib   -4.3 
+technomant  [caster ] class  69% contrib  +12.3
+   coder                      {control}  69% contrib  +11.7  <-- OUT
+   illusionist                {control}  63% contrib   +5.7  <-- OUT
+   energetic                  {caster }  77% contrib  +19.7  <-- OUT
+mutant      [melee  ] class  47% contrib   -9.9
+   beast                      {melee  }  47% contrib   -9.7  <-- OUT
+   titan                      {tank   }  52% contrib   -5.0  <-- OUT
+   predator                   {melee  }  42% contrib  -15.0  <-- OUT
+itishnik    [support] class  62% contrib   +4.5
+   inventor                   {support}  50% contrib   -7.0  <-- OUT
+   sapper                     {control}  77% contrib  +19.7  <-- OUT
+   mechanic                   {support}  58% contrib   +1.0 
+ranger      [ranged ] class  46% contrib  -11.5
+   hunter                     {ranged }  51% contrib   -6.3  <-- OUT
+   survivor                   {tank   }  44% contrib  -13.0  <-- OUT
+   saboteur                   {control}  42% contrib  -15.0  <-- OUT
+arbiter     [tank   ] class  60% contrib   +2.8
+   defender                   {tank   }  69% contrib  +11.7  <-- OUT
+   avenger                    {melee  }  58% contrib   +1.0 
+   judge                      {control}  53% contrib   -4.3 
+ugolovnik   [melee  ] class  46% contrib  -11.2
+   breaker                    {melee  }  51% contrib   -6.3  <-- OUT
+   ghost                      {melee  }  44% contrib  -13.0  <-- OUT
+   manipulator                {melee  }  43% contrib  -14.3  <-- OUT
+ecolog      [control] class  54% contrib   -2.6
+   nature                     {control}  65% contrib   +7.7  <-- OUT
+   spirits                    {control}  49% contrib   -7.7  <-- OUT
+   techno-shaman              {control}  49% contrib   -7.7  <-- OUT
+reper       [support] class  51% contrib   -5.7
+   inspirer                   {support}  62% contrib   +5.0 
+   manipulator                {support}  47% contrib   -9.7  <-- OUT
+   techno-musician            {support}  45% contrib  -12.3  <-- OUT
+slavotech   [support] class  69% contrib  +12.1
+   healing                    {support}  67% contrib   +9.7  <-- OUT
+   balance                    {support}  69% contrib  +11.7  <-- OUT
+   proxy-master               {support}  72% contrib  +15.0  <-- OUT
+cybertech   [caster ] class  68% contrib  +11.4
+   soul-eater                 {caster }  71% contrib  +14.3  <-- OUT
+   cyber-demon                {caster }  66% contrib   +9.0  <-- OUT
+   curses                     {caster }  68% contrib  +11.0  <-- OUT
+paths out of ±5pp: 26/33; rms 10.5pp; noise per build ≈ ±8.0pp (95%)
+
+(112.3s)

@@ -44,7 +44,7 @@ export default {
     },
     {
       id: 'junk-grenade', name: 'Граната из хлама', level: 1, path: null,
-      cost: 3, action: 'action', trigger: null, range: 8, target: 'tile', area: { shape: 'radius', size: 1 },
+      cost: 4, action: 'action', trigger: null, range: 8, target: 'tile', area: { shape: 'radius', size: 1 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: null,
       effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }],
       desc: 'Самодельная граната: 2d6 огненного урона всем врагам в радиусе 1 клетки, спасбросок ЛВК — половина.',
@@ -54,8 +54,8 @@ export default {
       id: 'weakpoint-scan', name: 'Техно-сканирование', level: 1, path: null,
       cost: 2, action: 'bonus', trigger: null, range: 12, target: 'enemy', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
-      effects: [{ op: 'mark', id: 'marked', turns: 3, value: 2 }],
-      desc: 'Сканер находит слабые места: все атаки по цели (твои, союзников, турелей, дронов) наносят +2 урона 3 хода.',
+      effects: [{ op: 'mark', id: 'marked', turns: 3, value: 1 }],
+      desc: 'Сканер находит слабые места: все атаки по цели (твои, союзников, турелей, дронов) наносят +1 урона 3 хода.',
       canon: 'rules/spells.md',
     },
     {
@@ -135,8 +135,8 @@ export default {
       id: 'weapon-tune', name: 'Временный апгрейд', level: 1, path: 'mechanic',
       cost: 2, action: 'bonus', trigger: null, range: 1, target: 'ally', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
-      effects: [{ op: 'buff', stat: 'dmg', value: 2, turns: 5 }],
-      desc: 'Подкручивает оружие себе или соседнему союзнику: +2 к урону на 5 ходов.',
+      effects: [{ op: 'buff', stat: 'dmg', value: 1, turns: 5 }],
+      desc: 'Подкручивает оружие себе или соседнему союзнику: +1 к урону на 5 ходов.',
       canon: 'rules/class-roadmap.md',
     },
     {

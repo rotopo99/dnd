@@ -25,6 +25,8 @@ export default {
     { id: 'manipulator', name: 'Путь Манипулятора', desc: 'Обман и манипуляция: голограммы, ложные цели, враги дерутся между собой.' },
   ],
   passives: [
+    { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
+      desc: 'Ступень владения «мастерство»: +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { melee: 2 } } },
     { id: 'ghost-sneak', name: 'Основная скрытность', level: 1, path: 'ghost',
       desc: 'Проверки скрытности — с преимуществом.', op: { advantage: ['stealth'] } },
     { id: 'ghost-deadly', name: 'Смертельные приёмы', level: 5, path: 'ghost',

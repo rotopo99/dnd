@@ -28,6 +28,8 @@ export default {
     },
   ],
   passives: [
+    { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
+      desc: 'Ступень владения «мастерство»: +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { melee: 2 } } },
     { id: 'claws', name: 'Когти', level: 1, path: 'beast',
       desc: 'Когти дополняют каждый удар: +2 к урону в ближнем бою.', op: { dmg: { melee: 2 } } },
     { id: 'predator-reflexes', name: 'Рефлексы хищника', level: 1, path: 'beast',
