@@ -14,7 +14,7 @@
   <canvas id="c"></canvas>
   <script type="module">
     import {
-      SPRITES, PALETTE, PALETTE_KEYS, RACE_IDS, CLASS_IDS, ENEMY_IDS, SUMMON_IDS, TILE,
+      SPRITES, PALETTE, PALETTE_KEYS, RACE_IDS, CLASS_IDS, ENEMY_IDS, SUMMON_IDS, NPC_IDS, TILE,
       drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, validateSprites,
     } from '../game/src/assets/sprites.js';
 
@@ -84,6 +84,7 @@
     put(enemySpriteIds('junk-mech'), 8, 4, 'enemy', { flip: true });
     put(enemySpriteIds('acolyte'), 12, 3, 'enemy', { flip: true });
     put(enemySpriteIds('drone'), 4, 4, 'ally');
+    put(enemySpriteIds('npc-gans'), 6, 4, 'ally');
     y += map.length * CELL + 12;
 
     // Heroes: race x class matrix
@@ -131,6 +132,7 @@
     };
     mobRow(ENEMY_IDS, 'Enemies (frame 0 / 1)');
     mobRow(SUMMON_IDS, 'Summons (frame 0 / 1)');
+    mobRow(NPC_IDS, 'NPC allies (frame 0 / 1)');
 
     // Team markers / tint / flash
     title('Team markers, tint (outline) and mono (hit flash)');

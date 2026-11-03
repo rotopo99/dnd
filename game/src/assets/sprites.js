@@ -577,6 +577,24 @@ const MOBS = {
     '........hf',
     '.........f',
   ],
+  // Gans: ex-civil-defence soldier, no augments, auto-camo (olive/khaki spots), helmet, backpack.
+  'npc-gans': [
+    '',
+    '',
+    '.....llll',
+    '....lklmll',
+    '....l99909',
+    '....l99999',
+    '.....mkmm',
+    '...6lmlkllm',
+    '...6mllmkll',
+    '...6lklllml',
+    '....9666669',
+    '.....lm.kl',
+    '.....ml.lm',
+    '.....lk.ml',
+    '.....66.666',
+  ],
   hologram: [
     '',
     '',
@@ -943,6 +961,25 @@ const MARKER = [
   '...5555555555',
 ];
 
+const MARKER_ENEMY = [
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '...5555555555',
+  '.555........555',
+  '.555........555',
+  '..555555555555',
+];
+
 export const SPRITES = {};
 for (const [id, rows] of Object.entries(RACES)) SPRITES[`race-${id}`] = unit(rows);
 for (const [id, rows] of Object.entries(CLASSES)) SPRITES[`class-${id}`] = layer(rows);
@@ -972,10 +1009,13 @@ SPRITES['obj-barricade'] = tile(BARRICADE);
 SPRITES['obj-scorch'] = tile(SCORCH);
 SPRITES['obj-fire'] = tile(FIRE_A, FIRE_B);
 SPRITES['ui-marker'] = tile(MARKER);
+// Enemy ring: thicker + dark outline, red on the steel floor is low-contrast otherwise.
+SPRITES['ui-marker-enemy'] = { w: 16, h: 16, frames: [MARKER_ENEMY], outline: true, bob: null };
 
 export const RACE_IDS = Object.keys(RACES);
 export const CLASS_IDS = Object.keys(CLASSES);
 export const ENEMY_IDS = ['cultist', 'cultist-gunner', 'skrilet', 'acolyte', 'scavenger', 'junk-mech', 'crawler', 'cringe-jester'];
+export const NPC_IDS = ['npc-gans'];
 export const SUMMON_IDS = ['drone', 'turret', 'beast-wolf', 'cyber-demon', 'gang-thug', 'biomass', 'spirit', 'hologram'];
 
 // ---------------------------------------------------------------------------
@@ -989,7 +1029,8 @@ export function heroSpriteIds(raceId, classId) {
 
 export function enemySpriteIds(enemyId) {
   const extra = { skrilet: ['race-skrilet', 'layer-skrilet-blades'], cultist: ['mob-cultist', 'layer-sickle'],
-    'cultist-gunner': ['mob-cultist-gunner', 'layer-cult-rifle'], scavenger: ['mob-scavenger', 'layer-pipe'] };
+    'cultist-gunner': ['mob-cultist-gunner', 'layer-cult-rifle'], scavenger: ['mob-scavenger', 'layer-pipe'],
+    'npc-gans': ['mob-npc-gans', 'class-ranger'] };
   if (extra[enemyId]) return extra[enemyId];
   const id = `mob-${enemyId}`;
   return SPRITES[id] ? [id] : ['mob-cultist'];
@@ -1137,7 +1178,7 @@ export function drawSprite(ctx, id, x, y, scale = 3, opts = {}) {
 }
 
 export function drawTeamMarker(ctx, team, x, y, scale = 3) {
-  drawSprite(ctx, 'ui-marker', x, y, scale, { mono: TEAM_COLORS[team] ?? team });
+  drawSprite(ctx, team === 'enemy' ? 'ui-marker-enemy' : 'ui-marker', x, y, scale, { mono: TEAM_COLORS[team] ?? team });
 }
 
 export function validateSprites() {
