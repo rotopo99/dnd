@@ -83,15 +83,20 @@ export function createBattleScene(opts) {
   let seed = opts.seed ?? ((Math.random() * 1e9) | 0);
 
   function start(game) {
-    const h = opts.hero;
-    const hero = buildCreature({ race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero' });
+    let heroes;
+    if (opts.heroes) heroes = typeof opts.heroes === 'function' ? opts.heroes(game) : opts.heroes;
+    else {
+      const h = opts.hero;
+      heroes = [buildCreature({ race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero', anyStat: h.anyStat || undefined, talents: h.activeCombat })];
+    }
     S.queue = [];
     S.b = createBattle({
-      map: opts.map, heroes: [hero], enemies: opts.enemies, allies: opts.allies, data: game.data, seed,
+      map: typeof opts.map === 'function' ? opts.map(seed) : opts.map, heroes, enemies: opts.enemies, allies: opts.allies, data: game.data, seed,
       onEvent: (e) => S.queue.push(e),
     });
     const b = S.b;
-    S.heroId = 'hero';
+    S.heroId = heroes[0].id; // the player-controlled unit whose turn it is (party: switches every turn)
+    S.mainId = heroes[0].id;
     // display names: duplicates get a number
     const count = {};
     for (const u of b.units) count[u.name] = (count[u.name] || 0) + 1;
@@ -136,6 +141,7 @@ export function createBattleScene(opts) {
     S.dirty = false;
     const b = S.b;
     const cu = currentUnit(b);
+    if (cu && !b.winner && cu.team === 'heroes' && cu.kind === 'hero' && !isAiTurn(b) && isStanding(cu)) S.heroId = cu.id;
     S.playerTurn = !!cu && !b.winner && cu.id === S.heroId && !isAiTurn(b);
     const hero = b.byId[S.heroId];
     S.reach = null;
@@ -314,7 +320,7 @@ export function createBattleScene(opts) {
   }
 
   function storyBubble(u, key) {
-    const lines = storyLine(key, opts.hero.race);
+    const lines = storyLine(key, opts.race || opts.hero?.race);
     if (!lines || !lines.length) return;
     const l = lines[(Math.random() * lines.length) | 0];
     bubble(u, l.text);
@@ -470,6 +476,7 @@ export function createBattleScene(opts) {
   function resultAction(game, id) {
     play('uiClick');
     if (id === 'next') opts.onWin(game, S);
+    else if (id === 'lose') opts.onLose(game, S);
     else if (id === 'retry') { seed = (seed + 7919) | 0; start(game); }
     else if (id === 'menu') opts.onExit(game);
   }

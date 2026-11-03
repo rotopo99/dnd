@@ -2,6 +2,7 @@ import { createInput } from './input.js';
 import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture } from './audio/sfx.js';
 import { GAME_DATA } from './data/index.js';
+import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
 
 // Minimal logical size: the UI is laid out for >= 1280x720. Bigger windows get a bigger canvas
 // at 1:1 pixels (pixel-perfect); smaller ones are downscaled by CSS as a fallback.
@@ -21,10 +22,22 @@ const game = {
   hero: null, // { race, cls, path, name } — chosen in character creation
   scene: null,
   time: 0,
+  save: null, // world save (save.js) while in the open world
+  modals: [], // modal stack (ui/modal.js); while not empty the scene does not get update()
+  toasts: [],
   setScene(scene) {
     this.scene = scene;
+    this.modals.length = 0;
     scene.enter?.(this);
   },
+  /** Return to an already entered scene without resetting it. */
+  resume(scene) {
+    this.scene = scene;
+    scene.resume?.(this);
+  },
+  openModal(spec) { this.modals.push(spec); },
+  closeModal() { this.modals.pop(); },
+  toast(text, color = 'h') { this.toasts.push({ text, color, t: 0 }); },
 };
 
 function resize() {
@@ -58,12 +71,16 @@ function frame(now) {
     acc -= STEP;
     game.time += STEP;
     try {
-      game.scene.update(game, STEP);
+      updateToasts(game, STEP);
+      if (game.modals.length) updateModal(game, STEP);
+      else game.scene.update(game, STEP);
     } finally {
       game.input.endFrame();
     }
   }
   game.scene.render(game);
+  if (game.modals.length) renderModal(game);
+  renderToasts(game);
 }
 requestAnimationFrame(frame);
 

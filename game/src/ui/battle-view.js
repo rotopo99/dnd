@@ -55,13 +55,29 @@ layoutBattle.buttons = (S) => {
   let fixed = 0, nAb = 0;
   for (const b of S.buttons) { if (FIXED[b.id]) fixed += FIXED[b.id]; else nAb++; }
   const free = L.bar.w - fixed - gap * (S.buttons.length - 1);
-  const aw = nAb ? Math.min(180, Math.floor(free / nAb)) : 0;
+  let aw = nAb ? Math.min(180, Math.floor(free / nAb)) : 0;
+  const bottom = L.H - 8;
+  if (nAb && aw < 110) {
+    // many abilities: two rows (abilities on top, base actions below), the log gets shorter
+    const h = 44;
+    aw = Math.min(180, Math.floor((L.bar.w - gap * (nAb - 1)) / nAb));
+    let xa = L.bar.x, xf = L.bar.x;
+    for (const b of S.buttons) {
+      if (FIXED[b.id]) { Object.assign(b, { x: xf, y: L.bar.y + h + gap, w: FIXED[b.id] + 20, h }); xf += FIXED[b.id] + 20 + gap; }
+      else { Object.assign(b, { x: xa, y: L.bar.y, w: aw, h }); xa += aw + gap; }
+    }
+    const top = L.bar.y + 2 * h + gap + 8;
+    L.log = { x: L.bar.x, y: top, w: L.bar.w, h: bottom - top };
+    return;
+  }
   let x = L.bar.x;
   for (const b of S.buttons) {
     const w = FIXED[b.id] || aw;
     Object.assign(b, { x, y: L.bar.y, w, h: L.bar.h });
     x += w + gap;
   }
+  const top = L.bar.y + L.bar.h + 8;
+  L.log = { x: L.bar.x, y: top, w: L.bar.w, h: bottom - top };
 };
 
 layoutBattle.result = (game, S) => {
@@ -72,6 +88,7 @@ layoutBattle.result = (game, S) => {
   const by = y + ph - 64;
   S.resultButtons = S.result === 'win'
     ? [{ id: 'next', label: t('battle.continue'), x: x + pw / 2 - 110, y: by, w: 220, h: 44 }]
+    : S.opts.onLose ? [{ id: 'lose', label: t('battle.continue'), x: x + pw / 2 - 110, y: by, w: 220, h: 44 }]
     : [
       { id: 'retry', label: t('battle.retry'), x: x + pw / 2 - 230, y: by, w: 220, h: 44 },
       { id: 'menu', label: t('menu.back'), x: x + pw / 2 + 10, y: by, w: 220, h: 44 },
@@ -326,7 +343,8 @@ function drawTopBar(ctx, S) {
   const roundW = 110;
   let labelW = 0;
   if (cu) {
-    const label = cu.id === S.heroId && S.playerTurn ? t('battle.yourTurn') : cu.team === 'heroes' ? `${t('battle.allyTurn')}: ${S.name(cu.id)}` : `${t('battle.enemyTurn')}: ${S.name(cu.id)}`;
+    const many = b.units.filter((u) => u.team === 'heroes' && u.kind === 'hero').length > 1;
+    const label = cu.id === S.heroId && S.playerTurn ? (many ? `${t('battle.yourTurn')}: ${S.name(cu.id)}` : t('battle.yourTurn')) : cu.team === 'heroes' ? `${t('battle.allyTurn')}: ${S.name(cu.id)}` : `${t('battle.enemyTurn')}: ${S.name(cu.id)}`;
     const s = fit(ctx, label, L.area.w - 2 * roundW - 40, FONT_L);
     ctx.font = FONT_L;
     labelW = ctx.measureText(s).width;
@@ -352,7 +370,8 @@ function drawActionBar(ctx, S) {
     const col = btn.disabled ? C['3'] : C['5'];
     const lines = wrap(ctx, btn.label, btn.w - 12, AB_FONT);
     const cx = btn.x + btn.w / 2;
-    if (lines.length === 1) text(ctx, lines[0], cx, btn.y + 18, col, AB_FONT, 'center');
+    if (btn.h < 50) text(ctx, fit(ctx, btn.label, btn.w - 20, AB_FONT), cx, btn.y + 9, col, AB_FONT, 'center');
+    else if (lines.length === 1) text(ctx, lines[0], cx, btn.y + 18, col, AB_FONT, 'center');
     else {
       text(ctx, fit(ctx, lines[0], btn.w - 12, AB_FONT), cx, btn.y + 12, col, AB_FONT, 'center');
       text(ctx, fit(ctx, lines.slice(1).join(' '), btn.w - 12, AB_FONT), cx, btn.y + 27, col, AB_FONT, 'center');

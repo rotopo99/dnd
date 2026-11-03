@@ -543,7 +543,6 @@ const LIST = [
   // ============================== МИРОВОЗЗРЕНИЕ: ЗЛЫЕ (rules/talents.md, «Тёмные таланты»)
   T({ id: 'prey-game', name: 'Игра с жертвой', slot: 'alignment', kind: 'combat', req: { alignment: 'evil' },
     passives: [{ op: { hit: 2, cond: 'targetWounded' } }],
-    todo: 'нужен условный бонус атаки: цель ниже 100% ЗДР (op.cond) — сейчас движок игнорирует cond и дал бы +2 всегда',
     desc: '+2 к атакам против уже раненых врагов.' }),
   T({ id: 'soul-absorb', name: 'Поглощение души', slot: 'alignment', kind: 'combat', req: { alignment: 'evil' },
     abilities: [ab({ id: 'talent-soul-absorb', name: 'Поглощение души', action: 'bonus', range: 1, roll: 'save', save: 'wil', castStat: 'wil',
@@ -641,7 +640,7 @@ const LIST = [
     desc: 'Восстанавливается на солнце: привал в поле лечит полностью. (Мутантам-Р уже дан расой в бою.)' }),
   T({ id: 'acid-sweat', name: 'Кислотный пот', slot: 'mutation', kind: 'combat', req: { tags: ['organic'] },
     source: { kind: 'mutation' },
-    todo: 'нужна пассивка «урон атакующему в ближнем бою» (thorns)',
+    passives: [{ op: { thorns: { dice: '1d4', dmgType: 'toxin' } } }],
     desc: 'При стрессе выделяет едкую жидкость: 1d4 урона при касании.' }),
 
   // ============================== ИМПЛАНТЫ (services: ['implant'] — Никола и инженеры)
@@ -723,7 +722,6 @@ const LIST = [
   T({ id: 'iron-will', name: 'Железная воля', slot: 'stat', kind: 'combat', req: { stats: { con: 16 } },
     source: { kind: 'level' }, canon: 'extra/stat-talents.md',
     passives: [{ op: { maxHp: 4 } }],
-    todo: 'нужна пассивка maxHp (см. docs/specs/talents.md, «Расширения схемы»)',
     desc: 'ТЕЛ 16+: +4 к максимуму ЗДР.' }),
   T({ id: 'quick-start', name: 'Быстрый старт', slot: 'stat', kind: 'combat', req: { stats: { per: 14 } },
     source: { kind: 'level' }, canon: 'extra/stat-talents.md',
