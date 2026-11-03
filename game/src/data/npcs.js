@@ -1353,8 +1353,14 @@ const COMPANION = {
   'sister-pomekha':    { likes: ['mercy', 'help-weak'],    dislikes: ['cult-deal', 'cruelty'],         home: 'lagoon-bar' },
 };
 
+// Tabletop party members appear ONLY in their unique event (GDD, «Ответы человека по миру», п. 2): world/events.js.
+const CAMEO_EVENT = {
+  'kuksius': 'ev-kuksius', 'party-victor': 'ev-victor', 'liza': 'ev-liza', 'artyom': 'ev-artyom', 'repa': 'ev-repa',
+};
+
 for (const n of LIST) {
   if (n.recruitable) n.companion = { race: n.race, cls: n.cls, path: n.path, talents: [], ...COMPANION[n.id] };
+  if (CAMEO_EVENT[n.id]) { n.event = CAMEO_EVENT[n.id]; n.services = []; }
 }
 
 export const NPCS = Object.fromEntries(LIST.map((n) => [n.id, n]));
