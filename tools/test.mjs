@@ -4,7 +4,8 @@ import { createRng } from '../game/src/rules/rng.js';
 import { parseDice, rollDice, d20, avgDice } from '../game/src/rules/dice.js';
 import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost } from '../game/src/rules/character.js';
 import { parseMap, chebyshev, lineOfSight, hasCover, findPath, reachable, makeArena } from '../game/src/rules/grid.js';
-import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, getKb } from '../game/src/rules/combat.js';
+import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack,
+  BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT } from '../game/src/rules/combat.js';
 import { chooseAction } from '../game/src/rules/ai.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
 import { DATA } from './fixtures/rules-data.mjs';
@@ -370,6 +371,135 @@ test('v1.2 AI: ranged unit steps away from an adjacent melee enemy before shooti
   forceTurn(b, E);
   const a = chooseAction(b, E.id);
   assert.ok(a.type === 'disengage' || a.type === 'move', `got ${a.type}`);
+});
+
+console.log('review fixes');
+/** Make `u` the next unit to start its turn on endTurn() (no round wrap). */
+function nextIs(b, u) {
+  const other = b.units.find((x) => x !== u && !x.dead);
+  forceTurn(b, other);
+  b.turnIndex = b.order.indexOf(u.id) - 1;
+}
+test('fix 1: lost control from a cringe tick lasts exactly 1 turn', () => {
+  const { b, H } = duel();
+  H.mrl = 1;
+  applyStatus(b, H, 'cringed', 5, null);
+  nextIs(b, H);
+  b.rng = stubRng([0.5, nat(15)]); // tick 1d4, then breakdown d20 = 15 -> lost control
+  endTurn(b);
+  assert.equal(b.turn.unitId, H.id);
+  assert.equal(b.turn.lostControl, true);
+  assert.equal(H.lostControlFresh, false);
+  H.statuses = [];
+  endTurn(b);
+  while (b.turn && b.turn.unitId !== H.id) endTurn(b);
+  assert.equal(b.turn.lostControl, false);
+  assert.equal(H.lostControl, 0);
+});
+test('fix 1: stun from a big hit during own tick skips only that turn', () => {
+  const { b, H } = duel();
+  applyStatus(b, H, 'bleed', 1, null);
+  H.roundHpLoss = Math.ceil(H.maxHp * BIG_HIT_FRACTION) - 1;
+  nextIs(b, H);
+  b.rng = stubRng([0.5, nat(1)]); // bleed 1d4 = 3, CON save natural 1 -> stun
+  endTurn(b);
+  assert.ok(events(b, 'skipTurn').some((e) => e.actor === H.id), 'this turn skipped');
+  assert.ok(!H.statuses.some((x) => x.id === 'stun'), 'stun gone after this turn');
+});
+test('fix 2: lose "heroDown" — any hero down -> enemies win; no teams -> draw', () => {
+  const map = { ...makeArena({ heroes: 2, enemies: 1 }), lose: 'heroDown' };
+  const b = createBattle({ map, heroes: [hero(), hero()], enemies: ['thug'], data: DATA, seed: 1, autoReactions: false });
+  dealDamage(b, null, b.units[0], 999, 'slash');
+  assert.equal(b.winner, 'enemies');
+  const b2 = createBattle({ map: makeArena({ heroes: 2, enemies: 1 }), heroes: [hero(), hero()], enemies: ['thug'], data: DATA, seed: 1, autoReactions: false });
+  dealDamage(b2, null, b2.units[0], 999, 'slash');
+  assert.equal(b2.winner, null, 'arena: team must be down');
+  const b3 = createBattle({ map: makeArena({ heroes: 0, enemies: 0 }), heroes: [], enemies: [], data: DATA, seed: 1 });
+  assert.equal(b3.winner, 'draw');
+});
+test('fix 3: endTurn works when the current unit is down', () => {
+  const b = createBattle({ map: makeArena({ heroes: 2, enemies: 1 }), heroes: [hero(), hero()], enemies: ['thug'], data: DATA, seed: 1, autoReactions: false });
+  const h = b.units[0];
+  forceTurn(b, h);
+  h.hp = 0; h.down = true;
+  const r = perform(b, { type: 'endTurn', unit: h.id });
+  assert.ok(r.ok);
+  assert.notEqual(b.turn && b.turn.unitId, h.id);
+});
+test('fix 4: dash ability respects root and fear; unreachable destination -> unavailable, no ENR spent', () => {
+  const far = { grid: ['#######', '#P...E#', '#######'] };
+  let { b, H, E } = duel('thug', hero(), far);
+  forceTurn(b, H);
+  assert.ok(getLegalActions(b, H.id).some((a) => a.ability === 'rush'), 'rush available normally');
+  b.data.statuses.root = { id: 'root', kind: 'debuff', mods: { speedMul: 0 } };
+  b.statusCache = {};
+  applyStatus(b, H, 'root', 2, E);
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.ability === 'rush'), 'root blocks the dash');
+  delete b.data.statuses.root;
+  ({ b, H, E } = duel('thug', hero(), far));
+  forceTurn(b, H);
+  applyStatus(b, H, 'fear', 2, E);
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.ability === 'rush'), 'fear: cannot dash toward the source');
+  ({ b, H, E } = duel('thug', hero(), { grid: ['#######', '#P..#E#', '#######'] }));
+  forceTurn(b, H);
+  const enr = H.enr;
+  const r = perform(b, { type: 'ability', unit: H.id, ability: 'rush', target: E.id });
+  assert.equal(r.ok, false);
+  assert.equal(H.enr, enr);
+});
+test('fix 5: enemyLeaves reaction never overcasts', () => {
+  const map = { grid: ['#######', '#.....#', '#.PE..#', '#.....#', '#######'] };
+  const { b, H, E } = duel('thug', hero(), map);
+  E.abilities = [{ id: 'trip', name: 'trip', action: 'reaction', trigger: 'enemyLeaves', cost: 5, range: 1, target: 'enemy', roll: 'auto', effects: [{ op: 'status', id: 'stun', turns: 1 }] }];
+  E.enr = 0; E.overcast = 'veil';
+  b.autoReactions = true;
+  forceTurn(b, H);
+  assert.ok(perform(b, { type: 'move', unit: H.id, to: { x: 1, y: 2 } }).ok);
+  assert.equal(events(b, 'reaction').length, 0);
+  assert.equal(events(b, 'overcast').length, 0);
+  assert.equal(events(b, 'opportunity').length, 1);
+});
+test('fix 6: cumulative tick without cap grows (positive values)', () => {
+  const { b, H } = duel();
+  b.data.statuses.grow = { id: 'grow', kind: 'buff', tick: { op: 'buff', stat: 'kb', value: 1, cumulative: true } };
+  applyStatus(b, H, 'grow', 5, null);
+  const kb0 = getKb(b, H);
+  nextIs(b, H);
+  endTurn(b);
+  assert.equal(getKb(b, H), kb0 + 1);
+  delete b.data.statuses.grow;
+});
+test('fix 7: status value counts as incoming damage only for marks / incomingDmg statuses', () => {
+  const { b, H, E } = duel();
+  const base = weaponDamageBonus(b, H, E);
+  applyStatus(b, E, 'blessed', 2, H, 5);
+  assert.equal(weaponDamageBonus(b, H, E), base);
+  applyOp(b, H, E, { op: 'mark', id: 'marked', value: 3, turns: 2 });
+  assert.equal(weaponDamageBonus(b, H, E), base + 3);
+});
+test('fix 8: no turnEnd for a unit that died at the start of its turn', () => {
+  const b = createBattle({ map: makeArena({ heroes: 2, enemies: 1 }), heroes: [hero(), hero()], enemies: ['thug'], data: DATA, seed: 1, autoReactions: false });
+  const h = b.units[0];
+  dealDamage(b, null, h, 999, 'slash');
+  h.downTurns = DOWN_TURNS_TO_DEATH - 1;
+  nextIs(b, h);
+  const evs = endTurn(b);
+  const i = evs.findIndex((e) => e.type === 'death' && e.target === h.id);
+  assert.ok(i >= 0);
+  assert.ok(!evs.slice(i).some((e) => e.type === 'turnEnd' && e.actor === h.id));
+});
+test('fix 9: rule constants exported', () => {
+  assert.deepEqual([BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT],
+    [10, 0.7, 0.25, 0.5, 12, 2, 3, 2]);
+});
+test('fix 10: isMeleeAttack matches attack logic', () => {
+  const { b, H, E } = duel('gunner');
+  assert.equal(isMeleeAttack(b, H, { type: 'attack', target: E.id }), true);
+  assert.equal(isMeleeAttack(b, H, { type: 'ability', ability: 'steel-fist' }), true);
+  assert.equal(isMeleeAttack(b, E, { type: 'attack', target: H.id }), false);
+  const r = buildCreature({ race: 'human', cls: 'itishnik', path: 'hacker', data: DATA });
+  const d = duel('thug', r);
+  assert.equal(isMeleeAttack(d.b, d.H, { type: 'ability', ability: 'zap' }), false);
 });
 
 console.log('simulation');
