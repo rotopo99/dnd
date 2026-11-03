@@ -63,7 +63,11 @@ export function startPrologue(game, hero) {
   const after3 = (g, S) => {
     const gans = S.b.units.find((u) => u.enemyId === 'npc-gans');
     const alive = gans && !gans.dead && !gans.down;
-    dlg(t('s3_title'), lines(race, 's3_after', alive ? 's3_gans_alive' : 's3_gans_dead'), epilogue);
+    dlg(
+      t('s3_title'),
+      lines(race, 's3_after', alive ? 's3_gans_alive' : 's3_gans_dead', alive ? 's3_lox_alive' : 's3_lox_dead'),
+      epilogue,
+    );
   };
   const scene3 = () => dlg(t('s3_title'), lines(race, 's3_before', 's3_race'), () => battle(3, after3));
   const after2 = () => dlg(t('s2_title'), lines(race, 's2_after', 's2_after_race', 's2_reveal', 's2_reward'), scene3);

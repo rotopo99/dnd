@@ -11,7 +11,7 @@ export default {
   id: 'cybertech', name: 'КиберТех', analog: 'Колдун', icon: 'class_tech',
   role: 'caster',
   castStat: 'int',            // контроль киберпространства и код Судьи
-  hpPerLevel: 0,
+  hpPerLevel: 1,
   saves: ['wil', 'int'],
   armor: { name: 'Плащ с вшитой сеткой', type: 'light', kb: 2 },
   weapon: { name: 'Ритуальный клинок', dice: '1d6', dmgType: 'slash', stat: 'dex', range: 1, hit: 0 },
@@ -107,11 +107,10 @@ export default {
     A({ id: 'weakness-curse', name: 'Проклятие слабости', level: 1, path: 'curses', cost: 2, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'wil',
       effects: [
-        { op: 'damage', dice: '1d6', dmgType: 'psychic', bonus: 'castMod' },
         { op: 'status', id: 'curse', turns: 3 },
         { op: 'buff', stat: 'dmg', value: -2, turns: 3 },
       ],
-      desc: 'Проклятие на 3 хода: 1d6 + ТВД пси (по МРЛ), −2 к атаке, спасброскам и урону. Спасбросок ТВД — без эффекта.',
+      desc: 'Проклятие на 3 хода: −2 к атаке, спасброскам и урону. Спасбросок ТВД — без эффекта.',
       canon: 'rules/spells.md' }),
     A({ id: 'mute-curse', name: 'Проклятие немоты', level: 3, path: 'curses', cost: 4, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'wil',

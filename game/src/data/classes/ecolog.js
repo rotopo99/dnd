@@ -71,7 +71,7 @@ export default {
       canon: 'rules/spellcasting.md' }),
 
     // ---------- Путь Природы ----------
-    A({ id: 'call-beast', name: 'Зов зверя', level: 1, path: 'nature', cost: 4, action: 'action',
+    A({ id: 'call-beast', name: 'Зов зверя', level: 1, path: 'nature', cost: 5, action: 'action',
       range: 0, target: 'self', roll: 'auto',
       effects: [{ op: 'summon', unit: 'beast-wolf', turns: 3 }],
       desc: 'Призывает волка на 3 хода.',

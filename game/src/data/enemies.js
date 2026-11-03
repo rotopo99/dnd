@@ -405,7 +405,7 @@ export const ENCOUNTERS = {
   },
   party1: {
     id: 'party1', name: 'Партийный бой (ур. 1)', level: 1, targetWinRate: 0.6,
-    enemies: ['cultist', 'cultist', 'cultist', 'cultist-gunner', 'cultist-gunner', 'skrilet', 'scavenger', 'scavenger', 'crawler', 'junk-mech'],
+    enemies: ['cultist', 'cultist', 'cultist', 'cultist-gunner', 'cultist-gunner', 'skrilet', 'scavenger', 'crawler', 'junk-mech'],
   },
   party5: {
     id: 'party5', name: 'Партийный бой (ур. 5)', level: 5, targetWinRate: 0.6,

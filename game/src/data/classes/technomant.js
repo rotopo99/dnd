@@ -27,7 +27,10 @@ export default {
       desc: 'Управление энергией: лучи, импульсы и взрывы по площади.',
     },
   ],
-  passives: [],
+  passives: [
+    { id: 'phantom-mastery', name: 'Мастер иллюзий', level: 5, path: 'illusionist',
+      desc: 'Иллюзии становятся неотличимы от реальности (канон, class-paths): +2 к урону способностей.', op: { dmg: { spell: 2 } } },
+  ],
   abilities: [
     // ---------- Общие ----------
     {
@@ -77,10 +80,10 @@ export default {
       cost: 2, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
       roll: 'attack', save: null, onSave: 'none', usesPerBattle: null,
       effects: [
-        { op: 'damage', dice: '1d10', dmgType: 'electric', bonus: 'castMod' },
+        { op: 'damage', dice: '2d6', dmgType: 'electric', bonus: 'castMod' },
         { op: 'status', id: 'disarm', turns: 1 },
       ],
-      desc: 'Взлом вражеской системы: 1d10 + ИНТ электроурона и отключение оружия на 1 ход.',
+      desc: 'Взлом вражеской системы: 2d6 + ИНТ электроурона и отключение оружия на 1 ход.',
       canon: 'rules/spells.md',
     },
     {

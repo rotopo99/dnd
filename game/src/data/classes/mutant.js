@@ -7,7 +7,7 @@ export default {
   castStat: 'wil',
   hpPerLevel: 3,
   saves: ['str', 'con'],
-  armor: { name: 'Хитиновые наросты', type: 'light', kb: 2 },
+  armor: { name: 'Хитиновые наросты', type: 'light', kb: 3 },
   weapon: { name: 'Тяжёлый тесак', dice: '1d10', dmgType: 'slash', stat: 'str', range: 1, hit: 0 },
   // 9 + 4 + 7 + 0 + 4 + 0 + 3 = 27
   recommended: { str: 15, dex: 12, con: 14, int: 8, wil: 12, cha: 8, per: 11 },
@@ -40,6 +40,8 @@ export default {
       desc: 'Когти крепнут: ещё +1 к урону в ближнем бою.', op: { dmg: { melee: 1 } } },
     { id: 'killer-eye', name: 'Глаз убийцы', level: 5, path: 'predator',
       desc: 'Видит смертельные точки: критическое попадание на 19–20.', op: { critRange: 19 } },
+    { id: 'titan-hide', name: 'Каменная шкура', level: 5, path: 'titan',
+      desc: 'Шкура титана грубеет: ещё +1 КБ.', op: { kb: 1 } },
     { id: 'living-armor', name: 'Живая броня', level: 5, path: 'titan',
       desc: 'Плоть зарастает на глазах: восстанавливает 1d4 ЗДР в начале каждого своего хода.',
       op: { regen: { dice: '1d4', resource: 'hp', every: 'turn' } } },

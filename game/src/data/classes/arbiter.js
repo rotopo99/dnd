@@ -84,7 +84,7 @@ export default {
     // ---------- Путь Защитника ----------
     {
       id: 'energy-barrier', name: 'Энергетический щит', level: 1, path: 'defender',
-      cost: 2, action: 'bonus', trigger: null, range: 6, target: 'ally', area: null,
+      cost: 3, action: 'bonus', trigger: null, range: 6, target: 'ally', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
       effects: [{ op: 'shield', dice: '1d6', turns: 3 }],
       desc: 'Себе или союзнику: щит поглощает 1d6 урона, 3 хода.',
@@ -144,7 +144,7 @@ export default {
     },
     {
       id: 'verdict', name: 'Приговор', level: 3, path: 'judge',
-      cost: 4, action: 'bonus', trigger: null, range: 12, target: 'enemy', area: null,
+      cost: 3, action: 'bonus', trigger: null, range: 12, target: 'enemy', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: 2,
       effects: [
         { op: 'buff', stat: 'kb', value: -2, turns: 3 },
