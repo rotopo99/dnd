@@ -80,8 +80,8 @@ export default {
       id: 'deploy-turret', name: 'Мини-турель', level: 1, path: 'inventor',
       cost: 4, action: 'action', trigger: null, range: 1, target: 'tile', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: 2,
-      effects: [{ op: 'summon', unit: 'turret', turns: 3 }],
-      desc: 'Ставит турель на соседнюю клетку: стреляет по врагам 3 хода. До 2 раз за бой.',
+      effects: [{ op: 'summon', unit: 'turret', turns: 4 }],
+      desc: 'Ставит турель на соседнюю клетку: стреляет по врагам 4 хода. До 2 раз за бой.',
       canon: 'rules/class-roadmap.md',
     },
     {
@@ -143,8 +143,8 @@ export default {
       id: 'weapon-tune', name: 'Временный апгрейд', level: 1, path: 'mechanic',
       cost: 2, action: 'bonus', trigger: null, range: 1, target: 'ally', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
-      effects: [{ op: 'buff', stat: 'dmg', value: 1, turns: 5 }],
-      desc: 'Подкручивает оружие себе или соседнему союзнику: +1 к урону на 5 ходов.',
+      effects: [{ op: 'buff', stat: 'dmg', value: 2, turns: 5 }],
+      desc: 'Подкручивает оружие себе или соседнему союзнику: +2 к урону на 5 ходов.',
       canon: 'rules/class-roadmap.md',
     },
     {

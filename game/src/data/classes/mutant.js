@@ -37,7 +37,7 @@ export default {
     { id: 'thick-skin', name: 'Толстая кожа', level: 1, path: 'titan',
       desc: '+1 КБ.', op: { kb: 1 } },
     { id: 'feral-might', name: 'Звериная мощь', level: 5, path: 'beast',
-      desc: 'Когти крепнут: ещё +1 к урону в ближнем бою.', op: { dmg: { melee: 1 } } },
+      desc: 'Когти крепнут: ещё +2 к урону в ближнем бою.', op: { dmg: { melee: 2 } } },
     { id: 'killer-eye', name: 'Глаз убийцы', level: 5, path: 'predator',
       desc: 'Видит смертельные точки: критическое попадание на 19–20.', op: { critRange: 19 } },
     { id: 'living-armor', name: 'Живая броня', level: 5, path: 'titan',

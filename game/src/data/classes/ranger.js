@@ -46,8 +46,8 @@ export default {
       id: 'aimed-fire', name: 'Прицельный огонь', level: 1, path: null,
       cost: 3, action: 'action', trigger: null, range: 16, target: 'enemy', area: null,
       roll: 'attack', save: null, onSave: 'none', usesPerBattle: null,
-      effects: [{ op: 'weapon', hit: 2, extraDice: '1d4' }],
-      desc: 'Выстрел с упреждением: +2 к атаке (сводит на нет укрытие) и +1d4 урона.',
+      effects: [{ op: 'weapon', hit: 2, extraDice: '1d6' }],
+      desc: 'Выстрел с упреждением: +2 к атаке (сводит на нет укрытие) и +1d6 урона.',
       canon: 'rules/spellcasting.md',
     },
     {

@@ -60,7 +60,7 @@ export default {
       effects: [{ op: 'shield', dice: '2d6', turns: 3 }],
       desc: 'Щит из проклятого кода: поглощает 2d6 урона, 3 хода.',
       canon: 'extra/specialties.md' }),
-    A({ id: 'cyber-storm', name: 'Кибер-буря', level: 5, cost: 7, action: 'action',
+    A({ id: 'cyber-storm', name: 'Кибер-буря', level: 5, cost: 8, action: 'action',
       range: 8, target: 'tile', area: { shape: 'radius', size: 2 }, roll: 'save', save: 'dex', onSave: 'half',
       effects: [{ op: 'damage', dice: '2d6', dmgType: 'cyber' }],
       desc: 'Буря кибера в зоне 5×5: 2d6 кибер. Спасбросок ЛВК — половина.',
@@ -80,7 +80,7 @@ export default {
       ],
       desc: 'Режет себе ладонь: теряет 1d6 ЗДР, +2 к урону на 3 хода.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'cyber-blast', name: 'Кибер-взрыв', level: 5, path: 'soul-eater', cost: 8, action: 'action',
+    A({ id: 'cyber-blast', name: 'Кибер-взрыв', level: 5, path: 'soul-eater', cost: 9, action: 'action',
       range: 8, target: 'tile', area: { shape: 'radius', size: 1 }, roll: 'save', save: 'dex', onSave: 'half',
       effects: [{ op: 'drain', dice: '2d6', dmgType: 'cyber', to: 'hp', ratio: 0.5 }],
       desc: 'Взрыв душ в зоне 3×3: 2d6 кибер каждому, половина нанесённого — себе в ЗДР. Спасбросок ЛВК — половина.',
@@ -104,7 +104,7 @@ export default {
       canon: 'rules/class-roadmap.md' }),
 
     // ---------- Путь Проклятий ----------
-    A({ id: 'weakness-curse', name: 'Проклятие слабости', level: 1, path: 'curses', cost: 2, action: 'action',
+    A({ id: 'weakness-curse', name: 'Проклятие слабости', level: 1, path: 'curses', cost: 1, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'wil',
       effects: [
         { op: 'status', id: 'curse', turns: 3 },
@@ -124,7 +124,7 @@ export default {
       range: 8, target: 'enemy', roll: 'save', save: 'wil',
       effects: [
         { op: 'damage', dice: '1d8', dmgType: 'psychic' },
-        { op: 'mark', id: 'judge-mark', turns: 3, value: 2 },
+        { op: 'mark', id: 'judge-mark', turns: 3, value: 1 },
       ],
       desc: 'Судья метит жертву: 1d8 пси, 3 хода все атаки по цели +4 к урону. Спасбросок ТВД — без эффекта.',
       canon: 'rules/class-roadmap.md' }),

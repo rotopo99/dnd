@@ -38,8 +38,8 @@ export default {
     // ---------- Общие ----------
     A({ id: 'unfunny-joke', name: 'Несмешная шутка', level: 1, cost: 0, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'wil', onSave: 'half',
-      effects: [{ op: 'damage', dice: '1d10', dmgType: 'cringe', bonus: 'castMod' }],
-      desc: '«Заходит как-то бот в бар…» 1d10 + ХАР кринжа (по МРЛ). Спасбросок ТВД — половина. Без затрат ЭНР.',
+      effects: [{ op: 'damage', dice: '1d12', dmgType: 'cringe', bonus: 'castMod' }],
+      desc: '«Заходит как-то бот в бар…» 1d12 + ХАР кринжа (по МРЛ). Спасбросок ТВД — половина. Без затрат ЭНР.',
       canon: 'extra/specialties.md' }),
     A({ id: 'pun', name: 'Каламбур', level: 1, cost: 2, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'wil',

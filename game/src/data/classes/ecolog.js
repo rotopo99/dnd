@@ -71,7 +71,7 @@ export default {
       canon: 'rules/spellcasting.md' }),
 
     // ---------- Путь Природы ----------
-    A({ id: 'call-beast', name: 'Зов зверя', level: 1, path: 'nature', cost: 5, action: 'action',
+    A({ id: 'call-beast', name: 'Зов зверя', level: 1, path: 'nature', cost: 6, action: 'action',
       range: 0, target: 'self', roll: 'auto',
       effects: [{ op: 'summon', unit: 'beast-wolf', turns: 3 }],
       desc: 'Призывает волка на 3 хода.',
@@ -110,7 +110,7 @@ export default {
       desc: 'Духи запечатывают рот и рвут рассудок: 2d6 + ТВД пси (по МРЛ) и немота на 2 хода. Спасбросок ТВД — без эффекта.',
       canon: 'rules/class-roadmap.md' }),
 
-    A({ id: 'spirit-host', name: 'Сонм духов', level: 5, path: 'spirits', cost: 5, action: 'action',
+    A({ id: 'spirit-host', name: 'Сонм духов', level: 5, path: 'spirits', cost: 4, action: 'action',
       range: 0, target: 'self', roll: 'auto', usesPerBattle: 1,
       effects: [{ op: 'summon', unit: 'spirit', turns: 3 }, { op: 'summon', unit: 'spirit', turns: 3 }],
       desc: 'Зовёт сразу двух духов предков на 3 хода. Раз за бой. Вне канона, не противоречит: расширение «Вызова духа» пути Духов.',

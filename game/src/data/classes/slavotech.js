@@ -72,7 +72,7 @@ export default {
       canon: 'rules/spells.md' }),
 
     // ---------- Путь Исцеления ----------
-    A({ id: 'shieldbearer', name: 'Щитоносец', level: 1, path: 'healing', cost: 3, action: 'bonus',
+    A({ id: 'shieldbearer', name: 'Щитоносец', level: 1, path: 'healing', cost: 4, action: 'bonus',
       range: 6, target: 'ally', roll: 'auto',
       effects: [{ op: 'shield', dice: '2d6', turns: 3 }],
       desc: 'Удвоенный прокси-щит: поглощает 2d6 урона, 3 хода.',
@@ -108,7 +108,7 @@ export default {
       ],
       desc: 'Блокирует техно-магию: 1d8 + ТВД энерго и немота на 2 хода. Спасбросок ИНТ — половина урона, без немоты.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'retribution-code', name: 'Код возмездия', level: 3, path: 'balance', cost: 4, action: 'reaction',
+    A({ id: 'retribution-code', name: 'Код возмездия', level: 3, path: 'balance', cost: 5, action: 'reaction',
       trigger: 'selfAttacked', range: 8, target: 'enemy', roll: 'auto',
       effects: [{ op: 'damage', dice: '1d8', dmgType: 'energy', bonus: 'castMod' }],
       desc: 'Реакция на атаку: контрудар 1d8 + ТВД энерго.',
@@ -125,8 +125,8 @@ export default {
     // ---------- Путь Прокси-Мастера ----------
     A({ id: 'proxy-blast', name: 'Прокси-взрыв', level: 1, path: 'proxy-master', cost: 3, action: 'action',
       range: 8, target: 'enemy', roll: 'attack',
-      effects: [{ op: 'damage', dice: '1d10', dmgType: 'proxy', bonus: 'castMod' }],
-      desc: '1d10 + ТВД прокси. По механизмам ×1.5, по живым ×0.5. Не критует.',
+      effects: [{ op: 'damage', dice: '1d8', dmgType: 'proxy', bonus: 'castMod' }],
+      desc: '1d8 + ТВД прокси. По механизмам ×1.5, по живым ×0.5. Не критует.',
       canon: 'rules/class-roadmap.md' }),
     A({ id: 'rust-curse', name: 'Ржавое проклятие', level: 3, path: 'proxy-master', cost: 3, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'con',

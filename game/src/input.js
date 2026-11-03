@@ -13,7 +13,7 @@ export function createInput(target, canvas) {
     else mouse.clicked = true;
   };
   target.addEventListener('keydown', (e) => {
-    if (!down.has(e.code)) pressed.add(e.code);
+    if (!down.has(e.code) || e.code === 'Backspace') pressed.add(e.code); // Backspace auto-repeats in text fields
     down.add(e.code);
     if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) typed.push(e.key);
     if (e.code === 'Space' || e.code === 'Backspace' || e.code.startsWith('Arrow')) e.preventDefault();
