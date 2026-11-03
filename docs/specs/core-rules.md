@@ -106,7 +106,7 @@ export default {
   saves: ['str', 'con'],               // 2 владеемых спасброска
   armor: { name: 'Тяжёлая броня', type: 'cloth' | 'light' | 'medium' | 'heavy', kb: 0..8 },
   weapon: { name: 'Арматура', dice: '1d8', dmgType: 'blunt', stat: 'str' | 'dex', range: 1, hit: 0 }, // range в клетках; 1 = ближний бой
-  recommended: { str: 15, dex: 10, con: 14, int: 8, wil: 12, cha: 8, per: 12 },  // ровно 27 очков
+  recommended: { str: 15, dex: 10, con: 14, int: 8, wil: 12, cha: 8, per: 13 },  // ровно 27 очков
   overcast: null | 'veil' | 'proxyStorm',
   allowedRaces: null,                  // null — любые расы, иначе список id (только если лор запрещает)
   paths: [ { id: 'mech-killer', name: 'Путь Механизированного Убийцы', desc: '...' } ],
@@ -169,6 +169,15 @@ export default {
 
 ### `game/src/data/enemies.js`
 Те же поля, что у персонажа, но готовыми числами: `{ id, name, tags, stats, hp, mrl, enr, kb, speed, weapon, abilities, resist, ai: 'melee' | 'ranged' | 'caster' | 'support', xp }`.
+
+## Расширения схемы v1.1 (по итогам дизайна классов — обязательны для движка)
+1. **Пассивки классов** могут иметь `level` (с какого уровня, по умолчанию 1) и `path` (id пути или `null`).
+2. **Пути** могут переопределять `weapon`, `armor`, `recommended`; плюс справочное `role`.
+3. `range: 'weapon'` — дальность текущего оружия.
+4. **Операция `weapon` внутри способности с `roll: 'attack'`** делает бросок атаки с бонусом оружия. Последующие `status` / `push` / `mark` срабатывают **только при попадании**. Два `weapon` подряд — два отдельных броска.
+5. `onSave: 'half'` — урон пополам, статусы **не** накладываются; `'none'` — эффекта нет.
+6. **Стороны зон:** зона с `target: 'enemy' | 'tile'` бьёт только врагов (без огня по своим). Зона с `target: 'self' | 'ally'` действует на своих. `target: 'ally'` включает самого кастера.
+7. `castStat` может быть `'str'` / `'dex'` у бойцов — для СЛ их способностей со спасброском.
 
 ## Общие словари id (фиксированы, чтобы отделы работали параллельно)
 **Статусы** (`effects.js` обязан содержать ровно эти id; новые — только через режиссёра):
