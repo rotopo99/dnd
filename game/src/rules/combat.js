@@ -38,7 +38,7 @@
 // 14. Passive regen with every 'battleEnd' is not handled here (out-of-battle code applies it).
 
 import { createRng } from './rng.js';
-import { rollDice, d20, firstDie } from './dice.js';
+import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
 import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './character.js';
 import {
   parseMap, makeArena, chebyshev, lineOfSight, hasCover, reachable, pathTo, walkLine,
@@ -288,7 +288,7 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
         u = initUnit(buildEnemy(item, { data: D, team, kind: kind === 'hero' ? 'ally' : kind }));
       } else u = initUnit(buildCreature({ ...item, data: D, team: item.team || team }));
       if (kind === 'ally' && u.kind !== 'hero') u.kind = 'ally';
-      if (!u.team) u.team = team;
+      u.team = team; // the list defines the side (duels: a hero passed in `enemies` fights for 'enemies')
       const pos = starts[i] || starts[starts.length - 1] || { x: 1, y: 1 };
       addUnit(b, u, pos);
     });
@@ -326,7 +326,7 @@ export function isAiTurn(b) {
 // ---------------------------------------------------------------- turn flow
 
 function startNextTurn(b) {
-  const guard = b.order.length * 3 + 10;
+  const guard = b.order.length * 20 + 10;
   for (let g = 0; g < guard; g++) {
     if (b.winner) { b.turn = null; return; }
     b.turnIndex++;
@@ -358,6 +358,8 @@ function beginTurn(b, u) {
   if (u.summonTurns != null && u.summonTurns <= 0) { unsummon(b, u); return false; }
   for (const r of u.regen) {
     if (r.every && r.every !== 'turn') continue;
+    const res = r.resource || 'hp';
+    if (u[res] >= u['max' + res[0].toUpperCase() + res.slice(1)]) continue;
     healUnit(b, u, u, rollDice(b.rng, r.dice), r.resource || 'hp');
   }
   if (u.statuses.length) {
@@ -965,15 +967,18 @@ export function abilityTargets(b, u, a, spec) {
     return [];
   }
   const selfCentered = center.x === u.x && center.y === u.y;
+  const friendly = a.target === 'ally' || a.target === 'self';
   const out = [];
   for (const t of b.units) {
     if (!isAlive(t)) continue;
-    if (t === u && (selfCentered || a.area.shape !== 'radius')) {
-      if (!(a.target === 'ally' || a.target === 'self')) continue;
+    if (t === u) {
+      // the caster is inside its own radius: included for ally/self areas, or tile/any blasts not centred on it
+      if (a.area.shape !== 'radius') continue;
+      if (selfCentered ? friendly : (a.target !== 'enemy' && inArea(b, u, a, center, t))) out.push(t);
+      continue;
     }
     if (a.target === 'enemy' && !isHostile(b, u, t)) continue;
-    if ((a.target === 'ally' || a.target === 'self') && t.team !== u.team) continue;
-    if (t === u && a.area.shape === 'radius' && selfCentered) { out.push(t); continue; }
+    if (friendly && t.team !== u.team) continue;
     if (inArea(b, u, a, center, t)) out.push(t);
   }
   return out;
@@ -1422,6 +1427,55 @@ function countSteps(path, u) {
   for (let i = path.length - 1; i >= 0; i--) if (path[i].x === u.x && path[i].y === u.y) return i + 1;
   return path.length;
 }
+
+// ---------------------------------------------------------------- previews (AI / UI hints, no side effects)
+
+/** Hit chance of att vs tgt with a given base bonus, optionally from a hypothetical tile (fx, fy). */
+export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy = att.y) {
+  const adv = hasStatus(att, 'stealth') || hasStatus(tgt, 'blind') || (melee && hasStatus(tgt, 'prone')) || tgt.down;
+  const dis = hasStatus(att, 'fear') || hasStatus(att, 'blind') || hasStatus(tgt, 'invisible')
+    || (!melee && hasStatus(tgt, 'prone')) || (isWeapon && att.weaponTier <= 1);
+  const mode = adv === dis ? 'normal' : adv ? 'adv' : 'dis';
+  let kb = getKb(b, tgt, null, false);
+  if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += 2;
+  const total = bonus + att.hitBonus + statusMod(b, att, 'hit') + buffSum(att, 'hit');
+  const critRange = Math.min(20, att.critRange || 20);
+  const need = Math.min(kb - total, critRange);
+  return { need, mode, chance: chanceD20(need, mode), critChance: chanceD20(critRange, mode) };
+}
+
+/** Probability that u fails a save of `stat` vs dc. */
+export function saveFailChance(b, u, stat, dc) {
+  const bonus = mod(effStat(b, u, stat)) + (u.saves.includes(stat) ? u.prof : 0) + statusMod(b, u, 'save') + buffSum(u, 'save');
+  const adv = u.advantages.includes('save' + stat[0].toUpperCase() + stat.slice(1)) || u.advantages.includes('save');
+  const dis = stat === 'wil' && u.maxMrl > 0 && u.mrl <= u.maxMrl / 2;
+  const mode = adv === dis ? 'normal' : adv ? 'adv' : 'dis';
+  const need = dc - bonus;
+  // saves have no natural 1/20 rule: exact probability
+  const p = Math.min(1, Math.max(0, (21 - need) / 20));
+  const succ = mode === 'adv' ? 1 - (1 - p) * (1 - p) : mode === 'dis' ? p * p : p;
+  return 1 - succ;
+}
+
+/** Multiplier and resource for a damage type against tgt: { mult, resource: 'hp' | 'mrl' }. */
+export function damageMultiplier(b, tgt, dmgType) {
+  let mult = dmgType === 'proxy' ? proxyFactor(tgt.tags) : 1;
+  const r = resistOf(b, tgt, dmgType);
+  if (r === 'immune') mult = 0;
+  else if (r === 'resist') mult *= 0.5;
+  else if (r === 'vuln') mult *= 2;
+  const mrl = !!MRL_TYPES[dmgType];
+  if (mrl && (tgt.maxMrl <= 0 || tgt.down)) mult = 0;
+  return { mult, resource: mrl ? 'mrl' : 'hp' };
+}
+
+/** Flat damage bonus of a weapon hit (stat mod + passives + buffs + marks on target). */
+export function weaponDamageBonus(b, att, tgt) {
+  if (!att.weapon) return 0;
+  return mod(effStat(b, att, att.weapon.stat || 'str')) + attackDmgBonus(b, att, tgt, weaponRange(att) <= 1 ? 'melee' : 'ranged');
+}
+export function spellDamageBonus(b, att, tgt) { return attackDmgBonus(b, att, tgt, 'spell'); }
+export { weaponRange, isMeleeUnit, bonusValue, tagOk, statusMod, buffSum, getStatus, tauntSource };
 
 /** Snapshot helpers for UI. */
 export function unitView(b, u) {

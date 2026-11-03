@@ -18,7 +18,7 @@ export default {
   // 27 очков: СИЛ 13 (5) + ЛВК 10 (2) + ТЕЛ 14 (7) + ИНТ 12 (4) + ТВД 15 (9) = 27
   recommended: { str: 13, dex: 10, con: 14, int: 12, wil: 15, cha: 8, per: 8 },
   overcast: 'proxyStorm',
-  allowedRaces: null,
+  allowedRaces: ['human', 'skeleton', 'mutant-beast', 'mutant-plant', 'tekhonok', 'cringegon', 'skrilet'], // канон: андроиды не могут использовать магию (rules/races.md)
   paths: [
     { id: 'healing', name: 'Путь Исцеления', desc: 'Лечение, щиты и очищение союзников силой Старого бога.' },
     { id: 'balance', name: 'Путь Баланса', desc: 'Гармония технологий и природы: усиливает союзников, глушит врагов.' },
