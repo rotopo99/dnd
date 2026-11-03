@@ -403,6 +403,14 @@ export const ENCOUNTERS = {
     id: 'standard5', name: 'Стандартный бой (ур. 5)', level: 5, targetWinRate: 0.55,
     enemies: ['cultist-5', 'cultist-gunner-5', 'cringe-jester-5'],
   },
+  party1: {
+    id: 'party1', name: 'Партийный бой (ур. 1)', level: 1, targetWinRate: 0.6,
+    enemies: ['cultist', 'cultist', 'cultist', 'cultist-gunner', 'cultist-gunner', 'skrilet', 'scavenger', 'scavenger', 'crawler', 'junk-mech'],
+  },
+  party5: {
+    id: 'party5', name: 'Партийный бой (ур. 5)', level: 5, targetWinRate: 0.6,
+    enemies: ['cultist-5', 'cultist-5', 'cultist-gunner-5', 'cultist-gunner-5', 'skrilet-5', 'scavenger-5', 'crawler-5', 'junk-mech-5'],
+  },
   prologue1: {
     id: 'prologue1', name: 'Альфа-Гармония: теракт', level: 1,
     enemies: ['cultist', 'cultist-gunner'], allies: [],
