@@ -48,6 +48,7 @@ function layout(game) {
 }
 
 export const menuScene = {
+  id: 'menu',
   enter(game) {
     time = 0;
     layout(game);

@@ -38,6 +38,8 @@ export function createDialogueScene({ title = '', lines, hero = null, onDone }) 
     onDone(game);
   };
   return {
+    id: 'dialogue',
+    title,
     enter() {
       i = 0; shown = 0; time = 0; done = false;
       if (!lines.length) lines = [{ who: 'narrator', text: '…' }];

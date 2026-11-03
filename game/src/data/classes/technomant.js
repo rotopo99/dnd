@@ -7,7 +7,7 @@ export default {
   castStat: 'int',
   hpPerLevel: 2,
   saves: ['int', 'wil'],
-  armor: { name: 'Куртка с экранирующей подкладкой', type: 'cloth', kb: 1 },
+  armor: { name: 'Куртка с экранирующей подкладкой', type: 'light', kb: 2 },
   weapon: { name: 'Самопальный пистолет', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 8, hit: 0 },
   // 0 + 7 + 5 + 9 + 4 + 0 + 2 = 27
   recommended: { str: 8, dex: 14, con: 13, int: 15, wil: 12, cha: 8, per: 10 },
@@ -64,23 +64,23 @@ export default {
     },
     {
       id: 'cyber-storm', name: 'Кибер-буря', level: 5, path: null,
-      cost: 7, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
+      cost: 8, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: null,
-      effects: [{ op: 'damage', dice: '2d8', dmgType: 'electric' }],
-      desc: 'Буря разрядов: 2d8 электроурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина.',
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'electric' }],
+      desc: 'Буря разрядов: 2d6 электроурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина.',
       canon: 'rules/spells.md',
     },
 
     // ---------- Путь Кодера ----------
     {
       id: 'cyber-hack', name: 'Кибер-взлом', level: 1, path: 'coder',
-      cost: 3, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
+      cost: 2, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
       roll: 'attack', save: null, onSave: 'none', usesPerBattle: null,
       effects: [
-        { op: 'damage', dice: '1d8', dmgType: 'electric' },
+        { op: 'damage', dice: '1d10', dmgType: 'electric', bonus: 'castMod' },
         { op: 'status', id: 'disarm', turns: 1 },
       ],
-      desc: 'Взлом вражеской системы: 1d8 электроурона и отключение оружия на 1 ход.',
+      desc: 'Взлом вражеской системы: 1d10 + ИНТ электроурона и отключение оружия на 1 ход.',
       canon: 'rules/spells.md',
     },
     {
@@ -113,7 +113,7 @@ export default {
       canon: 'rules/spells.md',
     },
     {
-      id: 'phantom-blast', name: 'Фантомный взрыв', level: 3, path: 'illusionist',
+      id: 'phantom-blast', name: 'Фантомный взрыв', level: 1, path: 'illusionist',
       cost: 3, action: 'action', trigger: null, range: 12, target: 'tile', area: { shape: 'radius', size: 2 },
       roll: 'save', save: 'wil', onSave: 'half', usesPerBattle: null,
       effects: [{ op: 'damage', dice: '1d6', dmgType: 'psychic', bonus: 'castMod' }],
@@ -132,7 +132,7 @@ export default {
     // ---------- Путь Энергетика ----------
     {
       id: 'energy-pulse', name: 'Энергетический импульс', level: 1, path: 'energetic',
-      cost: 3, action: 'action', trigger: null, range: 0, target: 'tile', area: { shape: 'radius', size: 3 },
+      cost: 5, action: 'action', trigger: null, range: 3, target: 'tile', area: { shape: 'radius', size: 3 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: null,
       effects: [{ op: 'damage', dice: '1d6', dmgType: 'energy' }],
       desc: 'Волна энергии вокруг тебя: 1d6 энергоурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина.',
@@ -148,10 +148,10 @@ export default {
     },
     {
       id: 'energy-blast', name: 'Энергетический взрыв', level: 5, path: 'energetic',
-      cost: 10, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
-      roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 2,
-      effects: [{ op: 'damage', dice: '3d8', dmgType: 'energy' }],
-      desc: '3d8 энергоурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина.',
+      cost: 12, action: 'action', trigger: null, range: 20, target: 'tile', area: { shape: 'radius', size: 3 },
+      roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '3d6', dmgType: 'energy' }],
+      desc: '3d6 энергоурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина. Раз за бой.',
       canon: 'rules/class-roadmap.md',
     },
   ],

@@ -65,8 +65,8 @@ export default {
       canon: 'rules/spellcasting.md' }),
     A({ id: 'healing-wave', name: 'Лечебная волна', level: 5, cost: 6, action: 'action',
       range: 0, target: 'ally', area: { shape: 'radius', size: 3 }, roll: 'auto',
-      effects: [{ op: 'heal', dice: '2d8', bonus: 'castMod', resource: 'hp' }],
-      desc: 'Все союзники в 3 клетках (и сам СлавоТех) лечат 2d8 + ТВД.',
+      effects: [{ op: 'heal', dice: '2d6', bonus: 'castMod', resource: 'hp' }],
+      desc: 'Все союзники в 3 клетках (и сам СлавоТех) лечат 2d6 + ТВД.',
       canon: 'rules/spells.md' }),
 
     // ---------- Путь Исцеления ----------
@@ -106,12 +106,12 @@ export default {
       ],
       desc: 'Блокирует техно-магию: 1d8 + ТВД энерго и немота на 2 хода. Спасбросок ИНТ — половина урона, без немоты.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'retribution-code', name: 'Код возмездия', level: 3, path: 'balance', cost: 2, action: 'reaction',
+    A({ id: 'retribution-code', name: 'Код возмездия', level: 3, path: 'balance', cost: 3, action: 'reaction',
       trigger: 'selfAttacked', range: 8, target: 'enemy', roll: 'auto',
       effects: [{ op: 'damage', dice: '1d8', dmgType: 'energy', bonus: 'castMod' }],
       desc: 'Реакция на атаку: контрудар 1d8 + ТВД энерго.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'purge', name: 'Очищение от скверны', level: 5, path: 'balance', cost: 4, action: 'bonus',
+    A({ id: 'purge', name: 'Очищение от скверны', level: 5, path: 'balance', cost: 5, action: 'bonus',
       range: 6, target: 'ally', roll: 'auto',
       effects: [
         { op: 'cleanse', count: 2, kind: 'debuff' },
@@ -121,7 +121,7 @@ export default {
       canon: 'rules/class-roadmap.md' }),
 
     // ---------- Путь Прокси-Мастера ----------
-    A({ id: 'proxy-blast', name: 'Прокси-взрыв', level: 1, path: 'proxy-master', cost: 2, action: 'action',
+    A({ id: 'proxy-blast', name: 'Прокси-взрыв', level: 1, path: 'proxy-master', cost: 3, action: 'action',
       range: 8, target: 'enemy', roll: 'attack',
       effects: [{ op: 'damage', dice: '2d6', dmgType: 'proxy', bonus: 'castMod' }],
       desc: '2d6 + ТВД прокси. По механизмам ×1.5, по живым ×0.5. Не критует.',
@@ -134,10 +134,10 @@ export default {
       ],
       desc: 'Металл врага ржавеет: 1d8 прокси и коррозия на 3 хода (−1 КБ/ход). Спасбросок ТЕЛ — без эффекта.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'proxy-tornado', name: 'Прокси-торнадо', level: 5, path: 'proxy-master', cost: 6, action: 'action',
+    A({ id: 'proxy-tornado', name: 'Прокси-торнадо', level: 5, path: 'proxy-master', cost: 7, action: 'action',
       range: 8, target: 'tile', area: { shape: 'radius', size: 2 }, roll: 'save', save: 'dex', onSave: 'half',
-      effects: [{ op: 'damage', dice: '2d8', dmgType: 'proxy', bonus: 'castMod' }],
-      desc: 'Вихрь прокси в зоне 5×5: 2d8 + ТВД прокси. Спасбросок ЛВК — половина.',
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'proxy', bonus: 'castMod' }],
+      desc: 'Вихрь прокси в зоне 5×5: 2d6 + ТВД прокси. Спасбросок ЛВК — половина.',
       canon: 'rules/class-roadmap.md' }),
   ],
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md',

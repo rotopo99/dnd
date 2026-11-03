@@ -5,6 +5,13 @@ export function createInput(target, canvas) {
   const pressed = new Set();
   const typed = [];
   const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false };
+  const pending = [];
+  const hoverPos = { x: -1, y: -1, inside: false };
+  const applyClick = (c) => {
+    mouse.x = c.x; mouse.y = c.y; mouse.inside = true;
+    if (c.right) mouse.rightClicked = true;
+    else mouse.clicked = true;
+  };
   target.addEventListener('keydown', (e) => {
     if (!down.has(e.code)) pressed.add(e.code);
     down.add(e.code);
@@ -15,16 +22,23 @@ export function createInput(target, canvas) {
   if (canvas) {
     const pos = (e) => {
       const r = canvas.getBoundingClientRect();
-      mouse.x = Math.floor(((e.clientX - r.left) * canvas.width) / r.width);
-      mouse.y = Math.floor(((e.clientY - r.top) * canvas.height) / r.height);
-      mouse.inside = true;
+      hoverPos.x = Math.floor(((e.clientX - r.left) * canvas.width) / r.width);
+      hoverPos.y = Math.floor(((e.clientY - r.top) * canvas.height) / r.height);
+      hoverPos.inside = true;
+      // while a click waits for its logic step, keep the click position
+      if (!mouse.clicked && !mouse.rightClicked) Object.assign(mouse, hoverPos);
     };
     canvas.addEventListener('pointermove', pos);
-    canvas.addEventListener('pointerleave', () => { mouse.inside = false; mouse.x = -1; mouse.y = -1; });
+    canvas.addEventListener('pointerleave', () => {
+      Object.assign(hoverPos, { x: -1, y: -1, inside: false });
+      if (!mouse.clicked && !mouse.rightClicked) Object.assign(mouse, hoverPos);
+    });
     canvas.addEventListener('pointerdown', (e) => {
       pos(e);
-      if (e.button === 2) mouse.rightClicked = true;
-      else mouse.clicked = true;
+      const c = { x: hoverPos.x, y: hoverPos.y, right: e.button === 2 };
+      // fast double clicks within one logic step are queued, one click per step
+      if (mouse.clicked || mouse.rightClicked || pending.length) pending.push(c);
+      else applyClick(c);
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
@@ -39,6 +53,8 @@ export function createInput(target, canvas) {
       typed.length = 0;
       mouse.clicked = false;
       mouse.rightClicked = false;
+      if (pending.length) applyClick(pending.shift());
+      else Object.assign(mouse, hoverPos);
     },
   };
 }

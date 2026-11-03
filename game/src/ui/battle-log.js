@@ -74,7 +74,7 @@ export function formatEvent(S, e) {
       const d = b.data.statuses[e.id];
       return [a(T), g(`: ${t('battle.immuneTo')} «${d ? d.name : e.id}»`)];
     }
-    case 'buff': return [a(T), g(': '), [`${e.stat} ${sign(e.value)} (${e.turns})`, C.j]];
+    case 'buff': return [a(T), g(': '), [`${sign(e.value)} ${t(`buff.${e.stat}`)} (${e.turns})`, C.j]];
     case 'nadlom': return [a(T), g(': '), [t('state.strain'), C.n]];
     case 'breakdown': {
       if (e.result === 'heartbreak') return [a(T), g(': '), [`${t('state.breakdown')} — ${t('state.heartbreak')} (−${e.amount} ${resName('hp')})`, C.n]];

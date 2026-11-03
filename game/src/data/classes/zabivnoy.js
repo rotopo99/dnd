@@ -32,12 +32,16 @@ export default {
     },
   ],
   passives: [
+    { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
+      desc: 'Ступень владения «мастерство» (канон): +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { melee: 2, ranged: 2 } } },
     { id: 'duelist', name: 'Дуэлянт', level: 1, path: 'mech-killer',
       desc: '+2 к урону в ближнем бою.', op: { dmg: { melee: 2 } } },
     { id: 'sniper-scope', name: 'Снайперский прицел', level: 1, path: 'wasteland-sniper',
-      desc: '+2 к броску атаки.', op: { hit: 2 } },
+      desc: '+1 к броску атаки.', op: { hit: 1 } },
     { id: 'heavy-plating', name: 'Тяжёлая броня', level: 1, path: 'iron-titan',
-      desc: '+2 КБ.', op: { kb: 2 } },
+      desc: '+1 КБ.', op: { kb: 1 } },
+    { id: 'tempered-steel', name: 'Закалённая сталь', level: 5, path: 'iron-titan',
+      desc: '+1 КБ (броня титана закалена).', op: { kb: 1 } },
   ],
   abilities: [
     // ---------- Общие ----------

@@ -51,6 +51,7 @@ game.setScene(menuScene);
 let last = performance.now();
 let acc = 0;
 function frame(now) {
+  requestAnimationFrame(frame); // first: an exception in a scene must not freeze the loop
   acc += Math.min((now - last) / 1000, 0.25);
   last = now;
   while (acc >= STEP) {
@@ -60,7 +61,6 @@ function frame(now) {
     acc -= STEP;
   }
   game.scene.render(game);
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 

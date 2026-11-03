@@ -46,8 +46,8 @@ export default {
       id: 'junk-grenade', name: 'Граната из хлама', level: 1, path: null,
       cost: 4, action: 'action', trigger: null, range: 8, target: 'tile', area: { shape: 'radius', size: 1 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: null,
-      effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }],
-      desc: 'Самодельная граната: 2d6 огненного урона всем врагам в радиусе 1 клетки, спасбросок ЛВК — половина.',
+      effects: [{ op: 'damage', dice: '1d8', dmgType: 'fire' }],
+      desc: 'Самодельная граната: 1d8 огненного урона всем врагам в радиусе 1 клетки, спасбросок ЛВК — половина.',
       canon: 'rules/class-roadmap.md',
     },
     {
@@ -87,9 +87,9 @@ export default {
     {
       id: 'combat-drone', name: 'Боевой дрон', level: 3, path: 'inventor',
       cost: 4, action: 'action', trigger: null, range: 1, target: 'tile', area: null,
-      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 2,
+      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 3,
       effects: [{ op: 'summon', unit: 'drone', turns: 3 }],
-      desc: 'Запускает боевого дрона на 3 хода: летает и атакует врагов. До 2 раз за бой.',
+      desc: 'Запускает боевого дрона на 3 хода: летает и атакует врагов. До 3 раз за бой.',
       canon: 'rules/class-roadmap.md',
     },
     {
@@ -104,6 +104,14 @@ export default {
       canon: 'rules/class-paths.md',
     },
 
+    {
+      id: 'combat-mech', name: 'Боевой мех из хлама', level: 5, path: 'inventor',
+      cost: 6, action: 'action', trigger: null, range: 1, target: 'tile', area: null,
+      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 1,
+      effects: [{ op: 'summon', unit: 'junk-mech', turns: 4 }],
+      desc: 'Собирает из хлама боевого меха на 4 хода: тяжёлый кулак, толстая броня. Раз за бой. Вне канона, не противоречит: мех свалок есть в арте мобов, Изобретатель делает устройства.',
+      canon: 'art/MANIFEST.txt',
+    },
     // ---------- Путь Сапёра ----------
     {
       id: 'snare-trap', name: 'Капкан', level: 1, path: 'sapper',
@@ -115,18 +123,18 @@ export default {
     },
     {
       id: 'proximity-mine', name: 'Мина', level: 3, path: 'sapper',
-      cost: 4, action: 'action', trigger: null, range: 6, target: 'tile', area: { shape: 'radius', size: 1 },
+      cost: 5, action: 'action', trigger: null, range: 6, target: 'tile', area: { shape: 'radius', size: 1 },
       roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: null,
-      effects: [{ op: 'damage', dice: '2d8', dmgType: 'fire' }, { op: 'status', id: 'slow', turns: 1 }],
-      desc: 'Мина рвётся под врагами: 2d8 огненного урона в радиусе 1 клетки и замедление на 1 ход. Спасбросок ЛВК — половина урона, без замедления.',
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }, { op: 'status', id: 'slow', turns: 1 }],
+      desc: 'Мина рвётся под врагами: 2d6 огненного урона в радиусе 1 клетки и замедление на 1 ход. Спасбросок ЛВК — половина урона, без замедления.',
       canon: 'rules/class-paths.md',
     },
     {
       id: 'demo-charge', name: 'Взрывное устройство', level: 5, path: 'sapper',
-      cost: 6, action: 'action', trigger: null, range: 8, target: 'tile', area: { shape: 'radius', size: 2 },
-      roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 2,
-      effects: [{ op: 'damage', dice: '3d8', dmgType: 'fire' }],
-      desc: '3d8 огненного урона всем врагам в радиусе 2 клеток, спасбросок ЛВК — половина. До 2 раз за бой.',
+      cost: 8, action: 'action', trigger: null, range: 8, target: 'tile', area: { shape: 'radius', size: 2 },
+      roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '2d8', dmgType: 'fire' }],
+      desc: '2d8 огненного урона всем врагам в радиусе 2 клеток, спасбросок ЛВК — половина. Раз за бой.',
       canon: 'rules/class-paths.md',
     },
 

@@ -118,10 +118,9 @@ export function createCreateScene() {
     }
     const kb = `${t('res.kb')} ${built.kb}`;
     text(ctx, kb, xx, yy + 4, C['5'], FONT_B);
-    xx += ctx.measureText(kb).width + 18;
-    text(ctx, `${t('create.speed')} ${built.speed}`, xx, yy + 4, C['4'], FONT);
     yy += 36;
     text(ctx, t('create.stats'), px, yy, C['4']);
+    text(ctx, `${t('create.speed')} ${built.speed}`, x + w - 16, yy, C['4'], FONT, 'right');
     yy += 22;
     const cw = Math.floor((w - 32) / STATS.length);
     STATS.forEach((k, i) => {
@@ -194,6 +193,7 @@ export function createCreateScene() {
   }
 
   return {
+    id: 'create',
     enter(game) { fixClass(game); layout(game); },
     resize(game) { layout(game); },
     update(game, dt) {

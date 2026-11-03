@@ -20,6 +20,8 @@ const CY_LINE = rgba(C.h, 0.55);
 const RANGE_FILL = rgba(C.h, 0.08);
 const TARGET_FILL = rgba(C.a, 0.22);
 const AREA_FILL = rgba(C.n, 0.25);
+const AREA_OWN = rgba(C.j, 0.2);
+const areaFill = (a) => (a.target === 'self' || a.target === 'ally' ? AREA_OWN : AREA_FILL);
 const RED_FILL = rgba(C.c, 0.3);
 const SHADE = rgba(C['0'], 0.72);
 
@@ -28,7 +30,7 @@ export function layoutBattle(game, S) {
   const W = game.width, H = game.height;
   const g = S.b.grid;
   const area = { x: 0, y: TOP_H, w: W - PANEL_W, h: H - BOTTOM_H - TOP_H };
-  const s = Math.max(1, Math.min(4, Math.floor(area.w / (g.w * TILE)), Math.floor(area.h / (g.h * TILE))));
+  const s = Math.max(1, Math.min(3, Math.floor(area.w / (g.w * TILE)), Math.floor(area.h / (g.h * TILE))));
   const cell = TILE * s;
   const mw = g.w * cell, mh = g.h * cell;
   const L = {
@@ -48,10 +50,18 @@ export function layoutBattle(game, S) {
 
 layoutBattle.buttons = (S) => {
   const L = S.L;
-  const n = S.buttons.length;
   const gap = 6;
-  const w = Math.min(170, Math.floor((L.bar.w - gap * (n - 1)) / n));
-  S.buttons.forEach((b, i) => Object.assign(b, { x: L.bar.x + i * (w + gap), y: L.bar.y, w, h: L.bar.h }));
+  const FIXED = { attack: 92, dash: 100, disengage: 100, endTurn: 116 };
+  let fixed = 0, nAb = 0;
+  for (const b of S.buttons) { if (FIXED[b.id]) fixed += FIXED[b.id]; else nAb++; }
+  const free = L.bar.w - fixed - gap * (S.buttons.length - 1);
+  const aw = nAb ? Math.min(180, Math.floor(free / nAb)) : 0;
+  let x = L.bar.x;
+  for (const b of S.buttons) {
+    const w = FIXED[b.id] || aw;
+    Object.assign(b, { x, y: L.bar.y, w, h: L.bar.h });
+    x += w + gap;
+  }
 };
 
 layoutBattle.result = (game, S) => {
@@ -173,7 +183,7 @@ function drawHighlights(ctx, S) {
     if (tc) {
       if (S.sel.kind === 'ability') {
         const pv = S.areaPreview(S.sel.a, tc);
-        for (const idx of pv.tiles) cellRect(ctx, L, idx % w, (idx / w) | 0, AREA_FILL);
+        for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(S.sel.a));
         out.area = pv;
       }
       const tu = tc.target ? b.byId[tc.target] : unitAtCell(b, hc.x, hc.y);
@@ -187,7 +197,7 @@ function drawHighlights(ctx, S) {
   const hb = S.hover.button;
   if (hb && hb.a && hb.a.area && !hb.disabled) {
     const pv = S.areaPreview(hb.a, null);
-    for (const idx of pv.tiles) cellRect(ctx, L, idx % w, (idx / w) | 0, AREA_FILL);
+    for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(hb.a));
     out.area = pv;
   }
   // reachable tiles
@@ -298,21 +308,45 @@ function drawPopups(ctx, S) {
 
 function drawTopBar(ctx, S) {
   const L = S.L, b = S.b;
-  const cu = b.turn ? b.byId[b.turn.unitId] : null;
-  text(ctx, fit(ctx, S.opts.title || '', L.area.w / 2 - 120, FONT_B), 12, 12, C['4'], FONT_B);
+  const cu = b.turn && !b.winner ? b.byId[b.turn.unitId] : null;
+  const roundW = 110;
+  let labelW = 0;
   if (cu) {
     const label = cu.id === S.heroId && S.playerTurn ? t('battle.yourTurn') : cu.team === 'heroes' ? `${t('battle.allyTurn')}: ${S.name(cu.id)}` : `${t('battle.enemyTurn')}: ${S.name(cu.id)}`;
-    text(ctx, label, L.area.w / 2, 10, teamColor(cu), FONT_L, 'center');
+    const s = fit(ctx, label, L.area.w - 2 * roundW - 40, FONT_L);
+    ctx.font = FONT_L;
+    labelW = ctx.measureText(s).width;
+    text(ctx, s, L.area.w / 2, 8, teamColor(cu), FONT_L, 'center');
   }
+  const titleW = Math.floor((L.area.w - labelW) / 2) - 24;
+  if (titleW > 40) text(ctx, fit(ctx, S.opts.title || '', titleW, FONT_B), 12, 12, C['4'], FONT_B);
   text(ctx, `${t('battle.round')} ${b.round}`, L.area.w - 12, 12, C['4'], FONT_B, 'right');
   if (S.sel && S.playerTurn) {
     const key = S.sel.kind === 'ability' && S.sel.a.target === 'tile' ? 'battle.selectTile' : 'battle.selectTarget';
-    text(ctx, t(key), L.area.w / 2, L.area.y + L.area.h - 4, C.a, FONT, 'center');
+    text(ctx, t(key), L.area.w / 2, L.area.y + L.area.h - 20, C.a, FONT, 'center');
   }
 }
 
+const AB_FONT = 'bold 14px monospace';
 function drawActionBar(ctx, S) {
-  for (const btn of S.buttons) button(ctx, btn, S.hover.button === btn);
+  for (const btn of S.buttons) {
+    if (!btn.a) { button(ctx, btn, S.hover.button === btn); continue; }
+    // ability: name in up to 2 lines + cost line
+    const hover = S.hover.button === btn;
+    const fill = btn.selected ? C.i : hover && !btn.disabled ? C['3'] : C['2'];
+    panel(ctx, btn.x, btn.y, btn.w, btn.h, fill, btn.selected ? C.h : hover && !btn.disabled ? C['4'] : C['3']);
+    const col = btn.disabled ? C['3'] : C['5'];
+    const lines = wrap(ctx, btn.label, btn.w - 12, AB_FONT);
+    const cx = btn.x + btn.w / 2;
+    if (lines.length === 1) text(ctx, lines[0], cx, btn.y + 18, col, AB_FONT, 'center');
+    else {
+      text(ctx, fit(ctx, lines[0], btn.w - 12, AB_FONT), cx, btn.y + 12, col, AB_FONT, 'center');
+      text(ctx, fit(ctx, lines.slice(1).join(' '), btn.w - 12, AB_FONT), cx, btn.y + 27, col, AB_FONT, 'center');
+    }
+    text(ctx, fit(ctx, btn.sub, btn.w - 8, '12px monospace'), cx, btn.y + btn.h - 15, btn.disabled ? C['3'] : btn.a.cost ? C.b : C['4'], '12px monospace', 'center');
+    if (btn.key) text(ctx, btn.key, btn.x + 4, btn.y + 2, btn.disabled ? C['3'] : C.a, '12px monospace');
+    if (btn.a.action === 'bonus') text(ctx, 'Б', btn.x + btn.w - 4, btn.y + 2, btn.disabled ? C['3'] : C.j, '12px monospace', 'right');
+  }
 }
 
 function drawLog(ctx, S) {
@@ -380,7 +414,7 @@ function abilityCard(ctx, S, btn, x, y, w) {
     if (a.cost) parts.push(`${a.cost} ${t('battle.cost')}`);
     const r = abilityRange(hero, a);
     parts.push(r ? `${t('battle.range')} ${r}` : t('battle.self'));
-    if (a.area) parts.push(`${t('battle.area')}: ${a.area.shape} ${a.area.size}`);
+    if (a.area) parts.push(`${t('battle.area')}: ${t(`area.${a.area.shape}`)} ${a.area.size}`);
     if (a.usesPerBattle) parts.push(`${(hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
     y = textBlock(ctx, parts.join(' · '), x, y, w, C.b, FONT, LINE, 2);
     y = textBlock(ctx, a.desc || '', x, y + 2, w, C['4'], FONT, LINE, 7);

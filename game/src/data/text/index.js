@@ -148,6 +148,17 @@ const ru = {
   'battle.quickTitle': 'Быстрый бой',
   'battle.self': 'на себя',
   'battle.tiles': 'кл.',
+  'battle.free': 'без ЭНР',
+
+  // ---------- buff stats / area shapes ----------
+  'buff.hit': 'к атаке',
+  'buff.dmg': 'к урону',
+  'buff.kb': 'к КБ',
+  'buff.str': 'к СИЛ',
+  'buff.wil': 'к ТВД',
+  'area.radius': 'радиус',
+  'area.cone': 'конус',
+  'area.line': 'линия',
 
   // ---------- battle UI ----------
   'battle.move': 'Движение',

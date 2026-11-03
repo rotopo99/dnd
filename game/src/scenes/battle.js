@@ -76,6 +76,7 @@ export function createBattleScene(opts) {
     S.dirty = true;
     S.flags = {};
     layoutBattle(game, S);
+    refresh();
   }
 
   function addDisp(u, i = Object.keys(S.disp).length) {
@@ -106,7 +107,7 @@ export function createBattleScene(opts) {
     const bt = b.turn;
     const reasonOf = (r) => (r ? t(REASONS[r] || 'battle.notAllowedHere') : null);
     let r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : hero.noAttack || !hero.weapon ? 'disarm' : S.attackTargets.size ? null : 'noTargets';
-    btns.push({ id: 'attack', label: t('battle.attack'), sub: hero.weapon ? `${hero.weapon.dice}${hero.weapon.range > 1 ? ` · ${hero.weapon.range} ${t('battle.tiles')}` : ''}` : '', key: 'A', disabled: !!r, reason: reasonOf(r), selected: S.sel?.kind === 'attack' });
+    btns.push({ id: 'attack', label: t('battle.attack'), sub: hero.weapon ? `${hero.weapon.dice}${hero.weapon.range > 1 ? ` ↔${hero.weapon.range}` : ''}` : '', key: 'A', disabled: !!r, reason: reasonOf(r), selected: S.sel?.kind === 'attack' });
     let n = 0;
     for (const a of hero.abilities) {
       if (a.action === 'reaction') continue;
@@ -114,9 +115,8 @@ export function createBattleScene(opts) {
       let why = S.playerTurn ? abilityUsable(b, hero, a, false) : 'turn';
       if (why === 'action' && a.action === 'bonus') why = 'bonus';
       if (!why && !(S.specs[a.id] || []).length) why = 'noTargets';
-      const parts = [];
-      if (a.cost) parts.push(`${a.cost} ${t('battle.cost')}`);
-      parts.push(t(`act.${a.action}`) || a.action);
+      const parts = [a.cost ? `${a.cost} ${t('battle.cost')}` : t('battle.free')];
+      if (a.usesPerBattle) parts.push(`${a.usesPerBattle - (hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
       btns.push({
         id: `ab:${a.id}`, a, label: a.name, sub: parts.join(' · '), subColor: a.cost ? '#f2d024' : undefined,
         key: n <= 9 ? String(n) : '', disabled: !!why, reason: why === 'bonus' ? t('battle.noBonus') : reasonOf(why),
@@ -434,6 +434,7 @@ export function createBattleScene(opts) {
 
   // ---------------------------------------------------------------- scene
   return {
+    id: 'battle',
     S,
     enter(game) { start(game); },
     resize(game) { layoutBattle(game, S); S.dirty = true; },

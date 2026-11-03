@@ -5,15 +5,24 @@
 > Формат: файл — за что отвечает — главные экспорты — кто вызывает.
 
 ## Вход
-- `game/index.html` — canvas 768×432, грузит `src/main.js`.
-- `game/src/main.js` — игровой цикл (фиксированный шаг 1/60), объект `game` { ctx, width, height, input, scene, setScene }. `window.__game` для плейтестов.
+- `game/index.html` — canvas на всё окно, фон `#14141c` (цвет `0`), грузит `src/main.js`.
+- `game/src/main.js` — игровой цикл (фиксированный шаг 1/60), объект `game` { ctx, canvas, width, height, input, data, hero, time, scene, setScene }. Canvas = размер окна 1:1 (минимум 1280×720, меньше — даунскейл CSS); на resize зовёт `scene.resize?.(game)`. `window.__game` для плейтестов (`__game.scene.id`, у боя `__game.scene.S`).
 
 ## Системы
-- `game/src/input.js` — `createInput(target)` → { isDown(code), wasPressed(code), endFrame() }. Вызывает: `main.js`.
+- `game/src/input.js` — `createInput(target, canvas)` → { isDown(code), wasPressed(code), typed() (символы за шаг), mouse { x, y, clicked, rightClicked, inside }, endFrame() }. Координаты мыши — в пикселях canvas. Вызывает: `main.js`.
+
+## UI (`game/src/ui/`)
+- `draw.js` — `C` (палитра по ключу), шрифты `FONT/FONT_B/FONT_L/FONT_XL`, `LINE`, `text`, `wrap` (кеш), `textBlock`, `fit`, `panel`, `button`, `hitButton`, `inRect`, `bar` (полоса ресурса по STYLE), `resLine`, `icon`/`drawIcon` (PNG из `game/assets/icons/`), `clear`.
+- `battle-log.js` — `formatEvent(S, e)` → строка лога (сегменты `[text, colour]`), `eventSound(S, e)` → `play(...)`, `teamColor(u)`.
+- `battle-view.js` — `layoutBattle(game, S)` (+ `.buttons(S)`, `.result(game, S)`), `renderBattle(game, S)`: кеш статичного слоя карты (offscreen canvas, огонь анимируется поверх), масштаб клетки ×1..×3 под окно, подсветки, юниты, полоски, попапы, пузыри реплик, панель героя/цели/порядка ходов, лог, баннер, итог.
 
 ## Сцены (`game/src/scenes/`)
-Контракт сцены: `{ enter?(game), update(game, dt), render(game) }`.
-- `title.js` — `titleScene`, заставка. Вызывает: `main.js`.
+Контракт сцены: `{ id, enter?(game), update(game, dt), render(game), resize?(game) }`.
+- `menu.js` — `menuScene` (стартовая), `randomHero(data)`, `startQuickBattle(game, hero?)` (случайный герой vs `ENCOUNTERS.standard1` на `makeArena`). Клавиши: Enter — новая игра, Q — быстрый бой.
+- `create.js` — `createCreateScene()`: раса (`playable`), класс (`isAllowed`), путь, имя; превью и итоги через `buildCreature`. Старт → `startPrologue`.
+- `dialogue.js` — `createDialogueScene({ title, lines, hero, onDone })`, `toLines(v)` (строка → реплика рассказчика). Пробел/клик — дальше, Esc — пропустить.
+- `battle.js` — `createBattleScene({ hero, map?, enemies?, allies?, seed?, title, intro?, hint?, winText?, defeatLines?, barks?, onEvent?(S,e), onWin(game,S), onExit(game) })`. События движка идут в очередь и проигрываются по одному (`move` ждёт анимацию). Ход ИИ — по шагам `chooseAction` с паузой ~0.42 с. Состояние `S`: `b`, `disp` (отображаемые позиции/ЗДР/МРЛ), `sel`, `reach`, `buttons`, `log`, `popups`, `bubbles`, `result`.
+- `prologue.js` — `startPrologue(game, hero)`: вступление → сцена 1 → `prologue-1` → … → `prologue-3` (Ганс) → эпилог → меню. Отдых между боями = новый `buildCreature`. Сюжетные реплики в бою (скрилет, аколит на ½ ЗДР, Ганс упал).
 
 ## Движок правил (`game/src/rules/`)
 Чистый JS без DOM и без импорта данных: данные передаются параметром `data`
@@ -35,10 +44,11 @@
 ## Данные
 - `game/src/data/factions.js` — `FACTIONS`, `STANCES`, `RELATIONS[a][b]` (кем b является для a), `stance(a,b)`. 14 фракций из канона.
 - `game/assets/icons/*.png` — 256×256: `class_{face,fighter,rogue,tech}`, `race_{human,mutant,skeleton,synth}`, `res_{hp,energy,morale}`.
-- `game/src/data/text/index.js` — `t(key)`, все строки интерфейса (ru).
+- `game/src/data/index.js` — `GAME_DATA` (пакет данных для движка), `PLAYABLE_RACES`, `CLASS_ORDER`, `MAPS` (prologue-1..3).
+- `game/src/data/text/index.js` — `t(key)`, все строки интерфейса (ru): `menu.*`, `create.*`, `battle.*`, `role.*`, `stat.*`, `dmg.*`, `act.*`, `buff.*`, `area.*`; фолбэк на `PROLOGUE`.
 
 ## Инструменты
-- `tools/playtest.mjs` — headless-плейтест: скриншоты в `tools/out/`, код выхода 1 при ошибках консоли.
+- `tools/playtest.mjs` — headless-плейтест (окно 1280×720): скриншоты в `tools/out/`, код выхода 1 при ошибках консоли.
 - `tools/test.mjs` — тесты движка правил на фикстурах (`node tools/test.mjs`, код 1 при провале).
 - `tools/fixtures/rules-data.mjs` — маленькие данные по схеме спеки (2 расы, 2 класса, 3 врага, статусы, таблица завесы).
 - `tools/smoke-rules.mjs` — смоук на реальных данных: класс × играбельная раса × путь × ур. 1/5 против `ENCOUNTERS.standard1/5` + сюжетные карты (`--n 20 --seed 1`).
