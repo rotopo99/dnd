@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Sprite preview</title>
+  <style>
+    body { margin: 0; background: #14141c; color: #dfe3e8; font: 12px monospace; }
+    canvas { image-rendering: pixelated; display: block; }
+    #errors { color: #c42828; padding: 4px 8px; white-space: pre; }
+  </style>
+</head>
+<body>
+  <div id="errors"></div>
+  <canvas id="c"></canvas>
+  <script type="module">
+    import {
+      SPRITES, PALETTE, PALETTE_KEYS, RACE_IDS, CLASS_IDS, ENEMY_IDS, SUMMON_IDS, TILE,
+      drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, validateSprites,
+    } from '../game/src/assets/sprites.js';
+
+    const S = 3;
+    const CELL = TILE * S;            // 48
+    const PAD = 14;                   // label height
+    const COLW = CELL + 30;
+    const errs = validateSprites();
+    document.getElementById('errors').textContent = errs.length ? errs.join('\n') : '';
+
+    const canvas = document.getElementById('c');
+    canvas.width = 1240;
+    canvas.height = 1900;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#14141c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textBaseline = 'top';
+
+    let y = 8;
+    const title = (t) => { ctx.fillStyle = '#f0b050'; ctx.font = 'bold 14px monospace'; ctx.fillText(t, 8, y); y += 22; ctx.font = '11px monospace'; };
+    const label = (t, x, yy) => { ctx.fillStyle = '#8d95a8'; ctx.fillText(t, x, yy); };
+    const floorUnder = (x, yy, col, row) => drawSprite(ctx, tileSpriteIds('.', col, row), x, yy, S);
+
+    // Palette
+    title('Palette');
+    PALETTE.forEach((hex, i) => {
+      const x = 8 + i * 46;
+      ctx.fillStyle = hex; ctx.fillRect(x, y, 40, 24);
+      label(`${PALETTE_KEYS[i]} ${hex.slice(1)}`, x - 2, y + 27);
+    });
+    y += 50;
+
+    // Tiles
+    title('Tiles (grid chars # . c ~ D) + variations');
+    const tiles = ['tile-floor', 'tile-floor-split', 'tile-floor-rust', 'tile-floor-grate', 'tile-wall', 'tile-wall-pipe', 'tile-door',
+      ['tile-floor', 'obj-crate'], ['tile-floor', 'obj-barricade'], ['tile-floor', 'obj-scorch', 'obj-fire']];
+    tiles.forEach((t, i) => {
+      const x = 8 + i * (CELL + 50);
+      drawSprite(ctx, t, x, y, S);
+      if (Array.isArray(t) && t.includes('obj-fire')) drawSprite(ctx, t, x + CELL + 2, y, S, { frame: 1 });
+      label(Array.isArray(t) ? t[t.length - 1] : t, x, y + CELL + 3);
+    });
+    y += CELL + PAD + 16;
+
+    // Sample map
+    title('Sample map');
+    const map = [
+      '##############',
+      '#P...c....~~.#',
+      '#..#.....E...D',
+      '#.P..cc...~..#',
+      '#....#..E..c.#',
+      '##############',
+    ];
+    const mapY = y;
+    map.forEach((line, r) => [...line].forEach((ch, cIdx) => drawSprite(ctx, tileSpriteIds(ch, cIdx, r), 8 + cIdx * CELL, mapY + r * CELL, S)));
+    const put = (ids, col, row, team, opts = {}) => {
+      const x = 8 + col * CELL, yy = mapY + row * CELL;
+      drawTeamMarker(ctx, team, x, yy, S);
+      drawSprite(ctx, ids, x, yy, S, opts);
+    };
+    put(heroSpriteIds('human', 'ranger'), 1, 1, 'player');
+    put(heroSpriteIds('skeleton', 'zabivnoy'), 2, 3, 'player');
+    put(heroSpriteIds('android', 'itishnik'), 3, 2, 'player', { tint: 'h' });
+    put(enemySpriteIds('cultist'), 9, 2, 'enemy', { flip: true });
+    put(enemySpriteIds('junk-mech'), 8, 4, 'enemy', { flip: true });
+    put(enemySpriteIds('acolyte'), 12, 3, 'enemy', { flip: true });
+    put(enemySpriteIds('drone'), 4, 4, 'ally');
+    y += map.length * CELL + 12;
+
+    // Heroes: race x class matrix
+    title('Heroes: race (rows) x class (columns), frame 0');
+    const gx = 110;
+    label('body', gx, y);
+    CLASS_IDS.forEach((c, i) => label(c, gx + (i + 1) * COLW, y));
+    y += PAD;
+    RACE_IDS.forEach((r, ri) => {
+      label(r, 8, y + 18);
+      drawSprite(ctx, 'tile-floor', gx, y, S);
+      drawSprite(ctx, heroSpriteIds(r), gx, y, S);
+      CLASS_IDS.forEach((c, ci) => {
+        const x = gx + (ci + 1) * COLW;
+        floorUnder(x, y, ci, ri);
+        drawSprite(ctx, heroSpriteIds(r, c), x, y, S);
+      });
+      y += CELL + 6;
+    });
+    y += 10;
+
+    // Idle frames
+    title('Idle frames 0 / 1 (heroes)');
+    RACE_IDS.forEach((r, i) => {
+      const x = 8 + i * (CELL * 2 + 24);
+      drawSprite(ctx, heroSpriteIds(r, CLASS_IDS[i]), x, y, S, { frame: 0 });
+      drawSprite(ctx, heroSpriteIds(r, CLASS_IDS[i]), x + CELL, y, S, { frame: 1 });
+      label(r, x, y + CELL + 3);
+    });
+    y += CELL + PAD + 16;
+
+    // Enemies & summons (two frames each)
+    const mobRow = (ids, name) => {
+      title(name);
+      const top = y + 24; // room for 24-high sprites
+      ids.forEach((id, i) => {
+        const x = 8 + i * (CELL * 2 + 4 + 10);
+        drawSprite(ctx, 'tile-floor', x, top, S);
+        drawSprite(ctx, 'tile-floor', x + CELL, top, S);
+        drawSprite(ctx, enemySpriteIds(id), x, top, S, { frame: 0 });
+        drawSprite(ctx, enemySpriteIds(id), x + CELL, top, S, { frame: 1 });
+        label(id, x, top + CELL + 3);
+      });
+      y = top + CELL + PAD + 16;
+    };
+    mobRow(ENEMY_IDS, 'Enemies (frame 0 / 1)');
+    mobRow(SUMMON_IDS, 'Summons (frame 0 / 1)');
+
+    // Team markers / tint / flash
+    title('Team markers, tint (outline) and mono (hit flash)');
+    const demo = [['player', {}], ['enemy', {}], ['ally', {}], ['player', { tint: 'h' }], ['enemy', { tint: 'c' }], ['enemy', { mono: '5' }], ['player', { flip: true }]];
+    const names = ['player', 'enemy', 'ally', 'tint h', 'tint c', 'mono 5', 'flip'];
+    demo.forEach(([team, opts], i) => {
+      const x = 8 + i * (CELL + 40);
+      drawSprite(ctx, 'tile-floor', x, y, S);
+      drawTeamMarker(ctx, team, x, y, S);
+      const ids = team === 'enemy' ? enemySpriteIds('scavenger') : heroSpriteIds('mutant-beast', 'mutant');
+      drawSprite(ctx, ids, x, y, S, opts);
+      label(names[i], x, y + CELL + 3);
+    });
+    y += CELL + PAD + 16;
+
+    // Actual size x1 sanity check
+    title('x1 / x2 actual size');
+    RACE_IDS.forEach((r, i) => drawSprite(ctx, heroSpriteIds(r, CLASS_IDS[i]), 8 + i * 20, y, 1));
+    [...ENEMY_IDS, ...SUMMON_IDS].forEach((id, i) => drawSprite(ctx, enemySpriteIds(id), 200 + i * 36, y + 8, 2));
+    y += 60;
+
+    window.__previewHeight = y;
+    window.__previewDone = true;
+  </script>
+</body>
+</html>
