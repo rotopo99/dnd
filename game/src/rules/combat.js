@@ -89,6 +89,8 @@ const MRL_TYPES = { cringe: 1, psychic: 1 };
 const CASTER_OPS = { move: 1, summon: 1, extraAction: 1 };
 const HERO_KINDS = { hero: 1, ally: 1 };
 const DEFAULT_STATUS_DC = 12;
+/** v1.2: overcasts (casting without ENR) per unit per battle. */
+export const OVERCAST_LIMIT = 2;
 
 // ---------------------------------------------------------------- events
 
@@ -634,6 +636,17 @@ function breakdown(b, u) {
     const before = u.hp;
     u.hp = Math.max(1, u.hp - Math.floor(u.hp * 0.7));
     emit(b, { type: 'breakdown', target: u.id, roll, result: 'heartbreak', amount: before - u.hp, value: u.hp });
+  } else if (!HERO_KINDS[u.kind] && !u.boss) {
+    // v1.2: non-boss enemies and summons are «Сломлен» — surrender / flee, out of the battle (counts as defeated)
+    emit(b, { type: 'breakdown', target: u.id, roll, result: 'broken' });
+    u.mrl = 0;
+    u.broken = true;
+    u.removed = true;
+    u.shield = null;
+    clearPos(b, u);
+    emit(b, { type: 'broken', target: u.id });
+    checkVictory(b);
+    return;
   } else {
     u.lostControl = 1;
     u.lostControlFresh = !!(b.turn && b.turn.unitId === u.id);
@@ -757,11 +770,20 @@ export function rollSave(b, u, stat, dc, src, reason) {
   return success;
 }
 
-function attackMode(b, att, tgt, melee, isWeapon) {
+/** v1.2: a standing hostile adjacent to (x, y) -> ranged attacks from there have disadvantage. */
+export function enemyAdjacent(b, att, x = att.x, y = att.y) {
+  for (const e of b.units) {
+    if (e === att || !isStanding(e) || !isHostile(b, att, e)) continue;
+    if (Math.abs(e.x - x) <= 1 && Math.abs(e.y - y) <= 1) return true;
+  }
+  return false;
+}
+
+function attackMode(b, att, tgt, melee, isWeapon, fx, fy) {
   const adv = !!modFlag(b, att, 'attackAdv') || !!modFlag(b, att, 'firstAttackAdv') || !!modFlag(b, tgt, 'attackedAdv')
     || (melee && !!modFlag(b, tgt, 'attackedAdvMelee')) || tgt.down;
   const dis = !!modFlag(b, att, 'attackDisadv') || !!modFlag(b, tgt, 'attackedDisadv')
-    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1);
+    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy));
   return { adv, dis };
 }
 
@@ -931,7 +953,7 @@ export function abilityUsable(b, u, a, asReaction) {
   if (!isStanding(u)) return 'down';
   if (a.usesPerBattle != null && (u.uses[a.id] || 0) >= a.usesPerBattle) return 'uses';
   const cost = a.cost || 0;
-  if (cost > u.enr && !u.overcast) return 'energy';
+  if (cost > u.enr && (!u.overcast || (u.overcastsUsed || 0) >= OVERCAST_LIMIT)) return 'energy';
   if (cost > 0 && modFlag(b, u, 'blockCost')) return 'silence';
   if (hasOp(a, 'weapon') && !canUseWeapon(b, u)) return 'disarm';
   if (asReaction) {
@@ -1289,6 +1311,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
   const cost = a.cost || 0;
   const overcast = cost > u.enr;
   u.enr = overcast ? 0 : u.enr - cost;
+  if (overcast) u.overcastsUsed = (u.overcastsUsed || 0) + 1;
   u.uses[a.id] = (u.uses[a.id] || 0) + 1;
   if (asReaction) u.reactionUsed = true;
   else if (a.action === 'bonus') b.turn.bonus--;
@@ -1552,7 +1575,7 @@ export function perform(b, action) {
 
 /** Hit chance of att vs tgt with a given base bonus, optionally from a hypothetical tile (fx, fy). */
 export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy = att.y) {
-  const m = attackMode(b, att, tgt, melee, isWeapon);
+  const m = attackMode(b, att, tgt, melee, isWeapon, fx, fy);
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
   let kb = getKb(b, tgt, null, false);
   if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += 2;
