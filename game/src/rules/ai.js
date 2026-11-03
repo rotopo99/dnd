@@ -232,7 +232,19 @@ function buildOptions(b, u) {
     const why = abilityUsable(b, u, a, false);
     if (why) continue;
     const range = abilityRange(u, a);
-    if (range === 0) continue;
+    if (range === 0) {
+      // self-centred area (beast-roar, cringe-field): worth it from tiles within area.size of the targets
+      if (!a.area || a.area.shape !== 'radius' || a.target === 'ally' || a.target === 'any') continue;
+      const single = { ...a, area: null, target: 'enemy', range: a.area.size || 1 };
+      const list = [];
+      for (const e of b.units) {
+        if (!isAlive(e) || !isHostile(b, u, e) || e.down) continue;
+        const v = evalAbility(b, u, single, { unit: e.id });
+        if (v > 0.5) list.push({ t: e, v });
+      }
+      if (list.length) opts.push({ range: a.area.size || 1, noLos: false, ranged: false, action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
+      continue;
+    }
     const mv = (a.effects || []).find((e) => e.op === 'move');
     const list = [];
     for (const e of b.units) {

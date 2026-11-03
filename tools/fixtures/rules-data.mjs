@@ -104,4 +104,33 @@ export const VEIL_TABLE = Array.from({ length: 10 }, (_, i) => ({
 
 export const ENCOUNTERS = { standard1: { id: 'standard1', enemies: ['thug', 'gunner'] } };
 
-export const DATA = { RACES, CLASSES, STATUSES, ENEMIES, VEIL_TABLE, ENCOUNTERS };
+export const TALENTS = {
+  tanner: { id: 'tanner', name: 'Кожевник', slot: 'job', kind: 'combat', passives: [{ op: { kb: 1 } }], abilities: [], world: [] },
+  'dirty-fighter': { id: 'dirty-fighter', name: 'Грязный боец', slot: 'job', kind: 'combat', passives: [],
+    abilities: [{ id: 'talent-dirty-fighter', name: 'Песок в глаза', level: 1, cost: 0, action: 'bonus', range: 1, target: 'enemy',
+      roll: 'attack', usesPerBattle: 1, effects: [{ op: 'weapon' }, { op: 'status', id: 'blind', turns: 1 }] }], world: [] },
+  'iron-will': { id: 'iron-will', name: 'Железная воля', slot: 'stat', kind: 'combat', passives: [{ op: { maxHp: 4 } }], world: [] },
+  'prey-game': { id: 'prey-game', name: 'Игра с жертвой', slot: 'alignment', kind: 'combat', passives: [{ op: { hit: 2, cond: 'targetWounded' } }], world: [] },
+  'acid-sweat': { id: 'acid-sweat', name: 'Кислотный пот', slot: 'mutation', kind: 'combat', passives: [{ op: { thorns: { dice: '2d1', dmgType: 'toxin' } } }], world: [] },
+  'eagle-eye': { id: 'eagle-eye', name: 'Глазомер', slot: 'race', kind: 'world', world: [{ check: 'perception', bonus: 2 }] },
+  'lock-master': { id: 'lock-master', name: 'Замок — не преграда', slot: 'job', kind: 'world', world: [{ check: 'athletics', adv: true }] },
+  'beast-nose': { id: 'beast-nose', name: 'Звериный нюх', slot: 'race', kind: 'both', passives: [{ op: { init: 2 } }], world: [{ worldFlag: 'no-ambush' }] },
+  'deep-pocket': { id: 'deep-pocket', name: 'Скрытый отсек', slot: 'race', kind: 'world', world: [{ worldFlag: 'hide-item' }] },
+  implant: { id: 'implant', name: 'Подкожная броня', slot: 'implant', kind: 'combat', req: { level: 3 }, passives: [{ op: { kb: 2 } }], world: [] },
+};
+export const COMBAT_TALENT_LIMIT = (level) => (level >= 4 ? 3 : 2);
+export const TALENT_LEVELS = [2, 4];
+
+export const GADGETS = {
+  multitool: { id: 'multitool', name: 'Мультитул из хлама', cls: 'itishnik', passives: [{ op: { init: 1 } }],
+    abilities: [{ id: 'gadget-patch', name: 'Заплатка', level: 1, cost: 0, action: 'bonus', range: 1, target: 'ally', roll: 'auto',
+      usesPerBattle: 1, effects: [{ op: 'heal', dice: '1d4', resource: 'hp' }] }],
+    world: [{ check: 'tech', bonus: 1 }, { worldFlag: 'craft-medkit' }] },
+};
+
+export const SPECIALIZATIONS = {
+  zabivnoy: { spec: ['athletics', 'intimidation', 'military'], related: ['endurance', 'survival', 'perception'] },
+  itishnik: { spec: ['tech', 'lockpicking', 'analysis'], related: ['hacking', 'medicine', 'military'] },
+};
+
+export const DATA = { RACES, CLASSES, STATUSES, ENEMIES, VEIL_TABLE, ENCOUNTERS, TALENTS, GADGETS, COMBAT_TALENT_LIMIT, TALENT_LEVELS, SPECIALIZATIONS };

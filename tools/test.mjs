@@ -6,7 +6,10 @@ import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost } from '../game
 import { parseMap, chebyshev, lineOfSight, hasCover, findPath, reachable, makeArena } from '../game/src/rules/grid.js';
 import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack,
   BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT } from '../game/src/rules/combat.js';
-import { chooseAction } from '../game/src/rules/ai.js';
+import { chooseAction, playTurn } from '../game/src/rules/ai.js';
+import { skillCheck, skillTier } from '../game/src/rules/skills.js';
+import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS } from '../game/src/rules/progression.js';
+import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL } from '../game/src/rules/combat.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
 import { DATA } from './fixtures/rules-data.mjs';
 
@@ -500,6 +503,153 @@ test('fix 10: isMeleeAttack matches attack logic', () => {
   const r = buildCreature({ race: 'human', cls: 'itishnik', path: 'hacker', data: DATA });
   const d = duel('thug', r);
   assert.equal(isMeleeAttack(d.b, d.H, { type: 'ability', ability: 'zap' }), false);
+});
+
+console.log('v2: talents, gadgets, skills, progression');
+test('talent «Кожевник» +1 KB; «Грязный боец» once per battle, blind on hit', () => {
+  const base = hero();
+  const t = hero({ talents: ['tanner', 'dirty-fighter'] });
+  assert.equal(t.kb, base.kb + 1);
+  assert.ok(t.abilities.some((a) => a.id === 'talent-dirty-fighter'));
+  const { b, H, E } = duel('thug', t);
+  E.hp = E.maxHp = 200;
+  forceTurn(b, H);
+  assert.ok(getLegalActions(b, H.id).some((a) => a.ability === 'talent-dirty-fighter'));
+  b.rng = stubRng([nat(20)]);
+  assert.ok(perform(b, { type: 'ability', unit: H.id, ability: 'talent-dirty-fighter', target: E.id }).ok);
+  assert.ok(E.statuses.some((s) => s.id === 'blind'));
+  forceTurn(b, H);
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.ability === 'talent-dirty-fighter'), 'once per battle');
+});
+test('COMBAT_TALENT_LIMIT: 2 on level 1, 3 on level 4; activeCombat; world talents unlimited', () => {
+  assert.throws(() => hero({ talents: ['tanner', 'dirty-fighter', 'iron-will'] }), /COMBAT_TALENT_LIMIT/);
+  assert.ok(hero({ level: 4, talents: ['tanner', 'dirty-fighter', 'iron-will'] }));
+  const h = hero({ talents: ['tanner', 'dirty-fighter', 'iron-will'], activeCombat: ['tanner', 'iron-will'] });
+  assert.deepEqual(h.activeTalents, ['tanner', 'iron-will']);
+  assert.ok(!h.abilities.some((a) => a.id === 'talent-dirty-fighter'), 'inactive combat talent has no effect');
+  assert.throws(() => hero({ talents: ['tanner'], activeCombat: ['tanner', 'iron-will'] }), /not owned/);
+  assert.throws(() => hero({ talents: ['nope'] }), /unknown talent/);
+  assert.throws(() => hero({ talents: ['implant'] }), /requires level 3/);
+  const w = hero({ talents: ['tanner', 'dirty-fighter', 'eagle-eye', 'lock-master', 'deep-pocket'] });
+  assert.equal(w.activeTalents.length, 2);
+});
+test('passive maxHp; worldFlags and skill mods exposed, not applied in combat', () => {
+  assert.equal(hero({ talents: ['iron-will'] }).maxHp, hero().maxHp + 4);
+  const h = hero({ talents: ['beast-nose', 'deep-pocket', 'eagle-eye'] });
+  assert.deepEqual(h.worldFlags.map((f) => f.id).sort(), ['hide-item', 'no-ambush']);
+  assert.equal(h.skillMods.perception.bonus, 2);
+  assert.equal(h.initBonus, hero().initBonus + 2);
+});
+test('passive cond targetWounded: +2 to hit only vs wounded targets', () => {
+  for (const wounded of [false, true]) {
+    const { b, H, E } = duel('thug', hero({ talents: ['prey-game'] }));
+    if (wounded) E.hp = E.maxHp - 1;
+    forceTurn(b, H);
+    b.rng = stubRng([nat(10)]);
+    perform(b, { type: 'attack', unit: H.id, target: E.id });
+    const ev = events(b, 'attack').pop();
+    const plain = duel('thug', hero());
+    forceTurn(plain.b, plain.H);
+    plain.b.rng = stubRng([nat(10)]);
+    perform(plain.b, { type: 'attack', unit: plain.H.id, target: plain.E.id });
+    assert.equal(ev.roll.total - events(plain.b, 'attack').pop().roll.total, wounded ? 2 : 0);
+  }
+});
+test('passive thorns: melee hit on the bearer hurts the attacker', () => {
+  const { b, H, E } = duel('thug', hero({ talents: ['acid-sweat'] }));
+  H.hp = H.maxHp = 200;
+  const hp = E.hp;
+  forceTurn(b, E);
+  b.rng = stubRng([nat(20)]);
+  perform(b, { type: 'attack', unit: E.id, target: H.id });
+  assert.ok(events(b, 'thorns').length === 1);
+  assert.equal(E.hp, hp - 2);
+});
+test('gadget: passives, ability and world effects; unknown gadget throws', () => {
+  const g = buildCreature({ race: 'human', cls: 'itishnik', data: DATA, gadget: 'multitool' });
+  const n = buildCreature({ race: 'human', cls: 'itishnik', data: DATA });
+  assert.equal(g.initBonus, n.initBonus + 1);
+  assert.ok(g.abilities.some((a) => a.id === 'gadget-patch'));
+  assert.equal(g.gadget, 'multitool');
+  assert.ok(g.worldFlags.some((f) => f.id === 'craft-medkit'));
+  assert.equal(g.skillMods.tech.bonus, 1);
+  assert.throws(() => buildCreature({ race: 'human', cls: 'itishnik', data: DATA, gadget: 'nope' }), /unknown gadget/);
+});
+test('range 0 + target tile area (beast-roar style): legal for the player and used by AI', () => {
+  const roar = { id: 'roar', name: 'Рык', level: 1, cost: 0, action: 'bonus', range: 0, target: 'tile', area: { shape: 'radius', size: 2 },
+    roll: 'save', save: 'wil', onSave: 'none', usesPerBattle: null, effects: [{ op: 'status', id: 'fear', turns: 1 }] };
+  const { b, H, E } = duel();
+  H.abilities = [...H.abilities, roar];
+  forceTurn(b, H);
+  const legal = getLegalActions(b, H.id).filter((a) => a.ability === 'roar');
+  assert.equal(legal.length, 1);
+  assert.ok(!legal[0].target && !legal[0].tile);
+  b.rng = stubRng([nat(1)]);
+  assert.ok(perform(b, legal[0]).ok);
+  assert.ok(E.statuses.some((s) => s.id === 'fear'));
+  assert.ok(!H.statuses.some((s) => s.id === 'fear'), 'caster is not affected');
+  const d = duel();
+  d.H.abilities = [roar]; // the only bonus action available
+  d.H.control = 'ai';
+  d.E.hp = d.E.maxHp = 200; // keep the battle going after the main action
+  forceTurn(d.b, d.H);
+  playTurn(d.b);
+  assert.ok(events(d.b, 'ability').some((e) => e.ability === 'roar'), 'AI uses it');
+});
+test('summons grow with summoner level', () => {
+  for (const level of [1, 5]) {
+    const r = buildCreature({ race: 'human', cls: 'itishnik', path: 'mechanic', level, data: DATA });
+    const b = createBattle({ map: DUEL_MAP, heroes: [r], enemies: ['thug'], data: DATA, seed: 1, autoReactions: false });
+    forceTurn(b, b.units[0]);
+    perform(b, { type: 'ability', unit: b.units[0].id, ability: 'drone' });
+    const s = b.units.find((u) => u.kind === 'summon');
+    assert.equal(s.maxHp, DATA.ENEMIES.drone.hp + SUMMON_HP_PER_LEVEL * (level - 1));
+    assert.equal(s.dmgBonus.all, SUMMON_DMG_PER_LEVEL * (level - 1));
+  }
+});
+test('skillCheck: spec adv + prof, related normal + prof, other dis; talent bonus and adv', () => {
+  const z = hero({ talents: ['eagle-eye', 'lock-master'] });
+  const opts = (vals) => ({ rng: stubRng(vals), data: DATA });
+  let r = skillCheck(z, 'intimidation', 13, opts([nat(5), nat(15)]));
+  assert.equal(r.tier, 'spec'); assert.equal(r.mode, 'adv'); assert.equal(r.roll, 15);
+  assert.equal(r.total, 15 + Math.floor((z.stats.cha - 10) / 2) + z.prof);
+  r = skillCheck(z, 'perception', 13, opts([nat(12)]));
+  assert.equal(r.tier, 'related'); assert.equal(r.mode, 'normal');
+  assert.ok(r.parts.some((p) => p.label === 'Глазомер' && p.value === 2));
+  assert.equal(r.total, 12 + Math.floor((z.stats.per - 10) / 2) + z.prof + 2);
+  r = skillCheck(z, 'hacking', 13, opts([nat(15), nat(5)]));
+  assert.equal(r.tier, 'other'); assert.equal(r.mode, 'dis'); assert.equal(r.roll, 5);
+  assert.ok(!r.parts.some((p) => p.label === 'prof'));
+  r = skillCheck(z, 'hacking', 13, { ...opts([nat(15), nat(5)]), adv: true });
+  assert.equal(r.mode, 'normal', 'adv cancels dis');
+  assert.equal(skillTier(hero(), 'athletics', DATA.SPECIALIZATIONS), 'spec');
+  const it = buildCreature({ race: 'human', cls: 'itishnik', data: DATA, talents: ['lock-master'] });
+  assert.equal(skillTier(it, 'athletics', DATA.SPECIALIZATIONS), 'spec', 'talent adv makes a specialization');
+  assert.equal(r.success, r.total >= 13);
+});
+test('XP and levels: thresholds, battle and quest XP, level-up rebuild keeps choices', () => {
+  assert.deepEqual(XP_THRESHOLDS, [0, 300, 900, 2700, 6500]);
+  assert.equal(levelForXp(299), 1); assert.equal(levelForXp(300), 2); assert.equal(levelForXp(6500), 5); assert.equal(levelForXp(1e6), 5);
+  assert.equal(xpToNext(250), 50); assert.equal(xpToNext(7000), 0);
+  assert.equal(battleXp(['thug', 'gunner'], DATA), 20);
+  const { b, H, E } = duel();
+  dealDamage(b, H, E, 999, 'slash');
+  assert.equal(battleXp(b), 10);
+  assert.equal(questXp({ rewards: { xp: 600 } }), 600);
+  assert.equal(questXp({ key: true }), 800);
+  const g = gainXp({ xp: 250, level: 1 }, 100, DATA);
+  assert.deepEqual([g.xp, g.level, g.leveledUp, g.talentPicks], [350, 2, true, 1]);
+  assert.equal(gainXp({ xp: 0, level: 1 }, 3000, DATA).talentPicks, 2);
+  const h1 = buildCreature({ race: 'human', cls: 'itishnik', path: 'hacker', data: DATA, talents: ['tanner', 'eagle-eye'], gadget: 'multitool' });
+  h1.hp -= 5;
+  const h2 = rebuildHero(h1, { level: 2, data: DATA });
+  assert.equal(h2.level, 2);
+  assert.equal(h2.path, 'hacker');
+  assert.deepEqual(h2.talents, ['tanner', 'eagle-eye']);
+  assert.equal(h2.gadget, 'multitool');
+  assert.ok(h2.maxHp > h1.maxHp);
+  assert.equal(h2.maxHp - h2.hp, 5, 'damage kept');
+  assert.equal(h2.id, h1.id);
 });
 
 console.log('simulation');

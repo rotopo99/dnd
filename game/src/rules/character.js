@@ -28,8 +28,17 @@ export function normalizeData(d = {}) {
     encounters: d.encounters || d.ENCOUNTERS || {},
     veilTable: d.veilTable || d.VEIL_TABLE || null,
     proxyStormTable: d.proxyStormTable || d.PROXY_STORM_TABLE || null,
+    talents: d.talents || d.TALENTS || {},
+    gadgets: d.gadgets || d.GADGETS || {},
+    combatTalentLimit: d.combatTalentLimit || d.COMBAT_TALENT_LIMIT || defaultCombatTalentLimit,
+    specializations: d.specializations || d.SPECIALIZATIONS || null,
+    skills: d.skills || d.SKILLS || null,
   };
 }
+
+/** Fallback for data.COMBAT_TALENT_LIMIT (docs/specs/talents.md): 2 on levels 1–3, 3 on levels 4–5. */
+export const defaultCombatTalentLimit = (level) => (level >= 4 ? 3 : 2);
+export const isCombatTalent = (t) => !!t && t.kind !== 'world';
 
 const ROLE_TO_AI = { tank: 'melee', melee: 'melee', ranged: 'ranged', caster: 'caster', control: 'caster', support: 'support' };
 
@@ -59,9 +68,19 @@ function collectPassives(list) {
   const out = {
     statBonus: {}, resist: {}, kb: 0, hit: 0, dmg: { melee: 0, ranged: 0, spell: 0, all: 0 },
     init: 0, speed: 0, regen: [], immuneStatus: [], critRange: 20, advantage: [], deathSave: 0,
+    maxHp: 0, maxMrl: 0, maxEnr: 0, cond: [], thorns: [],
   };
   for (const p of list) {
     const op = p.op || {};
+    if (op.cond) {
+      // conditional bonus (v2): { cond: 'targetWounded', hit?, dmg? } — applied by combat per attack
+      out.cond.push({ cond: op.cond, hit: op.hit || 0, dmg: typeof op.dmg === 'number' ? op.dmg : 0, source: p.id || null });
+      continue;
+    }
+    if (op.maxHp) out.maxHp += op.maxHp;
+    if (op.maxMrl) out.maxMrl += op.maxMrl;
+    if (op.maxEnr) out.maxEnr += op.maxEnr;
+    if (op.thorns) out.thorns.push(op.thorns);
     if (op.statBonus) for (const k in op.statBonus) out.statBonus[k] = (out.statBonus[k] || 0) + op.statBonus[k];
     if (op.resist) mergeResist(out.resist, op.resist);
     if (op.kb) out.kb += op.kb;
@@ -100,6 +119,7 @@ function baseUnit() {
     castStat: null, saves: [], resist: {}, immuneStatus: [],
     abilities: [], passives: [], hitBonus: 0, dmgBonus: { melee: 0, ranged: 0, spell: 0, all: 0 },
     critRange: 20, advantages: [], deathSaves: 0, regen: [], overcast: null,
+    condBonuses: [], thorns: [], talents: [], activeTalents: [], gadget: null, worldFlags: [], skillMods: {}, build: null,
   };
 }
 
@@ -109,7 +129,75 @@ function baseUnit() {
  * stats — values BEFORE racial bonuses (defaults to cls.recommended). Racial `any: N`
  * goes to `anyStat` or, by default, to the class main stat (castStat, else weapon stat).
  */
-export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroes', data, id, name, anyStat, weaponTier } = {}) {
+/**
+ * Resolve talents + gadget for a hero (docs/specs/talents.md). Returns { passives, abilities, world, active }.
+ * Combat talents (kind !== 'world') are active up to COMBAT_TALENT_LIMIT(level): `activeCombat` lists them
+ * explicitly, otherwise the first combat talents of `talents` are taken. Exceeding the limit throws.
+ * World effects of every owned talent always apply. The gadget is always active (no limit).
+ */
+export function resolveTalents(D, { talents = [], activeCombat, gadget, level }) {
+  const owned = [];
+  for (const tid of talents) {
+    const t = D.talents[tid];
+    if (!t) throw new Error(`buildCreature: unknown talent "${tid}"`);
+    owned.push(t);
+  }
+  const combat = owned.filter(isCombatTalent);
+  const limit = D.combatTalentLimit(level);
+  let active;
+  if (activeCombat) {
+    for (const tid of activeCombat) {
+      if (!talents.includes(tid)) throw new Error(`buildCreature: active talent "${tid}" is not owned`);
+      if (!isCombatTalent(D.talents[tid])) throw new Error(`buildCreature: talent "${tid}" is not a combat talent`);
+    }
+    active = activeCombat.map((tid) => D.talents[tid]);
+    if (active.length > limit) {
+      throw new Error(`buildCreature: ${active.length} active combat talents, limit at level ${level} is ${limit} (COMBAT_TALENT_LIMIT)`);
+    }
+  } else {
+    if (combat.length > limit) {
+      throw new Error(`buildCreature: ${combat.length} combat talents, limit at level ${level} is ${limit} (COMBAT_TALENT_LIMIT); pass activeCombat`);
+    }
+    active = combat;
+  }
+  for (const t of active) {
+    if (t.req && t.req.level && t.req.level > level) throw new Error(`buildCreature: talent "${t.id}" requires level ${t.req.level}`);
+  }
+  const sources = [...active];
+  let g = null;
+  if (gadget) {
+    g = D.gadgets[gadget];
+    if (!g) throw new Error(`buildCreature: unknown gadget "${gadget}"`);
+    sources.push(g);
+  }
+  const passives = [];
+  const abilities = [];
+  for (const t of sources) {
+    for (const p of t.passives || []) passives.push({ id: p.id || t.id, name: p.name || t.name, desc: p.desc || t.desc, ...p, talent: t.id });
+    for (const a of t.abilities || []) if (!a.todo) abilities.push({ ...a, talent: t.id });
+  }
+  const world = [];
+  for (const t of g ? [...owned, g] : owned) for (const w of t.world || []) world.push({ ...w, source: t.id, sourceName: t.name });
+  return { passives, abilities, world, active: active.map((t) => t.id), gadget: g ? g.id : null };
+}
+
+/** Split world effects into { worldFlags: [...], skillMods: { skill: { bonus, adv, sources } } }. */
+function worldEffects(world) {
+  const worldFlags = [];
+  const skillMods = {};
+  for (const w of world) {
+    if (w.worldFlag) worldFlags.push({ id: w.worldFlag, value: w.value ?? null, factions: w.factions || null, source: w.source });
+    if (w.check) {
+      const m = skillMods[w.check] || (skillMods[w.check] = { bonus: 0, adv: false, sources: [] });
+      if (w.bonus) m.bonus += w.bonus;
+      if (w.adv) m.adv = true;
+      m.sources.push({ id: w.source, name: w.sourceName, bonus: w.bonus || 0, adv: !!w.adv });
+    }
+  }
+  return { worldFlags, skillMods };
+}
+
+export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroes', data, id, name, anyStat, weaponTier, talents = [], activeCombat, gadget } = {}) {
   const D = data ? normalizeData(data) : null;
   if (typeof race === 'string') race = D?.races[race];
   if (typeof cls === 'string') cls = D?.classes[cls];
@@ -122,7 +210,8 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   const armorDef = pathDef.armor || cls.armor;
   const role = pathDef.role || cls.role;
 
-  const passives = [...(race.passives || []), ...(cls.passives || [])].filter((p) => passiveApplies(p, level, path));
+  const TL = talents.length || gadget ? resolveTalents(D || normalizeData({}), { talents, activeCombat, gadget, level }) : null;
+  const passives = [...(race.passives || []), ...(cls.passives || []), ...(TL ? TL.passives : [])].filter((p) => passiveApplies(p, level, path));
   const P = collectPassives(passives);
 
   const base = { ...(stats || pathDef.recommended || cls.recommended || {}) };
@@ -153,9 +242,9 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.stats = st;
   u.prof = profBonus(level);
 
-  u.maxHp = 10 + st.con + 5 * level + (race.hpBonus || 0) + (cls.hpPerLevel || 0) * level;
-  u.maxMrl = 10 + 2 * st.wil + level + (race.mrlBonus || 0);
-  u.maxEnr = 5 + st.int + 3 * level + (race.enrBonus || 0);
+  u.maxHp = 10 + st.con + 5 * level + (race.hpBonus || 0) + (cls.hpPerLevel || 0) * level + P.maxHp;
+  u.maxMrl = 10 + 2 * st.wil + level + (race.mrlBonus || 0) + P.maxMrl;
+  u.maxEnr = 5 + st.int + 3 * level + (race.enrBonus || 0) + P.maxEnr;
   u.hp = u.maxHp;
   u.mrl = u.maxMrl;
   u.enr = u.maxEnr;
@@ -174,7 +263,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.saves = [...(cls.saves || [])];
   u.resist = mergeResist(mergeResist({}, race.resist), P.resist);
   u.immuneStatus = [...(race.immuneStatus || []), ...P.immuneStatus];
-  u.abilities = [...(race.abilities || []), ...(cls.abilities || [])].filter((a) => abilityAvailable(a, level, path));
+  u.abilities = [...(race.abilities || []), ...(cls.abilities || []), ...(TL ? TL.abilities : [])].filter((a) => abilityAvailable(a, level, path));
   u.passives = passives;
   u.hitBonus = P.hit;
   u.dmgBonus = P.dmg;
@@ -184,6 +273,17 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.regen = P.regen;
   u.overcast = cls.overcast || null;
   u.soulless = !!race.soulless;
+  u.condBonuses = P.cond;
+  u.thorns = P.thorns;
+  u.talents = [...talents];
+  u.activeTalents = TL ? TL.active : [];
+  u.gadget = TL ? TL.gadget : null;
+  const W = worldEffects(TL ? TL.world : []);
+  u.worldFlags = W.worldFlags; // not applied by the engine: world systems read them
+  u.skillMods = W.skillMods;
+  // everything needed to rebuild the hero on another level (progression.js)
+  u.build = { race: race.id, cls: cls.id, path, stats: { ...base }, anyStat: anyStat || null, talents: [...talents],
+    activeCombat: activeCombat ? [...activeCombat] : null, gadget: gadget || null, name: name || null, id: u.id };
   return u;
 }
 
@@ -237,6 +337,9 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
   u.deathSaves = P.deathSave;
   u.regen = P.regen;
   u.noAttack = !!def.noAttack || !def.weapon;
+  u.condBonuses = P.cond;
+  u.thorns = P.thorns;
+  u.maxHp += P.maxHp; u.hp = u.maxHp;
   u.decoy = !!def.decoy;
   u.boss = !!def.boss;
   u.defaultTurns = def.defaultTurns ?? null;

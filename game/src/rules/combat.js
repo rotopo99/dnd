@@ -111,6 +111,9 @@ export const BIG_HIT_SAVE = 'con';
 export const COVER_KB = 2;
 /** Own turns spent unconscious before death. */
 export const DOWN_TURNS_TO_DEATH = 3;
+/** v2: summons grow with the summoner — per summoner level above 1. */
+export const SUMMON_HP_PER_LEVEL = 3;
+export const SUMMON_DMG_PER_LEVEL = 1;
 
 // ---------------------------------------------------------------- events
 
@@ -204,6 +207,19 @@ function incomingDmg(b, u) {
     sum += s.value != null ? s.value : (m.incomingDmg || 0) + (m.dmgTaken || 0);
   }
   return sum;
+}
+
+/** v2 conditional passives ({ cond: 'targetWounded', hit, dmg }). */
+function condMatches(cond, tgt) {
+  if (cond === 'targetWounded') return tgt.hp < tgt.maxHp;
+  return false;
+}
+function condBonus(att, tgt, key) {
+  let v = 0;
+  const list = att.condBonuses;
+  if (!list || !tgt) return 0;
+  for (let i = 0; i < list.length; i++) if (condMatches(list[i].cond, tgt)) v += list[i][key] || 0;
+  return v;
 }
 
 function breakStatuses(b, u, what) {
@@ -822,7 +838,7 @@ function attackRoll(b, att, tgt, bonus, melee, isWeapon) {
   if (!isAlive(tgt) || !isStanding(att)) return { hit: false, crit: false, extraDice: 0 };
   const extraDice = isWeapon ? statusMod(b, att, 'extraWeaponDice') : 0;
   const r = d20(b.rng, attackMode(b, att, tgt, melee, isWeapon));
-  const total = r.natural + bonus + att.hitBonus + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att);
+  const total = r.natural + bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att);
   const kb = getKb(b, tgt, att, !melee);
   let crit = r.natural >= Math.min(20, att.critRange || 20);
   const hit = r.natural !== 1 && (crit || total >= kb);
@@ -834,7 +850,7 @@ function attackRoll(b, att, tgt, bonus, melee, isWeapon) {
 }
 
 function attackDmgBonus(b, att, tgt, kind) {
-  let v = (att.dmgBonus.all || 0) + (att.dmgBonus[kind] || 0) + buffSum(att, 'dmg') + statusMod(b, att, 'dmg') + incomingDmg(b, tgt);
+  let v = (att.dmgBonus.all || 0) + (att.dmgBonus[kind] || 0) + condBonus(att, tgt, 'dmg') + buffSum(att, 'dmg') + statusMod(b, att, 'dmg') + incomingDmg(b, tgt);
   if (kind === 'melee') v += statusMod(b, att, 'dmgMelee', 'meleeDmg');
   return v;
 }
@@ -856,12 +872,25 @@ function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType) 
   }
 }
 
+/** v2 passive thorns ({ dice, dmgType }): a melee hit on tgt hurts the attacker. */
+function applyThorns(b, att, tgt) {
+  if (!tgt.thorns || !tgt.thorns.length || !isAlive(att) || !isAlive(tgt) || tgt.down) return;
+  for (const th of tgt.thorns) {
+    if (!isAlive(att)) break;
+    emit(b, { type: 'thorns', actor: tgt.id, target: att.id });
+    dealDamage(b, tgt, att, rollDice(b.rng, th.dice || '1d4'), th.dmgType || null);
+  }
+}
+
 /** Full weapon attack (roll + damage). Returns { hit, crit }. */
 function weaponAttack(b, att, tgt, op) {
   if (!att.weapon) return { hit: false, crit: false };
   const melee = weaponRange(att) <= 1;
   const res = attackRoll(b, att, tgt, weaponAttackBonus(b, att) + ((op && op.hit) || 0), melee, true);
-  if (res.hit) weaponDamage(b, att, tgt, res.crit, res.extraDice, op && op.extraDice, op && op.extraType);
+  if (res.hit) {
+    weaponDamage(b, att, tgt, res.crit, res.extraDice, op && op.extraDice, op && op.extraType);
+    if (melee) applyThorns(b, att, tgt);
+  }
   return res;
 }
 
@@ -1280,6 +1309,17 @@ function abilityMove(b, u, op, spec) {
   }
 }
 
+/** v2: +SUMMON_HP_PER_LEVEL max HP and +SUMMON_DMG_PER_LEVEL damage per summoner level above 1. */
+export function scaleSummon(s, ownerLevel) {
+  const lv = Math.max(0, (ownerLevel || 1) - 1);
+  if (!lv) return s;
+  s.maxHp += SUMMON_HP_PER_LEVEL * lv;
+  s.hp = s.maxHp;
+  s.dmgBonus = { ...s.dmgBonus, all: (s.dmgBonus.all || 0) + SUMMON_DMG_PER_LEVEL * lv };
+  s.summonerLevel = ownerLevel;
+  return s;
+}
+
 function spawnSummon(b, owner, unitId, turns, tile, team) {
   const def = b.data.summons[unitId] || b.data.enemies[unitId];
   if (!def) { emit(b, { type: 'summonFail', actor: owner.id, unit: unitId }); return null; }
@@ -1295,6 +1335,7 @@ function spawnSummon(b, owner, unitId, turns, tile, team) {
   if (!pos) { emit(b, { type: 'summonFail', actor: owner.id, unit: unitId }); return null; }
   const s = initUnit(buildEnemy(def, { id: `${owner.id}~${unitId}${++b.summonCount}`, team: team || owner.team, kind: 'summon', data: b.data }));
   s.summonTurns = turns ?? def.defaultTurns ?? 3;
+  scaleSummon(s, owner.level || 1);
   s.summoner = owner.id;
   addUnit(b, s, pos);
   const at = b.order.indexOf(owner.id);
@@ -1422,6 +1463,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
       if (!r.hit) continue;
       ctx.crit = r.crit;
       ctx.attacked = true;
+      ctx.thorns = abilityIsMelee(u, a);
     }
     let gate = true;
     for (const op of effects) {
@@ -1438,6 +1480,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
       }
       if (!isAlive(t) || !isStanding(u)) break;
     }
+    if (ctx.thorns) applyThorns(b, u, t);
   }
   for (const op of effects) {
     if (op.op === 'summon') spawnSummon(b, u, op.unit, op.turns, spec && spec.x != null ? spec : null, op.side === 'hostileToAll' ? 'chaos' : op.team);
@@ -1543,7 +1586,8 @@ export function abilitySpecs(b, u, a) {
     return out;
   }
   const range = abilityRange(u, a);
-  if (range === 0 && a.target !== 'tile') return [{}];
+  // range 0: centred on the caster (self-centred areas like beast-roar / cringe-field, target 'tile' included)
+  if (range === 0 && !(a.target === 'tile' && mv && !a.area)) return [{}];
   if (a.target === 'tile') {
     if (mv && !a.area) { tilesAround(Math.min(range || mv.tiles, mv.tiles)); return out; }
     if (!a.area) {
@@ -1650,7 +1694,7 @@ export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy =
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
   let kb = getKb(b, tgt, null, false);
   if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += COVER_KB;
-  const total = bonus + att.hitBonus + statusMod(b, att, 'hit') + buffSum(att, 'hit');
+  const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit');
   const critRange = Math.min(20, att.critRange || 20);
   const need = Math.min(kb - total, critRange);
   return { need, mode, chance: chanceD20(need, mode), critChance: chanceD20(critRange, mode) };
