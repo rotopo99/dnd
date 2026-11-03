@@ -1,7 +1,7 @@
 // NPC bible (machine-readable). Human-readable version: docs/lore/npcs.md
 //
 // Fields:
-//   id, name, faction   — faction id from factions.js, or extra ids below ('predlozhka', 'tekhnikumy'), or 'none'
+//   id, name, faction   — faction id from factions.js, or extra ids below ('predlozhka', 'technikums'), or 'none'
 //   race                — id from races.js; extra values: 'ai' (bodiless AI), 'deity' (Judge), 'unknown'
 //   key                 — true: key canon NPC (leaders, deputies, named canon characters)
 //   role                — short role; roleProposed: true — role is not described in canon (proposed by writer)
@@ -19,7 +19,7 @@
 
 export const EXTRA_FACTIONS = {
   predlozhka: { name: 'Предложка' },
-  tekhnikumy: { name: 'Техникумы' },
+  technikums: { name: 'Техникумы' }, // id as in docs/specs/world.md
 };
 
 export const LOCATIONS = {
@@ -62,7 +62,7 @@ export const LOCATIONS = {
 const LIST = [
   // ======================= Альфа-Гармония (техникумы и жители) =======================
   {
-    id: 'victor-sundown', name: 'Виктор Сандаун', faction: 'tekhnikumy', race: 'human', key: true,
+    id: 'victor-sundown', name: 'Виктор Сандаун', faction: 'technikums', race: 'human', key: true,
     role: 'начальник поста караула технической части', location: 'alpha-harmony', services: ['quest', 'info'],
     character: 'Не самый сильный боец и знает это. Держится за устав, как за поручень.',
     speech: 'Нервно, канцеляритом, с внезапной честностью.',
@@ -73,7 +73,7 @@ const LIST = [
     canon: 'lore/history.md',
   },
   {
-    id: 'nikola', name: 'Никола', faction: 'tekhnikumy', race: 'human', key: true,
+    id: 'nikola', name: 'Никола', faction: 'technikums', race: 'human', key: true,
     role: 'протезист-самоучка, «умные протезы» из остатков', location: 'alpha-harmony', services: ['trade', 'train'],
     talents: ['Быстрая пайка', 'установка: Подкожная броня', 'установка: Встроенный сканер'],
     character: 'Гений без диплома и тормозов. Верит, что у протеза должна быть душа — или хотя бы мнение.',
@@ -85,7 +85,7 @@ const LIST = [
     canon: 'lore/history.md',
   },
   {
-    id: 'gans', name: 'Ганс', faction: 'tekhnikumy', race: 'human', key: true,
+    id: 'gans', name: 'Ганс', faction: 'technikums', race: 'human', key: true,
     role: 'техник-милитарист, бывший боец ГО и ЧС', location: 'alpha-harmony', services: ['train', 'quest'],
     talents: ['Хладнокровие', 'Быстрая перезарядка'],
     character: 'Без аугментаций, в автокамуфляже. Молчалив, работает чисто.',
@@ -97,7 +97,7 @@ const LIST = [
     canon: 'lore/history.md',
   },
   {
-    id: 'sera', name: 'Сера', faction: 'tekhnikumy', race: 'human', key: true,
+    id: 'sera', name: 'Сера', faction: 'technikums', race: 'human', key: true,
     role: 'техник-разведчик: перехват разработок, аномалии', location: 'alpha-harmony', services: ['info', 'quest'],
     character: 'Пережила серную бурю в Калостоке, от неё и имя. Верит только датчикам.',
     speech: 'Сухо, цифрами, без эмоций.',
@@ -108,7 +108,7 @@ const LIST = [
     canon: 'lore/history.md',
   },
   {
-    id: 'paracetamol', name: 'Парацетамол', faction: 'tekhnikumy', race: 'skeleton', key: true,
+    id: 'paracetamol', name: 'Парацетамол', faction: 'technikums', race: 'skeleton', key: true,
     role: 'робот-медик, создан Серой; помогает Николе ставить протезы', location: 'alpha-harmony', services: ['trade', 'train'],
     talents: ['Диагноз на глаз', 'Кровавая печать'],
     character: 'Заботлив по программе и, кажется, уже не только по ней. Учится шутить.',
@@ -120,7 +120,7 @@ const LIST = [
     canon: 'lore/history.md',
   },
   {
-    id: 'amanda', name: 'Аманда', faction: 'tekhnikumy', race: 'human', key: true,
+    id: 'amanda', name: 'Аманда', faction: 'technikums', race: 'human', key: true,
     role: 'администратор и охрана, заместитель Вазгена на Альфа-Гармонии; бывшая мусорщица', location: 'alpha-harmony', services: ['quest', 'info'],
     character: 'Попалась техникумам на краже в детстве и осталась у них. Практична до цинизма, своих не бросает.',
     speech: 'По-уличному: «Слушай сюда».',
@@ -131,7 +131,7 @@ const LIST = [
     canon: 'lore/history.md',
   },
   {
-    id: 'aynura', name: 'Айнура', faction: 'tekhnikumy', race: 'android', key: true,
+    id: 'aynura', name: 'Айнура', faction: 'technikums', race: 'android', key: true,
     role: 'андроид, разработка Вазгена; потеряла конечности при прошлой эвакуации', location: 'alpha-harmony', services: ['info', 'quest'],
     character: 'Спокойная, наблюдательная. Тело временное, память — родная.',
     speech: 'Ровно, точно, с редкой самоиронией.',
@@ -164,7 +164,7 @@ const LIST = [
     invented: true,
   },
   {
-    id: 'pip-junior', name: 'Ученик Пайка', faction: 'tekhnikumy', race: 'human', key: false,
+    id: 'pip-junior', name: 'Ученик Пайка', faction: 'technikums', race: 'human', key: false,
     role: 'подмастерье Николы', location: 'alpha-harmony', services: ['trade'],
     character: 'Восторженный подросток, собирает из мусора гаджеты, которые иногда работают.',
     speech: 'Быстро, с придыханием, копирует Николу.',
@@ -175,7 +175,7 @@ const LIST = [
     invented: true,
   },
   {
-    id: 'courier-lapsha', name: 'Курьер Лапша', faction: 'tekhnikumy', race: 'skeleton', key: false,
+    id: 'courier-lapsha', name: 'Курьер Лапша', faction: 'technikums', race: 'skeleton', key: false,
     role: 'курьер между Гармонией и Вазгеном', location: 'funicular', services: ['quest', 'info'],
     character: 'Длинный, тощий, вечно опаздывает, но всегда доезжает.',
     speech: 'Растянуто, со вздохами.',
@@ -635,15 +635,16 @@ const LIST = [
 
   // ======================= Мусорщики =======================
   {
-    id: 'glava-musora', name: 'Глава Мусора', faction: 'scavengers', race: 'human', key: true,
-    role: 'лидер, жестокий, но справедливый', location: 'scavenger-camp', services: ['quest'],
-    character: 'Сильнейший выживает — и он выжил. Слово держит, даже если это слово «убью».',
-    speech: 'Грубо, приговорами.',
-    gives: 'Крупные заказы мусорщиков, право прохода по свалкам.',
+    // Глава Мусора = Король свалок (решение человека, GDD «Ответы человека по миру», п. 6).
+    id: 'glava-musora', name: 'Глава Мусора, Король свалок', faction: 'scavengers', race: 'human', key: true,
+    role: 'лидер мусорщиков, жестокий, но справедливый; хозяин Свалок Короля', location: 'king-dumps', services: ['quest', 'trade'],
+    character: 'Толстый, хохочущий, в короне из кубков. Сильнейший выживает — и он выжил. Слово держит, даже если это слово «убью».',
+    speech: 'Хохотом, титулами и приговорами.',
+    gives: 'Крупные заказы мусорщиков, право прохода по свалкам, редкий хлам.',
     attitude: 'Пираты — сюзерен; скелеты — добыча; остальные — конкуренты.',
-    bark: 'Сильнейший выживает. Справедливо? Справедливо. Выжил — значит, был прав.',
-    hook: 'Глава предлагает сделку: голова Дымки за проход в Западный сектор.',
-    canon: 'lore/history.md',
+    bark: 'Ха-ха-ха! На колени перед короной! Она из кубков! Сильнейший выживает — а я, как видишь, жив.',
+    hook: 'Корону украли. Король объявил: новым королём станет вор. Теперь все ищут вора — чтобы стать вором. Ещё он предлагает голову Дымки за проход в Западный сектор.',
+    canon: ['lore/history.md', 'art/MANIFEST.txt'],
   },
   {
     id: 'sborshchik', name: 'Сборщик', faction: 'scavengers', race: 'human', key: true,
@@ -656,17 +657,6 @@ const LIST = [
     bark: 'Скелет? Не бойся. Я тебя оцениваю, а не разбираю. Пока.',
     hook: 'Ему нужен блок памяти с пиратской маркировкой. Покупатель неизвестен.',
     canon: 'lore/history.md',
-  },
-  {
-    id: 'korol-svalok', name: 'Король свалок', faction: 'scavengers', race: 'human', key: false,
-    role: 'самопровозглашённый король Свалок Короля', roleProposed: true, location: 'king-dumps', services: ['trade', 'quest'],
-    character: 'Толстый, хохочущий, в короне из кубков. Опаснее, чем кажется, и смешнее, чем хотел бы.',
-    speech: 'Хохотом и титулами.',
-    gives: 'Доступ к лучшим свалкам, редкий хлам, турниры мусора.',
-    attitude: 'Главу Мусора признаёт «братом по короне». Тот его — нет.',
-    bark: 'Ха-ха-ха! На колени перед короной! Она из кубков! Один даже за третье место!',
-    hook: 'Корону украли. Король объявил, что новым королём станет вор. Все ищут вора — чтобы стать вором.',
-    canon: 'art/MANIFEST.txt',
   },
   {
     id: 'rat-toma', name: 'Крысиная Тома', faction: 'scavengers', race: 'mutant-beast', key: false,
@@ -1330,7 +1320,7 @@ const LIST = [
 
   // ======================= Техникумы (вне Гармонии) =======================
   {
-    id: 'vazgen', name: 'Вазген', faction: 'tekhnikumy', race: 'human', key: true,
+    id: 'vazgen', name: 'Вазген', faction: 'technikums', race: 'human', key: true,
     role: 'техник-экспериментатор, ИИ и гражданская оборона, глава техникумов', location: 'vazgen-lab', services: ['quest'],
     character: 'Великий изобретатель, которого никто не может найти.',
     speech: 'Через записи и письма; лично — неизвестно.',
@@ -1341,6 +1331,31 @@ const LIST = [
     canon: 'lore/history.md',
   },
 ];
+
+// Companion block per docs/specs/world.md («Контракт с npcs.js»): { race, cls, path, talents, likes, dislikes, home }.
+// likes/dislikes — deed tags from world.md §4. talents — filled by designer (talents.js ids).
+const COMPANION = {
+  'lox':               { likes: ['honor', 'mercy'],        dislikes: ['serve-ai', 'cult-deal'],        home: 'alpha-harmony' },
+  'andrey':            { likes: ['help-weak', 'honor'],    dislikes: ['greed', 'cruelty'],             home: 'flat-lagoon' },
+  'dymka':             { likes: ['lie', 'free-slaves'],    dislikes: ['cruelty', 'kill-surrendered'],  home: 'corruption-city' },
+  'telifon':           { likes: ['help-weak', 'lie'],      dislikes: ['cult-deal', 'cruelty'],         home: 'corruption-city' },
+  'sekiro':            { likes: ['honor', 'mercy'],        dislikes: ['lie', 'cult-deal'],             home: 'tin-arena' },
+  'private-nedolyot':  { likes: ['mercy', 'free-slaves'],  dislikes: ['serve-ai', 'cruelty'],          home: 'warprom-corridor' },
+  'madam-stavka':      { likes: ['greed', 'lie'],          dislikes: ['honor', 'cult-deal'],           home: 'lagoon-bar' },
+  'zoya-klyk':         { likes: ['free-slaves', 'cruelty'], dislikes: ['serve-ai', 'anti-mutant'],     home: 'flat-lagoon' },
+  'aunt-loza':         { likes: ['mercy', 'help-weak'],    dislikes: ['cruelty', 'anti-mutant'],       home: 'green-border' },
+  'diss':              { likes: ['lie', 'help-weak'],      dislikes: ['cruelty', 'cult-deal'],         home: 'lagoon-bar' },
+  'rzhaven':           { likes: ['tech-faith', 'help-weak'], dislikes: ['cult-deal', 'serve-ai'],      home: 'proxy-wastes' },
+  'tik':               { likes: ['free-slaves', 'help-weak'], dislikes: ['serve-ai', 'cruelty'],       home: 'king-dumps' },
+  'shepherd-timokha':  { likes: ['mercy', 'honor'],        dislikes: ['greed', 'cruelty'],             home: 'neutral-villages' },
+  'yarosh':            { likes: ['free-slaves', 'honor'],  dislikes: ['serve-ai', 'kill-surrendered'], home: 'khatab-city' },
+  'zarya':             { likes: ['help-weak', 'free-slaves'], dislikes: ['serve-ai', 'kill-surrendered'], home: 'agrozone' },
+  'sister-pomekha':    { likes: ['mercy', 'help-weak'],    dislikes: ['cult-deal', 'cruelty'],         home: 'lagoon-bar' },
+};
+
+for (const n of LIST) {
+  if (n.recruitable) n.companion = { race: n.race, cls: n.cls, path: n.path, talents: [], ...COMPANION[n.id] };
+}
 
 export const NPCS = Object.fromEntries(LIST.map((n) => [n.id, n]));
 

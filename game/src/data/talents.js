@@ -54,22 +54,8 @@ export const JOB_GROUPS = {
   social:   { name: 'Торговля и лидерство', classes: ['reper', 'arbiter', 'ugolovnik'] },
 };
 
-/**
- * Происхождение героя = фракционный слот. rep — стартовая прибавка к своей фракции (распространяется по матрице,
- * см. docs/specs/world.md). races: null — любые играбельные.
- */
-export const ORIGINS = {
-  aiParty:         { name: 'Гражданин АИ Партии',   faction: 'aiParty',         rep: 20, races: ['human', 'skeleton', 'android'] },
-  tinBrotherhood:  { name: 'Жестяное братство',      faction: 'tinBrotherhood',  rep: 20, races: ['human', 'skeleton', 'mutant-beast', 'mutant-plant'] },
-  pirates:         { name: 'Пиратская команда',      faction: 'pirates',         rep: 20, races: null },
-  scavengers:      { name: 'Мусорщик',               faction: 'scavengers',      rep: 20, races: ['human', 'android', 'mutant-beast', 'mutant-plant'] },
-  cult:            { name: 'Бывший культист',        faction: 'cult',            rep: 0,  races: null }, // предатель: культ бонуса не даёт
-  renegades:       { name: 'Отступник',              faction: 'renegades',       rep: 20, races: null },
-  neutralVillages: { name: 'Житель Нейтральных селений', faction: 'neutralVillages', rep: 20, races: null },
-  technikums:      { name: 'Техникумы',              faction: 'technikums',      rep: 20, races: null }, // малая фракция (lore/history.md)
-  mutantsBeast:    { name: 'Стая мутантов-Ж',        faction: 'mutantsBeast',    rep: 20, races: ['mutant-beast'] },
-  mutantsPlant:    { name: 'Роща мутантов-Р',        faction: 'mutantsPlant',    rep: 20, races: ['mutant-plant'] },
-};
+/** Происхождения (фракционный слот) и стартовая репутация — в world/origins.js; реэкспорт для удобства. */
+export { ORIGINS } from './world/origins.js';
 
 /** Проверки навыков вне боя (канон rules/stats-skills.md). */
 export const SKILLS = {
@@ -147,6 +133,19 @@ export const WORLD_FLAGS = {
   'prophetic-dream': 'Перед ключевым боем видно состав врагов.',
   'telekinesis': 'Раз за отдых — автоуспех одной проверки Взлома или ловушки.',
   'any-weapon': 'Найденное оружие любого типа используется без помехи (ступень «умеет»).',
+  'worker-pass': 'Блокпосты АИ пропускают как рабочего: вход как при «нейтральны» у АИ Партии и Агрозоны.',
+  // --- флаги классовых примочек (game/src/data/gadgets.js)
+  'break-door': 'Раз за узел: выбить дверь или завал без проверки Атлетики.',
+  'terminal-scan': 'Состояние терминалов (ritual / dead / ours) видно на карте; Хакинг +2 у терминалов.',
+  'mutate-on-rest': 'На отдыхе можно вызвать событие мутации (d20 1–5 — дебафф до следующего отдыха).',
+  'multitool': 'На отдыхе — аптечка или граната на выбор.',
+  'scout-node': 'Перед входом на соседний узел виден состав боя.',
+  'badge-entry': 'Поселения при «подозрительны» пускают без проверки и пошлины.',
+  'silent-pick': 'Раз за отдых — автоуспех Взлома.',
+  'herb-medkit': 'На привале в поле — аптечка из трав.',
+  'gig': 'Раз за визит в поселение — выступление: Убеждение СЛ 13 → креды (10 × уровень) и +3 репутации.',
+  'storm-ward': 'Партия защищена от прокси-бурь и прочих опасностей региона (hazard).',
+  'judge-code': 'Перепрошивка терминалов культа — Магия Судьи с преимуществом; побег из Киберспейса +2; каждое использование — культ −5.',
 };
 
 // ------------------------------------------------------------------ список
@@ -470,16 +469,30 @@ const LIST = [
     desc: 'Знает, как остановить драку до первого выстрела.' }),
 
   // --- Техникумы (малая фракция Альфа-Гармонии, вне канона по талантам)
-  T({ id: 'no-id', name: 'Без ID', slot: 'faction', req: { origins: ['technikums'] },
+  T({ id: 'no-id', name: 'Без ID', slot: 'faction', req: { origins: ['tekhnikumy'] },
     world: [{ worldFlag: 'forge-pass' }, { worldFlag: 'camera-off' }],
     canon: 'вне канона, не противоречит: техникумы — «отсутствие ID-контроля в сфере технологий» (lore/history.md)',
     desc: 'Системы АИ его не узнают: ни чипа, ни следа.' }),
-  T({ id: 'smart-prosthesis', name: 'Умный протез', slot: 'faction', kind: 'combat', req: { origins: ['technikums'] },
+  T({ id: 'smart-prosthesis', name: 'Умный протез', slot: 'faction', kind: 'combat', req: { origins: ['tekhnikumy'] },
     abilities: [ab({ id: 'talent-smart-prosthesis', name: 'Щиток протеза', action: 'bonus', range: 0, target: 'self',
       effects: [{ op: 'shield', dice: '1d6', bonus: 2, turns: 2 }],
       desc: 'Протез Николы раскрывает щиток: щит 1d6 + 2 на 2 хода. Раз за бой.' })],
     canon: 'вне канона, не противоречит: «умные протезы» Николы (lore/timeline.md)',
     desc: 'Экспериментальный протез техникумов со своим мнением.' }),
+
+  // --- Раб АИ Партии (вне канона, по решению человека 2026-11-03 и lore/timeline.md: ID-чипы, побег из Агрозоны)
+  T({ id: 'slave-chip', name: 'Чип раба', slot: 'faction', req: { origins: ['aiSlave'] },
+    world: [{ worldFlag: 'worker-pass' }],
+    canon: 'вне канона, не противоречит: требование восставших «Отмена ID-чипов» (lore/timeline.md)',
+    desc: 'ID-чип ещё под кожей: на блокпостах АИ проходит как рабочий.' }),
+  T({ id: 'field-calluses', name: 'Мозоли полей', slot: 'faction', req: { origins: ['aiSlave'] },
+    world: [{ check: 'survival', bonus: 2 }, { check: 'endurance', bonus: 2 }],
+    canon: 'вне канона, не противоречит: Агрозона — сельхоз и промышленность (lore/faction-stances.md)',
+    desc: 'Годы на полях Агрозоны: Выживание и Устойчивость +2.' }),
+  T({ id: 'chain-breaker', name: 'Рвущий цепи', slot: 'faction', kind: 'combat', req: { origins: ['aiSlave'] },
+    passives: [{ op: { immuneStatus: ['root'] } }],
+    canon: 'вне канона, не противоречит: восстание рабов Марты (lore/timeline.md)',
+    desc: 'Цепей с него хватит: иммунитет к обездвиживанию.' }),
 
   // --- Мутанты-Ж / Мутанты-Р (канон: мутационные таланты)
   T({ id: 'beast-reflexes', name: 'Рефлексы зверя', slot: 'faction', kind: 'combat', req: { origins: ['mutantsBeast'] },
@@ -579,7 +592,7 @@ const LIST = [
     world: [{ worldFlag: 'disguise' }],
     desc: 'Украденная технология АИ Партии: проецирует на себя чужой образ.' }),
   T({ id: 'manual-reboot', name: 'Ручная перезагрузка', slot: 'learned', kind: 'combat',
-    source: { kind: 'trainer', trainer: 'technikums', cost: 150 },
+    source: { kind: 'trainer', trainer: 'tekhnikumy', cost: 150 },
     abilities: [ab({ id: 'talent-manual-reboot', name: 'Ручная перезагрузка', action: 'action', range: 1, target: 'ally',
       effects: [{ op: 'stabilize' }],
       desc: 'Удар по корпусу «оживляет» упавшего союзника: встаёт с 1 ЗДР. Раз за бой.' })],
@@ -589,7 +602,7 @@ const LIST = [
     world: [{ check: 'lockpicking', adv: true }],
     desc: 'Метод старых воров: подбирает коды, слушая механизм.' }),
   T({ id: 'weapon-tuning', name: 'Оружейный тюнинг', slot: 'learned', kind: 'combat',
-    source: { kind: 'trainer', trainer: 'technikums', cost: 250, item: 'rare-parts' },
+    source: { kind: 'trainer', trainer: 'tekhnikumy', cost: 250, item: 'rare-parts' },
     passives: [{ op: { dmg: { all: 1 } } }],
     desc: 'Улучшает оружие: +1 к урону. Нужны редкие детали.' }),
   T({ id: 'wasteland-signs', name: 'Язык жестов пустошей', slot: 'learned',
