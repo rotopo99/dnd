@@ -95,6 +95,22 @@ const HERO_KINDS = { hero: 1, ally: 1 };
 const DEFAULT_STATUS_DC = 12;
 /** v1.2: overcasts (casting without ENR) per unit per battle. */
 export const OVERCAST_LIMIT = 2;
+/** «Срыв»: d20 <= this -> heartbreak, else lost control / «Сломлен». */
+export const BREAKDOWN_HEARTBREAK_MAX = 10;
+/** Heartbreak: share of current HP lost (never below 1). */
+export const HEARTBREAK_HP_LOSS = 0.7;
+/** After «Срыв» MRL is restored to this share of max. */
+export const BREAKDOWN_MRL_RESET = 0.25;
+/** «Надлом»: MRL at or below this share of max. */
+export const NADLOM_FRACTION = 0.5;
+/** «Удар ≥ 50%»: HP lost in one round >= this share of max -> CON save vs BIG_HIT_DC or stun. */
+export const BIG_HIT_FRACTION = 0.5;
+export const BIG_HIT_DC = 12;
+export const BIG_HIT_SAVE = 'con';
+/** Cover bonus to KB vs ranged attacks. */
+export const COVER_KB = 2;
+/** Own turns spent unconscious before death. */
+export const DOWN_TURNS_TO_DEATH = 3;
 
 // ---------------------------------------------------------------- events
 
@@ -182,11 +198,10 @@ function skipsTurn(b, u) {
 function incomingDmg(b, u) {
   let sum = 0;
   for (const s of u.statuses) {
-    if (s.value != null) sum += s.value;
-    else {
-      const m = statusDef(b, s.id)?.mods;
-      if (m) sum += (m.incomingDmg || 0) + (m.dmgTaken || 0);
-    }
+    const m = statusDef(b, s.id)?.mods;
+    const counts = s.mark || (m && (m.incomingDmg || m.dmgTaken));
+    if (!counts) continue;
+    sum += s.value != null ? s.value : (m.incomingDmg || 0) + (m.dmgTaken || 0);
   }
   return sum;
 }
@@ -217,7 +232,7 @@ export function getKb(b, u, attacker, ranged) {
   let kb = u.kb + buffSum(u, 'kb') + statusMod(b, u, 'kb');
   const mul = modProduct(b, u, 'armorKbMul');
   if (mul !== 1) kb -= u.armorKb - Math.floor(u.armorKb * mul);
-  if (ranged && attacker && hasCover(b.grid, attacker.x, attacker.y, u.x, u.y)) kb += 2;
+  if (ranged && attacker && hasCover(b.grid, attacker.x, attacker.y, u.x, u.y)) kb += COVER_KB;
   return kb;
 }
 
@@ -392,7 +407,7 @@ function startNextTurn(b) {
     const u = b.byId[b.order[b.turnIndex]];
     if (!u || u.dead || u.removed) continue;
     if (beginTurn(b, u)) return;
-    if (!b.winner) finishTurn(b, u);
+    if (!b.winner && !u.dead && !u.removed) finishTurn(b, u);
   }
   b.turn = null;
 }
@@ -405,7 +420,7 @@ function beginTurn(b, u) {
   if (u.down) {
     u.downTurns++;
     emit(b, { type: 'downTick', actor: u.id, turns: u.downTurns });
-    if (u.downTurns >= 3) kill(b, u, 'bleedout');
+    if (u.downTurns >= DOWN_TURNS_TO_DEATH) kill(b, u, 'bleedout');
     return false;
   }
   if (u.summonTurns != null && u.summonTurns <= 0) { unsummon(b, u); return false; }
@@ -423,7 +438,7 @@ function beginTurn(b, u) {
       if (!d || !d.tick) continue;
       const src = (s.source && b.byId[s.source]) || u;
       if (d.tick.op === 'buff' && d.tick.cumulative) {
-        const cap = d.tick.cap ?? -99;
+        const cap = d.tick.cap ?? (d.tick.value < 0 ? -99 : 99);
         s.stackStat = d.tick.stat;
         const next = (s.stack || 0) + (d.tick.value || 0);
         s.stack = d.tick.value < 0 ? Math.max(cap, next) : Math.min(cap, next);
@@ -434,6 +449,11 @@ function beginTurn(b, u) {
       applyOp(b, src, u, d.tick, { tick: true });
     }
   }
+  // whatever the tick phase applied to this unit belongs to THIS turn (no extra "fresh" turn)
+  for (const s of u.statuses) s.fresh = false;
+  for (const s of u.buffs) s.fresh = false;
+  if (u.shield) u.shield.fresh = false;
+  u.lostControlFresh = false;
   if (!isStanding(u)) return false;
   if (checkVictory(b)) return false;
   if (skipsTurn(b, u)) {
@@ -514,6 +534,10 @@ export function checkVictory(b) {
       if (u.team === 'heroes' && isStanding(u) && u.kind !== 'summon' && tileAt(b.grid, u.x, u.y) === T_EXIT) winner = 'heroes';
     }
   }
+  if (!winner && b.map.lose === 'heroDown') {
+    for (const u of b.units) if (u.kind === 'hero' && u.team === 'heroes' && !isStanding(u)) { winner = 'enemies'; break; }
+  }
+  if (!winner && teams === 0) winner = 'draw';
   if (!winner && teams > 0 && standing.size <= 1) winner = standing.size ? [...standing][0] : 'draw';
   if (winner) {
     b.winner = winner;
@@ -570,7 +594,7 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
     tgt.mrl = Math.max(0, tgt.mrl - amt);
     emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, dmgType, resource: 'mrl', resist: r, mult, crit, value: tgt.mrl });
     if (amt > 0) {
-      if (!tgt.nadlom && tgt.mrl <= tgt.maxMrl / 2) {
+      if (!tgt.nadlom && tgt.mrl <= tgt.maxMrl * NADLOM_FRACTION) {
         tgt.nadlom = true;
         emit(b, { type: 'nadlom', target: tgt.id });
       }
@@ -595,7 +619,7 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
     emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, absorbed, dmgType, resource: 'hp', resist: r, mult, crit, value: 0 });
     if (amt > 0) {
       tgt.downTurns += crit ? 2 : 1;
-      if (tgt.downTurns >= 3) kill(b, tgt, 'finished');
+      if (tgt.downTurns >= DOWN_TURNS_TO_DEATH) kill(b, tgt, 'finished');
     }
     return amt;
   }
@@ -628,18 +652,18 @@ function zeroHp(b, u, src) {
 }
 
 function bigHitCheck(b, u) {
-  if (u.bigHitRound === b.round || u.roundHpLoss < u.maxHp * 0.5) return;
+  if (u.bigHitRound === b.round || u.roundHpLoss < u.maxHp * BIG_HIT_FRACTION) return;
   u.bigHitRound = b.round;
-  const ok = rollSave(b, u, 'con', 12, null, 'bigHit');
+  const ok = rollSave(b, u, BIG_HIT_SAVE, BIG_HIT_DC, null, 'bigHit');
   emit(b, { type: 'bigHit', target: u.id, success: ok });
   if (!ok) applyStatus(b, u, 'stun', 1, null);
 }
 
 function breakdown(b, u) {
   const roll = 1 + Math.floor(b.rng() * 20);
-  if (roll <= 10) {
+  if (roll <= BREAKDOWN_HEARTBREAK_MAX) {
     const before = u.hp;
-    u.hp = Math.max(1, u.hp - Math.floor(u.hp * 0.7));
+    u.hp = Math.max(1, u.hp - Math.floor(u.hp * HEARTBREAK_HP_LOSS));
     emit(b, { type: 'breakdown', target: u.id, roll, result: 'heartbreak', amount: before - u.hp, value: u.hp });
   } else if (!HERO_KINDS[u.kind] && !u.boss) {
     // v1.2: non-boss enemies and summons are «Сломлен» — surrender / flee, out of the battle (counts as defeated)
@@ -657,7 +681,7 @@ function breakdown(b, u) {
     u.lostControlFresh = !!(b.turn && b.turn.unitId === u.id);
     emit(b, { type: 'breakdown', target: u.id, roll, result: 'lostControl' });
   }
-  u.mrl = Math.floor(u.maxMrl * 0.25);
+  u.mrl = Math.floor(u.maxMrl * BREAKDOWN_MRL_RESET);
 }
 
 /** Heal a resource. Healing an unconscious unit's HP revives it. Returns amount healed. */
@@ -682,7 +706,7 @@ export function healUnit(b, src, tgt, amount, resource = 'hp') {
   } else if (resource === 'mrl') {
     got = Math.min(tgt.maxMrl - tgt.mrl, amount);
     tgt.mrl += got;
-    if (tgt.nadlom && tgt.mrl > tgt.maxMrl / 2) tgt.nadlom = false;
+    if (tgt.nadlom && tgt.mrl > tgt.maxMrl * NADLOM_FRACTION) tgt.nadlom = false;
   } else if (resource === 'enr') {
     got = Math.min(tgt.maxEnr - tgt.enr, amount);
     tgt.enr += got;
@@ -758,7 +782,7 @@ function consumeNextRoll(b, u) {
 
 function saveMode(u, stat) {
   const adv = u.advantages.includes('save' + stat[0].toUpperCase() + stat.slice(1)) || u.advantages.includes('save');
-  const dis = stat === 'wil' && u.maxMrl > 0 && u.mrl <= u.maxMrl / 2; // «Надлом»
+  const dis = stat === 'wil' && u.maxMrl > 0 && u.mrl <= u.maxMrl * NADLOM_FRACTION; // «Надлом»
   return { adv, dis };
 }
 function saveBonusOf(b, u, stat) {
@@ -908,7 +932,7 @@ function walk(b, u, path, noProvoke) {
 
 function opportunity(b, r, mover) {
   if (r.reactionUsed || !isStanding(r) || skipsTurn(b, r)) return;
-  const a = r.abilities.find((x) => x.action === 'reaction' && x.trigger === 'enemyLeaves' && abilityUsable(b, r, x, true) === null);
+  const a = r.abilities.find((x) => x.action === 'reaction' && x.trigger === 'enemyLeaves' && (x.cost || 0) <= r.enr && abilityUsable(b, r, x, true) === null);
   if (a && targetValid(b, r, a, { unit: mover.id })) {
     b.reactionDepth++;
     emit(b, { type: 'reaction', actor: r.id, target: mover.id, trigger: 'enemyLeaves', ability: a.id });
@@ -983,8 +1007,35 @@ export function tauntSource(b, u) {
   return null;
 }
 
+/** Dash-mode ability movement is impossible at speed 0 (root, speedMul 0). Teleport ignores speed. */
+const moveBlocked = (b, u, mv) => mv.mode !== 'teleport' && getSpeed(b, u) === 0;
+
+/**
+ * Destination of a `move` op toward a unit target: 'stay' (already adjacent), {x, y}, or null (impossible).
+ * Dash: free tile adjacent to the target, reachable within op.tiles. Teleport: free tile within op.tiles in
+ * line of sight. Both respect noApproachSource (fear).
+ */
+function moveDestination(b, u, op, t) {
+  if (!t || t === u || chebyshev(u.x, u.y, t.x, t.y) <= 1) return 'stay';
+  if (moveBlocked(b, u, op)) return null;
+  const tiles = op.tiles || 1;
+  const reach = op.mode === 'teleport' ? null : reachable(b.grid, u.x, u.y, tiles, b.occ);
+  let best = null, bestD = 1e9;
+  for (const [dx, dy] of DIRS8) {
+    const x = t.x + dx, y = t.y + dy;
+    if (!isPassable(b.grid, x, y) || unitAt(b, x, y)) continue;
+    const d = reach ? reach.dist[y * b.grid.w + x] : chebyshev(u.x, u.y, x, y);
+    if (d < 0 || d > tiles) continue;
+    if (!reach && !lineOfSight(b.grid, u.x, u.y, x, y)) continue;
+    if (!approachOk(b, u, x, y)) continue;
+    if (d < bestD) { bestD = d; best = { x, y }; }
+  }
+  return best;
+}
+
 function moveTileValid(b, u, a, mv, x, y) {
   if (!inBounds(b.grid, x, y) || !isPassable(b.grid, x, y) || unitAt(b, x, y)) return false;
+  if (moveBlocked(b, u, mv) || !approachOk(b, u, x, y)) return false;
   const lim = a.target === 'self' || a.range == null || a.range === 0 ? mv.tiles : Math.min(abilityRange(u, a), mv.tiles);
   if (chebyshev(u.x, u.y, x, y) > lim) return false;
   if (mv.mode !== 'teleport') {
@@ -1021,7 +1072,10 @@ export function targetValid(b, u, a, spec) {
     if (t.team !== u.team) return false;
   }
   const d = chebyshev(u.x, u.y, t.x, t.y);
-  if (mv) return d <= Math.max(range, mv.tiles + (hasOp(a, 'weapon') ? weaponRange(u) : 1));
+  if (mv && !mv.random) {
+    if (d > Math.max(range, mv.tiles + (hasOp(a, 'weapon') ? weaponRange(u) : 1))) return false;
+    return moveDestination(b, u, mv, t) !== null;
+  }
   const lim = hasOp(a, 'weapon') ? Math.min(Math.max(range, 1), weaponRange(u)) : Math.max(range, t === u ? 0 : 1);
   if (d > lim) return false;
   if (d > 1 && !lineOfSight(b.grid, u.x, u.y, t.x, t.y)) return false;
@@ -1165,8 +1219,8 @@ export function applyOp(b, caster, t, op, ctx = {}) {
       const fresh = !!(b.turn && b.turn.unitId === t.id);
       const cur = getStatus(t, id);
       const val = op.value ?? 2;
-      if (cur) { cur.turns = Math.max(cur.turns ?? 0, op.turns ?? 1); cur.value = Math.max(cur.value ?? 0, val); cur.source = caster.id; }
-      else t.statuses.push({ id, turns: op.turns ?? 1, source: caster.id, fresh, value: val, dc: null, stack: 0, stackStat: null });
+      if (cur) { cur.turns = Math.max(cur.turns ?? 0, op.turns ?? 1); cur.value = Math.max(cur.value ?? 0, val); cur.source = caster.id; cur.mark = true; }
+      else t.statuses.push({ id, turns: op.turns ?? 1, source: caster.id, fresh, value: val, dc: null, stack: 0, stackStat: null, mark: true });
       emit(b, { type: 'mark', actor: caster.id, target: t.id, id, value: val, turns: op.turns ?? 1 });
       break;
     }
@@ -1203,20 +1257,14 @@ function randomHop(b, u, tiles) {
 function abilityMove(b, u, op, spec) {
   const tiles = op.tiles || 1;
   let dest = null;
-  if (spec && spec.x != null) dest = { x: spec.x, y: spec.y };
-  else if (spec && spec.unit) {
-    const t = b.byId[spec.unit];
-    if (!t || t === u || chebyshev(u.x, u.y, t.x, t.y) <= 1) return;
-    const reach = op.mode === 'teleport' ? null : reachable(b.grid, u.x, u.y, tiles, b.occ);
-    let best = null, bestD = 1e9;
-    for (const [dx, dy] of DIRS8) {
-      const x = t.x + dx, y = t.y + dy;
-      if (!isPassable(b.grid, x, y) || unitAt(b, x, y)) continue;
-      const d = reach ? reach.dist[y * b.grid.w + x] : chebyshev(u.x, u.y, x, y);
-      if (d < 0 || d > tiles) continue;
-      if (d < bestD) { bestD = d; best = { x, y }; }
-    }
-    dest = best;
+  if (moveBlocked(b, u, op)) return;
+  if (spec && spec.x != null) {
+    dest = { x: spec.x, y: spec.y };
+    if (!approachOk(b, u, dest.x, dest.y)) return;
+  } else if (spec && spec.unit) {
+    const d = moveDestination(b, u, op, b.byId[spec.unit]);
+    if (!d || d === 'stay') return;
+    dest = d;
   }
   if (!dest || (dest.x === u.x && dest.y === u.y)) return;
   if (op.mode === 'teleport') {
@@ -1312,6 +1360,25 @@ function hallucinate(b, u, t, range) {
   return nt;
 }
 
+/** Is this attack-roll ability melee (no cover, no point-blank disadvantage)? Same rule as attackRoll. */
+function abilityIsMelee(u, a) {
+  return hasOp(a, 'weapon') ? weaponRange(u) <= 1 : abilityRange(u, a) <= 1;
+}
+
+/**
+ * For UI hit chance: is the action's attack roll melee? action: { type: 'attack' } | { type: 'ability', ability }.
+ * Use with attackOdds(b, u, target, bonus, isMeleeAttack(...), isWeapon).
+ */
+export function isMeleeAttack(b, u, action) {
+  if (!action) return false;
+  if (action.type === 'attack') return weaponRange(u) <= 1;
+  if (action.type === 'ability') {
+    const a = u.abilities.find((x) => x.id === action.ability);
+    return !!a && abilityIsMelee(u, a);
+  }
+  return false;
+}
+
 function resolveAbility(b, u, a, spec, asReaction) {
   const cost = a.cost || 0;
   const overcast = cost > u.enr;
@@ -1351,7 +1418,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
         ctx.half = true;
       }
     } else if (hostile && a.roll === 'attack' && !hasWeapon) {
-      const r = attackRoll(b, u, t, spellAttackBonus(b, u, a), abilityRange(u, a) <= 1, false);
+      const r = attackRoll(b, u, t, spellAttackBonus(b, u, a), abilityIsMelee(u, a), false);
       if (!r.hit) continue;
       ctx.crit = r.crit;
       ctx.attacked = true;
@@ -1510,12 +1577,11 @@ export function perform(b, action) {
   if (!action || !b.turn) return fail(b, start, 'noTurn');
   const uid = action.unit || b.turn.unitId;
   if (uid !== b.turn.unitId) return fail(b, start, 'notYourTurn');
+  if (action.type === 'endTurn') return { ok: true, events: endTurn(b) };
   const u = b.byId[uid];
   if (!isStanding(u)) return fail(b, start, 'down');
   const t = b.turn;
   switch (action.type) {
-    case 'endTurn':
-      return { ok: true, events: endTurn(b) };
     case 'move': {
       if (!action.to || !inBounds(b.grid, action.to.x, action.to.y)) return fail(b, start, 'noTarget');
       const reach = getReachable(b, uid);
@@ -1583,7 +1649,7 @@ export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy =
   const m = attackMode(b, att, tgt, melee, isWeapon, fx, fy);
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
   let kb = getKb(b, tgt, null, false);
-  if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += 2;
+  if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += COVER_KB;
   const total = bonus + att.hitBonus + statusMod(b, att, 'hit') + buffSum(att, 'hit');
   const critRange = Math.min(20, att.critRange || 20);
   const need = Math.min(kb - total, critRange);

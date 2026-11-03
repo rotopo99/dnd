@@ -28,7 +28,7 @@ export default {
   ],
   passives: [
     { id: 'avenger-mastery', name: 'Мастерство оружия', level: 5, path: 'avenger',
-      desc: 'Ступень владения «мастерство» (канон): +1 к атаке и +2 к урону в ближнем бою.', op: { hit: 1, dmg: { melee: 2 } } },
+      desc: 'Ступень владения «мастерство» (канон): +1 к атаке и +1 к урону в ближнем бою.', op: { hit: 1, dmg: { melee: 1 } } },
     { id: 'guard-stance', name: 'Защита', level: 1, path: 'defender',
       desc: '+1 КБ.', op: { kb: 1 } },
     { id: 'cyber-aura', name: 'Кибер-аура', level: 5, path: 'defender',

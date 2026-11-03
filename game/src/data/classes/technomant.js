@@ -5,7 +5,7 @@ export default {
   id: 'technomant', name: 'Техномант', analog: 'Волшебник', icon: 'class_tech',
   role: 'caster',
   castStat: 'int',
-  hpPerLevel: 2,
+  hpPerLevel: 3,
   saves: ['int', 'wil'],
   armor: { name: 'Куртка с экранирующей подкладкой', type: 'light', kb: 2 },
   weapon: { name: 'Самопальный пистолет', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 8, hit: 0 },
@@ -77,7 +77,7 @@ export default {
     // ---------- Путь Кодера ----------
     {
       id: 'cyber-hack', name: 'Кибер-взлом', level: 1, path: 'coder',
-      cost: 2, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
+      cost: 1, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
       roll: 'attack', save: null, onSave: 'none', usesPerBattle: null,
       effects: [
         { op: 'damage', dice: '2d6', dmgType: 'electric', bonus: 'castMod' },

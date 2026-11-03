@@ -44,7 +44,7 @@ export function formatEvent(S, e) {
     case 'save': {
       const r = e.roll || {};
       return [a(T), g(`: ${t('battle.save')} ${t(`stat.${e.stat}`)} ${rollStr(r)} ${t('battle.vs')} ${t('battle.dc')} ${e.dc} — `),
-        e.success ? [t('battle.saveOk').split(' ').pop(), C.j] : [t('battle.saveFail').split(' ').pop(), C.c]];
+        e.success ? [t('battle.saveSuccessShort'), C.j] : [t('battle.saveFailShort'), C.c]];
     }
     case 'damage': {
       const mrl = e.resource === 'mrl';
@@ -99,7 +99,7 @@ export function formatEvent(S, e) {
     case 'stabilize': return [a(T), g(`: ${t('battle.stabilize')}`)];
     case 'deathSave': return [a(T), g(`: ${t('battle.deathSave')}`)];
     case 'downTick': return [a(A), g(`: ${t('battle.downTick')} (${e.turns}/3)`)];
-    case 'bigHit': return [a(T), g(`: ${t('battle.bigHit')} — `), e.success ? [t('battle.saveOk').split(' ').pop(), C.j] : [t('state.stunned'), C.a]];
+    case 'bigHit': return [a(T), g(`: ${t('battle.bigHit')} — `), e.success ? [t('battle.saveSuccessShort'), C.j] : [t('state.stunned'), C.a]];
     case 'mark': return [a(T), g(': '), [t('battle.mark'), C.a]];
     case 'cleanse': return [a(T), g(': '), [t('battle.cleanse'), C.j]];
     case 'overcast': return [a(A), g(': '), [`${t('battle.overcast')} — d20 ${e.roll}${e.row ? `: ${e.row}` : ''}`, C.a]];

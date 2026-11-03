@@ -11,7 +11,7 @@ export default {
   id: 'slavotech', name: 'СлавоТех', analog: 'Жрец', icon: 'class_tech',
   role: 'support',
   castStat: 'wil',
-  hpPerLevel: 1,
+  hpPerLevel: 2,
   saves: ['wil', 'con'],
   armor: { name: 'Ритуальный нагрудник', type: 'medium', kb: 4 },
   weapon: { name: 'Освящённый гаечный ключ', dice: '1d8', dmgType: 'blunt', stat: 'str', range: 1, hit: 0 },
@@ -27,7 +27,7 @@ export default {
   passives: [
     { id: 'proxy-hunter', name: 'Прокси-охотник', level: 1, path: 'proxy-master',
       desc: 'Видит слабые места: +1 к атаке.', op: { hit: 1 } },
-    { id: 'system-restore', name: 'Системное восстановление', level: 5, path: 'healing',
+    { id: 'system-restore', name: 'Системное восстановление', level: 1, path: 'healing',
       desc: 'Старый бог латает своего служителя: 1d4 ЗДР в начале каждого хода.',
       op: { regen: { dice: '1d4', resource: 'hp', every: 'turn' } } },
   ],

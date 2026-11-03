@@ -5,7 +5,7 @@ export default {
   id: 'zabivnoy', name: 'Забивной', analog: 'Воин', icon: 'class_fighter',
   role: 'tank',
   castStat: null,
-  hpPerLevel: 2,
+  hpPerLevel: 1,
   saves: ['str', 'con'],
   armor: { name: 'Тяжёлая броня из листовой стали', type: 'heavy', kb: 6 },
   weapon: { name: 'Арматура', dice: '1d8', dmgType: 'blunt', stat: 'str', range: 1, hit: 0 },

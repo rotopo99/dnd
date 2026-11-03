@@ -40,8 +40,6 @@ export default {
       desc: 'Когти крепнут: ещё +1 к урону в ближнем бою.', op: { dmg: { melee: 1 } } },
     { id: 'killer-eye', name: 'Глаз убийцы', level: 5, path: 'predator',
       desc: 'Видит смертельные точки: критическое попадание на 19–20.', op: { critRange: 19 } },
-    { id: 'titan-hide', name: 'Каменная шкура', level: 5, path: 'titan',
-      desc: 'Шкура титана грубеет: ещё +1 КБ.', op: { kb: 1 } },
     { id: 'living-armor', name: 'Живая броня', level: 5, path: 'titan',
       desc: 'Плоть зарастает на глазах: восстанавливает 1d4 ЗДР в начале каждого своего хода.',
       op: { regen: { dice: '1d4', resource: 'hp', every: 'turn' } } },

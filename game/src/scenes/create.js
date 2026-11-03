@@ -192,7 +192,7 @@ export function createCreateScene() {
     }
   }
 
-  return {
+  const self = {
     id: 'create',
     enter(game) { fixClass(game); layout(game); },
     resize(game) { layout(game); },
@@ -204,7 +204,10 @@ export function createCreateScene() {
       if (h && h !== hover && (h.kind === 'race' || h.kind === 'class' || h.kind === 'path')) st.focus = { kind: h.kind, id: h.id };
       if (h !== hover && h && !h.disabled) play('uiHover');
       hover = h;
-      if (m.clicked && h) choose(game, h);
+      if (m.clicked && h) {
+        choose(game, h);
+        if (game.scene !== self) return; // scene changed (start / back)
+      }
       // name field: any typed character goes to the name
       for (const ch of inp.typed()) {
         if (st.name.length < NAME_MAX && /[\p{L}\p{N} \-']/u.test(ch) && !(ch === ' ' && !st.name)) st.name += ch;
@@ -251,4 +254,5 @@ export function createCreateScene() {
       drawInfo(game);
     },
   };
+  return self;
 }

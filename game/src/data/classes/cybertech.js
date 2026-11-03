@@ -11,7 +11,7 @@ export default {
   id: 'cybertech', name: 'КиберТех', analog: 'Колдун', icon: 'class_tech',
   role: 'caster',
   castStat: 'int',            // контроль киберпространства и код Судьи
-  hpPerLevel: 1,
+  hpPerLevel: 2,
   saves: ['wil', 'int'],
   armor: { name: 'Плащ с вшитой сеткой', type: 'light', kb: 2 },
   weapon: { name: 'Ритуальный клинок', dice: '1d6', dmgType: 'slash', stat: 'dex', range: 1, hit: 0 },
@@ -60,7 +60,7 @@ export default {
       effects: [{ op: 'shield', dice: '2d6', turns: 3 }],
       desc: 'Щит из проклятого кода: поглощает 2d6 урона, 3 хода.',
       canon: 'extra/specialties.md' }),
-    A({ id: 'cyber-storm', name: 'Кибер-буря', level: 5, cost: 6, action: 'action',
+    A({ id: 'cyber-storm', name: 'Кибер-буря', level: 5, cost: 7, action: 'action',
       range: 8, target: 'tile', area: { shape: 'radius', size: 2 }, roll: 'save', save: 'dex', onSave: 'half',
       effects: [{ op: 'damage', dice: '2d6', dmgType: 'cyber' }],
       desc: 'Буря кибера в зоне 5×5: 2d6 кибер. Спасбросок ЛВК — половина.',

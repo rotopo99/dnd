@@ -96,7 +96,7 @@ export function createDialogueScene({ title = '', lines, hero = null, onDone }) 
       }
       text(ctx, `${i + 1}/${lines.length}`, x + w - 16, y + h - 28, C['3'], FONT, 'right');
       if (shown >= cur.text.length && Math.floor(time * 2) % 2 === 0) text(ctx, '▼', x + w / 2, y + h - 28, C.h, FONT, 'center');
-      text(ctx, `${t('dlg.next')} · Esc — ${t('battle.skip')}`, x + 24, y + h - 28, C['3']);
+      text(ctx, `${t('dlg.next')} · ${t('dlg.skip')}`, x + 24, y + h - 28, C['3']);
     },
   };
 }

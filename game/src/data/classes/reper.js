@@ -132,7 +132,7 @@ export default {
       canon: 'rules/class-roadmap.md' }),
 
     // ---------- Путь Техно-Музыканта ----------
-    A({ id: 'dissonant-chord', name: 'Диссонирующий аккорд', level: 1, path: 'techno-musician', cost: 2, action: 'action',
+    A({ id: 'dissonant-chord', name: 'Диссонирующий аккорд', level: 1, path: 'techno-musician', cost: 1, action: 'action',
       range: 8, target: 'enemy', roll: 'attack',
       effects: [
         { op: 'damage', dice: '1d12', dmgType: 'blunt', bonus: 'castMod' },

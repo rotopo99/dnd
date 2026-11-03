@@ -50,7 +50,7 @@ export function makeArena({ w = 14, h = 9, heroes = 1, enemies = 3, cover = true
     const cx = w >> 1;
     set(cx, mid - 2, 'c'); set(cx, mid + 2, 'c'); set(cx - 3, mid, 'c'); set(cx + 3, mid, 'c');
   }
-  return { id: 'arena', name: 'Arena', grid: g, enemies: [], allies: [], win: 'killAll', lose: 'heroDown' };
+  return { id: 'arena', name: 'Arena', grid: g, enemies: [], allies: [], win: 'killAll', lose: 'teamDown' }; // sims: a side loses when all of it is down
 }
 
 export const chebyshev = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));

@@ -6,6 +6,7 @@ import { MAPS } from '../data/index.js';
 import { createDialogueScene, toLines } from './dialogue.js';
 import { createBattleScene } from './battle.js';
 import { menuScene } from './menu.js';
+import { C } from '../ui/draw.js';
 
 /** Collect dialogue lines for keys (race-aware via line()). */
 function lines(race, ...keys) {
@@ -25,15 +26,15 @@ function storyHooks(race) {
     const say = (u, key, log) => {
       if (!u) return;
       S.storyBubble(u, key);
-      if (log) for (const l of toLines(line(key, race))) S.pushLog([[l.text, '#8d95a8']]);
+      if (log) for (const l of toLines(line(key, race))) S.pushLog([[l.text, C['4']]]);
     };
     if (e.type === 'statusEnd' && e.id === 'invisible' && T?.enemyId === 'skrilet' && !S.flags.reveal) {
       S.flags.reveal = true;
-      for (const l of toLines(line('s2_skrilet_reveal', race))) S.pushLog([[l.text, '#8d95a8']]);
+      for (const l of toLines(line('s2_skrilet_reveal', race))) S.pushLog([[l.text, C['4']]]);
     }
     if (e.type === 'attack' && A?.enemyId === 'skrilet' && !S.flags.reveal) {
       S.flags.reveal = true;
-      for (const l of toLines(line('s2_skrilet_reveal', race))) S.pushLog([[l.text, '#8d95a8']]);
+      for (const l of toLines(line('s2_skrilet_reveal', race))) S.pushLog([[l.text, C['4']]]);
     }
     if (e.type === 'damage' && T?.enemyId === 'acolyte' && !S.flags.half && T.hp > 0 && T.hp <= T.maxHp / 2) {
       S.flags.half = true;

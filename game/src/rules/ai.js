@@ -8,7 +8,7 @@ import {
   getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive,
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
-  abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent,
+  abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS,
 } from './combat.js';
 
 const STATUS_VALUE = {
@@ -39,7 +39,7 @@ function dmgValue(b, t, amt, dmgType) {
     const prio = 1 + 0.5 * (1 - t.hp / t.maxHp);
     const breakable = t.kind !== 'hero' && t.kind !== 'ally' && !t.boss;
     const second = breakable ? (t.hp + (t.shield ? t.shield.value : 0)) * prio + 0.5 * threat(t) + 3 : threat(t) * 0.8;
-    const bv = (0.5 * Math.floor(t.hp * 0.7) * prio + 0.5 * second) * (t.decoy ? 0.3 : 1);
+    const bv = (0.5 * Math.floor(t.hp * HEARTBREAK_HP_LOSS) * prio + 0.5 * second) * (t.decoy ? 0.3 : 1);
     return (Math.min(eff, left) / Math.max(1, t.maxMrl)) * bv * 0.8 + (eff >= left ? bv : 0);
   }
   if (t.down) return eff * 0.05;
@@ -112,7 +112,7 @@ export function evalAbility(b, u, a, spec) {
       pass = pf;
       halfP = a.onSave === 'half' ? 1 - pf : 0;
     } else if (hostile && a.roll === 'attack' && !hasWeapon) {
-      pass = attackOdds(b, u, t, spellAttackBonus(b, u, a), abilityRange(u, a) <= 1, false).chance;
+      pass = attackOdds(b, u, t, spellAttackBonus(b, u, a), isMeleeAttack(b, u, { type: 'ability', ability: a.id }), false).chance;
     }
     let gate = 1;
     for (const op of effects) {

@@ -108,6 +108,11 @@ function buildMapLayer(S) {
 }
 
 const isHidden = (u) => u.team === 'enemies' && u.statuses.some((s) => s.id === 'invisible' || s.id === 'stealth');
+/** Enemy the player cannot see (invisible / stealth): not drawn, not highlighted, not clickable. */
+export const isHiddenFoe = (u) => !!u && !u.dead && !u.removed && isHidden(u);
+const drawList = [];
+const affected = new Set();
+const byDispY = (S) => (a, c) => S.disp[a.id].y - S.disp[c.id].y;
 
 function unitSprite(u) {
   return u.kind === 'hero' ? heroSpriteIds(u.raceId, u.classId) : enemySpriteIds(u.enemyId);
@@ -212,7 +217,9 @@ function drawHighlights(ctx, S) {
       cellRect(ctx, L, hc.x, hc.y, RED_FILL, C.c);
       out.odds = S.odds(u, { kind: 'attack' });
     } else if (S.reach && S.reach.dist[idx] > 0) {
-      const path = pathTo(S.reach, idx);
+      const pc = S.pathCache;
+      if (!pc || pc.idx !== idx || pc.reach !== S.reach) S.pathCache = { idx, reach: S.reach, path: pathTo(S.reach, idx) };
+      const path = S.pathCache.path;
       out.path = path;
       ctx.fillStyle = C.h;
       const d = Math.max(2, L.s * 2);
@@ -226,12 +233,19 @@ function drawHighlights(ctx, S) {
 
 function drawUnits(ctx, S, preview, tms) {
   const L = S.L, b = S.b;
-  const list = b.units.filter((u) => !S.disp[u.id]?.gone && (!(u.dead || u.removed) || S.disp[u.id]?.fade > 0));
-  list.sort((a, c) => S.disp[a.id].y - S.disp[c.id].y);
+  drawList.length = 0;
+  for (const u of b.units) {
+    const d = S.dispOf(u);
+    if (!d.gone && (!(u.dead || u.removed) || d.fade > 0)) drawList.push(u);
+  }
+  if (!S.sortByY) S.sortByY = byDispY(S);
+  drawList.sort(S.sortByY);
+  const list = drawList;
   const cur = b.turn ? b.turn.unitId : null;
-  const affected = preview.area ? new Set(preview.area.units.map((u) => u.id)) : null;
+  affected.clear();
+  if (preview.area) for (const au of preview.area.units) affected.add(au.id);
   for (const u of list) {
-    const d = S.disp[u.id];
+    const d = S.dispOf(u);
     const hidden = isHidden(u) && !(u.dead || u.removed);
     const own = u.team === 'heroes';
     if (hidden && !own) continue;
@@ -245,7 +259,7 @@ function drawUnits(ctx, S, preview, tms) {
     if (!(u.dead || u.removed)) drawTeamMarker(ctx, markerTeam(u), px, py, L.s);
     let tint = null;
     if (u.id === cur && !(u.dead || u.removed)) tint = own ? (u.kind === 'hero' ? 'h' : 'j') : 'c';
-    if ((preview.target === u) || (affected && affected.has(u.id))) tint = 'a';
+    if ((preview.target === u) || affected.has(u.id)) tint = 'a';
     const moving = d.path.length > 0;
     drawSprite(ctx, unitSprite(u), px, py, L.s, {
       frame: d.down ? 0 : moving ? 1 : idleFrame(tms, d.phase), flip: u.team === 'enemies', tint, mono: d.flash > 0 ? '5' : null,
@@ -267,12 +281,12 @@ function drawUnits(ctx, S, preview, tms) {
       sx += 6;
       if (sx > bx + bw - 4) break;
     }
-    if (d.down) text(ctx, 'zZ', px + L.cell - 2, py + 2, C.c, FONT_B, 'right');
+    if (d.down) text(ctx, t('battle.downTag'), px + L.cell - 2, py + 2, C.c, FONT_B, 'right');
   }
   // speech bubbles
   for (const bu of S.bubbles) {
     const u = b.byId[bu.id];
-    const d = S.disp[bu.id];
+    const d = u ? S.dispOf(u) : null;
     if (!u || !d || d.gone || (isHidden(u) && u.team !== 'heroes')) continue;
     const lines = wrap(ctx, bu.text, 240);
     const bw = Math.min(260, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16);
@@ -345,7 +359,7 @@ function drawActionBar(ctx, S) {
     }
     text(ctx, fit(ctx, btn.sub, btn.w - 8, '12px monospace'), cx, btn.y + btn.h - 15, btn.disabled ? C['3'] : btn.a.cost ? C.b : C['4'], '12px monospace', 'center');
     if (btn.key) text(ctx, btn.key, btn.x + 4, btn.y + 2, btn.disabled ? C['3'] : C.a, '12px monospace');
-    if (btn.a.action === 'bonus') text(ctx, 'Б', btn.x + btn.w - 4, btn.y + 2, btn.disabled ? C['3'] : C.j, '12px monospace', 'right');
+    if (btn.a.action === 'bonus') text(ctx, t('battle.bonusTag'), btn.x + btn.w - 4, btn.y + 2, btn.disabled ? C['3'] : C.j, '12px monospace', 'right');
   }
 }
 
@@ -359,14 +373,24 @@ function drawLog(ctx, S) {
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   for (let i = start, row = 0; i < S.log.length; i++, row++) {
-    let x = r.x + 8;
     const y = r.y + 4 + row * LINE;
-    for (const [s, col] of S.log[i]) {
-      if (x > r.x + r.w - 16) break;
-      const str = fit(ctx, s, r.x + r.w - 8 - x);
-      ctx.fillStyle = col;
-      ctx.fillText(str, x, y);
-      x += ctx.measureText(str).width;
+    const entry = S.log[i];
+    // fitted segments are cached on the entry per log width
+    if (!entry.fitted || entry.fitW !== r.w) {
+      entry.fitW = r.w;
+      entry.fitted = [];
+      let x = r.x + 8;
+      for (const [s, col] of entry) {
+        if (x > r.x + r.w - 16) break;
+        const str = fit(ctx, s, r.x + r.w - 8 - x);
+        entry.fitted.push(str, col, x - r.x);
+        x += ctx.measureText(str).width;
+      }
+    }
+    const f = entry.fitted;
+    for (let k = 0; k < f.length; k += 3) {
+      ctx.fillStyle = f[k + 1];
+      ctx.fillText(f[k], r.x + f[k + 2], y);
     }
   }
 }
@@ -378,7 +402,7 @@ function statusLine(b, u) {
 function unitCard(ctx, S, u, x, y, w, odds) {
   const b = S.b;
   const v = unitView(b, u);
-  const d = S.disp[u.id] || v;
+  const d = S.dispOf(u);
   text(ctx, fit(ctx, S.name(u.id), w, FONT_B), x, y, teamColor(u), FONT_B);
   y += 24;
   resLine(ctx, x, y, w, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
@@ -444,8 +468,8 @@ function drawPanel(ctx, S, preview) {
   text(ctx, fit(ctx, S.name(hero.id), w - 60, FONT_B), x + 58, y + 6, C.h, FONT_B);
   text(ctx, fit(ctx, `${raceName} · ${cls?.name || ''}`, w - 60), x + 58, y + 30, C['4']);
   y += 70;
-  resLine(ctx, x, y, w, 'hp', S.disp[hero.id].hp, hero.maxHp, t('res.hp')); y += 22;
-  resLine(ctx, x, y, w, 'mrl', S.disp[hero.id].mrl, hero.maxMrl, t('res.mrl')); y += 22;
+  resLine(ctx, x, y, w, 'hp', S.dispOf(hero).hp, hero.maxHp, t('res.hp')); y += 22;
+  resLine(ctx, x, y, w, 'mrl', S.dispOf(hero).mrl, hero.maxMrl, t('res.mrl')); y += 22;
   resLine(ctx, x, y, w, 'enr', hero.enr, hero.maxEnr, t('res.enr')); y += 24;
   const v = unitView(b, hero);
   text(ctx, `${t('res.kb')} ${v.kb}${v.shield ? `  ${t('battle.shield')} ${v.shield}` : ''}`, x, y, C['5'], FONT_B);
@@ -490,7 +514,7 @@ function drawPanel(ctx, S, preview) {
     ctx.fillStyle = teamColor(u);
     ctx.fillRect(x, y + 4, 8, 8);
     text(ctx, fit(ctx, S.name(u.id), w - 90), x + 16, y, curr ? C['5'] : C['4'], curr ? FONT_B : FONT);
-    text(ctx, u.down ? 'zZ' : `${S.disp[u.id]?.hp ?? u.hp}/${u.maxHp}`, x + w, y, u.down ? C.c : C['3'], FONT, 'right');
+    text(ctx, u.down ? t('battle.downTag') : `${S.dispOf(u).hp}/${u.maxHp}`, x + w, y, u.down ? C.c : C['3'], FONT, 'right');
     y += 22;
     shown++;
   }

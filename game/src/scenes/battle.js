@@ -9,17 +9,18 @@
 // walk animation ends, so popups / sounds / log lines appear in order and at the right place.
 import { t } from '../data/text/index.js';
 import { buildCreature } from '../rules/character.js';
+import * as combat from '../rules/combat.js';
 import {
   createBattle, getLegalActions, perform, endTurn, isAiTurn, currentUnit, getReachable,
   abilityUsable, abilityRange, abilityTargets, attackOdds, saveFailChance, weaponAttackBonus,
-  spellAttackBonus, getDc,
+  spellAttackBonus, getDc, weaponRange, isStanding,
 } from '../rules/combat.js';
-import { chebyshev } from '../rules/grid.js';
+import { chebyshev, lineOfSight, walkLine, T_WALL } from '../rules/grid.js';
 import { chooseAction } from '../rules/ai.js';
 import { play } from '../audio/sfx.js';
 import { formatEvent, eventSound } from '../ui/battle-log.js';
-import { hitButton, inRect } from '../ui/draw.js';
-import { layoutBattle, renderBattle } from '../ui/battle-view.js';
+import { hitButton, inRect, C } from '../ui/draw.js';
+import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { line as storyLine } from '../data/text/prologue.js';
 
 const AI_STEP = 0.42; // s between AI actions
@@ -27,6 +28,50 @@ const AI_TURN_GAP = 0.3; // s before an AI unit starts acting
 const WALK_SPEED = 9; // tiles per second
 const MAX_LOG = 200;
 const MAX_AI_STEPS = 16;
+
+/** Remove items failing keep() in place (no new array per frame). */
+function compact(arr, keep) {
+  let n = 0;
+  for (let i = 0; i < arr.length; i++) if (keep(arr[i])) arr[n++] = arr[i];
+  arr.length = n;
+}
+
+// Melee or ranged attack for previews: engine export when available (v1.2), else by weapon / ability range.
+function meleeAttack(b, u, action) {
+  if (typeof combat.isMeleeAttack === 'function') return combat.isMeleeAttack(b, u, action);
+  if (action.type === 'attack') return weaponRange(u) <= 1;
+  const a = u.abilities.find((x) => x.id === action.ability);
+  if (!a) return true;
+  if ((a.effects || []).some((e) => e.op === 'weapon')) return weaponRange(u) <= 1;
+  return abilityRange(u, a) <= 1;
+}
+
+/** Same rule as the engine's inArea (combat.js): radius with LOS from the centre, cone with LOS from the caster,
+ *  line by Bresenham from the caster stopping at walls. */
+function tileInArea(b, u, a, center, x, y) {
+  const size = a.area.size || 1;
+  if (a.area.shape === 'radius') return chebyshev(center.x, center.y, x, y) <= size && lineOfSight(b.grid, center.x, center.y, x, y);
+  const vx = center.x - u.x, vy = center.y - u.y;
+  if (!vx && !vy) return false;
+  const tx = x - u.x, ty = y - u.y;
+  const d = Math.max(Math.abs(tx), Math.abs(ty));
+  if (d < 1 || d > size) return false;
+  if (a.area.shape === 'cone') {
+    const cos = (vx * tx + vy * ty) / (Math.hypot(vx, vy) * Math.hypot(tx, ty));
+    return cos >= 0.7 && lineOfSight(b.grid, u.x, u.y, x, y);
+  }
+  const k = size / Math.max(Math.abs(vx), Math.abs(vy));
+  const ex = u.x + Math.round(vx * k), ey = u.y + Math.round(vy * k);
+  let hit = false, blocked = false;
+  const g = b.grid;
+  walkLine(u.x, u.y, ex, ey, (px, py) => {
+    if (px < 0 || py < 0 || px >= g.w || py >= g.h || g.tiles[py * g.w + px] === T_WALL) { blocked = true; return true; }
+    if (px === x && py === y) { hit = true; return true; }
+    return false;
+  });
+  if (!hit && !blocked && x === ex && y === ey) hit = true;
+  return hit;
+}
 
 const REASONS = {
   energy: 'battle.noEnr', uses: 'battle.uses', action: 'battle.noAction', silence: 'battle.silence',
@@ -84,6 +129,7 @@ export function createBattleScene(opts) {
     return S.disp[u.id];
   }
   const dispOf = (u) => S.disp[u.id] || addDisp(u);
+  S.dispOf = dispOf;
 
   // ---------------------------------------------------------------- derived state (rebuilt when dirty)
   function refresh() {
@@ -98,6 +144,7 @@ export function createBattleScene(opts) {
     if (S.playerTurn) {
       if (b.turn.move > 0) S.reach = getReachable(b, S.heroId);
       for (const act of getLegalActions(b, S.heroId, { noMoves: true })) {
+        if (act.target && isHiddenFoe(b.byId[act.target])) continue;
         if (act.type === 'attack') S.attackTargets.add(act.target);
         else if (act.type === 'ability') (S.specs[act.ability] || (S.specs[act.ability] = [])).push(act);
       }
@@ -118,7 +165,7 @@ export function createBattleScene(opts) {
       const parts = [a.cost ? `${a.cost} ${t('battle.cost')}` : t('battle.free')];
       if (a.usesPerBattle) parts.push(`${a.usesPerBattle - (hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
       btns.push({
-        id: `ab:${a.id}`, a, label: a.name, sub: parts.join(' · '), subColor: a.cost ? '#f2d024' : undefined,
+        id: `ab:${a.id}`, a, label: a.name, sub: parts.join(' · '), subColor: a.cost ? C.b : undefined,
         key: n <= 9 ? String(n) : '', disabled: !!why, reason: why === 'bonus' ? t('battle.noBonus') : reasonOf(why),
         selected: S.sel?.kind === 'ability' && S.sel.a.id === a.id,
       });
@@ -127,7 +174,7 @@ export function createBattleScene(opts) {
     btns.push({ id: 'dash', label: t('battle.dash'), sub: t('act.action'), disabled: !!r, reason: reasonOf(r) });
     r = !S.playerTurn ? 'turn' : bt.bonus <= 0 || bt.disengaged ? 'bonus' : null;
     btns.push({ id: 'disengage', label: t('battle.disengage'), sub: t('act.bonus'), disabled: !!r, reason: r === 'bonus' ? t('battle.noBonus') : reasonOf(r) });
-    btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: 'Space', disabled: !S.playerTurn, reason: S.playerTurn ? null : t('battle.notTurn') });
+    btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: t('battle.endTurnKey'), disabled: !S.playerTurn, reason: S.playerTurn ? null : t('battle.notTurn') });
     S.buttons = btns;
     layoutBattle.buttons(S);
     // target cells for the current selection
@@ -152,13 +199,14 @@ export function createBattleScene(opts) {
     const b = S.b;
     const u = b.byId[S.heroId];
     if (!tgt || tgt.team === u.team) return null;
-    const melee = chebyshev(u.x, u.y, tgt.x, tgt.y) <= 1;
     if (!sel || sel.kind === 'attack') {
+      const melee = meleeAttack(b, u, { type: 'attack', unit: u.id, target: tgt.id });
       const o = attackOdds(b, u, tgt, weaponAttackBonus(b, u), melee, true);
       return { kind: 'hit', chance: o.chance, crit: o.critChance, mode: o.mode };
     }
     const a = sel.a;
     if (a.roll === 'attack') {
+      const melee = meleeAttack(b, u, { type: 'ability', unit: u.id, ability: a.id, target: tgt.id });
       const wop = (a.effects || []).find((e) => e.op === 'weapon');
       const o = wop
         ? attackOdds(b, u, tgt, weaponAttackBonus(b, u) + (wop.hit || 0), melee, true)
@@ -179,19 +227,12 @@ export function createBattleScene(opts) {
     if (a.area) {
       const selfC = a.target === 'self' || (abilityRange(u, a) === 0 && !act?.target && !act?.tile);
       const c = selfC ? u : spec.unit ? b.byId[spec.unit] : { x: spec.x, y: spec.y };
-      const size = a.area.size || 1;
-      const R = a.area.shape === 'radius' ? size : size;
-      const cx = a.area.shape === 'radius' ? c.x : u.x, cy = a.area.shape === 'radius' ? c.y : u.y;
-      const vx = c.x - u.x, vy = c.y - u.y;
-      for (let y = cy - R; y <= cy + R; y++) {
-        for (let x = cx - R; x <= cx + R; x++) {
-          if (x < 0 || y < 0 || x >= b.grid.w || y >= b.grid.h) continue;
-          if (a.area.shape === 'radius') { tiles.push(y * b.grid.w + x); continue; }
-          const tx = x - u.x, ty = y - u.y;
-          const d = Math.max(Math.abs(tx), Math.abs(ty));
-          if (d < 1 || d > size || (!vx && !vy)) continue;
-          const cos = (vx * tx + vy * ty) / (Math.hypot(vx, vy) * Math.hypot(tx, ty));
-          if (a.area.shape === 'cone' ? cos >= 0.7 : cos >= 0.97) tiles.push(y * b.grid.w + x);
+      const R = a.area.size || 1;
+      const ox = a.area.shape === 'radius' ? c.x : u.x, oy = a.area.shape === 'radius' ? c.y : u.y;
+      const g = b.grid;
+      for (let y = Math.max(0, oy - R); y <= Math.min(g.h - 1, oy + R); y++) {
+        for (let x = Math.max(0, ox - R); x <= Math.min(g.w - 1, ox + R); x++) {
+          if (g.tiles[y * g.w + x] !== T_WALL && tileInArea(b, u, a, c, x, y)) tiles.push(y * g.w + x);
         }
       }
     }
@@ -243,7 +284,7 @@ export function createBattleScene(opts) {
       else doAction({ type: 'ability', ability: S.sel.a.id, ...(tc.target ? { target: tc.target } : { tile: tc.tile }) });
       return;
     }
-    const occ = b.units.find((u) => !u.dead && !u.removed && u.x === cx && u.y === cy && S.attackTargets.has(u.id));
+    const occ = b.units.find((u) => !u.dead && !u.removed && u.x === cx && u.y === cy && !isHiddenFoe(u) && S.attackTargets.has(u.id));
     if (occ) { doAction({ type: 'attack', target: occ.id }); return; }
     if (S.reach && S.reach.dist[idx] > 0) doAction({ type: 'move', to: { x: cx, y: cy } });
   }
@@ -262,12 +303,13 @@ export function createBattleScene(opts) {
 
   function popup(u, text, color) {
     const d = dispOf(u);
-    const stack = S.popups.filter((p) => p.id === u.id && p.t < 0.3).length;
+    let stack = 0;
+    for (const p of S.popups) if (p.id === u.id && p.t < 0.3) stack++;
     S.popups.push({ id: u.id, x: d.x, y: d.y, text, color, t: -stack * 0.25 });
   }
 
   function bubble(u, text) {
-    S.bubbles = S.bubbles.filter((x) => x.id !== u.id);
+    compact(S.bubbles, (x) => x.id !== u.id);
     S.bubbles.push({ id: u.id, text, t: 0 });
   }
 
@@ -297,35 +339,35 @@ export function createBattleScene(opts) {
         if (u) dispOf(u).path.push({ ...e.to });
         break;
       }
-      case 'attack': if (!e.hit && T) popup(T, t('battle.miss'), '#8d95a8'); break;
+      case 'attack': if (!e.hit && T) popup(T, t('battle.miss'), C['4']); break;
       case 'damage': {
         if (!T) break;
         const d = dispOf(T);
         d[e.resource] = e.value;
         if (e.amount > 0 || !e.absorbed) {
           d.flash = 0.12;
-          const col = e.resource === 'mrl' ? '#e04fa8' : e.dmgType === 'proxy' ? '#f0b050' : '#c42828';
+          const col = e.resource === 'mrl' ? C.n : e.dmgType === 'proxy' ? C.a : C.c;
           popup(T, `${e.crit ? '!' : ''}−${e.amount}`, col);
         }
-        if (e.absorbed) popup(T, `◊${e.absorbed}`, '#4fa0f0');
+        if (e.absorbed) popup(T, `◊${e.absorbed}`, C.f);
         break;
       }
-      case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? '#4fa0f0' : '#74c050'); } break;
-      case 'shield': if (T) popup(T, `◊${e.value}`, '#4fa0f0'); break;
-      case 'nadlom': if (T) popup(T, t('state.strain'), '#e04fa8'); break;
+      case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); } break;
+      case 'shield': if (T) popup(T, `◊${e.value}`, C.f); break;
+      case 'nadlom': if (T) popup(T, t('state.strain'), C.n); break;
       case 'breakdown':
         if (T) {
           if (e.value != null) dispOf(T).hp = e.value;
-          popup(T, t('state.breakdown'), '#e04fa8');
+          popup(T, t('state.breakdown'), C.n);
         }
         break;
-      case 'broken': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('battle.broken'), '#e04fa8'); } break;
-      case 'down': if (T) { dispOf(T).down = true; popup(T, t('state.unconscious'), '#c42828'); } break;
+      case 'broken': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('battle.broken'), C.n); } break;
+      case 'down': if (T) { dispOf(T).down = true; popup(T, t('state.unconscious'), C.c); } break;
       case 'stabilize': if (T) { const d = dispOf(T); d.down = false; d.hp = e.value; } break;
       case 'death': if (T) { const d = dispOf(T); d.fade = 1; d.down = false; } break;
       case 'unsummon': if (T) dispOf(T).fade = 1; break;
       case 'summon': if (T) { const d = addDisp(T); d.x = e.x; d.y = e.y; } break;
-      case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? '#74c050' : '#f0b050'); break;
+      case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? C.j : C.a); break;
       case 'turnStart': {
         if (A && A.team === 'enemies' && opts.barks && opts.barks[A.enemyId] && Math.random() < 0.35) storyBubble(A, opts.barks[A.enemyId]);
         break;
@@ -363,9 +405,9 @@ export function createBattleScene(opts) {
       else { d.x += (dx / dist) * stepLen; d.y += (dy / dist) * stepLen; }
     }
     for (const p of S.popups) p.t += dt;
-    S.popups = S.popups.filter((p) => p.t < 1.1);
+    compact(S.popups, (p) => p.t < 1.1);
     for (const x of S.bubbles) x.t += dt;
-    S.bubbles = S.bubbles.filter((x) => x.t < 3.2);
+    compact(S.bubbles, (x) => x.t < 3.2);
     if (S.message && (S.message.t -= dt) <= 0) S.message = null;
   }
 
@@ -459,9 +501,18 @@ export function createBattleScene(opts) {
       if (isAiTurn(b)) {
         S.aiTimer -= dt;
         if (S.aiTimer <= 0) aiStep();
-      } else if (currentUnit(b) && currentUnit(b).id !== S.heroId) {
-        endTurn(b); // safety: a player-team unit that is not the hero (should not happen)
-        S.dirty = true;
+      } else if (!b.turn) {
+        // no one can act and no winner: close the battle as a defeat
+        S.result = 'lose';
+        layoutBattle.result(game, S);
+      } else {
+        const cu = currentUnit(b);
+        // hero fell during own turn (e.g. opportunity attack) or a non-hero player-side unit: pass the turn
+        if (!cu || cu.id !== S.heroId || !isStanding(cu)) {
+          S.sel = null;
+          endTurn(b);
+          S.dirty = true;
+        }
       }
     },
     render(game) { renderBattle(game, S); },

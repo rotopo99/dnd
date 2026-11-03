@@ -149,6 +149,12 @@ const ru = {
   'battle.self': 'на себя',
   'battle.tiles': 'кл.',
   'battle.free': 'без ЭНР',
+  'battle.bonusTag': 'Б',
+  'battle.downTag': 'zZ',
+  'battle.saveSuccessShort': 'удался',
+  'battle.saveFailShort': 'провален',
+  'battle.endTurnKey': 'Space',
+  'dlg.skip': 'Esc — пропустить',
 
   // ---------- buff stats / area shapes ----------
   'buff.hit': 'к атаке',
