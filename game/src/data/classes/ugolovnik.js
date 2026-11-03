@@ -11,7 +11,7 @@ export default {
   id: 'ugolovnik', name: 'Уголовник', analog: 'Плут', icon: 'class_rogue',
   role: 'melee',
   castStat: 'int',            // взлом и техника — от ИНТ (Лиза: ИНТ 14, «Взлом (ИНТ)»)
-  hpPerLevel: 2,
+  hpPerLevel: 3,
   saves: ['dex', 'int'],
   armor: { name: 'Кожанка с подкладкой', type: 'light', kb: 2 },
   weapon: { name: 'Финка', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 1, hit: 0 },

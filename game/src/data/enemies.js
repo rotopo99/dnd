@@ -89,12 +89,12 @@ export const ENEMIES = {
   acolyte: {
     id: 'acolyte', name: 'Аколит Судьи', level: 1, tags: ['organic'], boss: true,
     stats: { str: 8, dex: 12, con: 12, int: 12, wil: 15, cha: 13, per: 10 },
-    hp: 42, mrl: 34, enr: 12, kb: 14, speed: 6, castStat: 'wil',
-    weapon: { name: 'Ритуальный кинжал', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 1, hit: -1, attack: 3 },
+    hp: 44, mrl: 34, enr: 12, kb: 14, speed: 6, castStat: 'wil',
+    weapon: { name: 'Ритуальный кинжал', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 1, hit: -1, attack: 5 },
     abilities: [
       ability({ id: 'judge-whisper', name: 'Шёпот Судьи', range: 10, roll: 'save', save: 'wil', onSave: 'half',
-        effects: [{ op: 'damage', dice: '3d6', dmgType: 'psychic' }],
-        desc: 'Голос из статических помех: 3d6 пси-урона по МРЛ (спас ТВД, СЛ 12 — половина). При «Надломе» спас с помехой.',
+        effects: [{ op: 'damage', dice: '4d6', dmgType: 'psychic' }],
+        desc: 'Голос из статических помех: 4d6 пси-урона по МРЛ (спас ТВД, СЛ 12 — половина). При «Надломе» спас с помехой.',
         canon: 'rules/effects.md' }),
       ability({ id: 'judge-curse', name: 'Проклятие Судьи', cost: 3, range: 8, roll: 'save', save: 'wil', onSave: 'none',
         effects: [{ op: 'status', id: 'curse', turns: 2 }],
@@ -405,7 +405,7 @@ export const ENCOUNTERS = {
   },
   party1: {
     id: 'party1', name: 'Партийный бой (ур. 1)', level: 1, targetWinRate: 0.6,
-    enemies: ['cultist', 'cultist', 'cultist', 'cultist-gunner', 'cultist-gunner', 'skrilet', 'scavenger', 'scavenger', 'crawler', 'junk-mech'],
+    enemies: ['cultist', 'cultist', 'cultist', 'cultist-gunner', 'cultist-gunner', 'skrilet', 'scavenger', 'scavenger', 'crawler', 'junk-mech', 'cringe-jester'],
   },
   party5: {
     id: 'party5', name: 'Партийный бой (ур. 5)', level: 5, targetWinRate: 0.6,

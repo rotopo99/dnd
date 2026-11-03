@@ -6,7 +6,7 @@ export default {
   id: 'ranger', name: 'Рейнджер', analog: 'Следопыт', icon: 'class_rogue',
   role: 'ranged',
   castStat: null,
-  hpPerLevel: 2,
+  hpPerLevel: 3,
   saves: ['dex', 'per'],
   armor: { name: 'Кожаный плащ-пыльник', type: 'light', kb: 2 },
   weapon: { name: 'Охотничий карабин', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 16, hit: 0 },

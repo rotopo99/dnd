@@ -6,7 +6,7 @@ export default {
   id: 'itishnik', name: 'Айтишник', analog: 'Изобретатель', icon: 'class_tech',
   role: 'support',
   castStat: 'int',
-  hpPerLevel: 1,
+  hpPerLevel: 0,
   saves: ['int', 'dex'],
   armor: { name: 'Рабочий комбинезон с пластинами', type: 'light', kb: 2 },
   weapon: { name: 'Гвоздомёт', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 8, hit: 0 },

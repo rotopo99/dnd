@@ -7,7 +7,7 @@ export default {
   hpPerLevel: 2,
   saves: ['wil', 'con'],
   armor: { name: 'Доспех Арбитра', type: 'heavy', kb: 5 },
-  weapon: { name: 'Силовой меч', dice: '1d8', dmgType: 'slash', stat: 'str', range: 1, hit: 0 },
+  weapon: { name: 'Силовой меч', dice: '1d10', dmgType: 'slash', stat: 'str', range: 1, hit: 0 },
   // 9 + 2 + 5 + 2 + 7 + 0 + 2 = 27
   recommended: { str: 15, dex: 10, con: 13, int: 10, wil: 14, cha: 8, per: 10 },
   overcast: null,
@@ -28,7 +28,7 @@ export default {
   ],
   passives: [
     { id: 'avenger-mastery', name: 'Мастерство оружия', level: 5, path: 'avenger',
-      desc: 'Ступень владения «мастерство» (канон): +1 к атаке и +1 к урону в ближнем бою.', op: { hit: 1, dmg: { melee: 1 } } },
+      desc: 'Ступень владения «мастерство» (канон): +1 к атаке в ближнем бою.', op: { hit: 1 } },
     { id: 'guard-stance', name: 'Защита', level: 1, path: 'defender',
       desc: '+1 КБ.', op: { kb: 1 } },
     { id: 'cyber-aura', name: 'Кибер-аура', level: 5, path: 'defender',
@@ -92,7 +92,7 @@ export default {
     },
     {
       id: 'improved-barrier', name: 'Улучшенный щит', level: 3, path: 'defender',
-      cost: 5, action: 'bonus', trigger: null, range: 6, target: 'ally', area: null,
+      cost: 6, action: 'bonus', trigger: null, range: 6, target: 'ally', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
       effects: [{ op: 'shield', dice: '2d6', turns: 3 }],
       desc: 'Себе или союзнику: щит поглощает 2d6 урона, 3 хода.',

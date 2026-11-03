@@ -26,7 +26,7 @@ export default {
   ],
   passives: [
     { id: 'loud-sound', name: 'Громкий звук', level: 1, path: 'techno-musician',
-      desc: 'Техно-музыкант выкручивает громкость: +2 к урону способностей.', op: { dmg: { spell: 2 } } },
+      desc: 'Техно-музыкант выкручивает громкость: +3 к урону способностей.', op: { dmg: { spell: 3 } } },
     { id: 'kvn', name: 'Участник КВН', level: 1, path: null,
       desc: '+1 ХАР.', op: { statBonus: { cha: 1 } } },
     { id: 'pelmeni', name: 'Участник «Уральских пельменей»', level: 3, path: null,
@@ -112,7 +112,7 @@ export default {
       canon: 'rules/class-paths.md' }),
 
     // ---------- Путь Манипулятора ----------
-    A({ id: 'fake-news', name: 'Фальшивые новости', level: 1, path: 'manipulator', cost: 2, action: 'action',
+    A({ id: 'fake-news', name: 'Фальшивые новости', level: 1, path: 'manipulator', cost: 1, action: 'action',
       range: 8, target: 'tile', area: { shape: 'radius', size: 1 }, roll: 'save', save: 'wil', onSave: 'half',
       effects: [{ op: 'damage', dice: '1d8', dmgType: 'cringe', bonus: 'castMod' }],
       desc: '«Срочно! Вашего главаря видели на концерте Шамана!» Враги в зоне 3×3: 1d8 + ХАР кринжа. Спасбросок ТВД — половина.',
