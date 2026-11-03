@@ -109,7 +109,7 @@ export default {
     // ---------- Путь Иллюзиониста ----------
     {
       id: 'hologram', name: 'Голограмма', level: 1, path: 'illusionist',
-      cost: 2, action: 'bonus', trigger: null, range: 1, target: 'tile', area: null,
+      cost: 1, action: 'bonus', trigger: null, range: 1, target: 'tile', area: null,
       roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
       effects: [{ op: 'summon', unit: 'hologram', turns: 3 }],
       desc: 'Ложная цель рядом с тобой на 3 хода. Не атакует, гибнет от 1 урона.',
@@ -125,7 +125,7 @@ export default {
     },
     {
       id: 'hypno-pulse', name: 'Гипнотический импульс', level: 5, path: 'illusionist',
-      cost: 5, action: 'action', trigger: null, range: 12, target: 'tile', area: { shape: 'radius', size: 2 },
+      cost: 4, action: 'action', trigger: null, range: 12, target: 'tile', area: { shape: 'radius', size: 2 },
       roll: 'save', save: 'wil', onSave: 'none', usesPerBattle: null,
       effects: [{ op: 'status', id: 'hallucination', turns: 2 }],
       desc: 'Враги в радиусе 2 клеток делают спасбросок ТВД, иначе галлюцинации на 2 хода (бьют случайные цели).',

@@ -122,7 +122,7 @@ export default {
       effects: [{ op: 'status', id: 'hallucination', turns: 2 }],
       desc: 'Враги в зоне 3×3: спасбросок ТВД, иначе 2 хода бьют случайные цели.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'universal-lie', name: 'Вселенская ложь', level: 5, path: 'manipulator', cost: 7, action: 'action',
+    A({ id: 'universal-lie', name: 'Вселенская ложь', level: 5, path: 'manipulator', cost: 6, action: 'action',
       range: 8, target: 'tile', area: { shape: 'radius', size: 2 }, roll: 'save', save: 'wil', onSave: 'half',
       effects: [
         { op: 'damage', dice: '2d6', dmgType: 'cringe', bonus: 'castMod' },

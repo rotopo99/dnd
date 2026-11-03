@@ -96,7 +96,7 @@ export default {
       effects: [{ op: 'summon', unit: 'spirit', turns: 3 }],
       desc: 'Призывает духа-помощника на 3 хода.',
       canon: 'rules/class-paths.md' }),
-    A({ id: 'whisper-curse', name: 'Проклятие шёпота', level: 3, path: 'spirits', cost: 3, action: 'action',
+    A({ id: 'whisper-curse', name: 'Проклятие шёпота', level: 3, path: 'spirits', cost: 2, action: 'action',
       range: 8, target: 'enemy', roll: 'save', save: 'wil',
       effects: [
         { op: 'damage', dice: '1d8', dmgType: 'psychic', bonus: 'castMod' },
@@ -110,7 +110,7 @@ export default {
       desc: 'Духи запечатывают рот и рвут рассудок: 2d6 + ТВД пси (по МРЛ) и немота на 2 хода. Спасбросок ТВД — без эффекта.',
       canon: 'rules/class-roadmap.md' }),
 
-    A({ id: 'spirit-host', name: 'Сонм духов', level: 5, path: 'spirits', cost: 6, action: 'action',
+    A({ id: 'spirit-host', name: 'Сонм духов', level: 5, path: 'spirits', cost: 5, action: 'action',
       range: 0, target: 'self', roll: 'auto', usesPerBattle: 1,
       effects: [{ op: 'summon', unit: 'spirit', turns: 3 }, { op: 'summon', unit: 'spirit', turns: 3 }],
       desc: 'Зовёт сразу двух духов предков на 3 хода. Раз за бой. Вне канона, не противоречит: расширение «Вызова духа» пути Духов.',

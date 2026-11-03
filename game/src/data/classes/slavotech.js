@@ -106,7 +106,7 @@ export default {
       ],
       desc: 'Блокирует техно-магию: 1d8 + ТВД энерго и немота на 2 хода. Спасбросок ИНТ — половина урона, без немоты.',
       canon: 'rules/class-roadmap.md' }),
-    A({ id: 'retribution-code', name: 'Код возмездия', level: 3, path: 'balance', cost: 3, action: 'reaction',
+    A({ id: 'retribution-code', name: 'Код возмездия', level: 3, path: 'balance', cost: 4, action: 'reaction',
       trigger: 'selfAttacked', range: 8, target: 'enemy', roll: 'auto',
       effects: [{ op: 'damage', dice: '1d8', dmgType: 'energy', bonus: 'castMod' }],
       desc: 'Реакция на атаку: контрудар 1d8 + ТВД энерго.',

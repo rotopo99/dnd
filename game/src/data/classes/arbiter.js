@@ -30,9 +30,9 @@ export default {
     { id: 'avenger-mastery', name: 'Мастерство оружия', level: 5, path: 'avenger',
       desc: 'Ступень владения «мастерство» (канон): +1 к атаке и +2 к урону в ближнем бою.', op: { hit: 1, dmg: { melee: 2 } } },
     { id: 'guard-stance', name: 'Защита', level: 1, path: 'defender',
-      desc: '+2 КБ.', op: { kb: 2 } },
+      desc: '+1 КБ.', op: { kb: 1 } },
     { id: 'cyber-aura', name: 'Кибер-аура', level: 5, path: 'defender',
-      desc: 'Кибер-аура гасит порчу Судьи: сопротивление киберурону. (Аура на союзников — когда движок научится аурам.)', op: { resist: { cyber: 'resist' } } },
+      desc: 'Кибер-аура: +1 КБ и сопротивление киберурону. (Аура на союзников — когда движок научится аурам.)', op: { kb: 1, resist: { cyber: 'resist' } } },
     { id: 'judge-mastery', name: 'Печать приговора', level: 5, path: 'judge',
       desc: 'Приговоры Судьи бьют сильнее: +2 к урону способностей.', op: { dmg: { spell: 2 } } },
     { id: 'judges-fury', name: 'Ярость Судьи', level: 1, path: 'avenger',
@@ -145,7 +145,7 @@ export default {
     {
       id: 'verdict', name: 'Приговор', level: 3, path: 'judge',
       cost: 3, action: 'bonus', trigger: null, range: 12, target: 'enemy', area: null,
-      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 2,
+      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 3,
       effects: [
         { op: 'buff', stat: 'kb', value: -2, turns: 3 },
         { op: 'status', id: 'curse', turns: 3 },
@@ -155,7 +155,7 @@ export default {
     },
     {
       id: 'disintegrate', name: 'Дезинтеграция', level: 5, path: 'judge',
-      cost: 5, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
+      cost: 4, action: 'action', trigger: null, range: 12, target: 'enemy', area: null,
       roll: 'attack', save: null, onSave: 'none', usesPerBattle: null,
       effects: [
         { op: 'damage', dice: '2d8', dmgType: 'energy', bonus: 'castMod' },

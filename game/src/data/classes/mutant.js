@@ -144,8 +144,8 @@ export default {
     },
     {
       id: 'ambush-strike', name: 'Смертельный удар', level: 5, path: 'predator',
-      cost: 5, action: 'action', trigger: null, range: 1, target: 'enemy', area: null,
-      roll: 'attack', save: null, onSave: 'none', usesPerBattle: 2,
+      cost: 4, action: 'action', trigger: null, range: 1, target: 'enemy', area: null,
+      roll: 'attack', save: null, onSave: 'none', usesPerBattle: 3,
       effects: [{ op: 'weapon', extraDice: '2d8' }],
       desc: 'Удар из засады: оружие +2d8 урона. Лучше всего — из скрытности.',
       canon: 'rules/class-paths.md',
