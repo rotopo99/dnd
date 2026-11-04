@@ -267,7 +267,7 @@ export function castMod(b, u, a) {
   return st ? mod(effStat(b, u, st)) : 0;
 }
 export const spellAttackBonus = (b, u, a) => castMod(b, u, a) + u.prof;
-export const getDc = (b, u, a) => (u.dcOverride != null && !(a && a.castStat) ? u.dcOverride : 8 + castMod(b, u, a) + u.prof);
+export const getDc = (b, u, a) => (a && a.dc != null ? a.dc : u.dcOverride != null && !(a && a.castStat) ? u.dcOverride : 8 + castMod(b, u, a) + u.prof);
 
 export function bonusValue(b, u, bonus, a) {
   if (bonus == null) return 0;
@@ -308,6 +308,8 @@ function initUnit(u) {
   c.deathSavesLeft = u.deathSaves || 0; c.lostControl = 0; c.lostControlFresh = false;
   c.summonTurns = null; c.summoner = null; c.nadlom = false; c.initiative = 0;
   c.overcastsUsed = 0; c.broken = false;
+  c.inventory = { ...(u.inventory || {}) };
+  c.phobias = (u.phobias || []).map((p) => ({ ...p, lastRound: -1 }));
   if (c.hp <= 0 && HERO_KINDS[c.kind]) c.down = true;
   return c;
 }
@@ -363,6 +365,7 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
     units: [], byId: {}, order: [], turnIndex: -1, round: 1, turn: null,
     log: log ? [] : null, onEvent, winner: null, occ: new Int32Array(grid.w * grid.h), occVersion: 0,
     summonCount: 0, reactionDepth: 0, statusCache: {}, autoReactions, reachCache: null,
+    traps: [], trapCount: 0,
   };
   const spawn = (list, starts, team, kind) => {
     list.forEach((item, i) => {
@@ -430,7 +433,7 @@ function startNextTurn(b) {
 
 function beginTurn(b, u) {
   u.reactionUsed = false;
-  b.turn = { unitId: u.id, move: 0, actions: 1, bonus: 1, disengaged: false, lostControl: false, aiMoves: 0, acted: false };
+  b.turn = { unitId: u.id, move: 0, actions: 1, bonus: 1 + (u.extraBonusActions || 0), disengaged: false, lostControl: false, aiMoves: 0, acted: false };
   b.reachCache = null;
   emit(b, { type: 'turnStart', actor: u.id });
   if (u.down) {
@@ -609,7 +612,8 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
     if (tgt.maxMrl <= 0 || tgt.down) amt = 0;
     tgt.mrl = Math.max(0, tgt.mrl - amt);
     emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, dmgType, resource: 'mrl', resist: r, mult, crit, value: tgt.mrl });
-    if (amt > 0) {
+    if (amt > 0) phobiaDamage(b, tgt, dmgType, src);
+    if (amt > 0 && isAlive(tgt)) {
       if (!tgt.nadlom && tgt.mrl <= tgt.maxMrl * NADLOM_FRACTION) {
         tgt.nadlom = true;
         emit(b, { type: 'nadlom', target: tgt.id });
@@ -643,7 +647,7 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
   tgt.roundHpLoss += amt;
   emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, absorbed, dmgType, resource: 'hp', resist: r, mult, crit, value: Math.max(0, tgt.hp) });
   if (tgt.hp <= 0) zeroHp(b, tgt, src);
-  else if (amt > 0) bigHitCheck(b, tgt);
+  else if (amt > 0) { bigHitCheck(b, tgt); phobiaDamage(b, tgt, dmgType, src); }
   if (amt > 0 && isAlive(tgt)) triggerReactions(b, 'allyDamaged', tgt, src);
   return amt;
 }
@@ -661,6 +665,7 @@ function zeroHp(b, u, src) {
     u.downTurns = 0;
     u.shield = null;
     emit(b, { type: 'down', target: u.id, actor: src ? src.id : null });
+    for (const a of b.units) if (a !== u && a.team === u.team && isStanding(a)) phobiaTrigger(b, a, 'blood', src);
     if (!checkVictory(b)) triggerReactions(b, 'allyDown', u, src);
   } else {
     kill(b, u, 'killed');
@@ -927,6 +932,7 @@ function weaponAttack(b, att, tgt, op) {
 function hazardEnter(b, u) {
   if (tileAt(b.grid, u.x, u.y) !== T_HAZARD || !isAlive(u)) return;
   emit(b, { type: 'hazard', target: u.id, x: u.x, y: u.y });
+  phobiaTrigger(b, u, 'hazard', null);
   dealDamage(b, null, u, rollDice(b.rng, '1d6'), 'fire');
 }
 
@@ -982,6 +988,7 @@ function walk(b, u, path, noProvoke) {
     steps++;
     seg.push({ x: step.x, y: step.y });
     if (tileAt(b.grid, u.x, u.y) === T_HAZARD) { flush(); hazardEnter(b, u); }
+    if (b.traps.length && trapAt(b, u.x, u.y, u)) { flush(); trapCheck(b, u); }
   }
   flush();
   return steps;
@@ -1015,10 +1022,10 @@ function pushUnit(b, src, tgt, tiles) {
     if (!isPassable(b.grid, nx, ny) || unitAt(b, nx, ny)) break;
     setPos(b, tgt, nx, ny);
     moved++;
-    if (tileAt(b.grid, nx, ny) === T_HAZARD) break;
+    if (tileAt(b.grid, nx, ny) === T_HAZARD || (b.traps.length && trapAt(b, nx, ny, tgt))) break;
   }
   emit(b, { type: 'push', actor: src.id, target: tgt.id, from, to: { x: tgt.x, y: tgt.y }, tiles: moved });
-  if (moved) hazardEnter(b, tgt);
+  if (moved) { hazardEnter(b, tgt); trapCheck(b, tgt); }
 }
 
 // ---------------------------------------------------------------- abilities: legality & targets
@@ -1215,6 +1222,7 @@ export function applyOp(b, caster, t, op, ctx = {}) {
       const critDice = !!ctx.crit && op.dmgType !== 'proxy';
       let amt = rollDice(b.rng, op.dice, critDice) + bonusValue(b, caster, op.bonus, a);
       if (ctx.attacked && !ctx.dmgBonusUsed) { amt += attackDmgBonus(b, caster, t, 'spell'); ctx.dmgBonusUsed = true; }
+      if (!ctx.tick && a && caster !== t) amt += dmgTypeTier(caster, op.dmgType);
       if (half) amt = Math.floor(amt / 2);
       dealDamage(b, ctx.tick ? null : caster, t, Math.max(0, amt), op.dmgType || null, { crit: critDice });
       break;
@@ -1309,6 +1317,7 @@ function randomHop(b, u, tiles) {
   setPos(b, u, to.x, to.y);
   emit(b, { type: 'teleport', actor: u.id, from, to });
   hazardEnter(b, u);
+  trapCheck(b, u);
 }
 
 function abilityMove(b, u, op, spec) {
@@ -1330,6 +1339,7 @@ function abilityMove(b, u, op, spec) {
     setPos(b, u, dest.x, dest.y);
     emit(b, { type: 'teleport', actor: u.id, from, to: { ...dest } });
     hazardEnter(b, u);
+    trapCheck(b, u);
   } else {
     const reach = reachable(b.grid, u.x, u.y, tiles, b.occ);
     const path = pathTo(reach, dest.y * b.grid.w + dest.x);
@@ -1427,6 +1437,135 @@ function hallucinate(b, u, t, range) {
   const nt = b.rng.pick(cands);
   emit(b, { type: 'hallucination', actor: u.id, target: nt.id, intended: t.id });
   return nt;
+}
+
+// ---------------------------------------------------------------- v3: burst fire, items, traps, phobias
+
+/** Phobia triggers handled in battle (others are world-only, exposed on creature.phobias). */
+export const PHOBIA_COMBAT_TRIGGERS = ['fire', 'electric', 'toxin', 'cringe', 'psychic', 'cyber', 'energy', 'proxy', 'blood', 'tech', 'hazard'];
+export const PHOBIA_WORLD_TRIGGERS = ['water', 'hacking', 'heights', 'darkness', 'crowds', 'moral', 'medicine'];
+/** Default phobia effect: fear for 1 turn (source = whatever triggered it). Once per round per phobia. */
+export const PHOBIA_DEFAULT_EFFECT = { op: 'status', id: 'fear', turns: 1 };
+
+function phobiaDamage(b, u, dmgType, src) {
+  if (!u.phobias || !u.phobias.length) return;
+  if (dmgType) phobiaTrigger(b, u, dmgType, src);
+  if (src && src !== u && src.tags && src.tags.includes('mechanical')) phobiaTrigger(b, u, 'tech', src);
+}
+
+function phobiaTrigger(b, u, trigger, src) {
+  if (!u.phobias || !u.phobias.length || !isStanding(u)) return;
+  for (const p of u.phobias) {
+    if (p.trigger !== trigger || p.lastRound === b.round) continue;
+    p.lastRound = b.round;
+    emit(b, { type: 'phobia', target: u.id, actor: src ? src.id : null, trigger });
+    applyOp(b, src && isAlive(src) ? src : u, u, p.effect || PHOBIA_DEFAULT_EFFECT, {});
+  }
+}
+
+/** «Очередь» (canon rule 8): rof shots, shot i needs KB + recoil × i; next-attack effects go to the first shot. */
+function burstAttack(b, att, tgt) {
+  const w = att.weapon;
+  const n = Math.max(1, w.rof || 1);
+  const recoil = w.recoil || 0;
+  const melee = weaponRange(att) <= 1;
+  emit(b, { type: 'burst', actor: att.id, target: tgt.id, shots: n, recoil });
+  let hits = 0, fired = 0;
+  for (let i = 0; i < n; i++) {
+    if (!isAlive(tgt) || !isStanding(att)) break;
+    fired++;
+    const res = attackRoll(b, att, tgt, weaponAttackBonus(b, att), melee, true, { noReact: i > 0, kbPenalty: recoil * i });
+    if (res.hit) {
+      hits++;
+      weaponDamage(b, att, tgt, res.crit, res.extraDice, null, null);
+      if (melee) applyThorns(b, att, tgt);
+    }
+  }
+  emit(b, { type: 'burstEnd', actor: att.id, target: tgt.id, shots: fired, hits });
+  return hits;
+}
+
+/** Usable in battle: consumables, grenades and traps (anything with effects or trap). */
+export const isBattleItem = (it) => !!it && (!!it.trap || (Array.isArray(it.effects) && it.effects.length > 0))
+  && it.slot !== 'weapon' && it.slot !== 'armor' && it.slot !== 'offhand' && it.slot !== 'mod';
+
+/** Ability-shaped view of an item (so items reuse targeting, saves and ops). DC: item.dc or 8 + prof + mod(dex). */
+export function itemAbility(it) {
+  return {
+    id: 'item:' + it.id, name: it.name, level: 1, path: null, cost: 0, action: it.action || 'action', trigger: null,
+    range: it.range ?? (it.target === 'self' ? 0 : 1), target: it.target || 'self', area: it.area || null,
+    roll: it.roll || 'auto', save: it.save || null, onSave: it.onSave || 'none', usesPerBattle: null,
+    effects: it.trap ? [] : (it.effects || []), castStat: it.castStat || 'dex', dc: it.dc ?? null, item: it.id, trap: it.trap || null,
+  };
+}
+
+export const trapAt = (b, x, y, u) => b.traps.find((t) => t.x === x && t.y === y && (!u || t.team !== u.team)) || null;
+
+function placeTrap(b, u, it, tile) {
+  const tr = it.trap;
+  const trap = {
+    id: `trap${++b.trapCount}`, item: it.id, name: it.name, x: tile.x, y: tile.y, owner: u.id, team: u.team,
+    effects: tr.effects || [], roll: tr.roll || (tr.save ? 'save' : 'auto'), save: tr.save || null, onSave: tr.onSave || 'none',
+    dc: tr.dc ?? it.dc ?? getDc(b, u, { castStat: it.castStat || 'dex' }), area: tr.area || null,
+  };
+  b.traps.push(trap);
+  emit(b, { type: 'trapPlaced', actor: u.id, item: it.id, trap: trap.id, x: tile.x, y: tile.y });
+  return trap;
+}
+
+/** Trigger a hostile trap on u's tile (one use). */
+function trapCheck(b, u) {
+  if (!b.traps.length || !isAlive(u)) return;
+  const trap = trapAt(b, u.x, u.y, u);
+  if (!trap) return;
+  b.traps.splice(b.traps.indexOf(trap), 1);
+  emit(b, { type: 'trapTriggered', target: u.id, actor: trap.owner, trap: trap.id, item: trap.item, x: trap.x, y: trap.y });
+  const owner = b.byId[trap.owner] || u;
+  const victims = trap.area
+    ? b.units.filter((x) => isAlive(x) && x.team !== trap.team && chebyshev(x.x, x.y, trap.x, trap.y) <= (trap.area.size || 1))
+    : [u];
+  for (const t of victims) {
+    let half = false;
+    if (trap.roll === 'save' && trap.save && rollSave(b, t, trap.save, trap.dc, owner, trap.id)) {
+      if (trap.onSave !== 'half') continue;
+      half = true;
+    }
+    for (const op of trap.effects) { if (isAlive(t)) applyOp(b, owner, t, op, { half, dc: trap.dc }); }
+  }
+}
+
+function useItem(b, u, it, spec) {
+  u.inventory[it.id]--;
+  if (u.inventory[it.id] <= 0) delete u.inventory[it.id];
+  emit(b, { type: 'useItem', actor: u.id, item: it.id, target: spec.unit || null, tile: spec.x != null ? { x: spec.x, y: spec.y } : null });
+  if (it.trap) {
+    if ((it.action || 'action') === 'bonus') b.turn.bonus--; else b.turn.actions--;
+    b.turn.acted = true;
+    placeTrap(b, u, it, spec);
+    return;
+  }
+  resolveAbility(b, u, itemAbility(it), spec, false);
+}
+
+/** null if u can use item id now, else a reason. */
+export function itemUsable(b, u, id) {
+  const it = b.data.items[id];
+  if (!it || !isBattleItem(it)) return 'noItem';
+  if (!(u.inventory[id] > 0)) return 'noItem';
+  const t = b.turn;
+  if (!t || t.unitId !== u.id) return 'turn';
+  if ((it.action || 'action') === 'bonus' ? t.bonus <= 0 : t.actions <= 0) return 'action';
+  return null;
+}
+
+function itemTargetValid(b, u, it, spec) {
+  const a = itemAbility(it);
+  if (it.trap) {
+    if (!spec || spec.x == null) return false;
+    if (!isPassable(b.grid, spec.x, spec.y) || unitAt(b, spec.x, spec.y) || b.traps.some((t) => t.x === spec.x && t.y === spec.y)) return false;
+    return chebyshev(u.x, u.y, spec.x, spec.y) <= (a.range || 1) && lineOfSight(b.grid, u.x, u.y, spec.x, spec.y);
+  }
+  return targetValid(b, u, a, spec);
 }
 
 /** Is this attack-roll ability melee (no cover, no point-blank disadvantage)? Same rule as attackRoll. */
@@ -1585,9 +1724,25 @@ export function getLegalActions(b, unitId, opts) {
       if (canAttack(b, u, e, range)) out.push({ type: 'attack', unit: unitId, target: e.id });
     }
   }
+  if (t.actions > 0 && canUseWeapon(b, u) && (u.weapon.rof || 1) > 1) {
+    const range = weaponRange(u);
+    for (const e of b.units) {
+      if (!isAlive(e) || !isHostile(b, u, e)) continue;
+      if (canAttack(b, u, e, range)) out.push({ type: 'burst', unit: unitId, target: e.id });
+    }
+  }
   for (const a of u.abilities) {
     if (abilityUsable(b, u, a, false) !== null) continue;
     for (const spec of abilitySpecs(b, u, a)) out.push({ type: 'ability', unit: unitId, ability: a.id, ...spec });
+  }
+  for (const id of Object.keys(u.inventory || {})) {
+    if (itemUsable(b, u, id) !== null) continue;
+    const it = b.data.items[id];
+    const a = itemAbility(it);
+    for (const spec of abilitySpecs(b, u, a)) {
+      const sp = spec.target ? { unit: spec.target } : spec.tile ? spec.tile : {};
+      if (itemTargetValid(b, u, it, sp)) out.push({ type: 'useItem', unit: unitId, item: id, ...spec });
+    }
   }
   return out;
 }
@@ -1698,6 +1853,29 @@ export function perform(b, action) {
       checkVictory(b);
       break;
     }
+    case 'burst': {
+      if (t.actions <= 0) return fail(b, start, 'noAction');
+      if (!canUseWeapon(b, u) || !((u.weapon.rof || 1) > 1)) return fail(b, start, 'noBurst');
+      let tgt = b.byId[action.target];
+      if (!tgt || !isAlive(tgt) || !isHostile(b, u, tgt)) return fail(b, start, 'badTarget');
+      if (!canAttack(b, u, tgt, weaponRange(u))) return fail(b, start, 'outOfRange');
+      t.actions--;
+      t.acted = true;
+      tgt = hallucinate(b, u, tgt, weaponRange(u));
+      burstAttack(b, u, tgt);
+      checkVictory(b);
+      break;
+    }
+    case 'useItem': {
+      const why = itemUsable(b, u, action.item);
+      if (why) return fail(b, start, why);
+      const it = b.data.items[action.item];
+      const spec = action.target ? { unit: action.target } : action.tile ? { x: action.tile.x, y: action.tile.y } : {};
+      if (!itemTargetValid(b, u, it, spec)) return fail(b, start, 'badTarget');
+      useItem(b, u, it, spec);
+      checkVictory(b);
+      break;
+    }
     case 'ability': {
       const a = u.abilities.find((x) => x.id === action.ability);
       if (!a) return fail(b, start, 'noAbility');
@@ -1752,7 +1930,8 @@ export function damageMultiplier(b, tgt, dmgType) {
 /** Flat damage bonus of a weapon hit (stat mod + passives + buffs + marks on target). */
 export function weaponDamageBonus(b, att, tgt) {
   if (!att.weapon) return 0;
-  return mod(effStat(b, att, att.weapon.stat || 'str')) + attackDmgBonus(b, att, tgt, weaponRange(att) <= 1 ? 'melee' : 'ranged');
+  return mod(effStat(b, att, att.weapon.stat || 'str')) + attackDmgBonus(b, att, tgt, weaponRange(att) <= 1 ? 'melee' : 'ranged')
+    + (att.weapon.dmg || 0) + dmgTypeTier(att, att.weapon.dmgType);
 }
 export function spellDamageBonus(b, att, tgt) { return attackDmgBonus(b, att, tgt, 'spell'); }
 export function isStatusImmune(b, u, id) {

@@ -4,6 +4,10 @@
 import { d20 } from './dice.js';
 import { mod } from './character.js';
 
+/** Canon «2 базовых навыка + 2 доп» (sheet of Repa: «база +2», «доп +1»). */
+export const SKILL_BASE_BONUS = 2;
+export const SKILL_EXTRA_BONUS = 1;
+
 /** Canon skill -> stat (rules/stats-skills.md); used when data.SKILLS is not passed. */
 export const SKILL_STATS = {
   athletics: 'str', acrobatics: 'dex', stealth: 'dex', persuasion: 'cha', deception: 'cha', intimidation: 'cha',
@@ -37,15 +41,20 @@ export function skillCheck(creature, skill, dc, opts = {}) {
   const rng = opts.rng || Math.random;
   const tier = skillTier(creature, skill, specs);
   const adv = tier === 'spec' || !!opts.adv;
-  const dis = tier === 'other' || !!opts.dis;
+  // v3: armour without skill / stealth-penalty armour (medium without mastery) -> disadvantage on stealth
+  const armorDis = skill === 'stealth' && !!creature.stealthDis;
+  const dis = tier === 'other' || !!opts.dis || armorDis;
   const r = d20(rng, { adv, dis });
   const parts = [{ label: stat, value: mod(creature.stats[stat]) }];
   if (tier !== 'other') parts.push({ label: 'prof', value: creature.prof || 2 });
+  const picks = creature.skillPicks;
+  if (picks && picks.base.includes(skill)) parts.push({ label: 'base', value: SKILL_BASE_BONUS });
+  else if (picks && picks.extra.includes(skill)) parts.push({ label: 'extra', value: SKILL_EXTRA_BONUS });
   const m = creature.skillMods && creature.skillMods[skill];
   if (m) for (const s of m.sources) if (s.bonus) parts.push({ label: s.name || s.id, value: s.bonus, talent: s.id });
   if (opts.bonus) parts.push({ label: 'bonus', value: opts.bonus });
   const bonus = parts.reduce((a, p) => a + p.value, 0);
   const total = r.natural + bonus;
-  return { roll: r.natural, natural: r.natural, rolls: r.rolls, mode: r.mode, tier, bonus, total, dc, success: total >= dc, parts,
+  return { roll: r.natural, natural: r.natural, rolls: r.rolls, mode: r.mode, tier, bonus, total, dc, success: total >= dc, parts, armorDis,
     advSources: m ? m.sources.filter((s) => s.adv).map((s) => s.name || s.id) : [] };
 }

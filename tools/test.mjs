@@ -10,6 +10,8 @@ import { chooseAction, playTurn } from '../game/src/rules/ai.js';
 import { skillCheck, skillTier } from '../game/src/rules/skills.js';
 import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS } from '../game/src/rules/progression.js';
 import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL } from '../game/src/rules/combat.js';
+import { validateBuild } from '../game/src/rules/build.js';
+import { profPoints, proficiencyCost, defaultProficiencies } from '../game/src/rules/equipment.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
 import { DATA } from './fixtures/rules-data.mjs';
 
@@ -650,6 +652,189 @@ test('XP and levels: thresholds, battle and quest XP, level-up rebuild keeps cho
   assert.ok(h2.maxHp > h1.maxHp);
   assert.equal(h2.maxHp - h2.hp, 5, 'damage kept');
   assert.equal(h2.id, h1.id);
+});
+
+console.log('v3: equipment, proficiencies, burst, items, creation');
+const z = (o = {}) => hero(o); // zabivnoy: heavy armour, class weapon has no type
+test('equipment overrides class weapon/armour; offhand, mods, resist, two-handed, unknown', () => {
+  const h = z({ equipment: { weapon: 'sabre', armor: 'chain', offhand: 'buckler', mods: ['scope'] } });
+  assert.equal(h.weapon.id, 'sabre');
+  assert.equal(h.weapon.hit, 1, 'scope mod');
+  const dexMod = Math.min(Math.floor((h.stats.dex - 10) / 2), 2);
+  assert.equal(h.kb, 10 + 4 + dexMod + 1);
+  assert.equal(h.resist.fire, 'resist');
+  assert.deepEqual(h.equipment, { weapon: 'sabre', armor: 'chain', offhand: 'buckler', mods: ['scope'] });
+  assert.throws(() => z({ equipment: { weapon: 'greatsword', offhand: 'buckler' } }), /two-handed/);
+  assert.throws(() => z({ equipment: { weapon: 'nope' } }), /unknown item/);
+  assert.throws(() => z({ equipment: { weapon: 'vest' } }), /not a weapon/);
+});
+test('proficiency tiers: weapon type hit / disadvantage, damage type bonus, armour tiers and mastery', () => {
+  const base = z({ equipment: { weapon: 'ak' } });
+  assert.equal(base.weaponTier, 2, 'unknown type defaults to «умеет»');
+  const pro = z({ equipment: { weapon: 'ak' }, proficiencies: { weaponTypes: { auto: 3 } } });
+  assert.equal(pro.weaponTier, 3);
+  let d = duel('thug', pro);
+  const d0 = duel('thug', base);
+  assert.equal(d.H.weaponTier - d0.H.weaponTier, 1);
+  // tier 1 -> disadvantage
+  const none = z({ equipment: { weapon: 'ak' }, proficiencies: { weaponTypes: {} } });
+  none.weaponTier = 1;
+  d = duel('thug', none, { grid: ['#######', '#P...E#', '#######'] });
+  forceTurn(d.b, d.H); d.b.rng = stubRng([nat(18), nat(3)]);
+  perform(d.b, { type: 'attack', unit: d.H.id, target: d.E.id });
+  assert.equal(events(d.b, 'attack').pop().roll.mode, 'dis');
+  // damage type tier
+  const slashPro = z({ equipment: { weapon: 'sabre' }, proficiencies: { dmgTypes: { slash: 4 } } });
+  const slash0 = z({ equipment: { weapon: 'sabre' } });
+  const a = duel('thug', slashPro), c = duel('thug', slash0);
+  assert.equal(weaponDamageBonus(a.b, a.H, a.E) - weaponDamageBonus(c.b, c.H, c.E), 2);
+  // armour: itishnik (light class armour) in plate = tier 1 -> attack disadvantage + stealth disadvantage
+  const it = buildCreature({ race: 'human', cls: 'itishnik', data: DATA, equipment: { armor: 'plate' } });
+  assert.equal(it.armorTier, 1);
+  assert.ok(it.armorPenalty && it.stealthDis);
+  d = duel('thug', it);
+  forceTurn(d.b, d.H); d.b.rng = stubRng([nat(18), nat(3)]);
+  perform(d.b, { type: 'attack', unit: d.H.id, target: d.E.id });
+  assert.equal(events(d.b, 'attack').pop().roll.mode, 'dis');
+  // heavy mastery +1 KB; light mastery +1 bonus action
+  assert.equal(z({ proficiencies: { armor: { heavy: 4 } } }).kb, z().kb + 1);
+  const lm = buildCreature({ race: 'human', cls: 'itishnik', data: DATA, equipment: { armor: 'vest' }, proficiencies: { armor: { light: 4 } } });
+  assert.equal(lm.extraBonusActions, 1);
+  const bl = createBattle({ map: DUEL_MAP, heroes: [lm], enemies: ['thug'], data: DATA, seed: 1, autoReactions: false });
+  const L = bl.units[0];
+  nextIs(bl, L); endTurn(bl);
+  assert.equal(bl.turn.unitId, L.id);
+  assert.equal(bl.turn.bonus, 2);
+  // medium mastery ignores stealth disadvantage
+  assert.equal(z({ equipment: { armor: 'chain' } }).stealthDis, true);
+  assert.equal(z({ equipment: { armor: 'chain' }, proficiencies: { armor: { medium: 4 } } }).stealthDis, false);
+});
+test('armour piercing lowers KB; onHit status applies on a hit', () => {
+  const h = z({ equipment: { weapon: 'ap-rifle' } });
+  const { b, H, E } = duel('thug', h, { grid: ['#######', '#P...E#', '#######'] });
+  E.kb = 18; E.armorKb = 6; E.hp = E.maxHp = 200;
+  forceTurn(b, H); b.rng = stubRng([nat(20)]);
+  perform(b, { type: 'attack', unit: H.id, target: E.id });
+  assert.equal(events(b, 'attack').pop().kb, 15);
+  assert.ok(E.statuses.some((s) => s.id === 'bleed'));
+});
+test('«Очередь»: rof shots, KB + recoil × i, next-attack bonus on the first shot only', () => {
+  const h = z({ equipment: { weapon: 'ak' } });
+  const { b, H, E } = duel('thug', h, { grid: ['#######', '#P...E#', '#######'] });
+  H.attackBonus = 0; H.hitBonus = 0; E.kb = 13; E.armorKb = 0; E.hp = E.maxHp = 200;
+  forceTurn(b, H);
+  assert.ok(getLegalActions(b, H.id).some((a) => a.type === 'burst' && a.target === E.id));
+  b.rng = stubRng([nat(14), 0.5, nat(14), nat(18), 0.5]);
+  assert.ok(perform(b, { type: 'burst', unit: H.id, target: E.id }).ok);
+  const shots = events(b, 'attack');
+  assert.deepEqual(shots.map((e) => e.kb), [13, 15, 17]);
+  assert.deepEqual(shots.map((e) => e.hit), [true, false, true]);
+  assert.equal(events(b, 'burstEnd').pop().hits, 2);
+  const d = duel('thug', z({ equipment: { weapon: 'ak' } }), { grid: ['#######', '#P...E#', '#######'] });
+  d.E.hp = d.E.maxHp = 200;
+  applyStatus(d.b, d.H, 'inspired', 3, null);
+  forceTurn(d.b, d.H);
+  perform(d.b, { type: 'burst', unit: d.H.id, target: d.E.id });
+  const s2 = events(d.b, 'attack');
+  assert.ok(s2[0].roll.bonus > s2[1].roll.bonus, 'inspired only on the first shot');
+  assert.equal(s2[1].roll.bonus, s2[2].roll.bonus);
+});
+test('items in battle: medkit, battery, grenade (area, save, enemies only), inventory spent', () => {
+  const h = z({ inventory: { medkit: 1, battery: 1, frag: 1 } });
+  const b = createBattle({ map: { grid: ['#########', '#P.....E#', '#......E#', '#########'] }, heroes: [h], enemies: ['thug', 'thug'], data: DATA, seed: 1, autoReactions: false });
+  const H = b.units[0];
+  H.hp = 5; H.enr = 0;
+  forceTurn(b, H);
+  assert.ok(getLegalActions(b, H.id).some((a) => a.type === 'useItem' && a.item === 'medkit'));
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'medkit', target: H.id }).ok);
+  assert.ok(H.hp > 5);
+  assert.equal(H.inventory.medkit, undefined);
+  assert.equal(perform(b, { type: 'useItem', unit: H.id, item: 'medkit', target: H.id }).error, 'noItem');
+  forceTurn(b, H);
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'battery' }).ok);
+  assert.equal(H.enr, 5);
+  forceTurn(b, H);
+  const E1 = b.units[1];
+  const hp = b.units.slice(1).map((u) => u.hp);
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'frag', tile: { x: E1.x, y: E1.y } }).ok);
+  assert.equal(events(b, 'save').filter((e) => e.reason === 'item:frag').length, 2);
+  assert.ok(b.units.slice(1).every((u, i) => u.hp < hp[i] || u.dead));
+});
+test('trap: placed on a tile, triggers on an enemy entering, not on allies', () => {
+  const h = z({ inventory: { snare: 1 } });
+  const map = { grid: ['#########', '#.P.....#', '#.....E.#', '#########'] };
+  const { b, H, E } = duel('thug', h, map);
+  forceTurn(b, H);
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'snare', tile: { x: 3, y: 1 } }).ok);
+  assert.equal(b.traps.length, 1);
+  forceTurn(b, H);
+  perform(b, { type: 'move', unit: H.id, to: { x: 4, y: 1 } }); // own team walks over it
+  assert.equal(b.traps.length, 1);
+  perform(b, { type: 'move', unit: H.id, to: { x: 1, y: 2 } });
+  forceTurn(b, E);
+  b.rng = stubRng([nat(1)]);
+  perform(b, { type: 'move', unit: E.id, to: { x: 3, y: 1 } });
+  assert.equal(events(b, 'trapTriggered').length, 1);
+  assert.ok(E.statuses.some((s) => s.id === 'root'));
+  assert.equal(b.traps.length, 0);
+});
+test('AI uses items: wounded unit drinks a medkit', () => {
+  const h = z({ inventory: { medkit: 1 } });
+  const { b, H } = duel('thug', h);
+  H.control = 'ai'; H.hp = 3; H.abilities = [];
+  forceTurn(b, H);
+  playTurn(b);
+  assert.ok(events(b, 'useItem').some((e) => e.item === 'medkit'));
+});
+test('phobia: fire damage triggers fear once per round', () => {
+  const h = z({ phobia: { trigger: 'fire' } });
+  const { b, H } = duel('thug', h);
+  H.hp = H.maxHp = 200;
+  dealDamage(b, null, H, 3, 'fire');
+  dealDamage(b, null, H, 3, 'fire');
+  assert.equal(events(b, 'phobia').length, 1);
+  assert.ok(H.statuses.some((s) => s.id === 'fear'));
+});
+test('skillCheck: base +2 / extra +1 skills, stealth disadvantage from armour', () => {
+  const h = z({ skills: { base: ['acrobatics', 'stealth'], extra: ['hacking', 'medicine'] }, equipment: { armor: 'plate' } });
+  let r = skillCheck(h, 'acrobatics', 10, { rng: stubRng([nat(10), nat(10)]), data: DATA });
+  assert.ok(r.parts.some((p) => p.label === 'base' && p.value === 2));
+  r = skillCheck(h, 'hacking', 10, { rng: stubRng([nat(10), nat(10)]), data: DATA });
+  assert.ok(r.parts.some((p) => p.label === 'extra' && p.value === 1));
+  r = skillCheck(h, 'stealth', 10, { rng: stubRng([nat(15), nat(4)]), data: DATA, adv: true });
+  assert.equal(r.armorDis, true);
+  assert.equal(r.mode, 'normal', 'adv + armour dis cancel');
+});
+test('validateBuild: valid build, stats, skills, proficiencies, phobia, multiclass, equipment', () => {
+  const ok = { race: 'human', cls: 'zabivnoy', path: 'titan', stats: DATA.CLASSES.zabivnoy.recommended,
+    skills: { base: ['athletics', 'intimidation'], extra: ['perception', 'survival'] },
+    proficiencies: { weaponTypes: { pistol: 3 }, armor: {} }, phobia: { trigger: 'water' },
+    equipment: { weapon: 'sabre', armor: 'plate' } };
+  assert.deepEqual(validateBuild(ok, DATA), []);
+  const codes = (b) => validateBuild(b, DATA).map((e) => e.code);
+  assert.ok(codes({ ...ok, stats: { ...ok.stats, str: 16 } }).includes('statRange'));
+  assert.ok(codes({ ...ok, stats: { ...ok.stats, dex: 15 } }).includes('overspent'));
+  assert.ok(codes({ ...ok, stats: { ...ok.stats, str: 14 } }).includes('unspent'));
+  assert.ok(codes({ ...ok, skills: { base: ['athletics'], extra: ['athletics', 'x'] } }).includes('baseCount'));
+  assert.ok(codes({ ...ok, skills: { base: ['athletics', 'stealth'], extra: ['athletics', 'medicine'] } }).includes('duplicateSkill'));
+  assert.ok(codes({ ...ok, proficiencies: { weaponTypes: { pistol: 3, rifle: 3, smg: 3, bow: 3 } } }).includes('profOverspent'));
+  assert.ok(codes({ ...ok, proficiencies: { weaponTypes: { pistol: 4 } } }).includes('masteryAtCreation'));
+  assert.ok(codes({ ...ok, phobia: { trigger: 'spiders' } }).includes('unknownTrigger'));
+  assert.ok(codes({ ...ok, multiclass: { cls: 'itishnik' } }).includes('level'));
+  assert.ok(codes({ ...ok, race: 'skeleton' }).includes('raceNotAllowed'));
+  assert.ok(codes({ ...ok, equipment: { weapon: 'greatsword', offhand: 'buckler' } }).includes('build'));
+  assert.equal(profPoints(1), 3);
+  assert.equal(proficiencyCost(defaultProficiencies(DATA.CLASSES.zabivnoy), { weaponTypes: { pistol: 4 } }), 3);
+});
+test('multiclass (level 3+): second class abilities up to level − 2 and the MULTICLASS pool', () => {
+  const h = z({ level: 3, multiclass: { cls: 'itishnik', path: 'mechanic' } });
+  const ids = h.abilities.map((a) => a.id);
+  assert.ok(ids.includes('repair') && ids.includes('zap') && ids.includes('drone'));
+  assert.ok(!ids.includes('emp'), 'level 3 ability of the second class needs multiclass level 3');
+  assert.ok(ids.includes('mc-tactical-gadget'));
+  assert.equal(h.abilities.find((a) => a.id === 'zap').castStat, 'int');
+  assert.throws(() => z({ level: 2, multiclass: { cls: 'itishnik' } }), /level 3/);
+  assert.equal(rebuildHero(h, { level: 5, data: DATA }).multiclass.cls, 'itishnik');
 });
 
 console.log('simulation');

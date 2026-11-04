@@ -31,7 +31,8 @@
 // Battle lost → normal death rules (Cyberspace). Choice availability is not gated: anyone can try anything.
 //
 // New unit ids (need stat blocks in enemies.js, like 'npc-gans'; temporary ally for one battle, NOT a recruit):
-//   'npc-party-victor' — человек, Забивной ур. 3, Путь Железного Титана (танк, тяжёлая броня), ai: 'melee'
+//   'spirit-victor'    — дух Виктора в Киберспейсе (tags: ['digital']), Забивной ур. 3, Путь Железного Титана (танк), ai: 'melee'.
+//                        Канон (ответ автора 2026-11-04): Виктор погиб в истории Куксиуса, живым не встречается.
 //   'npc-party-artyom' — человек, Рейнджер ур. 3, Путь Охотника (дальний бой, range 20), ai: 'ranged'
 
 export const EVENTS = {
@@ -75,38 +76,37 @@ export const EVENTS = {
     ],
   },
 
+  // Viktor died in Kuksius's story (canon answer 2026-11-04). Event at his grave near Kreml; his soul is in Cyberspace.
   'ev-victor': {
     id: 'ev-victor', name: 'ev.victor.title', npc: 'party-victor',
-    region: 'agrozone', location: 'agro-terminal',
-    trigger: { when: 'enter', level: [2, 5] },
+    region: 'warprom', location: 'mogila-viktora',
+    trigger: { when: 'enter', level: [3, 5] },
     once: true,
     scene: 'ev.victor.scene',
     choices: [
       {
-        id: 'stand', text: 'ev.victor.c.stand', deeds: ['help-weak', 'honor'],
+        id: 'free', text: 'ev.victor.c.free', deeds: ['honor', 'help-weak'],
         success: {
-          text: 'ev.victor.r.stand',
-          battle: { enemies: ['cultist', 'cultist', 'cultist-gunner', 'skrilet'], allies: ['npc-party-victor'] },
-          xp: 300, talent: 'old-school', rep: { renegades: 5, neutralVillages: 5, cult: -10 },
-          flags: ['victor-helped'],
+          text: 'ev.victor.r.free',
+          battle: { encounter: 'w-cyberspace', allies: ['spirit-victor'] },
+          xp: 400, talent: 'old-school', rep: { cult: -10 }, flags: ['victor-soul-freed'],
         },
       },
       {
-        id: 'lead', text: 'ev.victor.c.lead', check: { skill: 'stealth', dc: 13, group: true }, deeds: ['help-weak', 'mercy'],
+        id: 'release', text: 'ev.victor.c.release', check: { skill: 'meditation', dc: 15 }, deeds: ['mercy'],
         success: {
-          text: 'ev.victor.r.lead.ok',
-          xp: 300, rep: { renegades: 10, agrozone: -5 }, items: [{ item: 'medkit', n: 2 }],
-          flags: ['victor-helped', 'agro-refugees-saved'],
+          text: 'ev.victor.r.release',
+          xp: 400, talent: 'ancestors-blessing', flags: ['victor-soul-freed'],
         },
         fail: {
-          text: 'ev.victor.r.lead.fail',
-          battle: { enemies: ['cultist', 'cultist', 'skrilet'], map: 'burning-field-1' },
-          xp: 300, rep: { renegades: 5 }, flags: ['victor-helped'],
+          text: 'ev.victor.r.release.fail',
+          battle: { encounter: 'w-cyberspace', allies: ['spirit-victor'] },
+          xp: 400, flags: ['victor-soul-freed'],
         },
       },
       {
-        id: 'leave', text: 'ev.victor.c.leave',
-        success: { text: 'ev.victor.r.leave', flags: ['victor-alone'] },
+        id: 'shard', text: 'ev.victor.c.shard', deeds: ['greed'],
+        success: { text: 'ev.victor.r.shard', items: [{ item: 'terminal-shard', n: 1 }], flags: ['victor-soul-left'] },
       },
     ],
   },

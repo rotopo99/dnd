@@ -133,4 +133,39 @@ export const SPECIALIZATIONS = {
   itishnik: { spec: ['tech', 'lockpicking', 'analysis'], related: ['hacking', 'medicine', 'military'] },
 };
 
-export const DATA = { RACES, CLASSES, STATUSES, ENEMIES, VEIL_TABLE, ENCOUNTERS, TALENTS, GADGETS, COMBAT_TALENT_LIMIT, TALENT_LEVELS, SPECIALIZATIONS };
+// v3 items (engine-side schema, see game/src/rules/equipment.js)
+export const WEAPONS = {
+  sabre: { id: 'sabre', name: 'Сабля', slot: 'weapon', type: 'sabre', dice: '1d8', dmgType: 'slash', stat: 'str', range: 1 },
+  ak: { id: 'ak', name: 'Автомат', slot: 'weapon', type: 'auto', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 12, rof: 3, recoil: 2, noise: 2 },
+  'ap-rifle': { id: 'ap-rifle', name: 'Бронебойка', slot: 'weapon', type: 'rifle', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 15, ap: 3,
+    onHit: [{ op: 'status', id: 'bleed', turns: 2 }] },
+  greatsword: { id: 'greatsword', name: 'Меч Гатса', slot: 'weapon', type: 'twoHanded', dice: '2d6', dmgType: 'slash', stat: 'str', range: 1, twoHanded: true },
+};
+export const ARMOR = {
+  vest: { id: 'vest', name: 'Жилет', slot: 'armor', type: 'light', kb: 2 },
+  chain: { id: 'chain', name: 'Кольчуга из цепей', slot: 'armor', type: 'medium', kb: 4, stealthDis: true, resist: { fire: 'resist' } },
+  plate: { id: 'plate', name: 'Листовая сталь', slot: 'armor', type: 'heavy', kb: 6, stealthDis: true, noise: 2 },
+};
+export const OFFHAND = { buckler: { id: 'buckler', name: 'Крышка от бака', slot: 'offhand', kb: 1 } };
+export const MODS = { scope: { id: 'scope', name: 'Прицел', slot: 'mod', target: 'weapon', hit: 1 } };
+export const CONSUMABLES = {
+  medkit: { id: 'medkit', name: 'Аптечка', slot: 'consumable', action: 'bonus', range: 1, target: 'ally', effects: [{ op: 'heal', dice: '2d4', bonus: 2, resource: 'hp' }] },
+  battery: { id: 'battery', name: 'Батарея', slot: 'consumable', action: 'bonus', range: 0, target: 'self', effects: [{ op: 'heal', value: 5, resource: 'enr' }] },
+  stim: { id: 'stim', name: 'Стим', slot: 'consumable', action: 'bonus', range: 0, target: 'self', effects: [{ op: 'buff', stat: 'hit', value: 2, turns: 2 }] },
+};
+export const GRENADES = {
+  frag: { id: 'frag', name: 'Граната', slot: 'grenade', action: 'action', range: 6, target: 'tile', area: { shape: 'radius', size: 1 },
+    roll: 'save', save: 'dex', onSave: 'half', dc: 13, effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }] },
+};
+export const TRAPS = {
+  snare: { id: 'snare', name: 'Капкан', slot: 'trap', action: 'action', range: 1, target: 'tile',
+    trap: { save: 'dex', dc: 12, effects: [{ op: 'damage', dice: '1d6', dmgType: 'pierce' }, { op: 'status', id: 'root', turns: 1 }] } },
+};
+export const MULTICLASS = [
+  { id: 'inventor-soldier', pair: [['itishnik', 'technomant'], ['zabivnoy']],
+    abilities: [{ id: 'mc-tactical-gadget', name: 'Тактический гаджет', level: 1, cost: 3, action: 'action', range: 0, target: 'self', roll: 'auto',
+      usesPerBattle: 1, effects: [{ op: 'summon', unit: 'drone', turns: 2 }] }] },
+];
+
+export const DATA = { RACES, CLASSES, STATUSES, ENEMIES, VEIL_TABLE, ENCOUNTERS, TALENTS, GADGETS, COMBAT_TALENT_LIMIT, TALENT_LEVELS, SPECIALIZATIONS,
+  WEAPONS, ARMOR, OFFHAND, MODS, CONSUMABLES, GRENADES, TRAPS, MULTICLASS };

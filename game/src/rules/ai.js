@@ -2,13 +2,13 @@
 // Picks the best legal action by expected value, plans movement on the grid.
 // Profiles (unit.ai): 'melee' closes in; 'ranged' / 'caster' / 'support' keep distance and like cover.
 
-import { avgDice, firstDie } from './dice.js';
+import { avgDice, firstDie, chanceD20 } from './dice.js';
 import { chebyshev, lineOfSight, hasCover, distanceField, tileAt, T_HAZARD } from './grid.js';
 import {
   getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive,
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
-  abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS,
+  abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS, itemAbility,
 } from './combat.js';
 
 const STATUS_VALUE = {
@@ -64,6 +64,37 @@ function weaponEV(b, u, t, op) {
   if (w.dmgType !== 'proxy') v += odds.critChance * dmgValue(b, t, avgDice(w.dice), w.dmgType) * 0.8;
   if (op && op.extraDice) v += odds.chance * dmgValue(b, t, avgDice(op.extraDice), op.extraType || w.dmgType);
   return { v, chance: odds.chance };
+}
+
+/** «Очередь»: shot i hits at need + recoil × i (same roll mode). */
+function burstEV(b, u, t) {
+  const w = u.weapon;
+  if (!w || !((w.rof || 1) > 1)) return 0;
+  const melee = weaponRange(u) <= 1;
+  const odds = attackOdds(b, u, t, weaponAttackBonus(b, u), melee, true);
+  const one = weaponEV(b, u, t, null);
+  if (one.chance <= 0) return 0;
+  const perHit = one.v / one.chance;
+  let v = 0;
+  for (let i = 0; i < w.rof; i++) v += chanceD20(odds.need + (w.recoil || 0) * i, odds.mode) * perHit;
+  return v;
+}
+
+/** Scarcity: using an item costs a bit of value so AI keeps them for when they matter. */
+const ITEM_USE_COST = 1.5;
+
+function trapEV(b, u, it, tile) {
+  let best = 0;
+  for (const e of b.units) {
+    if (!isStanding(e) || !isHostile(b, u, e) || !isMeleeUnit(e)) continue;
+    const d = chebyshev(e.x, e.y, u.x, u.y);
+    if (d > 6 || chebyshev(e.x, e.y, tile.x, tile.y) >= d) continue;
+    let dmg = 0;
+    for (const op of it.trap.effects || []) if (op.op === 'damage') dmg += dmgValue(b, e, avgDice(op.dice) + (op.bonus | 0), op.dmgType);
+    else if (op.op === 'status') dmg += statusValue(b, u, e, op.id, op.turns);
+    best = Math.max(best, dmg * 0.5);
+  }
+  return best;
 }
 
 function statusValue(b, u, t, id, turns) {
@@ -199,6 +230,17 @@ export function evalAction(b, u, act) {
       if (mv && a.target === 'self') return 0; // pure repositioning: handled by movement planning
       return evalAbility(b, u, a, spec);
     }
+    case 'burst': {
+      const t = b.byId[act.target];
+      return t ? burstEV(b, u, t) : 0;
+    }
+    case 'useItem': {
+      const it = b.data.items[act.item];
+      if (!it) return 0;
+      if (it.trap) return act.tile ? trapEV(b, u, it, act.tile) - ITEM_USE_COST : 0;
+      const spec = act.target ? { unit: act.target } : act.tile ? { x: act.tile.x, y: act.tile.y } : {};
+      return evalAbility(b, u, itemAbility(it), spec) - ITEM_USE_COST;
+    }
     case 'endStatus': {
       const s = u.statuses.find((x) => x.id === act.status);
       return s ? 3.5 * Math.min(s.turns || 1, 3) : 0;
@@ -220,7 +262,7 @@ function buildOptions(b, u) {
     for (const e of b.units) {
       if (!isAlive(e) || !isHostile(b, u, e) || e.down) continue;
       if (taunt && taunt !== e) continue;
-      const v = weaponEV(b, u, e, null).v;
+      const v = Math.max(weaponEV(b, u, e, null).v, burstEV(b, u, e));
       if (v > 0) list.push({ t: e, v });
     }
     if (list.length) opts.push({ range: weaponRange(u), noLos: false, ranged: weaponRange(u) > 1, action: true, list: list.sort((x, y) => y.v - x.v) });
@@ -371,9 +413,10 @@ export function chooseAction(b, unitId) {
   const legal = getLegalActions(b, unitId, { noMoves: true });
   let best = null, bestBonus = null;
   for (const act of legal) {
-    if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus') continue;
+    if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus' && act.type !== 'burst' && act.type !== 'useItem') continue;
     const v = evalAction(b, u, act);
-    const isBonus = act.type === 'ability' && u.abilities.find((x) => x.id === act.ability)?.action === 'bonus';
+    const isBonus = (act.type === 'ability' && u.abilities.find((x) => x.id === act.ability)?.action === 'bonus')
+      || (act.type === 'useItem' && b.data.items[act.item]?.action === 'bonus');
     if (isBonus) { if (!bestBonus || v > bestBonus.v) bestBonus = { act, v }; }
     else if (!best || v > best.v) best = { act, v };
   }
