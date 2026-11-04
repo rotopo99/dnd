@@ -18,5 +18,6 @@ export const WORLD_RULES = {
   cyberspace: { baseDc: 13, nodes: 3, needed: 2, maxMarks: 3, mrlPerMark: 2, returnFrac: 0.5, robFrac: 0.1, uniqueMax: 5,
     skills: ['meditation', 'judge', 'hacking', 'religion'], encounter: 'w-cyberspace' },
   finale: { encounter: 'w-cc-finale', minParty: 3 },
+  talentFallbackCredits: 100, // quest talentChoice with nothing allowed for the hero → credits instead
   blackMarket: ['rare-parts', 'lockpick-set', 'grenade', 'servo-parts'],
 };

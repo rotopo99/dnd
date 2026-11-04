@@ -211,14 +211,14 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
 
 const itemName = (id) => ITEMS[id]?.name || id;
 
-/** Can the hero take this world-given talent: race, tags, weapon, stats, level (jobs/origins are not checked). */
+/** Can the hero take this world-given talent: race, alignment, tags, weapon, stats, level (jobs/origins are not checked). */
 export function talentOk(save, id, data = GAME_DATA) {
   const tl = TALENTS[id];
   if (!tl) return false;
   const u = buildHero(save, data);
   const req = { ...(tl.req || {}) };
-  delete req.jobs; delete req.origins; delete req.alignment;
-  return talentAllowed({ ...tl, req }, { race: save.hero.race, cls: save.hero.cls, stats: u.stats, level: save.hero.level, weaponRange: u.weapon?.range || 1, tags: u.tags });
+  delete req.jobs; delete req.origins; // alignment is still checked: good heroes get no evil talents and vice versa
+  return talentAllowed({ ...tl, req }, { race: save.hero.race, cls: save.hero.cls, alignment: save.hero.alignment, stats: u.stats, level: save.hero.level, weaponRange: u.weapon?.range || 1, tags: u.tags });
 }
 
 /** Learn a talent (quest reward, trainer, companion, Cyberspace). Checks talentOk; returns toasts. */

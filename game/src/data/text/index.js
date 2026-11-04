@@ -475,6 +475,7 @@ const ru = {
   'battle.retreat': 'Отступить',
   'battle.retreatSub': 'без добычи',
   'battle.retreated': 'Партия отступила',
+  'talent.fallback': 'Награда-талант не подошла герою: вместо неё {n} кредов',
   'create.pickAll': 'Выбери талант в каждом слоте',
 
   // ---------- resources ----------

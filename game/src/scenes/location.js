@@ -15,7 +15,7 @@ import {
 } from '../world/data.js';
 import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputation.js';
 import {
-  members, activeCompanions, buildHero, canRecruit, recruit, grant, restParty, restDepartures, journal,
+  members, activeCompanions, buildHero, canRecruit, recruit, grant, restParty, restDepartures, journal, tf,
   locFaction, regionOf, hasFlagInParty, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
 } from '../world/state.js';
 import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions } from '../world/quests.js';
@@ -419,7 +419,14 @@ export function createLocationScene(locId) {
     const list = (sv.pendingTalentChoice || []).shift();
     if (!list) return false;
     const opts = list.filter((id) => TALENTS[id] && !sv.hero.talents.includes(id) && talentOk(sv, id, game.data));
-    if (!opts.length) return pendingChoice(game);
+    if (!opts.length) {
+      // nothing fits the hero (race / alignment / owned): credits instead, noted in the journal
+      const n = WORLD_RULES.talentFallbackCredits;
+      toastAll(game, grant(sv, { credits: n }, game.data));
+      journal(sv, tf('talent.fallback', { n }));
+      persist(game);
+      return pendingChoice(game);
+    }
     game.openModal({ title: t('talent.choice'), width: 900, onCancel: false, lines: [{ text: t('talent.choiceText'), color: 'a' }],
       options: opts.map((id) => ({ label: TALENTS[id].name, sub: TALENTS[id].desc, run: (g) => { toastAll(g, learnTalent(sv, id, g.data)); refresh(g); pendingChoice(g); } })) });
     return true;
