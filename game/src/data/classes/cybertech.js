@@ -18,7 +18,7 @@ export default {
   // 27 очков: ЛВК 13 (5) + ТЕЛ 14 (7) + ИНТ 14 (7) + ТВД 13 (5) + ВОС 11 (3) = 27
   recommended: { str: 8, dex: 13, con: 14, int: 14, wil: 13, cha: 8, per: 11 },
   overcast: 'veil',
-  allowedRaces: ['human', 'skeleton', 'mutant-beast', 'mutant-plant'], // канон: андроиды не могут использовать магию (rules/races.md)
+  allowedRaces: ['human', 'skeleton', 'mutant-beast', 'mutant-plant', 'tekhonok', 'cringegon', 'skrilet'], // канон: андроиды не могут использовать магию (rules/races.md); NPC-расы — для компаньонов и врагов
   paths: [
     { id: 'soul-eater', name: 'Путь Пожирателя Душ', desc: 'Поглощение душ: крадёт жизнь, жертвует своей кровью ради силы.' },
     { id: 'cyber-demon', name: 'Путь Кибер-Демона', desc: 'Контроль над киберпространством: призывает кибер-демонов и скрилетов.' },

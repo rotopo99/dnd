@@ -17,7 +17,7 @@ export default {
   // 27 очков: ЛВК 12 (4) + ТЕЛ 14 (7) + ИНТ 12 (4) + ТВД 15 (9) + ВОС 11 (3) = 27
   recommended: { str: 8, dex: 12, con: 14, int: 12, wil: 15, cha: 8, per: 11 },
   overcast: null,
-  allowedRaces: ['human', 'skeleton', 'mutant-beast', 'mutant-plant'], // канон: андроиды не могут использовать магию (rules/races.md)
+  allowedRaces: ['human', 'skeleton', 'mutant-beast', 'mutant-plant', 'tekhonok', 'cringegon', 'skrilet'], // канон: андроиды не могут использовать магию (rules/races.md); NPC-расы — для компаньонов и врагов
   paths: [
     { id: 'nature', name: 'Путь Природы', desc: 'Управление природными силами: растения, звери, буря.' },
     { id: 'spirits', name: 'Путь Духов', desc: 'Общение с духами и кибернетическими сущностями: призыв духов, проклятия шёпотом.' },

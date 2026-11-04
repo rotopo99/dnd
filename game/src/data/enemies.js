@@ -499,7 +499,7 @@ export const ENEMIES = {
     hp: 10, mrl: 10, enr: 0, kb: 11, speed: 6, castStat: 'str',
     weapon: { name: 'Вилы', dice: '1d8', dmgType: 'pierce', stat: 'str', range: 1, hit: -1, attack: 3 },
     abilities: [
-      ability({ id: 'field-rage', name: 'Ярость поля', action: 'bonus', range: 0, target: 'self', usesPerBattle: 1,
+      ability({ id: 'field-rage', name: 'Ярость поля', action: 'bonus', range: 0, target: 'self', roll: 'auto', usesPerBattle: 1,
         effects: [{ op: 'buff', stat: 'dmg', value: 2, turns: 2 }],
         desc: '+2 к урону на 2 хода: «Отмена ID-чипов!»' }),
     ],
@@ -705,7 +705,7 @@ export const ENEMIES = {
       ability({ id: 'armor-hack', name: 'Взлом брони', range: 8, roll: 'save', save: 'int', usesPerBattle: 1,
         effects: [{ op: 'status', id: 'dazed', turns: 1 }],
         desc: 'Дизбаланс на 1 ход: КБ брони ÷2 (спас ИНТ, СЛ 13).' }),
-      ability({ id: 'fake-signal', name: 'Фальшивый сигнал', action: 'bonus', range: 1, target: 'tile', usesPerBattle: 1,
+      ability({ id: 'fake-signal', name: 'Фальшивый сигнал', action: 'bonus', range: 1, target: 'tile', roll: 'auto', usesPerBattle: 1,
         effects: [{ op: 'summon', unit: 'hologram', turns: 2 }],
         desc: 'Голограмма-приманка на 2 хода.', canon: 'rules/talents.md' }),
     ],
