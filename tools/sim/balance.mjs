@@ -263,12 +263,13 @@ function printV3() {
     const r = v3Rate(enc, N, SEED); const tg = TARGET_V3[kind];
     const flag = r.rate < tg[0] - 0.03 ? ' <-- HARD' : r.rate > tg[1] + 0.03 ? ' <-- EASY' : ''; const lg = r.rounds > 10.5 ? ' LONG' : '';
     if (flag) bad++; cnt++; sumR += r.rounds;
-    console.log(`${enc.id.padEnd(26)} L${enc.level} foes ${String(enc.enemies.length).padStart(2)} ${kind.padEnd(6)} win ${pc(r.rate)} rounds ${r.rounds.toFixed(1).padStart(4)}${lg} pw ${JSON.stringify(enc.power ?? 1)} tgt ${tg.map((x) => 100 * x).join('-')}${flag}`);
+    console.log(`${enc.id.padEnd(26)} L${enc.level} foes ${String(enc.enemies.length).padStart(2)} ${kind.padEnd(6)} win ${pc(r.rate)} rounds ${r.rounds.toFixed(1).padStart(4)} (win ${r.winRounds.toFixed(1)})${lg} pw ${JSON.stringify(enc.power ?? 1)} tgt ${tg.map((x) => 100 * x).join('-')}${flag}`);
   }
   console.log(`out of target: ${bad}/${cnt}; mean rounds ${(sumR / cnt).toFixed(1)}`);
 }
 // gear: tier -> battery of encounters (provisional levels); item X vs hero's own starter item, same trio / seed
-const GEAR_BATTERY = { 1: ['v3-pir-dock', 'v3-ai-rally', 'v3-scv-pickers'], 2: ['v3-tin-trial', 'v3-mech-shop', 'v3-agro-field'], 3: ['v3-pir-raid', 'v3-wp-corridor', 'v3-cult-plague'], 4: ['v3-tin-arena', 'v3-crg-concert', 'v3-ai-lox'], 5: ['v3-pir-flagship', 'v3-wp-walker', 'v3-agro-chief'] };
+const GEAR_BATTERY = { 1: ['v3-pir-dock', 'v3-scv-pickers', 'v3-mutz-pack'], 2: ['v3-tin-trial', 'v3-mech-shop', 'v3-agro-field'], 3: ['enc-saboteurs', 'enc-brigands', 'enc-border-clash'], 4: ['enc-sokralnya-guard', 'enc-lox-clone', 'enc-arena-final'], 5: ['v3-pir-flagship', 'v3-wp-walker', 'enc-arsenal-cult'] };
+const scoreOf = (r) => { const h = r.survivors.filter((u) => u.team === 'heroes'), e = r.survivors.filter((u) => u.team !== 'heroes'); return h.reduce((a, u) => a + u.hp / u.maxHp, 0) / 4 - e.reduce((a, u) => a + u.hp / u.maxHp, 0) / Math.max(1, e.length + 0); };
 const KIT_TIER = {}; // used only for reporting
 function candidates(item, kind) {
   const out = [];
@@ -286,7 +287,7 @@ function gearDelta(item, kind, n, seedBase, noMods) {
   const tier = item.tier || 1; const encs = GEAR_BATTERY[tier].map((id) => ENCOUNTERS_V3[id]);
   const cands = candidates(item, kind); if (!cands.length) return null;
   const rng = createRng(seedBase * 7717 + item.id.length * 13 + tier);
-  let wa = 0, wb = 0, N2 = 0, ra = 0, rb = 0;
+  let wa = 0, wb = 0, N2 = 0, ra = 0, rb = 0, sa = 0, sb = 0;
   for (let t = 0; t < n; t++) {
     const enc = encs[t % encs.length]; const level = Math.max(enc.level, tier === 1 ? 1 : tier);
     const trio = [0, 1, 2].map(() => worldHero(rng, enc.level, false));
@@ -299,9 +300,9 @@ function gearDelta(item, kind, n, seedBase, noMods) {
     const base = trio.map((h) => v3Hero(h, enc.level));
     const run = (eq, prof) => simulateBattle({ heroes: [...base.map((_, i) => v3Hero(trio[i], enc.level)), v3Hero(ch2, enc.level, eq, kit.inventory, prof)], enemies: enc.enemies, data: GAME_DATA, seed: bs, maxRounds: 30 });
     const A = run(eqB, null), B = run(eqX, c.grant);
-    wa += A.winner === 'heroes' ? 1 : 0; wb += B.winner === 'heroes' ? 1 : 0; ra += A.rounds; rb += B.rounds; N2++;
+    wa += A.winner === 'heroes' ? 1 : 0; wb += B.winner === 'heroes' ? 1 : 0; ra += A.rounds; rb += B.rounds; sa += scoreOf(A); sb += scoreOf(B); N2++;
   }
-  return { base: wa / N2, item: wb / N2, d: (wb - wa) / N2, dr: (rb - ra) / N2, nb: cands.length };
+  return { base: wa / N2, item: wb / N2, d: (wb - wa) / N2, dr: (rb - ra) / N2, ds: (sb - sa) / N2, nb: cands.length };
 }
 function worldHeroFor(rng, level, b, race) {
   const cls = CLASSES[b.cid]; const path = cls.paths.find((p) => p.id === b.path); const weapon = path?.weapon || cls.weapon;
@@ -322,7 +323,7 @@ function printGear() {
       const r = gearDelta(it, kind, N, SEED);
       if (!r) { console.log(`${kind} ${it.id} t${it.tier}: no candidates`); continue; }
       rows.push({ kind, it, r });
-      console.log(`${kind.padEnd(6)} ${it.id.padEnd(20)} t${it.tier} ${(it.type || '').padEnd(10)} p${String(it.price).padStart(5)} base ${pc(r.base)} item ${pc(r.item)} d ${pp(r.d).padStart(6)} dR ${r.dr.toFixed(1).padStart(5)} builds ${r.nb}`);
+      console.log(`${kind.padEnd(6)} ${it.id.padEnd(20)} t${it.tier} ${(it.type || '').padEnd(10)} p${String(it.price).padStart(5)} base ${pc(r.base)} item ${pc(r.item)} d ${pp(r.d).padStart(6)} dR ${r.dr.toFixed(1).padStart(5)} dS ${(100 * r.ds).toFixed(0).padStart(4)} builds ${r.nb}`);
     }
   }
   // tier x category means and outliers
@@ -333,7 +334,7 @@ function printGear() {
   console.log('outliers (|d - tier mean| > 8pp):');
   for (const x of rows) { const k = `${x.kind}:t${x.it.tier}`; const m = tm[k].reduce((a, b) => a + b, 0) / tm[k].length; if (Math.abs(x.r.d - m) > 0.08) console.log(`  ${x.it.id} t${x.it.tier} d ${pp(x.r.d)} vs mean ${pp(m)}${x.it.unique ? ' (relic)' : ''}`); }
 }
-export { kindV3, TARGET_V3 };
+export { kindV3, TARGET_V3, worldHero, v3Hero };
 const t0 = Date.now();
 if (process.argv[1] && process.argv[1].endsWith('balance.mjs')) {
 if (MODE === 'v3') printV3();

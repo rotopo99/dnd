@@ -343,7 +343,7 @@ const LIST = [
       effects: [{ op: 'drain', dice: '2d8', dmgType: 'electric', to: 'hp', ratio: 0.5 }], desc: '«Органика — угроза». 2d8 электро, лечит себя на половину.' })],
     desc: 'Мельта-резак: 3 клетки, броня плавится. Держись подальше.' }),
   foe({ id: 'mech-hive-node', name: 'Узел коллективного разума', level: 5, faction: 'mechanids', rank: 'miniboss', boss: true, tags: ['mechanical'],
-    stats: st(12, 8, 18, 18, 16, 3, 14), hp: 72, mrl: 40, enr: 30, castStat: 'int', speed: 2,
+    stats: st(12, 8, 18, 18, 16, 3, 14), hp: 55, mrl: 40, enr: 30, castStat: 'int', speed: 2,
     weapon: { name: 'Манипуляторы', dice: '1d10', dmgType: 'blunt', stat: 'str', range: 2 },
     resist: { toxin: 'immune', pierce: 'resist', ...NO_MIND }, immuneStatus: [...MACHINE_IMMUNE, 'prone', 'push'], ai: 'caster', xp: 340, loot: 'mechanids',
     abilities: [
@@ -819,13 +819,13 @@ const LIST = [
     places: ['semya-chumy'],
     desc: 'Источник чумы металла: органо-металлический нарост, пульсирующий в такт помехам Судьи. Не ходит, не бьёт — заражает.' }),
   foe({ id: 'boss-vibe-burner', name: 'Выжигатель Вайба', level: 5, faction: 'cringegons', rank: 'boss', boss: true, tags: ['mechanical'],
-    stats: st(10, 8, 18, 16, 18, 18, 12), hp: 85, mrl: 80, enr: 30, castStat: 'cha', speed: 0, kb: 14,
+    stats: st(10, 8, 18, 16, 18, 18, 12), hp: 60, mrl: 80, enr: 30, castStat: 'cha', speed: 0, kb: 14,
     weapon: null, noAttack: true,
     resist: { cringe: 'immune', psychic: 'resist', pierce: 'resist', proxy: 'vuln' }, immuneStatus: ['fear', 'cringed', 'hallucination', 'prone', 'root', 'poison', 'bleed', 'push'],
     ai: 'caster', xp: 600, loot: 'boss-vibe-burner',
     abilities: [
       ability({ id: 'vb-burn', name: 'Выжечь вайб', range: 0, target: 'tile', area: { shape: 'radius', size: 5 }, roll: 'save', save: 'wil', onSave: 'half',
-        effects: [{ op: 'damage', dice: '2d8', dmgType: 'psychic' }, { op: 'status', id: 'cringed', turns: 1 }], desc: 'Каждый ход: 2d8 пси по МРЛ в радиусе 5.' }),
+        effects: [{ op: 'damage', dice: '3d8', dmgType: 'psychic' }, { op: 'status', id: 'cringed', turns: 1 }], desc: 'Каждый ход: 3d8 пси по МРЛ в радиусе 5.' }),
       ability({ id: 'vb-silence', name: 'Тишина в эфире', cost: 5, range: 10, target: 'tile', area: { shape: 'radius', size: 3 }, roll: 'save', save: 'wil', usesPerBattle: 2,
         effects: [{ op: 'status', id: 'silence', turns: 2 }], desc: 'Немота на 2 хода в радиусе 3.' }),
       ability({ id: 'vb-crew', name: 'Смена операторов', action: 'bonus', range: 1, target: 'tile', roll: 'auto', usesPerBattle: 2,
@@ -847,7 +847,7 @@ const LIST = [
     places: ['ledyanoy-ring'],
     desc: 'Бьётся на замёрзшем ринге. Каждое попадание его перчаток замедляет. Победа — перчатки и уважение арены.' }),
   foe({ id: 'boss-sputnik-guardian', name: 'Страж Спутника', level: 4, faction: null, rank: 'boss', boss: true, tags: ['mechanical'],
-    stats: st(10, 16, 16, 16, 12, 1, 16), hp: 66, mrl: 40, enr: 20, castStat: 'int', speed: 0, kb: 16,
+    stats: st(10, 16, 16, 16, 12, 1, 16), hp: 52, mrl: 40, enr: 20, castStat: 'int', speed: 0, kb: 16,
     weapon: { name: 'Лазер со Спутника', dice: '2d6', dmgType: 'energy', stat: 'dex', range: 20 },
     resist: { energy: 'resist', toxin: 'immune', electric: 'vuln', ...NO_MIND }, immuneStatus: [...MACHINE_IMMUNE, 'prone', 'root', 'push'],
     ai: 'ranged', xp: 400, loot: 'dungeons',
@@ -860,7 +860,7 @@ const LIST = [
     places: ['sputnik'],
     desc: 'Автоматика упавшего спутника всё ещё защищает орбитальный лазер. Отличная цель для ЭМ-гранат.' }),
   foe({ id: 'boss-bazaar-ghost', name: 'Призрак Небесного базара', level: 4, faction: null, rank: 'boss', boss: true, tags: ['digital'],
-    stats: st(6, 16, 12, 14, 16, 18, 14), hp: 58, mrl: 56, enr: 20, castStat: 'cha', speed: 7, kb: 14,
+    stats: st(6, 16, 12, 14, 16, 18, 14), hp: 42, mrl: 56, enr: 20, castStat: 'cha', speed: 7, kb: 14,
     weapon: { name: 'Холодный счёт', dice: '1d10', dmgType: 'psychic', stat: 'cha', range: 6 },
     resist: { ...SPIRIT }, immuneStatus: ['poison', 'bleed', 'prone', 'root'], ai: 'caster', xp: 400, loot: 'ruins',
     abilities: [
@@ -982,7 +982,7 @@ export const ENCOUNTERS_V3 = Object.fromEntries([
   enc('v3-mech-plague', 'Чума металла', 3, 'mechanids', ['betonka'], ['mech-plagued', 'mech-plagued', 'cult-plague-bearer', 'mech-node']),
   enc('v3-mech-hive', 'Сервер коллектива', 5, 'mechanids', ['betonka'], ['mech-hive-node', 'mech-assimilator', 'mech-cutter', 'mech-plagued']),
   // Кринжгоны
-  enc('v3-crg-wedding', 'Свадьба вторжения', 2, 'cringegons', ['pepelnoe-gornilo', 'nadezhda'], ['crg-toastmaster', 'crg-heckler', 'crg-heckler', 'crg-heckler']),
+  enc('v3-crg-wedding', 'Свадьба вторжения', 2, 'cringegons', ['pepelnoe-gornilo', 'nadezhda'], ['crg-toastmaster', 'crg-heckler', 'crg-heckler', 'crg-heckler', 'crg-heckler', 'crg-heckler']),
   enc('v3-crg-concert', 'Концерт на границе', 4, 'cringegons', ['baza-predlozhki', 'nadezhda'], ['crg-bayanist', 'crg-brute', 'crg-toastmaster', 'crg-heckler', 'crg-heckler']),
   enc('v3-crg-collector', 'Агент Собирателя', 5, 'cringegons', ['pepelnoe-gornilo'], ['crg-collector-agent', 'crg-brute', 'crg-bayanist', 'crg-toastmaster']),
   // Мусорщики
@@ -1071,13 +1071,15 @@ export const ENCOUNTERS_V3 = Object.fromEntries([
 // ------------------------------------------------------------------------- Масштаб силы боя v3 (balance-tester)
 // POWER_V3[id боя] — множитель силы врагов боя (1 = как в ENEMIES_V3). Не толстит только ЗДР: ЗДР ×(1+0.5(p−1)), атака +round(3(p−1)),
 // урон +round(2(p−1)) (оружие — через характеристику, способности — через `bonus`), КБ +round(1.5(p−1)), опыт ×p.
-// power может быть массивом (по кругу по индексу врага). Производные враги — `base^p` в ENEMIES_V3. Таблица пишется `tools/sim/tune-v3.mjs`.
-export function scaleV3(id, p) {
+// Запись: число | объект { p, hp, atk, dmg, kb } (свои доли на (p−1), см. SCALE_V3) | массив таких (по кругу по индексу врага). Производные враги — `base^p` в ENEMIES_V3. Таблица пишется `tools/sim/tune-v3.mjs`.
+export const SCALE_V3 = { hp: 0.5, atk: 3, dmg: 2, kb: 1.5 }; // на единицу (p − 1); запись POWER_V3 может переопределить любое поле: { p, hp, atk, dmg, kb }
+export function scaleV3(id, p, o = null) {
   if (!p || p === 1) return id;
-  const nid = `${id}^${p}`;
+  const sc = { ...SCALE_V3, ...(o || {}) };
+  const nid = `${id}^${p}${o ? '~' + [sc.hp, sc.atk, sc.dmg, sc.kb].join('.') : ''}`;
   if (ENEMIES_V3[nid]) return nid;
   const e = ENEMIES_V3[id] || ENEMIES_V1[id];
-  const hpK = 1 + 0.5 * (p - 1), d = Math.round(2 * (p - 1)), a = Math.round(3 * (p - 1)), k = Math.round(1.5 * (p - 1));
+  const hpK = Math.max(0.2, 1 + sc.hp * (p - 1)), d = Math.round(sc.dmg * (p - 1)), a = Math.round(sc.atk * (p - 1)), k = Math.round(sc.kb * (p - 1));
   const def = { ...e, id: nid, hp: Math.max(1, Math.round(e.hp * hpK)), mrl: Math.round((e.mrl || 0) * hpK), kb: e.kb + k, xp: Math.round((e.xp || 0) * p), stats: { ...e.stats } };
   if (e.weapon) {
     def.weapon = { ...e.weapon, attack: e.weapon.attack != null ? e.weapon.attack + a : e.weapon.attack };
@@ -1088,11 +1090,97 @@ export function scaleV3(id, p) {
   return nid;
 }
 export const POWER_V3 = {
+  'v3-pir-dock': 3.2,
+  'v3-wp-patrol': 2.85,
+  'v3-ai-rally': {"p":4.4,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-tin-trial': 2.65,
+  'v3-ren-ambush': 2.15,
+  'v3-mech-plague': 3.2,
+  'v3-crg-concert': {"p":4.35,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-scv-skeleton-hunt': 2.75,
+  'v3-tek-storm': {"p":2.75,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-nv-elders': {"p":3.05,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-agro-chief': {"p":3.95,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-cult-call': 3.35,
+  'v3-mutz-pack': 2.65,
+  'v3-band-hares': 1.85,
+  'v3-band-bisons': {"p":3.55,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-fauna-mine': 3.15,
+  'v3-mon-sea': {"p":5.15,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-boss-plague-seed': {"p":6.1,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-boss-sputnik': {"p":5.25,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-lis-bunker': 1.85,
+  'enc-cringe-base': {"p":4.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-brigands': 2.7,
+  'enc-kiberspeys-door': {"p":4.85,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-dawn-bodies': 3,
+  'enc-great-mech': {"p":3.85,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-warprom-patrol': 2.2,
+  'enc-sokralnya-guard': {"p":3.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-proxy-storm': {"p":5.3,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-hill-monster': {"p":2.75,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-pir-raid': 2.55,
+  'v3-wp-corridor': 1.9,
+  'v3-ai-lox': {"p":2.1,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-tin-arena': {"p":2.35,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-ren-hatab': 1.3,
+  'v3-mech-hive': {"p":3.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-crg-collector': {"p":6.35,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-scv-kings-yard': {"p":3.25,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-tek-golem': {"p":5.9,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-agro-field': 2.85,
+  'v3-mutr-border': 3.45,
+  'v3-cult-plague': 3.5,
+  'v3-mutz-hunt': 2.85,
+  'v3-band-foxes': {"p":2.15,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-fauna-rats': 3.4,
+  'v3-fauna-chimera': 3.5,
+  'v3-mon-hills': 2.75,
+  'v3-boss-vibe-burner': {"p":5.15,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-boss-bazaar': {"p":5.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-boss-lis-1': 0.7,
+  'enc-vibe-burner': 4.65,
+  'enc-harmony-fall': 2.85,
+  'enc-judge': {"p":3.5,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-lox-clone': {"p":3.7,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-plague-seed': {"p":3.85,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-clone-vats': {"p":2.85,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-saboteurs': {"p":5.3,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-lake-monster': {"p":5.35,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-dungeon': 3.2,
+  'v3-pir-flagship': {"p":2.7,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-wp-walker': {"p":1.9,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-ai-commissar': {"p":3.7,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-tin-renegade': {"p":5.25,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-mech-shop': 3.05,
+  'v3-crg-wedding': 5,
+  'v3-scv-pickers': 3.2,
+  'v3-tek-shrine': 3.2,
+  'v3-nv-militia': 3.15,
+  'v3-agro-harvest': {"p":3.05,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-mutr-grove': {"p":4.15,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-cult-temple': {"p":5.9,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-mutz-alpha': {"p":3.85,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-band-panthers': 2.85,
+  'v3-fauna-volcano': 3.2,
+  'v3-mon-lake': {"p":5.25,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-boss-great-mech': {"p":4.3,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-boss-ice-ring': {"p":4.4,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-boss-armory': {"p":2.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-sputnik-raid': 3.75,
+  'enc-ice-ring': {"p":3.6,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-arsenal-cult': {"p":3.7,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-lis-drones': 2.1,
+  'enc-arena-final': {"p":3.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-plague-machines': 3.35,
+  'enc-border-clash': 2.75,
+  'enc-beast-pit': {"p":4.45,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'enc-sea-monster': {"p":4.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
 };
 for (const encn of Object.values(ENCOUNTERS_V3)) {
   const p = POWER_V3[encn.id];
   if (!p || p === 1) continue;
-  const pw = (i) => (Array.isArray(p) ? p[i % p.length] : p);
+  const arr = Array.isArray(p) ? p : [p];
   encn.power = p;
-  encn.enemies = encn.enemies.map((x, i) => scaleV3(x, pw(i)));
+  encn.enemies = encn.enemies.map((x, i) => { const q = arr[i % arr.length]; return typeof q === 'object' ? scaleV3(x, q.p, q) : scaleV3(x, q); });
 }

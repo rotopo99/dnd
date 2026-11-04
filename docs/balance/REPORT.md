@@ -390,3 +390,135 @@ w-cyberspace                       L2 foes  4 normal win  84% rounds 10.0  targe
 4. **Финал со всеми снятыми** 68% против 70–80%: ниже цели на 2 п.п. (шум ±2).
 5. **Партия без талантов** на квестах и элите в 3–10 п.п. ниже цели. Если игрок будет играть без выбора талантов, бои станут жёстче; сейчас баланс настроен на героя с талантами.
 6. **Компаньоны** (`recruitables`, блок `companion`) в сим не включены: нужны правила набора партии.
+
+
+## v3 (2026-11-04): бои `ENCOUNTERS_V3`, оружие и броня, цены
+Методика: `node tools/sim/balance.mjs --mode v3 --n 400 --seed 31` (партия из 4 своего уровня; случайные класс/путь/раса; случайные боевые таланты из 4 слотов с p=0.75, примочка; **стартовые наборы** `STARTER_KITS` — оружие, броня, пояс). Подгонка силы — `tools/sim/tune-v3.mjs` (бисекция по `power` на центр коридора, n=100). Оружие/броня — `--mode gear`: к трио случайных героев добавляется герой, владеющий типом предмета (ступень ≥3 по умолчанию, иначе выдаётся 3), против него же со стартовым предметом, **те же трио и сид** (парно, n=250 на предмет, шум ±3–4 п.п.). Цели боёв: обычные 75–90, квестовые (`enc-*`) 65–80, элита и боссы маркеров 50–65; средняя длина ≤10 раундов.
+
+### Итог по боям
+| | Было (`power` не задан) | Стало (n=400) |
+|---|---|---|
+| Победы | 100% во всех 86, 2–7 раундов | 86/86 в коридоре ±3 п.п. |
+| Раундов в среднем | 4.0 | обычные 7.8, квестовые 8.1, элита и боссы 10.3, **общее ≈8.4** |
+| Длиннее 10.5 раунда | — | 9 боёв (ниже) |
+
+```
+id                        L  вид   win% раунд
+v3-pir-dock               L1 normal   83%   7.4
+v3-pir-raid               L3 normal   85%   8.5
+v3-wp-patrol              L1 normal   79%   7.5
+v3-wp-corridor            L3 normal   84%   7.5
+v3-ai-rally               L2 normal   84%   7.1
+v3-ai-lox                 L4 normal   82%   8.1
+v3-tin-trial              L2 normal   89%   7.1
+v3-tin-arena              L4 normal   90%   7.6
+v3-ren-ambush             L1 normal   80%   5.6
+v3-ren-hatab              L4 normal   85%   7.9
+v3-mech-shop              L2 normal   83%   8.0
+v3-mech-plague            L3 normal   86%   8.0
+v3-crg-wedding            L2 normal   83%  19.5
+v3-crg-concert            L4 normal   81%   9.3
+v3-scv-pickers            L1 normal   89%   7.4
+v3-scv-skeleton-hunt      L3 normal   78%   7.9
+v3-tek-shrine             L2 normal   85%   8.8
+v3-tek-storm              L4 normal   76%   6.5
+v3-nv-militia             L1 normal   85%   7.3
+v3-nv-elders              L4 normal   90%   6.8
+v3-agro-field             L2 normal   82%   7.3
+v3-agro-harvest           L4 normal   86%   5.9
+v3-mutr-border            L2 normal   89%   6.5
+v3-cult-call              L1 normal   84%   7.5
+v3-cult-plague            L3 normal   76%   8.7
+v3-mutz-pack              L1 normal   84%   7.2
+v3-mutz-hunt              L3 normal   72%   9.2
+v3-band-hares             L1 normal   81%   4.4
+v3-band-foxes             L3 normal   82%   8.1
+v3-band-panthers          L3 normal   83%   8.1
+v3-fauna-rats             L1 normal   74%   5.9
+v3-fauna-volcano          L2 normal   89%   6.0
+v3-fauna-mine             L3 normal   89%   7.5
+v3-fauna-chimera          L4 normal   82%   9.2
+v3-lis-bunker             L3 normal   81%   7.8
+enc-sputnik-raid          L4 quest    70%   9.0
+enc-cringe-base           L4 quest    71%   9.7
+enc-ice-ring              L3 quest    80%   7.0
+enc-brigands              L3 quest    72%   6.5
+enc-harmony-fall          L5 quest    79%   9.7
+enc-arsenal-cult          L5 quest    81%   7.7
+enc-kiberspeys-door       L5 quest    71%   5.9
+enc-lis-drones            L3 quest    71%   9.3
+enc-dawn-bodies           L4 quest    74%   9.9
+enc-lox-clone             L4 quest    70%   8.4
+enc-plague-machines       L3 quest    74%   8.9
+enc-warprom-patrol        L4 quest    77%   8.9
+enc-clone-vats            L4 quest    79%   8.1
+enc-border-clash          L3 quest    66%   9.7
+enc-sokralnya-guard       L4 quest    72%   8.3
+enc-saboteurs             L3 quest    72%   6.8
+enc-beast-pit             L3 quest    75%   6.6
+enc-proxy-storm           L4 quest    75%   6.5
+enc-dungeon               L4 quest    79%   8.0
+v3-pir-flagship           L5 elite    51%   8.9
+v3-wp-walker              L5 elite    56%   9.5
+v3-ai-commissar           L5 elite    55%   6.2
+v3-tin-renegade           L5 elite    60%   8.7
+v3-mech-hive              L5 elite    55%  16.8
+v3-crg-collector          L5 elite    66%  10.3
+v3-scv-kings-yard         L5 elite    61%   8.4
+v3-tek-golem              L5 elite    48%   4.8
+v3-agro-chief             L5 elite    52%  10.9
+v3-mutr-grove             L5 elite    55%   9.0
+v3-cult-temple            L5 elite    64%   6.0
+v3-mutz-alpha             L5 elite    63%   8.0
+v3-band-bisons            L5 elite    65%  10.3
+v3-mon-lake               L5 elite    64%   9.5
+v3-mon-sea                L5 elite    59%  10.2
+v3-mon-hills              L5 elite    61%   9.6
+v3-boss-great-mech        L5 elite    47%   7.2
+v3-boss-plague-seed       L5 elite    68%   7.8
+v3-boss-vibe-burner       L5 elite    66%  16.7
+v3-boss-ice-ring          L4 elite    65%   7.9
+v3-boss-sputnik           L4 elite    61%  11.0
+v3-boss-bazaar            L4 elite    61%  21.2
+v3-boss-armory            L5 elite    56%   9.6
+v3-boss-lis-1             L4 elite    50%  11.3
+enc-vibe-burner           L5 elite    65%  23.6
+enc-judge                 L5 elite    51%   8.5
+enc-arena-final           L4 elite    57%   8.9
+enc-great-mech            L5 elite    64%   7.3
+enc-plague-seed           L4 elite    59%  10.2
+enc-lake-monster          L3 elite    48%  10.9
+enc-sea-monster           L4 elite    58%  11.3
+enc-hill-monster          L3 elite    51%   8.7
+```
+
+### Что не достигнуто
+1. **Затяжные бои (>11 раундов)**: `v3-boss-vibe-burner` 16.7, `enc-vibe-burner` 23.6, `v3-boss-bazaar` 21.2, `v3-crg-wedding` 19.5, `v3-mech-hive` 16.8; около 11: `v3-boss-sputnik`, `v3-boss-lis-1`, `enc-lake-monster`, `enc-sea-monster`, `v3-agro-chief`. Причина структурная, не ЗДР: у этих врагов нет оружия или основной урон идёт по МРЛ/кринжем (герои «ломаются», лечатся, встают), плюс сопротивления физике (`vibe-burner`, `bazaar-ghost`, `hive-node`), неподвижные боссы (`speed 0`) и призывы. Рост `power` бой не сокращает: ЗДР-урона нет, а ЗДР растёт. Вариант «только урон» (`hp:0, dmg:5`) на p=7 даёт 96% побед, то есть босс всё равно не опасен. Нужно решение дизайнера: дать боссу оружие/урон по ЗДР, убрать повторные призывы или сопротивление. Числами это не лечится; базовые ЗДР уже срезаны (CHANGELOG).
+2. Подсказки `scale` сценариста (0.6–0.85) не подошли: бои требуют силы 2–6 (враги v3 примерно вдвое слабее героев своего уровня). Рабочие значения — в `POWER_V3`.
+3. Подгонка шумит на ±3–4 п.п. из-за ступенек округления атаки/урона. Бои с p>5 (`crg-collector`, `boss-plague-seed`, `tek-golem`, `cult-temple`, `tin-renegade`) «стеклянные»: урон +16…+25 за попадание при ЗДР героев 40–50. Лучше добавить врагов, чем двигать p выше 4.
+
+### Оружие и броня: вклад предмета (п.п. к победе партии против той же партии со стартовым предметом героя)
+| Категория, тир | Среднее | min…max | Цена, кр |
+|---|---|---|---|
+| Оружие t1 (32) | −2.4 | −8.0…+6.0 | 5–90 |
+| Оружие t2 (20) | +0.1 | −4.0…+4.8 | 35–280 |
+| Оружие t3 (14) | +0.4 | −7.6…+7.6 | 240–450 |
+| Оружие t4 (12) | +0.5 | −10.8 (drum-launcher, исправлен)…+7.2 | 480–700 |
+| Оружие t5 (10) | +1.2 | −6.0…+6.8 | 850–1200 |
+| Броня t1 (14) | −2.0 | −4.8…+1.2 | 10–320 |
+| Броня t2 (6) | +0.5 | −2.0…+8.0 (loader-exo, мех) | 80–900 |
+| Броня t3 (7) | +2.3 | −0.8…+12.4 (junk-mech-suit, после правки +10) | 300–1500 |
+| Броня t4 (4) | +0.8 | −2.8…+4.0 | 520–2000 |
+| Броня t5 (3) | +10.4 | +4.4…+16.0 (мех, lis-1) | 1200–3500 |
+
+Выводы:
+- **Старт силён.** Стартовые предметы классов уже уравнены правками v2, поэтому оружие t2–t5 даёт 0…+3 п.п. (один герой из четырёх; +1 урона ≈ +1…1.5 п.п.). Тиры оружия различаются в основном свойствами (дальность, заряды, ЭНР, бронебойность), а не голой силой. Сильнее поднимать нельзя без перекоса очередей (ПП, автоматы, пулемёты): у них бонус `dmg` умножается на `rof`, поэтому очереди не трогались.
+- **Исправленные выбросы (>±8 п.п. от среднего тира):** метательное (−16…−7 → −0.4…−5), гранатомёты (rpg-tube −13.6 → ≈−4…−7; drum-launcher −7 → +4.7), плазма (−10 → −2…−5), мельта (−6 → −1), лазер-пистолет (−8 → −2), kremlin-bolter (+14.4 → +4.7…+9.6). Причина отрицательных выбросов: цена ЭНР, перегрев, ограниченные заряды у героев без запаса ЭНР.
+- **Мехи.** kuznechik-walker +10 (был +17.6), proxy-golem +10, junk-mech-suit +10, loader-exo +7…+8. Щиты срезаны, но мех остаётся самой сильной категорией: примерно на 6–10 п.п. выше тяжёлой брони своего тира, что оправдывает цену 900–3500 и требования (тир владения 3 для меха, ЛВК 0, скорость −1…−2). Лис-1 (реликт): +15.6…+16.8, на 5–6 п.п. выше t5-меха, цена — требования (мех-владение 3, СИЛ 14 у Лис-2), скорость, шум.
+- **Реликты:** kuksius-spear +8…+12 (≤10 п.п. над t4), anvil-katana +8, judge-gavel +7, lis-2 −6 → ≈0…+2 после правок (оружие-реликт «на уровне тира»; усиливать — решение дизайнера).
+
+### Цены
+Принцип: t1 ≤120 кр (кроме тяжёлой брони 250–320), t2 35–280, t3 240–450 (броня 260–600), t4 480–800, t5 850–1200 (мехи 900–3500). Стартовые 50 кр и награды квестов (чаще 40–300; первый час ≈ 3–5 квестов ≈ 400–700 кр) покупают t1–t2 и одну вещь t3, но не t4–t5 (≥450) и не мехи (≥900). Список правок — CHANGELOG, раздел v3. Оставлено: arbiter-armor 250 (t1 тяжёлая КБ 5, СИЛ 13) против steel-sheet-plate 320 (КБ 6); power-sword 220 (t2).
+
+### Что не проверено
+Расходники, гранаты, моды и компаньоны в тесте оружия и брони не варьировались (пояс — по стартовому набору); связь «оружие × таланты» усреднена случайно. Особенности боёв `traps`, `slippery`, `stormTable` в симе не моделируются.

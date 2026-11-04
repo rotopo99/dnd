@@ -92,3 +92,7 @@
 - `tools/test.mjs` — тесты движка правил на фикстурах (`node tools/test.mjs`, код 1 при провале).
 - `tools/fixtures/rules-data.mjs` — маленькие данные по схеме спеки (2 расы, 2 класса, 3 врага, статусы, таблица завесы).
 - `tools/smoke-rules.mjs` — смоук на реальных данных: класс × играбельная раса × путь × ур. 1/5 против `ENCOUNTERS.standard1/5` + сюжетные карты + каждое оружие `items/weapons.js` против `ENCOUNTERS_V3` на `GAME_DATA` (счётчик событий v3.1) (`--n 20 --seed 1`).
+
+## Баланс v3
+- `game/src/data/enemies-v3.js`: `POWER_V3[encounterId]` + `scaleV3(id, {p, hp, atk, dmg, kb})` — сила боёв v3 (урон, атака, КБ, ЗДР раздельно).
+- `tools/sim/balance.mjs --mode v3|gear` — бои v3 партией 4 и вклад предметов; `tools/sim/tune-v3.mjs` — автоподбор `POWER_V3`.

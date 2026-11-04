@@ -2,7 +2,7 @@
 // Usage: node tools/sim/tune-v3.mjs [--n 150] [--seed 5] [--part i/k] [--out file.json] [--only id,id] [--from file.json]
 // Output: JSON { id: power }. Apply: node tools/sim/tune-v3.mjs --apply file.json [file2.json ...] (rewrites POWER_V3 in enemies-v3.js).
 import fs from 'node:fs';
-import { ENCOUNTERS_V3, scaleV3 } from '../../game/src/data/enemies-v3.js';
+import { ENCOUNTERS_V3, scaleV3, SCALE_V3 } from '../../game/src/data/enemies-v3.js';
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const FILE = new URL('../../game/src/data/enemies-v3.js', import.meta.url).pathname;
@@ -15,6 +15,7 @@ if (args.includes('--apply')) {
   fs.writeFileSync(FILE, s); console.log('applied', Object.keys(all).length); process.exit(0);
 }
 const { v3Rate, kindV3, TARGET_V3 } = await import('./balance.mjs');
+if (process.env.SCALE) Object.assign(SCALE_V3, JSON.parse(process.env.SCALE));
 const N = Number(opt('--n', 150)), SEED = Number(opt('--seed', 5));
 const [pi, pk] = opt('--part', '0/1').split('/').map(Number);
 const only = opt('--only', null)?.split(',');
@@ -24,11 +25,20 @@ const ids = Object.keys(ENCOUNTERS_V3).filter((_, i) => i % pk === pi).filter((i
 const rnd = (x) => Math.round(x * 20) / 20;
 for (const id of ids) {
   const enc0 = ENCOUNTERS_V3[id]; const base = enc0.enemies.map((x) => x.split('^')[0]);
-  const tg = TARGET_V3[kindV3(id)]; const mid = (tg[0] + tg[1]) / 2;
-  const at = (p) => v3Rate({ ...enc0, enemies: base.map((b) => scaleV3(b, p)) }, N, SEED);
-  let lo = 0.4, hi = 7, best = null;
-  for (let it = 0; it < 9; it++) { const m = (lo + hi) / 2; const r = at(rnd(m)); best = { p: rnd(m), ...r }; if (r.rate > mid) lo = m; else hi = m; }
-  out[id] = best.p;
-  console.log(`${id.padEnd(26)} p ${best.p} win ${(100 * best.rate).toFixed(0)}% rounds ${best.rounds.toFixed(1)} foes ${base.length}`);
+  const tg = TARGET_V3[kindV3(id)]; const mid = args.includes('--hi') ? tg[1] - 0.02 : (tg[0] + tg[1]) / 2;
+  const VARS = [null, { hp: 0.2, atk: 2, dmg: 4, kb: 1 }, { hp: 0, atk: 2, dmg: 5, kb: 0 }];
+  const cands = [];
+  for (const v of VARS) {
+    const at = (p) => v3Rate({ ...enc0, enemies: base.map((b) => scaleV3(b, p, v)) }, N, SEED);
+    let lo = 0.4, hi = 7, best = null;
+    for (let it = 0; it < 9; it++) { const m = (lo + hi) / 2; const r = at(rnd(m)); best = { p: rnd(m), v, ...r }; if (r.rate > mid) lo = m; else hi = m; }
+    cands.push(best);
+    if (best.rounds <= 9.5 || best.p >= 6.9) break;
+  }
+  const okc = cands.filter((c) => c.p < 6.9);
+  let best = (okc.length ? okc : cands).reduce((a, c) => (c.rounds < a.rounds - 0.3 ? c : a));
+  if (cands[0].rounds <= 10) best = cands[0];
+  out[id] = best.v ? { p: best.p, ...best.v } : best.p;
+  console.log(`${id.padEnd(26)} p ${best.p} win ${(100 * best.rate).toFixed(0)}% rounds ${best.rounds.toFixed(1)} ${best.v ? 'var' + JSON.stringify(best.v) : ''} foes ${base.length}`);
 }
 if (opt('--out', null)) fs.writeFileSync(opt('--out'), JSON.stringify(out));
