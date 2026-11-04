@@ -7,6 +7,7 @@
 
 import { LOCATIONS } from './locations.js';
 import { REGIONS } from './regions.js';
+import { SKILL_EVENTS } from './travel-skills.js';
 
 /** км в день по типу пути. */
 export const SPEED = { district: Infinity, road: 40, trail: 25, wild: 20, sea: 150, lake: 100, canoe: 60, tunnel: 30 };
@@ -259,6 +260,8 @@ export const ENCOUNTER_TABLES = {
     TRADER(1, ['medkit', 'oak-amulet']), RUMOR(),
   ],
 };
+// проверки навыков на дорогах (по региону) — world/travel-skills.js
+for (const [r, list] of Object.entries(SKILL_EVENTS)) ENCOUNTER_TABLES[r].push(...list);
 // старые ключи v1.0
 ENCOUNTER_TABLES.villages = ENCOUNTER_TABLES.neutralVillages;
 ENCOUNTER_TABLES.corruption = ENCOUNTER_TABLES.aiParty;

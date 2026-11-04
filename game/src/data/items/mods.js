@@ -76,6 +76,13 @@ const LIST = [
   // --- Броня
   m({ id: 'ceramic-insert', name: 'Керамическая вставка', slot: 'plate', fits: { atype: ['light', 'medium'] }, add: { kb: 1 },
     tier: 3, price: 260, factions: ['aiParty', 'warprom'], desc: '+1 КБ лёгкой или средней броне.' }),
+  // --- Проект «Лис» и «Волк» (предложено, вне канона)
+  m({ id: 'lis-4-sniffer', name: 'Лис-4 «Нюх» (дрон-наводчик)', slot: 'optic', fits: { group: ['ranged'] }, add: { hit: 1, range: 4 },
+    tier: 4, price: 520, factions: [], desc: 'Крошечный дрон подсвечивает цель: +1 к атаке, дальность +4. Не продаётся.' }),
+  m({ id: 'lis-6-core', name: 'Лис-6 «Хитрец» (ИИ-ядро)', slot: 'lining', fits: { atype: ['heavy', 'mech'] }, add: { kb: 1, resist: { electric: 'resist' } },
+    tier: 5, price: 900, factions: [], desc: 'ИИ-ядро берёт на себя уклонение: +1 КБ, сопротивление электро. Ворчит на неудачные манёвры. Не продаётся.' }),
+  m({ id: 'wolf-link', name: 'Волк-4 «Вой» (модуль стайной связи)', slot: 'optic', fits: { group: ['ranged'] }, add: { hit: 1 },
+    tier: 4, price: 360, factions: ['warprom'], desc: 'Стайный целеуказатель: +1 к атаке. Постоянно воет на частоте, которую слышат только свои.' }),
   m({ id: 'scrap-plates', name: 'Наваренные листы', slot: 'plate', fits: { atype: ['heavy', 'mech'] }, add: { kb: 1, noise: 1 },
     tier: 2, price: 160, factions: ['scavengers', 'mechanids'], desc: '+1 КБ, шум +1.' }),
   m({ id: 'rubber-lining', name: 'Прорезиненная подкладка', slot: 'lining', fits: {}, add: { resist: { electric: 'resist' } },

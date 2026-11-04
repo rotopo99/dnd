@@ -372,6 +372,16 @@ const LIST = [
     quality: 'relic', unique: true, req: { str: 14 }, props: { arc: true, area: { shape: 'radius', size: 2 }, charges: 3 },
     tier: 5, price: 0, factions: [],
     desc: 'Переносная система залпового огня проекта «Лис»: 3 залпа за бой, радиус 2. Спарена с мехом Лис-1.' }),
+  // Предложено, вне канона (docs/lore/projects-lis-volk.md): остальные модели «лисов» и проект «Волк».
+  w({ id: 'lis-3-twin', name: 'Лис-3 «Спарка» (спаренный карабин)', wtype: 'smg', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 10, hands: 1, weight: 2, noise: 2,
+    rof: 2, recoil: 2, slots: GUN_SLOTS, tier: 4, price: 700, factions: [],
+    desc: 'Снят с охранного дрона «Лисёнок». Очередь 2, отдача 2. На прикладе рыжая лисья морда.' }),
+  w({ id: 'lis-7-chuyo', name: 'Лис-7 «Чутьё» (винтовка с ИИ-наводкой)', wtype: 'rifle', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 18, hands: 2, weight: 2, noise: 1, hit: 2,
+    quality: 'masterwork', req: { dex: 12 }, slots: GUN_SLOTS, tier: 5, price: 1400, factions: [],
+    desc: 'Прицел сам догоняет цель, а затвор иногда комментирует промах. +2 к атаке. В продаже не бывает.' }),
+  w({ id: 'wolf-fang', name: 'Волк-3 «Клык» (штурмовой карабин)', wtype: 'assault', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 12, hands: 2, weight: 2, noise: 3,
+    rof: 3, recoil: 2, slots: GUN_SLOTS, tier: 4, price: 650, factions: ['warprom'],
+    desc: 'Серийный карабин штурмовых киборгов «Волк». Очередь 3, отдача 2. Дёшев, надёжен, не уникален: в стае всегда есть запасной.' }),
 
   // ================================================================ Реликты (по лору, по одному на мир)
   w({ id: 'kuksius-spear', name: 'Копьё Куксиуса Первого', wtype: 'polearm', dice: '1d10', dmgType: 'pierce', stat: 'str', range: 1, hands: 2, weight: 2, hit: 0,

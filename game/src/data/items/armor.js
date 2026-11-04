@@ -146,6 +146,13 @@ const LIST = [
       effects: [{ op: 'shield', value: 15, turns: 3 }, { op: 'status', id: 'haste', turns: 2 }], desc: 'Щит 15 на 3 хода и ускорение на 2 хода: ИИ берёт на себя манёвр.' })],
     mech: { shield: 20, weapon: 'lis-2', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 0, factions: [],
     desc: 'Огромный экзокостюм с собственным ИИ. Требует мастерства мехов (ступень 3+, иначе помеха). Хранился в Бункере Лиса.' }),
+  a({ id: 'lis-8-hide', name: 'Лис-8 «Шкура» (накидка-хамелеон)', atype: 'light', kb: 3, noise: 0, quality: 'masterwork', slots: ['lining', 'sole'],
+    passives: [{ id: 'item-lis8-per', name: 'Лисья шкура', desc: '+1 ВОС: шкура видит за хозяина.', op: { statBonus: { per: 1 } } }],
+    tier: 5, price: 1100, factions: [],
+    desc: 'Предложено, вне канона. Накидка проекта «Лис»: камуфляж под местность, рыжая подкладка. В продаже не бывает.' }),
+  a({ id: 'wolf-5-frame', name: 'Волк-5 «Матёрый» (каркас штурмового меха)', atype: 'mech', kb: 7, noise: 3, speed: 0, resist: { pierce: 'resist' },
+    mech: { shield: 10, weapon: 'conveyor-mg', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 2800, factions: ['warprom'],
+    desc: 'Предложено, вне канона. Серийный мех «Волк»: слабее Лис-1 (щит 10, КБ 7, без ИИ), зато продаётся и ходит стаей. Нужна ступень мехов 3+.' }),
 
   // ---------------------------------------------------------------- Реликты
   a({ id: 'predlozhka-greatcoat', name: 'Шинель забытого войска', atype: 'medium', kb: 4, stealth: false, quality: 'relic', unique: true,

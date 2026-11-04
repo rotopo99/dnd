@@ -65,7 +65,7 @@ const LIST = [
       st('nadezhda', 'Старейшина Стыдоба знает уязвимость.', talk('nd-stydoba', 'nadezhda'), 'way'),
       st('way', 'Как подобраться?', choice(
         opt('base', 'Освободить пленных Предложки — они знают дорогу.', null, null, 'base-fight', { notFlag: 'predlozhka-freed' }),
-        opt('engineer', 'Убедить инженера Ой-Всё.', check(['persuasion', 'meditation'], 16, 'base'), { flags: ['oy-vse-turned'] }, 'core'),
+        opt('engineer', 'Убедить инженера Ой-Всё.', check(['persuasion', 'meditation', 'endurance', 'proxy'], 16, 'base'), { flags: ['oy-vse-turned'] }, 'core'),
         opt('known', 'Пленные уже свободны.', null, null, 'core', { flag: 'predlozhka-freed' }),
       ), null),
       st('base-fight', 'Штурм Базы Предложки.', fight('enc-cringe-base', 'baza-predlozhki'), 'core'),
@@ -82,7 +82,7 @@ const LIST = [
         opt('pay', 'Заплатить пиратам 250 кредов.', pay(250), { rep: { pirates: 5 } }, 'done-stage'),
         opt('ferry', 'Паром Свободы.', talk('sv-brod', 'svoboda'), null, 'ferry', { notFlag: 'ferry-free' }),
         opt('port', 'Порт Бетонки (если чума вылечена).', talk('bt-uzel88', 'betonka'), { rep: { pirates: -5 } }, 'done-stage', { flag: 'plague-cured' }),
-        opt('bog', 'Лоцман Помехов поведёт «по воле бога».', check(['proxy', 'religion', 'survival'], 15, 'ring'), { rep: { tekhonki: 5, pirates: -5 } }, 'done-stage'),
+        opt('bog', 'Лоцман Помехов поведёт «по воле бога».', check(['proxy', 'religion', 'survival', 'endurance', 'biology'], 15, 'ring'), { rep: { tekhonki: 5, pirates: -5 } }, 'done-stage'),
       ), null),
       st('ring', 'Три боя на льду.', fight('enc-ice-ring', 'ledyanoy-ring'), 'done-stage'),
       st('ferry', 'Отбить паром у налётчиков.', fight('enc-brigands', 'svoboda'), 'done-stage'),
@@ -116,7 +116,7 @@ const LIST = [
       st('save', 'Что спасти? Обычно — два пункта; с «Лисом» (lis-online) — три.', { kind: 'all', pick: 2, pickWith: { flag: 'lis-online', pick: 3 }, goals: [
         { kind: 'check', skills: ['persuasion', 'military', 'athletics'], dc: 13, doneFlag: 'saved-people', desc: 'Люди: эвакуация (фуникулёр, паром, баржи союзников).' },
         { kind: 'check', skills: ['tech', 'hacking'], dc: 15, doneFlag: 'saved-terminal', desc: 'Реактор и терминал: точка возвращения души.' },
-        { kind: 'check', skills: ['tech', 'athletics'], dc: 13, doneFlag: 'saved-workshop', desc: 'Мастерская Николы и архив Вазгена.' },
+        { kind: 'check', skills: ['tech', 'athletics', 'military'], dc: 13, doneFlag: 'saved-workshop', desc: 'Мастерская Николы и архив Вазгена.' },
         { kind: 'check', skills: ['persuasion', 'intimidation'], dc: 14, doneFlag: 'saved-sector-d', desc: 'Сектор D и бунтари.' },
       ] }, 'crash'),
       st('crash', 'Платформа падает у утёса — маркер крушения.', reach('mesto-krusheniya-alfa-garmonii'), 'hub'),
@@ -193,7 +193,7 @@ const LIST = [
         { kind: 'talk', npc: 'lox-clone-9', location: 'lox-5', doneFlag: 'lox9-met' },
       ] }, 'nine'),
       st('nine', 'Lox-9 сомневается. Что с ним делать?', choice(
-        opt('free', 'Отпустить: пусть станет собой.', check(['persuasion', 'meditation'], 14, 'kill'), { flags: ['lox9-free'], deeds: ['mercy'] }),
+        opt('free', 'Отпустить: пусть станет собой.', check(['persuasion', 'meditation', 'intimidation'], 14, 'kill'), { flags: ['lox9-free'], deeds: ['mercy'] }),
         opt('kill', 'Закончить дело.', fight('enc-lox-clone', 'lox-5'), { deeds: ['kill-surrendered'] }),
         opt('party', 'Сдать Партии за награду.', null, { rep: { aiParty: 15 }, credits: 200, deeds: ['serve-ai', 'greed'] }),
       ), 'report'),
@@ -205,7 +205,7 @@ const LIST = [
     'У Проёба — метки Лизы и вход в подземный город, где она родилась.',
     [
       st('marks', 'Находчик Нашлось видел метки.', talk('pr-nashlos', 'proeb'), 'entrance'),
-      st('entrance', 'Найти вход по меткам.', check(['perception', 'lockpicking'], 14), 'first'),
+      st('entrance', 'Найти вход по меткам.', check(['perception', 'lockpicking', 'biology', 'athletics'], 14), 'first'),
       st('first', 'Первый ярус подземного города: ползуны.', fight('w-villages-hatch', 'liza'), 'done'),
     ],
     { xp: 400, items: [{ item: 'lockpick-set', n: 1 }], flags: ['underground-city-found'] }),
@@ -251,7 +251,7 @@ const LIST = [
       st('expedition', 'Лагерь экспедиции: журнал доктора Шунта.', talk('bt-shunt', 'ekspeditsiya-istseleniya'), 'seed'),
       st('seed', 'Семя Чумы — заражённое ядро.', fight('enc-plague-seed', 'semya-chumy'), 'cure'),
       st('cure', 'Что сделать с Семенем?', choice(
-        opt('cure', 'Перепрошить: лекарство из «я».', check(['tech', 'medicine', 'hacking'], 16, 'burn'), { flags: ['plague-cured'], rep: { mechanids: 25, cult: -10 } }),
+        opt('cure', 'Перепрошить: лекарство из «я».', check(['tech', 'medicine', 'hacking', 'biology'], 16, 'burn'), { flags: ['plague-cured'], rep: { mechanids: 25, cult: -10 } }),
         opt('burn', 'Выжечь — вместе с частью коллектива.', null, { flags: ['plague-cured', 'mechanids-wounded'], rep: { mechanids: 5 }, deeds: ['cruelty'] }),
       ), 'done'),
     ],
@@ -260,10 +260,10 @@ const LIST = [
   // ============================================================ ПОБОЧНЫЕ ПО РЕГИОНАМ
   // ---------- aiParty (Коррупция-Сити)
   Q('sq3-ai-coupons', 'Фальшивые талоны', 'mixed', 'aiParty', 'pl-kvota', 3, 'Кто подделывает талоны?',
-    [st('find', 'Найти фальшивомонетчика.', check(['analysis', 'perception'], 13), 'deal'),
+    [st('find', 'Найти фальшивомонетчика.', check(['analysis', 'perception', 'lockpicking'], 13), 'deal'),
      st('deal', 'Подпольщица печатает талоны для беглецов.', choice(
        opt('turn', 'Сдать Квоте.', null, { rep: { aiParty: 10 }, credits: 120, deeds: ['serve-ai'] }),
-       opt('hide', 'Прикрыть и купить пару.', check(['deception'], 14), { rep: { aiParty: -5 }, deeds: ['lie', 'help-weak'] }),
+       opt('hide', 'Прикрыть и купить пару.', check(['deception', 'persuasion'], 14), { rep: { aiParty: -5 }, deeds: ['lie', 'help-weak'] }),
      ), 'done')], { xp: 200 }),
   Q('sq3-ai-column', 'Колонна', 'combat', 'aiParty', 'pl-sirena', 3, 'Колонна беглецов застряла у ворот. Нужна диверсия.',
     [st('distract', 'Отвлечь Чистильщиков.', fight('w-cc-gate', 'putinlyandiya'), 'done')],
@@ -276,7 +276,7 @@ const LIST = [
   // ---------- warprom (Кремль)
   Q('sq3-wp-probirka', 'Девятая партия', 'mixed', 'warprom', 'kr-probirka', 4, 'Лаборант клон-цехов просит вывезти его из Кремля.',
     [st('out', 'Вывести Пробирку.', choice(
-      opt('sneak', 'Тихо.', check(['stealth'], 15, 'loud')),
+      opt('sneak', 'Тихо.', check(['stealth', 'acrobatics', 'hacking'], 15, 'loud')),
       opt('loud', 'С боем.', fight('enc-warprom-patrol', 'kreml'), { rep: { warprom: -10 } }),
     ), 'talk'),
      st('talk', 'Пробирка называет, куда ушли пять партий клонов.', talk('kr-probirka', 'kreml'), 'done')],
@@ -289,13 +289,13 @@ const LIST = [
 
   // ---------- tinBrotherhood
   Q('sq3-tin-lights', 'Свет в Ночи', 'talk', 'tinBrotherhood', 'nc-filin', 3, 'Кто светит сигналы в городе без света?',
-    [st('watch', 'Выследить.', check(['perception', 'stealth'], 13), 'who'),
+    [st('watch', 'Выследить.', check(['perception', 'stealth', 'survival'], 13), 'who'),
      st('who', 'Это Фонарщица Лучина — подаёт знаки контрабандистам.', choice(
        opt('turn', 'Сдать Филину.', null, { rep: { tinBrotherhood: 10 } }),
-       opt('deal', 'Уговорить её светить для разведки братства.', check(['persuasion'], 14), { rep: { tinBrotherhood: 10, pirates: -5 }, deeds: ['mercy'] }),
+       opt('deal', 'Уговорить её светить для разведки братства.', check(['persuasion', 'religion', 'intimidation'], 14), { rep: { tinBrotherhood: 10, pirates: -5 }, deeds: ['mercy'] }),
      ), 'done')], { xp: 250 }),
   Q('sq3-tin-tractors', 'Ржавая пашня', 'mixed', 'tinBrotherhood', 'se-pakhota', 3, 'Чума металла перекинулась на технику Селышка.',
-    [st('sample', 'Взять пробу.', check(['tech', 'medicine'], 13), 'swarm'),
+    [st('sample', 'Взять пробу.', check(['tech', 'medicine', 'biology'], 13), 'swarm'),
      st('swarm', 'Заражённые машины.', fight('enc-plague-machines', 'selyshko'), 'done')], { xp: 300, items: [{ item: 'plague-sample', n: 1 }], rep: { tinBrotherhood: 10 } }),
   Q('sq3-tin-border', 'Граница терпения', 'talk', 'tinBrotherhood', 'ft-bastion', 3, 'Фортеция ЖБ и Лесянка мутантов-Ж на грани стычки.',
     [st('talks', 'Свести Бастиона и Лосиху Мирру.', { kind: 'challenge', skills: ['persuasion', 'military', 'biology', 'intimidation'], dc: 15, successes: 4, failures: 2, onFail: 'clash' }, 'done'),
@@ -329,7 +329,7 @@ const LIST = [
   // ---------- agrozone
   Q('sq3-agro-leyka', 'Полей меня', 'mixed', 'agrozone', 'gp-leyka', 3, 'Мутант-растение прячется в теплицах Гидропоники с семенным фондом.',
     [st('choose', 'Что делать?', choice(
-      opt('save', 'Вывести Лейку и семена.', check(['stealth', 'deception'], 15, 'fight'), { rep: { mutantsPlant: 15, agrozone: -10 }, deeds: ['help-weak'] }),
+      opt('save', 'Вывести Лейку и семена.', check(['stealth', 'deception', 'acrobatics', 'medicine'], 15, 'fight'), { rep: { mutantsPlant: 15, agrozone: -10 }, deeds: ['help-weak'] }),
       opt('fight', 'Прорываться.', fight('w-agro-cleaners', 'gidroponika'), { rep: { mutantsPlant: 15, agrozone: -15 } }),
       opt('turn', 'Выдать Ростку.', null, { rep: { agrozone: 15, mutantsPlant: -20 }, credits: 150, deeds: ['anti-mutant'] }),
     ), 'done')], { xp: 350 }),
@@ -353,7 +353,7 @@ const LIST = [
     [st('test', 'Рейд на конвой Чистильщиков.', fight('w-agro-cleaners', 'shtabtsentr'), 'marta'),
      st('marta', 'Марта смотрит на тебя.', talk('marta', 'marta'), 'done')], { xp: 400, rep: { renegades: 15 }, deeds: ['free-slaves'] }),
   Q('sq3-ren-mines', 'Кто переставляет мины', 'mixed', 'renegades', 'yarosh', 3, 'Кто-то ставит мины Яроша ближе к Хатаб-Сити (столица пиратов, где Отступники держат гарнизон).',
-    [st('watch', 'Засада у минного поля на подступах к Хатаб-Сити.', check(['stealth', 'perception'], 14, 'fight'), 'who'),
+    [st('watch', 'Засада у минного поля на подступах к Хатаб-Сити.', check(['stealth', 'perception', 'military'], 14, 'fight'), 'who'),
      st('fight', 'Диверсанты.', fight('enc-saboteurs', 'raytsentr'), 'who'),
      st('who', 'Это клон Lox по приказу Партии.', talk('yarosh', 'raytsentr'), 'done')], { xp: 350, rep: { renegades: 10 }, flags: ['lox-marks-known'] }),
 
@@ -380,7 +380,7 @@ const LIST = [
 
   // ---------- tekhonki
   Q('sq3-tk-oil', 'Масло для станка', 'search', 'tekhonki', 'stn-shpindel', 2, 'Станок не в духе. Ему нужна жертва — хорошее масло.',
-    [st('oil', 'Найти довоенное масло в старых цехах Станка.', check(['survival', 'perception', 'tech'], 12), 'done')], { xp: 150, rep: { tekhonki: 10 } }),
+    [st('oil', 'Найти довоенное масло в старых цехах Станка.', check(['survival', 'perception', 'tech', 'proxy'], 12), 'done')], { xp: 150, rep: { tekhonki: 10 } }),
   Q('sq3-tk-doubt', 'Баланс или баланда', 'talk', 'tekhonki', 'sm-ryab', 4, 'Смотрящая Рябь сомневается в воле старого бога.',
     [st('listen', 'Дослушать помехи вместе с ней.', { kind: 'challenge', skills: ['proxy', 'meditation', 'analysis', 'religion'], dc: 15, successes: 3, failures: 2, onFail: 'storm' }, 'done'),
      st('storm', 'Прокси-буря накрывает Смотрельце.', fight('enc-proxy-storm', 'smotreltse'), 'done')], { xp: 400, flags: ['oldgod-doubt'], rep: { tekhonki: 5 } }),

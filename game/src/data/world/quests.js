@@ -61,7 +61,7 @@ const LIST = [
       { id: 'assault', text: 'Штурмовать Главный узел. Каждый закрытый терминал облегчит бой.',
         goal: { kind: 'battle', encounter: 'w-cc-finale', location: 'cc-node' }, next: 'close' },
       { id: 'close', text: 'Кибер-Жрец повержен. Что сделать с узлом?', goal: { kind: 'choice', options: [
-        { id: 'destroy', text: 'Сломать узел.', goal: { kind: 'check', skills: ['tech', 'athletics'], dc: 13 },
+        { id: 'destroy', text: 'Сломать узел.', goal: { kind: 'check', skills: ['tech', 'athletics', 'military'], dc: 13 },
           effects: { flags: ['node-destroyed'], rep: { cult: -20 }, deeds: ['honor'] }, next: 'report' },
         { id: 'reflash', text: 'Перепрошить узел: души пойдут не к Судье, а домой.', goal: { kind: 'check', skills: ['hacking', 'judge'], dc: 17 },
           effects: { flags: ['node-reflashed'], rep: { cult: -30 }, deeds: ['mercy'], talentChoice: ['judge-eye', 'darkness-resistance'] }, next: 'report' },
@@ -166,7 +166,7 @@ const LIST = [
     stages: [
       { id: 'meet', text: 'Сектор D кипит.', goal: { kind: 'talk', npc: 'riot-boss', location: 'harmony-sector-d' }, next: 'solve' },
       { id: 'solve', text: 'Как успокоить сектор?', goal: { kind: 'choice', options: [
-        { id: 'talk', text: 'Уговорить подождать пайков.', goal: { kind: 'challenge', skills: ['persuasion', 'intimidation', 'medicine'], dc: 13, successes: 3, failures: 2, onFail: 'riot' },
+        { id: 'talk', text: 'Уговорить подождать пайков.', goal: { kind: 'challenge', skills: ['persuasion', 'intimidation', 'medicine', 'endurance'], dc: 13, successes: 3, failures: 2, onFail: 'riot' },
           effects: { deeds: ['help-weak'] }, next: 'done' },
         { id: 'food', text: 'Принести ящик пайков (у боцмана Сухаря).', goal: { kind: 'item', item: 'rations', n: 1 },
           effects: { deeds: ['help-weak'], rep: { technikums: 5 } }, next: 'done' },
@@ -185,7 +185,7 @@ const LIST = [
     stages: [
       { id: 'meet', text: 'Вербовщик раздаёт листовки «Суд идёт — и он накормит».', goal: { kind: 'talk', npc: 'brother-povestka', location: 'harmony-sector-d' }, next: 'choose' },
       { id: 'choose', text: 'Что делать с вербовщиком?', goal: { kind: 'choice', options: [
-        { id: 'expose', text: 'Выследить ячейку.', goal: { kind: 'check', skills: ['perception', 'deception', 'stealth'], dc: 13, onFail: 'cell' },
+        { id: 'expose', text: 'Выследить ячейку.', goal: { kind: 'check', skills: ['perception', 'deception', 'stealth', 'analysis'], dc: 13, onFail: 'cell' },
           next: 'cell' },
         { id: 'join', text: 'Подписать повестку (злой путь).', requires: { alignment: 'evil' },
           effects: { rep: { cult: 15, technikums: -15 }, deeds: ['cult-deal'], credits: 100 }, next: 'end-dark' },
@@ -280,7 +280,7 @@ const LIST = [
       { id: 'decide', text: 'Патруль уже близко.', goal: { kind: 'choice', options: [
         { id: 'protect', text: 'Встать за неё.', goal: { kind: 'battle', encounter: 'w-agro-cleaners', location: 'battlefields-m11' },
           effects: { deeds: ['mercy'], rep: { agrozone: -10 }, recruit: 'zarya' }, next: 'end' },
-        { id: 'hide', text: 'Спрятать всех.', goal: { kind: 'check', skills: ['stealth'], dc: 14, group: true, onFail: 'fight' },
+        { id: 'hide', text: 'Спрятать всех.', goal: { kind: 'check', skills: ['stealth', 'acrobatics', 'persuasion'], dc: 14, group: true, onFail: 'fight' },
           effects: { deeds: ['mercy'], recruit: 'zarya' }, next: 'end' },
         { id: 'handover', text: 'Сдать патрулю.', effects: { deeds: ['cruelty', 'serve-ai'], rep: { agrozone: 10 }, credits: 80 }, next: 'end' },
       ] } },
@@ -297,9 +297,9 @@ const LIST = [
     stages: [
       { id: 'ask', text: 'Лёва: «Без чипа ты имущество. С моим — человек».', goal: { kind: 'talk', npc: 'forger-lyova', location: 'battlefields-m11' }, next: 'steal' },
       { id: 'steal', text: 'Добыть пустые чипы в «Бетоне».', goal: { kind: 'choice', options: [
-        { id: 'sneak', text: 'Пробраться на склад.', goal: { kind: 'check', skills: ['stealth', 'lockpicking'], dc: 14, group: true, onFail: 'alarm' },
+        { id: 'sneak', text: 'Пробраться на склад.', goal: { kind: 'check', skills: ['stealth', 'lockpicking', 'acrobatics'], dc: 14, group: true, onFail: 'alarm' },
           effects: { items: [{ item: 'blank-chips', n: 1 }] }, next: 'back' },
-        { id: 'con', text: 'Выписать их себе по форме.', goal: { kind: 'check', skills: ['deception', 'hacking'], dc: 15, onFail: 'alarm' },
+        { id: 'con', text: 'Выписать их себе по форме.', goal: { kind: 'check', skills: ['deception', 'hacking', 'persuasion'], dc: 15, onFail: 'alarm' },
           effects: { items: [{ item: 'blank-chips', n: 1 }] }, next: 'back' },
       ] } },
       { id: 'alarm', text: 'Тревога на складе!', goal: { kind: 'battle', encounter: 'w-agro-cleaners', location: 'gidroponika' },
@@ -345,7 +345,7 @@ const LIST = [
       { id: 'deliver', text: 'Доставить Лёве в Агрозону.', goal: { kind: 'talk', npc: 'forger-lyova', location: 'battlefields-m11' }, next: 'peek' },
       { id: 'peek', text: 'Посылка тикает. Открыть?', goal: { kind: 'choice', options: [
         { id: 'deliver', text: 'Отдать как есть.', effects: { removeItems: [{ item: 'alik-package', n: 1 }], deeds: ['greed'] }, next: 'paid' },
-        { id: 'open', text: 'Открыть.', goal: { kind: 'check', skills: ['lockpicking', 'tech'], dc: 14 },
+        { id: 'open', text: 'Открыть.', goal: { kind: 'check', skills: ['lockpicking', 'tech', 'stealth'], dc: 14 },
           effects: { removeItems: [{ item: 'alik-package', n: 1 }], items: [{ item: 'blank-chips', n: 1 }],
             text: 'Внутри пустые ID-чипы. Алик торгует свободой оптом.' }, next: 'paid' },
       ] } },
