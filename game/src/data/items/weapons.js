@@ -61,29 +61,43 @@ export const WEAPON_TYPES = {
 };
 
 // Стартовое владение классов (ступени канона: 1 нет навыка — помеха, 2 умеет, 3 владеет, 4 мастерство).
-// t3 — ступень 3 на 1-м уровне (тип стартового оружия + профильные), t2 — ступень 2. Всё остальное — ступень 1.
-// Предложение дизайнера; утверждает и кодирует программист движка (game/src/rules/*).
-export const CLASS_PROFICIENCY = {
-  zabivnoy: { t3: ['hammer', 'twohanded', 'rifle'], t2: ['saber', 'polearm', 'fist', 'knife', 'sword', 'axe', 'bastard', 'katana', 'pistol', 'smg', 'assault', 'mg', 'launcher'] },
-  technomant: { t3: ['pistol', 'energy'], t2: ['knife', 'smg', 'laser', 'plasma', 'proxy', 'throwing'] },
-  mutant: { t3: ['sword', 'axe', 'fist'], t2: ['hammer', 'twohanded', 'polearm', 'knife', 'throwing', 'pistol'] },
-  itishnik: { t3: ['pistol', 'smg'], t2: ['knife', 'laser', 'energy', 'launcher', 'throwing', 'assault'] },
-  ranger: { t3: ['rifle', 'bow'], t2: ['crossbow', 'knife', 'saber', 'axe', 'pistol', 'assault', 'throwing'] },
-  arbiter: { t3: ['sword', 'bastard'], t2: ['hammer', 'polearm', 'twohanded', 'pistol', 'bolter', 'energy'] },
-  ugolovnik: { t3: ['knife', 'pistol'], t2: ['saber', 'fist', 'smg', 'throwing', 'crossbow'] },
-  ecolog: { t3: ['saber', 'bow'], t2: ['knife', 'polearm', 'throwing', 'crossbow'] },
-  reper: { t3: ['cringe'], t2: ['fist', 'knife', 'pistol', 'throwing'] },
-  slavotech: { t3: ['hammer', 'proxy'], t2: ['polearm', 'twohanded', 'pistol', 'crossbow', 'energy'] },
-  cybertech: { t3: ['knife', 'cyberblade'], t2: ['saber', 'sword', 'pistol', 'energy'] },
+// t3 — ступень 3 на 1-м уровне, t2 — ступень 2, остальные типы — ступень 1 (явно, т. к. движок по умолчанию даёт 2).
+// Формат результата = `cls.proficiencies` движка: { weaponTypes: { type: tier } }. Подключает программист.
+const PROF_LISTS = {
+  zabivnoy: { t3: ['hammer', 'twoHanded', 'rifle'], t2: ['sabre', 'polearm', 'fist', 'knife', 'sword', 'axe', 'bastard', 'katana', 'pistol', 'smg', 'auto', 'mg', 'launcher'] },
+  technomant: { t3: ['pistol', 'energy'], t2: ['knife', 'smg', 'laser', 'plasma', 'proxy', 'throw'] },
+  mutant: { t3: ['sword', 'axe', 'fist'], t2: ['hammer', 'twoHanded', 'polearm', 'knife', 'throw', 'pistol'] },
+  itishnik: { t3: ['pistol', 'smg'], t2: ['knife', 'laser', 'energy', 'launcher', 'throw', 'auto'] },
+  ranger: { t3: ['rifle', 'bow'], t2: ['crossbow', 'knife', 'sabre', 'axe', 'pistol', 'auto', 'throw'] },
+  arbiter: { t3: ['sword', 'bastard'], t2: ['hammer', 'polearm', 'twoHanded', 'pistol', 'bolter', 'energy'] },
+  ugolovnik: { t3: ['knife', 'pistol'], t2: ['sabre', 'fist', 'smg', 'throw', 'crossbow'] },
+  ecolog: { t3: ['sabre', 'bow'], t2: ['knife', 'polearm', 'throw', 'crossbow'] },
+  reper: { t3: ['cringe'], t2: ['fist', 'knife', 'pistol', 'throw'] },
+  slavotech: { t3: ['hammer', 'proxy'], t2: ['polearm', 'twoHanded', 'pistol', 'crossbow', 'energy'] },
+  cybertech: { t3: ['knife', 'cyberblade'], t2: ['sabre', 'sword', 'pistol', 'energy'] },
 };
+export const CLASS_PROFICIENCY = Object.fromEntries(Object.entries(PROF_LISTS).map(([cls, l]) => [cls, {
+  weaponTypes: Object.fromEntries(Object.keys(WEAPON_TYPES).map((t) => [t, l.t3.includes(t) ? 3 : l.t2.includes(t) ? 2 : 1])),
+}]));
 
-const w = (o) => ({
-  cat: 'weapon', hit: 0, rof: 1, recoil: 0, hands: 1, weight: 1, noise: 1,
-  req: {}, props: {}, onHit: [], onCrit: [], grants: [], slots: [], tier: 1, price: 0,
-  factions: [], unique: false, quality: 'working', desc: '', canon: 'rules/core-rules.md',
-  group: null,
-  ...o,
-});
+// onCrit пока эмулируется движком как onHit с шансом CRIT_PROC (крит-хука в движке нет): op.fromCrit = true.
+// Когда появится хук — перенести ops с fromCrit в onCrit (needs: 'onCrit').
+export const CRIT_PROC = 0.15;
+
+const w = (o) => {
+  const it = {
+    cat: 'weapon', slot: 'weapon', hit: 0, rof: 1, recoil: 0, hands: 1, weight: 1, noise: 1,
+    req: {}, props: {}, onHit: [], onCrit: [], grants: [], slots: [], tier: 1, price: 0,
+    factions: [], unique: false, quality: 'working', desc: '', canon: 'rules/core-rules.md',
+    group: null,
+    ...o,
+  };
+  it.type = TYPE_KEY[it.wtype] || it.wtype;
+  it.twoHanded = it.hands === 2;
+  if (it.props.ap) it.ap = it.props.ap;
+  it.onHit = [...it.onHit, ...it.onCrit.map((op) => ({ ...op, chance: CRIT_PROC, fromCrit: true }))];
+  return it;
+};
 
 const MELEE_SLOTS = ['edge', 'grip'];
 const GUN_SLOTS = ['optic', 'muzzle', 'mag'];
@@ -387,4 +401,4 @@ const LIST = [
     tier: 5, price: 0, factions: ['tinBrotherhood'], desc: 'Первый клинок Братства, кованный без единого станка. «Под сталью должна быть сталь».' }),
 ];
 
-export const WEAPONS = Object.fromEntries(LIST.map((it) => [it.id, { ...it, group: it.group || WEAPON_TYPES[it.wtype].group }]));
+export const WEAPONS = Object.fromEntries(LIST.map((it) => [it.id, { ...it, group: it.group || WEAPON_TYPES[it.type].group }]));

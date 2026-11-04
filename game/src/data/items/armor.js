@@ -21,16 +21,17 @@ const ability = (o) => ({
   ...o,
 });
 
-// Свойства типов по ступеням владения бронёй (канон, правило 3). Ступень 1 — броню носить можно, но с помехой на атаки и −2 скорости.
+// Свойства типов (канон, правило 3). Бонусы мастерства (ступень 4) считает движок: тяжёлая/мех +1 КБ,
+// лёгкая +1 бонусное действие за ход, средняя — без помехи на Скрытность.
 export const ARMOR_TYPES = {
-  cloth: { name: 'Ткань', dexCap: null, stealth: false, tier3: null },
-  light: { name: 'Лёгкая', dexCap: null, stealth: false, tier3: 'Бонусное действие «Перекат» (см. LIGHT_ROLL)' },
-  medium: { name: 'Средняя', dexCap: 2, stealth: true, tier3: 'Нет помехи на Скрытность' },
-  heavy: { name: 'Тяжёлая', dexCap: 0, stealth: true, tier3: '+1 КБ' },
-  mech: { name: 'Мехи', dexCap: 0, stealth: true, tier3: '+1 КБ, щит меха +25%', minTier: 2 },
+  cloth: { name: 'Ткань', dexCap: null, stealth: false },
+  light: { name: 'Лёгкая', dexCap: null, stealth: false },
+  medium: { name: 'Средняя', dexCap: 2, stealth: true },
+  heavy: { name: 'Тяжёлая', dexCap: 0, stealth: true },
+  mech: { name: 'Мехи', dexCap: 0, stealth: true, minTier: 2 },
 };
 
-// Канон: «бонусное действие у лёгкой брони». Даётся любой лёгкой броней при владении ступени 3+.
+// Дополнительное бонусное действие, на которое можно потратить «лишнее» бонусное действие лёгкой брони.
 export const LIGHT_ROLL = ability({
   id: 'armor-light-roll', name: 'Перекат', action: 'bonus', usesPerBattle: 2,
   effects: [{ op: 'move', tiles: 2, mode: 'dash' }],
@@ -38,14 +39,20 @@ export const LIGHT_ROLL = ability({
   needs: 'disengage: перемещение move без атак при отходе',
 });
 
+// Схема движка (game/src/rules/equipment.js): slot 'armor', type, kb, dexCap?, stealthDis?, resist?, noise?.
+// Здесь `atype` → `type`, `stealth` → `stealthDis`; dexCap не задаётся, если у типа нет потолка.
 const a = (o) => {
   const t = ARMOR_TYPES[o.atype];
-  return {
-    cat: 'armor', dexCap: t.dexCap, stealth: t.stealth, noise: 0, resist: {}, req: {}, speed: 0,
+  const it = {
+    cat: 'armor', slot: 'armor', stealth: t.stealth, noise: 0, resist: {}, req: {}, speed: 0,
     grants: [], passives: [], slots: ['lining'], tier: 1, price: 0, factions: [], unique: false,
     quality: 'working', natural: false, races: null, mech: null, desc: '', canon: 'rules/core-rules.md',
     ...o,
   };
+  it.type = it.atype;
+  it.stealthDis = !!it.stealth;
+  if (t.dexCap != null && it.dexCap == null) it.dexCap = t.dexCap;
+  return it;
 };
 
 const LIST = [

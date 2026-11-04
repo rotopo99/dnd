@@ -18,10 +18,26 @@ const ability = (o) => ({
   ...o,
 });
 
-const c = (o) => ({ cat: 'consumable', battle: null, field: null, opiate: 0, withdrawal: null, stack: 3, tier: 1, price: 0, factions: [], desc: '', ...o });
+// Схема движка (combat.js useItem / isBattleItem): предмет сам «способность» — поля action, range, target, area, roll,
+// save, onSave, effects, dc, castStat лежат прямо на предмете; ловушка — trap: { effects, save, onSave, area, dc }.
+// Построитель c() раскладывает `battle` на предмет; у ловушек (battle.trap === true) эффекты уходят в `trap`.
+// СЛ не задаётся: движок берёт 8 + владение + mod(ЛВК) бросающего.
+const BATTLE_KEYS = ['action', 'range', 'target', 'area', 'roll', 'save', 'onSave', 'effects', 'castStat', 'needs', 'canon'];
+const c = (o) => {
+  const it = { cat: 'consumable', slot: 'consumable', battle: null, field: null, opiate: 0, withdrawal: null, stack: 3, tier: 1, price: 0, factions: [], desc: '', ...o };
+  const b = it.battle;
+  if (b) {
+    for (const k of BATTLE_KEYS) if (b[k] !== undefined && b[k] !== null) it[k] = b[k];
+    if (b.trap) {
+      it.trap = { effects: b.effects, save: b.save, onSave: b.onSave, area: b.area };
+      it.effects = [];
+    }
+  }
+  return it;
+};
 
-// Гранаты: дальность броска 8 клеток, СЛ спаса = 12 (ур. 1–2) / 13 (ур. 3–4) / 14 (ур. 5) — по уровню бросающего (`dc: 'byLevel'`).
-const grenade = (o) => ability({ range: 8, target: 'tile', roll: 'save', save: 'dex', onSave: 'half', dc: 'byLevel', ...o });
+// Гранаты: дальность броска 8 клеток.
+const grenade = (o) => ability({ range: 8, target: 'tile', roll: 'save', save: 'dex', onSave: 'half', ...o });
 
 const LIST = [
   // ---------------------------------------------------------------- Медицина (не опиатная)
@@ -84,9 +100,9 @@ const LIST = [
       desc: '3d6 МРЛ, снимает 1 дебафф, но замедление на 1 ход.' }),
     tier: 3, price: 70, factions: ['aiParty'], desc: '«Кто не счастлив — к окошку номер семь».' }),
   c({ id: 'anti-cringe-earplugs', name: 'Беруши «Не слышу кринж»', kind: 'sedative', stack: 2,
-    battle: ability({ id: 'use-earplugs', name: 'Беруши', action: 'bonus', effects: [{ op: 'cleanse', count: 1, kind: 'debuff' }, { op: 'shield', value: 0, turns: 3 }],
+    battle: ability({ id: 'use-earplugs', name: 'Беруши', action: 'bonus', effects: [{ op: 'cleanse', count: 1, kind: 'debuff' }],
       desc: '3 хода: сопротивление кринжу. Снимает кринж-эффект.', needs: 'resistBuff: временное resist к cringe (op buff stat resist)' }),
-    tier: 2, price: 35, factions: ['baza-predlozhki', 'neutralVillages'], desc: 'Предложка выдаёт их часовым у маяков.' }),
+    tier: 2, price: 35, factions: ['neutralVillages'], desc: 'Предложка выдаёт их часовым у маяков.' }),
 
   // ---------------------------------------------------------------- Стимы
   c({ id: 'adrenaline-stim', name: 'Адреналиновый стим', kind: 'stim', stack: 1,

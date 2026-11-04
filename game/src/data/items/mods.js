@@ -23,7 +23,20 @@ export const MOD_SLOTS = {
 // Поля мода: slot, fits (ограничения: group / wtype / atype / rofMin / quality), add — что прибавляет
 //   add: { hit, dmg, range, rof, recoil, noise, kb, enr, resist, extra: { dice, dmgType }, vs: { tag: dmg },
 //          onCrit, onHit, immuneStatus, removeJam, magnetic }
-const m = (o) => ({ cat: 'mod', fits: {}, add: {}, tier: 1, price: 0, factions: [], desc: '', ...o });
+// Схема движка (game/src/rules/equipment.js): { slot: 'mod', target: 'weapon'|'armor', hit?, dmg?, ap?, rof?, recoil?,
+// range?, noise?, onHit?, kb?, resist?, stealthDis? } — поля плоские. Построитель m() раскладывает `add` наверх;
+// `modSlot` — наш слот (optic, muzzle…), `extra`, `vs`, `enr`, `removeJam`, `magnetic`, `immuneStatus`, `onCrit` — needs.
+const ARMOR_MOD_SLOTS = ['plate', 'lining', 'sole'];
+const m = (o) => {
+  const it = { cat: 'mod', fits: {}, add: {}, tier: 1, price: 0, factions: [], desc: '', ...o };
+  const { onCrit, ...rest } = it.add;
+  Object.assign(it, rest);
+  if (onCrit) it.onHit = onCrit.map((op) => ({ ...op, chance: 0.15, fromCrit: true }));
+  it.modSlot = it.slot;
+  it.slot = 'mod';
+  it.target = ARMOR_MOD_SLOTS.includes(it.modSlot) ? 'armor' : 'weapon';
+  return it;
+};
 
 const LIST = [
   // --- Прицелы
