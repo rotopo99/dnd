@@ -14,6 +14,7 @@
 //   tag — желаемый тип врагов для enemies-v3 (пока бой берёт существующий encounter).
 
 import { BURGS, MARKERS, MAP_SIZE } from './canon-map.js';
+import { NPCS } from '../npcs.js';
 
 export const MAP_SPACE = { w: MAP_SIZE.w, h: MAP_SIZE.h, kmPerPx: MAP_SIZE.kmPerPx, image: 'docs/canon/map/map.png' };
 
@@ -432,7 +433,31 @@ export const ALIASES = {
   'cyberspace': 'kiberspeys',
 };
 
+/** NPC, чьё место в v3 не совпадает с алиасом их npcs.js location (лидеры кринжгонов — у себя дома, а не на дозорке). */
+export const NPC_PLACE = {
+  'cringe-chief': 'pepelnoe-gornilo',
+  'cringe-jester': 'pepelnoe-gornilo',
+  'great-collector': 'dungeons-m14',
+  'diss': 'pirates-m30',
+};
+
 export const LOCATIONS = Object.fromEntries(LIST.map((l) => [l.id, l]));
+
+// NPC по месту из npcs.js: если у узла нет явного списка npcs, его заполняют NPC, чей location (через ALIASES / NPC_PLACE)
+// указывает на этот узел. Камео партии настолки (cameo) — только в ивентах, на узлы не ставятся.
+{
+  const placed = new Set(LIST.flatMap((l) => l.npcs));
+  const explicit = new Set(LIST.filter((l) => l.npcs.length).map((l) => l.id));
+  for (const n of Object.values(NPCS)) {
+    if (n.cameo || placed.has(n.id)) continue;
+    const target = NPC_PLACE[n.id] || ALIASES[n.location] || n.location;
+    const node = LOCATIONS[target];
+    if (!node || (explicit.has(target) && !NPC_PLACE[n.id])) continue;
+    node.npcs = [...node.npcs, n.id];
+    placed.add(n.id);
+  }
+}
+
 for (const [old, target] of Object.entries(ALIASES)) {
   if (LOCATIONS[target] && !LOCATIONS[old]) LOCATIONS[old] = { ...LOCATIONS[target], id: old, aliasOf: target, alias: true };
 }
