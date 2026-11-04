@@ -418,6 +418,8 @@ export const ALIASES = {
   'king-dumps': 'svalka',
   'scavenger-camp': 'svalka',
   'khatab-city': 'raytsentr', // автор: Хатаб-Сити — столица пиратов (бург Райцентр)
+  'vazgen-lab': 'dungeons-m15', // режиссёр: тайная лаборатория Вазгена — «никто не может найти»
+  'wastes': 'ancient-bunker', // режиссёр: пустоши техоньков
   'west-sector': 'battlefields-m9',
   'ai-capital': 'putin-inner',
   'tin-citadel': 'slavotech',

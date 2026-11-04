@@ -1,7 +1,7 @@
 // Unique events (data/world/events.js; schema in its header): trigger on a node (enter / rest), scene dialogue,
 // choices with optional checks, outcome (battle first, then rewards). Fires once per game (flag `event:<id>`).
 import { t } from '../data/text/index.js';
-import { EVENTS, storyText, speakerName } from '../world/data.js';
+import { EVENTS, storyText, speakerName, sameLocation } from '../world/data.js';
 import { repTier, tierAtLeast, normFaction } from '../world/reputation.js';
 import { members, grant, journal, deed } from '../world/state.js';
 import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
@@ -23,7 +23,7 @@ function triggerOk(save, ev, when) {
 
 /** Events that fire now on a location for 'enter' | 'rest' | 'travel'. Chance is rolled here. */
 export function eventsFor(save, locId, when) {
-  return Object.values(EVENTS).filter((ev) => ev.location === locId && triggerOk(save, ev, when) && Math.random() < (ev.trigger?.chance ?? 1));
+  return Object.values(EVENTS).filter((ev) => sameLocation(ev.location, locId) && triggerOk(save, ev, when) && Math.random() < (ev.trigger?.chance ?? 1));
 }
 
 /** 'travel' events of a region (a travel day there). */

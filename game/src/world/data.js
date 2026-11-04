@@ -6,13 +6,20 @@ import { ENCOUNTERS } from '../data/enemies.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
 import { PARTY_EVENTS_TEXT } from '../data/text/party-events.js';
 import { PROLOGUE } from '../data/text/prologue.js';
-import { LOCATIONS, ITEMS } from '../data/world/locations.js';
+import { LOCATIONS, ITEMS as WORLD_ITEMS, resolveLocation } from '../data/world/locations.js';
+import { GAME_DATA } from '../data/index.js';
+import { WEAPONS } from '../data/items/weapons.js';
+import { ARMOR } from '../data/items/armor.js';
+import { MODS } from '../data/items/mods.js';
+import { CONSUMABLES } from '../data/items/consumables.js';
+import { SHOPS, STARTER_KITS } from '../data/items/shops.js';
 
 export { REGIONS, FUTURE_REGIONS } from '../data/world/regions.js';
 export {
-  LOCATIONS, START_LOCATION, START_DISCOVERED, DEFAULT_RESPAWN, TERMINAL_ACTIONS, FINALE_TERMINALS, SERVICE_PRICES, ITEMS,
+  LOCATIONS, START_LOCATION, START_DISCOVERED, DEFAULT_RESPAWN, TERMINAL_ACTIONS, FINALE_TERMINALS, SERVICE_PRICES,
+  MAP_SPACE, MAP_NODES, HUB_STATES, ALIASES, TIER_NAMES, resolveLocation,
 } from '../data/world/locations.js';
-export { ROUTES, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, AMBUSH, FIELD_CAMP } from '../data/world/travel.js';
+export { ROUTES, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, AMBUSH, FIELD_CAMP, FARE } from '../data/world/travel.js';
 export { QUESTS, DEED_TAGS } from '../data/world/quests.js';
 export { EVENTS } from '../data/world/events.js';
 export { ORIGINS, originAllowed } from '../data/world/origins.js';
@@ -20,15 +27,44 @@ export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';
 export { NPC_DIALOGUE, PARTY_EVENTS_TEXT };
 
+/** Same place (aliases of v1.0 ids count as their target). */
+export const sameLocation = (a, b) => !!a && !!b && resolveLocation(a) === resolveLocation(b);
+
 /** Base enemy id: balance variants look like 'cleaner^2.2'. */
 export const baseId = (id) => String(id || '').split('^')[0];
 
-/** Default trade stock: every priced, non-key item. */
-export const SHOP_STOCK = Object.values(ITEMS).filter((i) => i.price > 0 && !i.key && !i.contraband && !i.passives).map((i) => i.id);
+/**
+ * One item catalogue for the world and battles: v3 gear (data/items/*) + v1.0 world items (locations.js ITEMS).
+ * Same id in both (medkit, calmers, grenade) → one record: world fields (use, passives, price) over the v3 battle fields.
+ */
+export const ITEMS = { ...WEAPONS, ...ARMOR, ...MODS, ...CONSUMABLES };
+for (const [id, it] of Object.entries(WORLD_ITEMS)) ITEMS[id] = { ...(ITEMS[id] || {}), ...it };
+export { WEAPONS, ARMOR, MODS, CONSUMABLES, SHOPS, STARTER_KITS, WORLD_ITEMS };
+
+/** Rules data for the engine with the item catalogue (buildCreature equipment, combat useItem). */
+export const PLAY_DATA = { ...GAME_DATA, ITEMS };
+
+/** Starter kit of a class / path (shops.js STARTER_KITS, key 'cls:path' wins). Unknown items are dropped. */
+export function starterKit(cls, path) {
+  const k = STARTER_KITS[`${cls}:${path}`] || STARTER_KITS[cls];
+  if (!k) return null;
+  return { ...k, weapon: ITEMS[k.weapon] ? k.weapon : null, armor: ITEMS[k.armor] ? k.armor : null, belt: (k.belt || []).filter((id) => ITEMS[id]) };
+}
+
+/** Shop stock of a faction (shops.js SHOPS): stock + friendly / ally lines by reputation tier. null — no shop. */
+export function factionStock(faction, tier) {
+  const s = faction && SHOPS[faction];
+  if (!s) return null;
+  const rank = { hostile: 0, suspicious: 1, neutral: 2, friendly: 3, ally: 4 }[tier] ?? 2;
+  return [...(s.stock || []), ...(rank >= 3 ? s.friendly || [] : []), ...(rank >= 4 ? s.ally || [] : [])].filter((id) => ITEMS[id]);
+}
+
+/** Default trade stock: every priced, non-key v1.0 item. */
+export const SHOP_STOCK = Object.values(WORLD_ITEMS).filter((i) => i.price > 0 && !i.key && !i.contraband && !i.passives).map((i) => i.id);
 
 /** NPC ids standing on a location (locations.js `npcs` wins over npcs.js `location`). */
 export function npcsAt(locId) {
-  const loc = LOCATIONS[locId];
+  const loc = LOCATIONS[resolveLocation(locId)];
   return (loc?.npcs || []).filter((id) => NPCS[id]);
 }
 

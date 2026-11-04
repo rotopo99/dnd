@@ -96,7 +96,14 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     return { hp: u.hp, mrl: u.mrl };
   };
   const hu = b.byId.hero;
-  if (hu) { const r = after(hu); save.hero.hp = r.hp; save.hero.mrl = r.mrl; }
+  if (hu) {
+    const r = after(hu); save.hero.hp = r.hp; save.hero.mrl = r.mrl;
+    // v3: items used in battle leave the backpack (unit.inventory is the battle copy)
+    for (const [id, n0] of Object.entries(hu.build?.inventory || {})) {
+      const used = n0 - (hu.inventory?.[id] || 0);
+      if (used > 0) save.hero.items[id] = Math.max(0, (save.hero.items[id] || 0) - used);
+    }
+  }
   for (const p of activeCompanions(save)) {
     const u = b.byId[`c-${p.npc}`];
     if (!u) continue;

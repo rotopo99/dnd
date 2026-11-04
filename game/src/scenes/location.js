@@ -11,7 +11,7 @@ import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hit
 import { openCheck, openGroupCheck, openChallenge } from '../ui/checks-ui.js';
 import {
   LOCATIONS, REGIONS, ITEMS, SHOP_STOCK, TERMINAL_ACTIONS, SERVICE_PRICES, QUESTS, ENCOUNTER_TABLES,
-  npcsAt, npcGreeting, npcTopics, npcRepFaction, TRAINER_ALIAS, encounterName,
+  npcsAt, npcGreeting, npcTopics, npcRepFaction, TRAINER_ALIAS, encounterName, resolveLocation, factionStock,
 } from '../world/data.js';
 import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputation.js';
 import {
@@ -35,7 +35,8 @@ const MAX_ACTIONS = 9;
 const TIER_COL = { hostile: 'c', suspicious: 'a', neutral: '4', friendly: 'j', ally: 'h' };
 export const tierColor = (tier) => C[TIER_COL[tier] || '4'];
 
-export function createLocationScene(locId) {
+export function createLocationScene(rawId) {
+  const locId = resolveLocation(rawId);
   const S = { page: 0, apage: 0, buttons: [], hover: null, time: 0, gate: false, visit: {} };
   let self;
   const loc = LOCATIONS[locId];
@@ -232,7 +233,9 @@ export function createLocationScene(locId) {
     });
   }
 
-  function openShopHere(game, who, tier, stock = SHOP_STOCK) {
+  function openShopHere(game, who, tier, stock) {
+    // v3: the faction's shop (items/shops.js) plus the basic v1.0 goods
+    if (!stock) stock = [...new Set([...(factionStock(locFaction(locId), tier) || []), ...SHOP_STOCK])];
     openShop(game, { title: `${t('loc.trade')}: ${who}`, stock, tier, faction: locFaction(locId), onClose: (g) => back(g) });
   }
 

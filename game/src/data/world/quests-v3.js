@@ -119,13 +119,9 @@ const LIST = [
         { kind: 'check', skills: ['tech', 'athletics'], dc: 13, doneFlag: 'saved-workshop', desc: 'Мастерская Николы и архив Вазгена.' },
         { kind: 'check', skills: ['persuasion', 'intimidation'], dc: 14, doneFlag: 'saved-sector-d', desc: 'Сектор D и бунтари.' },
       ] }, 'crash'),
-      st('crash', 'Платформа падает у маркера крушения.', reach('mesto-krusheniya-alfa-garmonii'), 'hub'),
-      st('hub', 'Куда переезжает хаб?', choice(
-        opt('svoboda', 'Свобода (НС, порт).', talk('elder-ulyana', 'svoboda'), { flags: ['hub-svoboda'], rep: { neutralVillages: 10 } }),
-        opt('shtab', 'Штабцентр (Отступники).', talk('marta', 'marta'), { flags: ['hub-shtabtsentr'], rep: { renegades: 10 } }),
-        opt('garmoniya', 'Гармония — порт беженцев Небесного базара.', talk('gm-iva', 'garmoniya'), { flags: ['hub-garmoniya'], rep: { mutantsPlant: 10 } }),
-        opt('wreck', 'Остаться в обломках.', null, { flags: ['hub-wreck'], deeds: ['honor'] }),
-      ), 'done'),
+      st('crash', 'Платформа падает у утёса — маркер крушения.', reach('mesto-krusheniya-alfa-garmonii'), 'hub'),
+      // Хаб переезжает в Хатаб-Сити = raytsentr (решение режиссёра; HUB_STATES['harmony-fallen'] в locations.js).
+      st('hub', 'Спасённое и спасённые — в Хатаб-Сити. Буревестник: «Груз принят. Счёт — потом».', talk('amanda', 'raytsentr'), 'done'),
     ],
     { xp: 1000, flags: ['harmony-fallen', 'act2-done'] }, { key: true, requires: { flag: 'allies-ready' } }),
 
@@ -356,10 +352,10 @@ const LIST = [
   Q('sq3-ren-join', 'Цена — ты', 'combat', 'renegades', 'sht-kayma', 3, 'Испытание Отступников у таверны Марты.',
     [st('test', 'Рейд на конвой Чистильщиков.', fight('w-agro-cleaners', 'shtabtsentr'), 'marta'),
      st('marta', 'Марта смотрит на тебя.', talk('marta', 'marta'), 'done')], { xp: 400, rep: { renegades: 15 }, deeds: ['free-slaves'] }),
-  Q('sq3-ren-mines', 'Кто переставляет мины', 'mixed', 'renegades', 'yarosh', 3, 'Кто-то ставит мины Яроша ближе к Штабцентру.',
-    [st('watch', 'Засада у минного поля.', check(['stealth', 'perception'], 14, 'fight'), 'who'),
-     st('fight', 'Диверсанты.', fight('enc-saboteurs', 'shtabtsentr'), 'who'),
-     st('who', 'Это клон Lox по приказу Партии.', talk('yarosh', 'shtabtsentr'), 'done')], { xp: 350, rep: { renegades: 10 }, flags: ['lox-marks-known'] }),
+  Q('sq3-ren-mines', 'Кто переставляет мины', 'mixed', 'renegades', 'yarosh', 3, 'Кто-то ставит мины Яроша ближе к Хатаб-Сити (столица пиратов, где Отступники держат гарнизон).',
+    [st('watch', 'Засада у минного поля на подступах к Хатаб-Сити.', check(['stealth', 'perception'], 14, 'fight'), 'who'),
+     st('fight', 'Диверсанты.', fight('enc-saboteurs', 'raytsentr'), 'who'),
+     st('who', 'Это клон Lox по приказу Партии.', talk('yarosh', 'raytsentr'), 'done')], { xp: 350, rep: { renegades: 10 }, flags: ['lox-marks-known'] }),
 
   // ---------- mutantsBeast
   Q('sq3-mb-pits', 'Три схватки', 'combat', 'mutantsBeast', 'bn-klykan', 3, 'Ямы Бойника — путь к уважению Зверя.',
@@ -384,7 +380,7 @@ const LIST = [
 
   // ---------- tekhonki
   Q('sq3-tk-oil', 'Масло для станка', 'search', 'tekhonki', 'stn-shpindel', 2, 'Станок не в духе. Ему нужна жертва — хорошее масло.',
-    [st('oil', 'Найти довоенное масло в шахте.', reach('mines-m3'), 'done')], { xp: 150, rep: { tekhonki: 10 } }),
+    [st('oil', 'Найти довоенное масло в старых цехах Станка.', check(['survival', 'perception', 'tech'], 12), 'done')], { xp: 150, rep: { tekhonki: 10 } }),
   Q('sq3-tk-doubt', 'Баланс или баланда', 'talk', 'tekhonki', 'sm-ryab', 4, 'Смотрящая Рябь сомневается в воле старого бога.',
     [st('listen', 'Дослушать помехи вместе с ней.', { kind: 'challenge', skills: ['proxy', 'meditation', 'analysis', 'religion'], dc: 15, successes: 3, failures: 2, onFail: 'storm' }, 'done'),
      st('storm', 'Прокси-буря накрывает Смотрельце.', fight('enc-proxy-storm', 'smotreltse'), 'done')], { xp: 400, flags: ['oldgod-doubt'], rep: { tekhonki: 5 } }),

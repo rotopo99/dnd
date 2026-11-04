@@ -4,7 +4,7 @@
 // A "slot" is one executable goal of the current stage: { qid, stage, goal, sub?: index, option?: Option, choice?: Goal }.
 //   kind 'choice' slots are decisions (UI lists options); other kinds are goals to resolve:
 //   reach / talk / item / terminal — automatic (onArrive / onTalk / autoProgress); battle / check / challenge / pay — UI actions.
-import { QUESTS } from './data.js';
+import { QUESTS, sameLocation } from './data.js';
 import { t } from '../data/text/index.js';
 import { grant, journal, requiresOk, tf, repToasts } from './state.js';
 import { applyRep, normFaction } from './reputation.js';
@@ -82,7 +82,7 @@ export function slotsAt(save, locId) {
     const k = s.kind || s.goal.kind;
     if (['reach', 'talk', 'item', 'terminal'].includes(k)) return false;
     const loc = s.goal.location || (s.kind === 'choice' ? s.choice.location : null);
-    return loc ? loc === locId : true;
+    return loc ? sameLocation(loc, locId) : true;
   });
 }
 
@@ -207,7 +207,7 @@ export function failSlot(save, slot, data) {
 /** Reaching a location completes 'reach' goals. */
 export function onArrive(save, locId, data) {
   const out = [];
-  for (const s of allSlots(save)) if (s.goal.kind === 'reach' && s.goal.location === locId) out.push(...completeSlot(save, s, data));
+  for (const s of allSlots(save)) if (s.goal.kind === 'reach' && sameLocation(s.goal.location, locId)) out.push(...completeSlot(save, s, data));
   out.push(...autoProgress(save, data));
   return out;
 }
@@ -227,7 +227,7 @@ export function onTalk(save, npcId, data) {
 /** A battle won at a location: completes 'battle' goals with that encounter there. */
 export function onBattleWon(save, encId, locId, data) {
   const out = [];
-  for (const s of allSlots(save)) if (s.goal.kind === 'battle' && s.goal.encounter === encId && (!s.goal.location || s.goal.location === locId)) out.push(...completeSlot(save, s, data));
+  for (const s of allSlots(save)) if (s.goal.kind === 'battle' && s.goal.encounter === encId && (!s.goal.location || sameLocation(s.goal.location, locId))) out.push(...completeSlot(save, s, data));
   return out;
 }
 
@@ -235,7 +235,7 @@ export function onBattleWon(save, encId, locId, data) {
 export function autoProgress(save, data) {
   const out = [];
   for (let guard = 0; guard < 8; guard++) {
-    const s = allSlots(save).find((x) => (x.goal.kind === 'reach' && x.goal.location === save.location)
+    const s = allSlots(save).find((x) => (x.goal.kind === 'reach' && sameLocation(x.goal.location, save.location))
       || (x.goal.kind === 'item' && (save.hero.items[x.goal.item] || 0) >= (x.goal.n || 1))
       || (x.goal.kind === 'terminal' && save.terminals[x.goal.terminal] && save.terminals[x.goal.terminal] !== 'ritual'));
     if (!s) break;

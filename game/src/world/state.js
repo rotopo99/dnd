@@ -8,9 +8,10 @@ import { gainXp as engineGainXp, levelForXp } from '../rules/progression.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
 import { RELATIONS } from '../data/factions.js';
-import { GAME_DATA } from '../data/index.js';
+import { isBattleItem } from '../rules/combat.js';
 import {
   LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
+  PLAY_DATA as GAME_DATA, resolveLocation, starterKit,
 } from './data.js';
 import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast } from './reputation.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
@@ -22,10 +23,15 @@ export { levelForXp };
 export function newSave(hero) {
   const combat = hero.talents.filter((id) => TALENTS[id] && isCombatTalent(TALENTS[id]));
   const gadget = gadgetFor(hero.cls);
+  // v3 gear: the hero's chosen kit (flexible creation) or the class starter kit; belt items go to the backpack
+  const kit = starterKit(hero.cls, hero.path);
+  const equipment = hero.equipment || (kit ? { weapon: kit.weapon, armor: kit.armor, offhand: null, mods: [] } : null);
+  const items = { ...R.start.items };
+  for (const id of hero.belt || kit?.belt || []) items[id] = (items[id] || 0) + 1;
   const save = {
     version: 1, seed: (Math.random() * 1e9) | 0, day: 1,
     hero: { ...hero, level: 1, xp: 0, activeCombat: combat.slice(0, COMBAT_TALENT_LIMIT(1)), gadget: gadget ? gadget.id : null,
-      hp: null, mrl: null, judgeMarks: 0, credits: R.start.credits, items: { ...R.start.items }, uniqueTalent: false, pendingTalents: 0 },
+      hp: null, mrl: null, judgeMarks: 0, credits: R.start.credits, items, equipment, uniqueTalent: false, pendingTalents: 0 },
     party: [],
     location: START_LOCATION, prevLocation: null,
     discovered: [...START_DISCOVERED], visited: [],
@@ -84,17 +90,26 @@ function gadgetWithItems(save, data) {
   return { data: { ...data, GADGETS: { ...(data.GADGETS || {}), [id]: merged } }, gadget: id };
 }
 
+/** Battle-usable items of a backpack { id: n } (consumables, grenades, traps) → unit.inventory. */
+export function battleInventory(items) {
+  const out = {};
+  for (const [id, n] of Object.entries(items || {})) if (n > 0 && isBattleItem(ITEMS[id])) out[id] = n;
+  return out;
+}
+
 export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const h = save.hero;
   const G = gadgetWithItems(save, data);
   const talents = safeTalents(h.talents);
   const activeCombat = safeTalents(h.activeCombat).filter((id) => talents.includes(id)).slice(0, COMBAT_TALENT_LIMIT(h.level));
-  const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined };
+  const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined,
+    stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined };
+  const gear = { equipment: h.equipment || undefined, inventory: battleInventory(h.items) };
   let u;
   try {
-    u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget });
+    u = buildCreature({ ...spec, ...gear, talents, activeCombat, gadget: G.gadget });
   } catch {
-    try { u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget, race: h.race }); } catch { u = buildCreature({ ...spec, data, race: h.race }); }
+    try { u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget, race: h.race, inventory: gear.inventory }); } catch { u = buildCreature({ ...spec, data, race: h.race }); }
   }
   const marks = h.judgeMarks || 0;
   if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
@@ -362,8 +377,8 @@ export function restParty(save, data = GAME_DATA, frac = 1) {
 }
 
 // ----------------------------------------------------------------------------- map: discovery and travel
-export const routesFrom = (id) => ROUTES.filter((r) => r.from === id || r.to === id);
-export const otherEnd = (r, id) => (r.from === id ? r.to : r.from);
+export const routesFrom = (raw) => { const id = resolveLocation(raw); return ROUTES.filter((r) => r.from === id || r.to === id); };
+export const otherEnd = (r, id) => (r.from === resolveLocation(id) ? r.to : r.from);
 
 /**
  * Route is usable: both ends discovered; a hidden route also needs its reveal flag, an opened-route flag
@@ -391,13 +406,15 @@ export function partyFlagSet(save, data = GAME_DATA) {
 }
 
 /** A hidden node was found (check, rumor, flag): discover it and open the hidden routes leading to it. */
-export function openHidden(save, id) {
+export function openHidden(save, raw) {
+  const id = resolveLocation(raw);
   discover(save, id);
   for (const r of routesFrom(id)) if (r.hidden) save.flags[routeFlag(r)] = true;
 }
 
 /** Visit a node: mark visited, discover non-hidden neighbours (and hidden ones whose reveal flag is set). */
-export function visit(save, id) {
+export function visit(save, raw) {
+  const id = resolveLocation(raw);
   if (save.location && save.location !== id) save.prevLocation = save.location;
   save.location = id;
   if (!save.visited.includes(id)) save.visited.push(id);
@@ -412,7 +429,8 @@ export function visit(save, id) {
   }
 }
 
-export function discover(save, id) {
+export function discover(save, raw) {
+  const id = resolveLocation(raw);
   if (LOCATIONS[id] && !save.discovered.includes(id)) save.discovered.push(id);
 }
 

@@ -1586,7 +1586,7 @@ const LIST_V3 = [
   // ---------- Мутанты-Р · garmoniya ----------
   v3('gm-iva', 'Смотрительница Ива', 'mutantsPlant', 'mutant-plant', 'garmoniya', 'смотрительница порта Гармония', ['quest', 'info'],
     'Гармонию основали беженцы Небесного базара (2013). Ива знает, каково падать с неба.', 'Тихо, шелестя.',
-    'Мы уже падали. Падать не страшно. Страшно — не знать, где встанешь.', 'Принять беженцев Альфа-Гармонии после крушения — хаб в Гармонии.'),
+    'Мы уже падали. Падать не страшно. Страшно — не знать, где встанешь.', 'Принять часть беженцев Альфа-Гармонии после крушения (хаб уходит в Хатаб-Сити, но Гармония — ближе к месту падения).'),
 
   // ---------- Кринжгоны ----------
   v3('pg-oy-vse', 'Инженер Ой-Всё', 'cringegons', 'cringegon', 'vyzhigatel-vayba', 'инженер Выжигателя Вайба', ['quest', 'info'],
@@ -1628,7 +1628,8 @@ const V3_HOME = {
   'elder-ulyana': 'svoboda', 'innkeeper-pelmen': 'svoboda', 'shepherd-timokha': 'agrara', 'galina': 'dacha-babki', 'prisoner-khikhik': 'svoboda',
   'vazgen': 'bunker-lisa',
   'overseer-norma': 'gidroponika', 'cleaner-protokol': 'gidroponika', 'zarya': 'gidroponika', 'grandpa-kolos': 'gidroponika', 'forger-lyova': 'gidroponika',
-  'marta': 'marta', 'kuksius-first': 'bunker-kuksiusa', 'yarosh': 'shtabtsentr', 'commissar-khryashch': 'shtabtsentr', 'gunsmith-sazha': 'shtabtsentr', 'chronicler-bukva': 'shtabtsentr',
+    // Хатаб-Сити = raytsentr, столица пиратов; Отступники там — союзный гарнизон (ответ автора).
+  'marta': 'marta', 'kuksius-first': 'bunker-kuksiusa', 'yarosh': 'raytsentr', 'commissar-khryashch': 'raytsentr', 'gunsmith-sazha': 'raytsentr', 'chronicler-bukva': 'shtabtsentr',
   'kuksius': 'bunker-kuksiusa', 'liza': 'liza', 'artyom': 'artem',
   'judge': 'kiberspeys', 'cyber-priest': 'sokralnya', 'sister-pomekha': 'sokralnya', 'scriptlet-zero': 'kiberspeys',
   'collector-tsitata': 'krushenie-nebesnogo-bazara',
