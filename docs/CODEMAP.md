@@ -96,3 +96,5 @@
 ## Баланс v3
 - `game/src/data/enemies-v3.js`: `POWER_V3[encounterId]` + `scaleV3(id, {p, hp, atk, dmg, kb})` — сила боёв v3 (урон, атака, КБ, ЗДР раздельно).
 - `tools/sim/balance.mjs --mode v3|gear` — бои v3 партией 4 и вклад предметов; `tools/sim/tune-v3.mjs` — автоподбор `POWER_V3`.
+- `game/src/data/world/travel-skills.js` — 59 дорожных проверок по регионам (3+ навыка из 2+ статов), подключено в `travel.js`; спека полезности навыков — `docs/specs/skills.md`.
+- Лут-таблицы `lis-vault`, `wolf-pack` (`items/loot.js`); проекты «Лис» и «Волк» — `docs/lore/projects-lis-volk.md`.
