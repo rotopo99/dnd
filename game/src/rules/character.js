@@ -4,7 +4,7 @@
 
 import {
   collectItems, applyEquipment, defaultProficiencies, mergeProficiencies, weaponTierFor, armorTierFor,
-  armorKb, DMG_TYPE_TIER_DMG, LIGHT_MASTERY_BONUS_ACTIONS,
+  armorKb, DMG_TYPE_TIER_DMG, LIGHT_MASTERY_BONUS_ACTIONS, MECH_MIN_TIER, enrichWeapon, normalizeArmor, stigmaFlags,
 } from './equipment.js';
 
 export const STATS = ['str', 'dex', 'con', 'int', 'wil', 'cha', 'per'];
@@ -245,7 +245,8 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   const prof = mergeProficiencies(defaultProficiencies(cls, pathDef), proficiencies);
 
   const TL = talents.length || gadget ? resolveTalents(D || normalizeData({}), { talents, activeCombat, gadget, level }) : null;
-  const passives = [...(race.passives || []), ...(cls.passives || []), ...(TL ? TL.passives : []), ...((EQ.offhand && EQ.offhand.passives) || [])]
+  const passives = [...(race.passives || []), ...(cls.passives || []), ...(TL ? TL.passives : []), ...((EQ.offhand && EQ.offhand.passives) || []),
+    ...(weaponDef.passives || []), ...(armorDef.passives || [])]
     .filter((p) => passiveApplies(p, level, path));
   const P = collectPassives(passives);
 
@@ -291,7 +292,9 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   const offKb = (EQ.offhand && EQ.offhand.kb) || 0;
   u.kbBonus = P.kb + offKb;
   u.kb = armorKb(armor, st.dex, u.armorTier) + P.kb + offKb;
-  u.armorPenalty = u.armorTier <= 1; // no skill: disadvantage on attack rolls and stealth
+  // no skill: disadvantage on attack rolls and stealth; mech armour needs MECH_MIN_TIER
+  u.armorPenalty = u.armorTier <= 1 || (u.armorType === 'mech' && u.armorTier < MECH_MIN_TIER);
+  u.mechShield = armor.mechShield || 0;
   u.extraBonusActions = u.armorType === 'light' && u.armorTier >= 4 ? LIGHT_MASTERY_BONUS_ACTIONS : 0;
   u.stealthDis = u.armorPenalty || (!!armor.stealthDis && !(u.armorType === 'medium' && u.armorTier >= 4));
   u.noise = (armor.noise || 0) + (weaponDef.noise || 0) + (race.noise || 0);
@@ -309,6 +312,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.resist = mergeResist(mergeResist(mergeResist({}, race.resist), P.resist), armor.resist);
   u.immuneStatus = [...(race.immuneStatus || []), ...P.immuneStatus];
   u.abilities = [...(race.abilities || []), ...(cls.abilities || []), ...(TL ? TL.abilities : [])].filter((a) => abilityAvailable(a, level, path));
+  for (const a of [...(weaponDef.grants || []), ...(armorDef.grants || [])]) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
   for (const a of multiclassAbilities(ND, cls, multiclass, level)) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
   u.multiclass = multiclass ? { cls: typeof multiclass.cls === 'string' ? multiclass.cls : multiclass.cls.id, path: multiclass.path || null } : null;
   u.passives = passives;
@@ -326,7 +330,8 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.activeTalents = TL ? TL.active : [];
   u.gadget = TL ? TL.gadget : null;
   const W = worldEffects(TL ? TL.world : []);
-  u.worldFlags = W.worldFlags; // not applied by the engine: world systems read them
+  // not applied by the engine: world systems read them (talents + gear stigma)
+  u.worldFlags = [...W.worldFlags, ...stigmaFlags(weaponDef, armorDef, EQ.offhand)];
   u.skillMods = W.skillMods;
   u.skillPicks = skills ? { base: [...(skills.base || [])], extra: [...(skills.extra || [])] } : null;
   u.phobias = phobia ? (Array.isArray(phobia) ? phobia : [phobia]).map((p) => ({ ...p })) : [];
@@ -349,6 +354,7 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
     def = D.enemies[def] || D.summons[def];
     if (!def) throw new Error('buildEnemy: unknown enemy');
   }
+  const items = data ? normalizeData(data).items : null;
   const u = baseUnit();
   const st = {};
   for (const k of STATS) st[k] = def.stats?.[k] ?? 10;
@@ -372,8 +378,10 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
   u.armorKb = def.armorKb ?? Math.max(0, (def.kb ?? 10) - 10 - mod(st.dex));
   u.speed = (def.speed ?? 6) + P.speed;
   u.initBonus = (def.init || 0) + P.init;
-  u.weapon = def.weapon ? { ...def.weapon } : null;
+  u.weapon = def.weapon ? enrichWeapon(items, { ...def.weapon }) : null;
   u.weaponTier = 3;
+  const gearArmor = items && def.gear && def.gear.armor ? items[def.gear.armor] : null;
+  u.mechShield = def.mechShield ?? (gearArmor ? normalizeArmor({ ...gearArmor }).mechShield || 0 : 0);
   u.attackBonus = def.attackBonus ?? def.weapon?.attack ?? null;
   u.castStat = def.castStat || (['int', 'wil', 'cha'].reduce((a, b) => (st[b] > st[a] ? b : a), 'int'));
   u.dcOverride = def.dc ?? null;

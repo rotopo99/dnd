@@ -1,5 +1,6 @@
 // Battle event -> log line (array of [text, colour] segments) and event -> sound.
 // Event list: docs/CODEMAP.md (combat.js). Colours: STYLE.md (ЗДР c, МРЛ n/f, heal j, shield f, proxy a).
+import { ITEMS } from '../data/index.js';
 import { t } from '../data/text/index.js';
 import { C } from './draw.js';
 import { play } from '../audio/sfx.js';
@@ -26,6 +27,8 @@ export function teamColor(u) {
  * S: { b, name(id) } — battle and display-name lookup.
  * Returns an array of segments or null (event not logged).
  */
+const itemName = (id) => ITEMS[id]?.name || id;
+
 export function formatEvent(S, e) {
   const b = S.b;
   const A = e.actor ? b.byId[e.actor] : null;
@@ -111,6 +114,13 @@ export function formatEvent(S, e) {
       const d = b.data.statuses[e.id];
       return [a(A), g(`: ${t('battle.endStatus')} «${d ? d.name : e.id}»`)];
     }
+    // v3: burst fire, items, traps, phobias
+    case 'burst': return [a(A), g(': '), [`${t('battle.burst')} ×${e.shots}${e.recoil ? ` (${t('item.recoil')} ${e.recoil})` : ''}`, C.a], g(' → '), a(T)];
+    case 'burstEnd': return [a(A), g(': '), [`${t('battle.burstHits')} ${e.hits}/${e.shots}`, e.hits ? C['5'] : C['4']]];
+    case 'useItem': return [a(A), g(` ${t('battle.usesItem')} `), [`«${itemName(e.item)}»`, C.h]];
+    case 'trapPlaced': return [a(A), g(': '), [`${t('battle.trapPlaced')} «${itemName(e.item)}»`, C.a]];
+    case 'trapTriggered': return [a(T), g(': '), [`${t('battle.trapTriggered')} «${itemName(e.item)}»`, C.c]];
+    case 'phobia': return [a(T), g(': '), [`${t('battle.phobia')} (${t(`phobia.${e.trigger}`)})`, C.n]];
     case 'outOfRange': return [a(A), g(`: ${t('battle.outOfRangeEv')}`)];
     case 'victory': return [w(e.winner === 'heroes' ? t('battle.victory') : t('battle.defeat'))];
     default: return null;
@@ -148,6 +158,7 @@ export function eventSound(S, e) {
     case 'broken': play('debuff'); break;
     case 'summon': play('summon'); break;
     case 'overcast': play('overcast'); break;
+    case 'trapTriggered': play('hit'); break;
     case 'victory': play(e.winner === 'heroes' ? 'victory' : 'defeat'); break;
     default: break;
   }

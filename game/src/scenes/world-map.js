@@ -1,33 +1,53 @@
-// World map (world.md §2): node graph with routes, fog (only discovered nodes), travel along known routes with
-// a day counter and encounter rolls (d20 ≤ 3 × danger + mod, shown in the map log), ambush check, encounters
-// (battle / event check / trader / rumor / cache), hidden nodes found by Perception on arrival.
+// World map v3 (world.md §1–2, контракт UI): canon map image (game/assets/world-map.jpg, 2× of MAP_SPACE 1536×762)
+// with nodes at `px`, fog of the unknown, routes styled by kind (road / trail / wild / sea / lake / tunnel / district),
+// pan (drag, WASD / arrows) and zoom (wheel, +/− buttons). Travel along known routes: days, sea fare, `route.rolls`
+// encounter rolls per hop (d20 ≤ 3 × danger + mod, shown in the map log), ambush, encounters, hidden nodes by Perception.
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, fit, panel, button, hitButton, clear } from '../ui/draw.js';
-import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
-import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, encounterName } from '../world/data.js';
+import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, MAP_SPACE, MAP_NODES, FARE, TIER_NAMES, encounterName, resolveLocation } from '../world/data.js';
 import { checkInfo, checkChance, rollCheck } from '../world/checks.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
-import { NPCS } from '../data/npcs.js';
-import { repTier, factionName, normFaction } from '../world/reputation.js';
+import { repTier, factionName, tierAtLeast } from '../world/reputation.js';
 import {
   members, visit, routesFrom, otherEnd, isKnownRoute, encounterThreshold, pickEncounter, partyFlagSet, openHidden,
-  grant, discover, journal, locFaction, hasFlagInParty, requiresOk,
+  journal, locFaction, requiresOk,
 } from '../world/state.js';
 import { onArrive } from '../world/quests.js';
-import { startWorldBattle } from './world-battle.js';
 import { runEvent, travelEvents } from './event.js';
 import { runEncounter } from './encounter.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
 
 const TRAVEL_DAY_S = 0.55;
+const MAP_IMG = new URL('../../assets/world-map.jpg', import.meta.url).href;
+const ZOOM_MAX = 4;
+const BOTTOM = 178, TOP = 52;
+const PAN_KEYS = 600; // screen px / s
+/** District nodes are drawn on a ring around their parent (they share its map point). */
+const RING = 40;
+
+let IMG = null;
+function mapImage() {
+  if (!IMG && typeof Image !== 'undefined') { IMG = new Image(); IMG.src = MAP_IMG; }
+  return IMG && IMG.complete && IMG.naturalWidth ? IMG : null;
+}
+
 /** Night travel: one day less on routes of 2+ days (world.md §2). */
 const hopDays = (r, night) => (night && r.days >= 2 ? r.days - 1 : r.days);
 
-/** Shortest path by days over known routes. Returns [routes] or null. */
-function findRoute(save, from, to, pflags) {
+/** Sea / canoe fare (travel.js FARE): pirates friendly −50%, ally — free. */
+export function routeFare(save, r) {
+  if (!r.fare) return 0;
+  const tier = repTier(save.rep.pirates);
+  const k = tierAtLeast(tier, 'ally') ? FARE.allyMult : tierAtLeast(tier, 'friendly') ? FARE.friendlyMult : 1;
+  return Math.round(r.fare * k);
+}
+
+/** Shortest path by days over known routes. Returns [{ r, from, to }] or null. */
+export function findRoute(save, from, to, pflags) {
+  from = resolveLocation(from); to = resolveLocation(to);
   const dist = { [from]: 0 }, prev = {};
   const open = [from];
   while (open.length) {
@@ -47,17 +67,73 @@ function findRoute(save, from, to, pflags) {
   return out;
 }
 
+const ROUTE_STYLE = {
+  road: { dash: [], w: 2.5, color: '5' },
+  trail: { dash: [7, 5], w: 2, color: '4' },
+  wild: { dash: [2, 5], w: 2, color: '4' },
+  sea: { dash: [12, 7], w: 2, color: 'b' },
+  canoe: { dash: [12, 7], w: 2, color: 'b' },
+  lake: { dash: [12, 7], w: 2, color: 'h' },
+  tunnel: { dash: [3, 3], w: 2, color: 'n' },
+  district: { dash: [], w: 1, color: '3' },
+};
+const LABEL_FONT = { capital: 'bold 15px monospace', city: 'bold 13px monospace', town: '13px monospace', village: '12px monospace', hamlet: '11px monospace' };
+const LABEL_ZOOM = { capital: 0, city: 0, town: 1.1, village: 1.5, hamlet: 1.9, poi: 2.2 };
+
+function iconOf(l, sv, visited, pflags) {
+  const st = l.terminal ? sv.terminals[l.terminal.id] : null;
+  if (!visited) return st && pflags.has('terminal-scan') ? `terminal-${st}` : 'fog';
+  if (st) return `terminal-${st}`;
+  if (l.id.startsWith('beacon')) return 'beacon';
+  if (l.kind === 'sea') return 'danger';
+  return l.kind;
+}
+
 export function createWorldMapScene() {
-  const S = { time: 0, hover: null, hoverNode: null, travel: null, log: [], buttons: [] };
+  const S = { time: 0, hover: null, hoverNode: null, travel: null, log: [], buttons: [], cam: null, drag: null };
   let self;
   const save = (game) => game.save;
 
+  // ---------------------------------------------------------------- camera
+  const fitZoom = () => Math.min(S.area.w / MAP_SPACE.w, S.area.h / MAP_SPACE.h);
+  function clampCam() {
+    const c = S.cam;
+    c.z = Math.max(fitZoom(), Math.min(ZOOM_MAX, c.z));
+    const vw = S.area.w / c.z, vh = S.area.h / c.z;
+    c.x = vw >= MAP_SPACE.w ? MAP_SPACE.w / 2 : Math.max(vw / 2, Math.min(MAP_SPACE.w - vw / 2, c.x));
+    c.y = vh >= MAP_SPACE.h ? MAP_SPACE.h / 2 : Math.max(vh / 2, Math.min(MAP_SPACE.h - vh / 2, c.y));
+  }
+  const sx = (x) => S.area.x + S.area.w / 2 + (x - S.cam.x) * S.cam.z;
+  const sy = (y) => S.area.y + S.area.h / 2 + (y - S.cam.y) * S.cam.z;
+  function zoomAt(f, mx, my) {
+    const c = S.cam;
+    const wx = c.x + (mx - S.area.x - S.area.w / 2) / c.z, wy = c.y + (my - S.area.y - S.area.h / 2) / c.z;
+    c.z *= f;
+    clampCam();
+    c.x = wx - (mx - S.area.x - S.area.w / 2) / c.z; c.y = wy - (my - S.area.y - S.area.h / 2) / c.z;
+    clampCam();
+  }
+  function centerOn(id) {
+    const l = LOCATIONS[resolveLocation(id)];
+    if (l?.px) { S.cam.x = l.px.x; S.cam.y = l.px.y; clampCam(); }
+  }
+
+  /** Screen position of a node (districts on a ring around the parent). */
+  function nodePos(id) {
+    const l = LOCATIONS[id];
+    if (!l?.parent || !S.ringOf[id]) return { x: sx(l.px.x), y: sy(l.px.y) };
+    const p = LOCATIONS[l.parent];
+    const { i, n } = S.ringOf[id];
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return { x: sx(p.px.x) + Math.cos(a) * RING, y: sy(p.px.y) + Math.sin(a) * RING };
+  }
+
   function layout(game) {
     const W = game.width, H = game.height;
-    S.area = { x: 60, y: 96, w: W - 120, h: H - 96 - 170 };
-    S.sx = S.area.w / 1000;
-    S.sy = S.area.h / 700;
+    S.area = { x: 0, y: TOP, w: W, h: H - TOP - BOTTOM };
+    const bw = 124, gap = 8;
     S.buttons = [
+      { id: 'zoomOut', label: '−', key: '-', w: 44 }, { id: 'zoomIn', label: '+', key: '+', w: 44 }, { id: 'center', label: t('map.center'), key: 'C', w: 110 },
       { id: 'night', label: `${t('map.night')}: ${S.night ? t('party.on') : t('party.off')}`, key: 'N', selected: S.night },
       { id: 'enter', label: t('map.enter'), key: 'Enter' },
       { id: 'party', label: t('panel.party'), key: 'P' },
@@ -65,12 +141,24 @@ export function createWorldMapScene() {
       { id: 'journal', label: t('panel.journal'), key: 'J' },
       { id: 'menu', label: t('loc.toMenu'), key: 'Esc' },
     ];
-    S.buttons.forEach((b, i) => Object.assign(b, { x: W - 40 - (S.buttons.length - i) * 140, y: H - 64, w: 132, h: 44 }));
+    let x = W - 16;
+    for (let i = S.buttons.length - 1; i >= 0; i--) {
+      const b = S.buttons[i];
+      b.w = b.w || bw; b.h = 44; x -= b.w; b.x = x; b.y = H - 56; x -= gap;
+    }
+    S.logW = W - 32;
     S.pflags = partyFlagSet(game.save, game.data);
     S.hoverRoute = null;
+    // which district rings are shown: around the current node (or its parent)
+    const sv = game.save;
+    const here = LOCATIONS[sv.location];
+    const hub = here?.parent || sv.location;
+    S.ringOf = {};
+    const kids = MAP_NODES.filter((id) => LOCATIONS[id].parent === hub && sv.discovered.includes(id));
+    kids.forEach((id, i) => { S.ringOf[id] = { i, n: kids.length }; });
+    S.ringHub = kids.length ? hub : null;
+    if (!S.cam) { S.cam = { x: 0, y: 0, z: Math.max(fitZoom(), Math.min(2.2, fitZoom() * 2.4)) }; centerOn(sv.location); } else clampCam();
   }
-  const px = (p) => S.area.x + p.x * S.sx;
-  const py = (p) => S.area.y + p.y * S.sy;
 
   function log(segText, color = '4') {
     S.log.push({ text: segText, color });
@@ -78,51 +166,74 @@ export function createWorldMapScene() {
   }
   const bindLog = (game) => { S.log = game.mapLog || (game.mapLog = []); };
 
+  /** Node visible on the map: real (not alias), discovered, requires ok, district only on the current ring. */
+  function visibleNodes(sv) {
+    return MAP_NODES.filter((id) => {
+      const l = LOCATIONS[id];
+      if (!sv.discovered.includes(id) || (l.requires && !requiresOk(sv, l.requires))) return false;
+      return !l.parent || !!S.ringOf[id];
+    });
+  }
+
   // ---------------------------------------------------------------- travel
   function startTravel(game, to) {
     const sv = save(game);
     if (to === sv.location) return enterLocation(game);
     const hops = findRoute(sv, sv.location, to, S.pflags);
     if (!hops) { game.toast(t('map.noRoute'), 'c'); return; }
-    S.travel = { hops, i: 0, t: 0, day: 0, night: !!S.night };
+    const fare = hops.reduce((s, h) => s + routeFare(sv, h.r), 0);
+    if (fare > sv.hero.credits) { game.toast(`${t('map.noFare')}: ${fare} ${t('world.credits')}`, 'c'); return; }
+    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night };
+    payHop(game);
     play('uiClick');
+  }
+
+  function payHop(game) {
+    const sv = save(game);
+    const hop = S.travel.hops[S.travel.i];
+    const fare = routeFare(sv, hop.r);
+    if (fare) { sv.hero.credits -= fare; log(`${t('map.fare')}: −${fare} ${t('world.credits')} (${LOCATIONS[hop.to].name})`, 'b'); }
   }
 
   function stepTravel(game, dt) {
     const tr = S.travel;
     const hop = tr.hops[tr.i];
     const days = hopDays(hop.r, tr.night);
-    const dur = Math.max(0.25, days * TRAVEL_DAY_S);
+    const dur = Math.max(0.3, days * TRAVEL_DAY_S);
     tr.t += dt;
-    // every day on the road: day counter + encounter roll (0-day routes: no roll)
+    // day counter: one per travelled day; travel events — once per day
     while (tr.day < days && tr.t >= (tr.day + 1) * TRAVEL_DAY_S) {
       tr.day++;
       save(game).day++;
       const ev = travelEvents(save(game), LOCATIONS[hop.to].region)[0];
       if (ev) { S.paused = true; runEvent(game, ev, (g) => { g.resume(self); S.paused = false; }); return; }
-      if (rollEncounter(game, hop)) return;
+    }
+    // encounter rolls: route.rolls per hop, spread along the way (world.md §2.1)
+    const rolls = hop.r.rolls || 0;
+    while (tr.roll < rolls && tr.t >= ((tr.roll + 1) / (rolls + 1)) * dur) {
+      tr.roll++;
+      if (rollEncounter(game, hop, tr.roll, rolls)) return;
     }
     if (tr.t >= dur) arriveHop(game);
   }
 
-  function rollEncounter(game, hop) {
+  function rollEncounter(game, hop, i, n) {
     const sv = save(game);
     const th = encounterThreshold(sv, hop.r, game.data);
     if (!th.need) return false;
     if (S.travel?.night && !S.pflags.has('night-sight')) { th.mod += ENCOUNTER_MODS.night; th.need += ENCOUNTER_MODS.night; }
     const roll = 1 + Math.floor(Math.random() * 20);
     const hit = roll <= th.need;
-    log(`${t('world.day')} ${sv.day}: d20 = ${roll} ${t('map.vs')} ≤ ${th.need} (3×${th.danger}${th.mod ? ` ${th.mod > 0 ? '+' : '−'}${Math.abs(th.mod)}` : ''}) — ${hit ? t('map.encounter') : t('map.quiet')}`, hit ? 'c' : '4');
+    const mod = th.mod ? ` ${th.mod > 0 ? '+' : '−'}${Math.abs(th.mod)}` : '';
+    log(`${t('world.day')} ${sv.day} · ${t('map.roll')} ${i}/${n}: d20 = ${roll} ${t('map.vs')} ≤ ${th.need} (3×${th.danger}${mod}) — ${hit ? t('map.encounter') : t('map.quiet')}`, hit ? 'c' : '4');
     if (!hit) return false;
-    const reg = LOCATIONS[hop.to].region;
-    const e = pickEncounter(sv, reg);
+    const reg = hop.r.region === 'sea' ? 'sea' : LOCATIONS[hop.to].region;
+    const e = pickEncounter(sv, reg) || pickEncounter(sv, LOCATIONS[hop.to].region);
     if (!e) return false;
     S.paused = true;
-    handleEncounter(game, e, reg, () => { S.paused = false; });
+    runEncounter(game, e, LOCATIONS[hop.to].region, self, () => { S.paused = false; });
     return true;
   }
-
-  const handleEncounter = (game, e, reg, resume) => runEncounter(game, e, reg, self, resume);
 
   function arriveHop(game) {
     const sv = save(game);
@@ -130,10 +241,11 @@ export function createWorldMapScene() {
     const hop = tr.hops[tr.i];
     visit(sv, hop.to);
     findHidden(game, hop.to);
-    tr.i++; tr.t = 0; tr.day = 0;
+    tr.i++; tr.t = 0; tr.day = 0; tr.roll = 0;
     for (const x of onArrive(sv, hop.to, game.data)) game.toast(x.text, x.color);
     saveGame(sv);
-    if (tr.i >= tr.hops.length) { S.travel = null; enterLocation(game); }
+    if (tr.i >= tr.hops.length) { S.travel = null; enterLocation(game); return; }
+    payHop(game);
   }
 
   /** Hidden neighbours: party flags reveal them, otherwise the best Perception in the party (passive). */
@@ -143,10 +255,8 @@ export function createWorldMapScene() {
       const o = otherEnd(r, id);
       const l = LOCATIONS[o];
       if (!l?.hidden || sv.discovered.includes(o)) continue;
-      const byFlag = l.hidden.flags?.some((f) => S.pflags.has(f));
-      let ok = byFlag;
+      let ok = l.hidden.flags?.some((f) => S.pflags.has(f));
       if (!ok && l.hidden.check) {
-        // the best member by success chance rolls (engine skillCheck through rollCheck)
         const dc = l.hidden.check.dc;
         let best = null;
         for (const m of members(sv, game.data)) {
@@ -167,35 +277,272 @@ export function createWorldMapScene() {
   }
 
   function nav(game, id) {
+    if (id === 'zoomIn') return zoomAt(1.4, S.area.x + S.area.w / 2, S.area.y + S.area.h / 2);
+    if (id === 'zoomOut') return zoomAt(1 / 1.4, S.area.x + S.area.w / 2, S.area.y + S.area.h / 2);
+    if (id === 'center') return centerOn(save(game).location);
     if (id === 'night') { S.night = !S.night; layout(game); return; }
     if (id === 'enter') return enterLocation(game);
     if (id === 'menu') { saveGame(save(game)); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
     return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: self })));
   }
 
+  function nodeAt(sv, mx, my) {
+    let best = null, bd = 16 * 16;
+    for (const id of visibleNodes(sv)) {
+      const p = nodePos(id);
+      const d = (p.x - mx) ** 2 + (p.y - my) ** 2;
+      if (d < bd) { bd = d; best = id; }
+    }
+    return best;
+  }
+
+  // ---------------------------------------------------------------- render parts
+  function drawBackground(ctx) {
+    const { x, y, w, h } = S.area;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#1c2230';
+    ctx.fillRect(x, y, w, h);
+    const img = mapImage();
+    const z = S.cam.z;
+    const X0 = sx(0), Y0 = sy(0);
+    if (img) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, X0, Y0, MAP_SPACE.w * z, MAP_SPACE.h * z);
+      // muted to the game palette (STYLE: dark UI), the canon colours still read through
+      ctx.fillStyle = 'rgba(16,16,24,0.38)';
+      ctx.fillRect(X0, Y0, MAP_SPACE.w * z, MAP_SPACE.h * z);
+    }
+    ctx.restore();
+  }
+
+  /** Fog: dark veil with clear circles around discovered nodes (visited — wider). */
+  function drawFog(ctx, sv) {
+    const { x, y, w, h } = S.area;
+    const fc = S.fogCanvas || (S.fogCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas'));
+    if (fc.width !== w || fc.height !== h) { fc.width = w; fc.height = h; }
+    const f = fc.getContext('2d');
+    f.globalCompositeOperation = 'source-over';
+    f.clearRect(0, 0, w, h);
+    f.fillStyle = 'rgba(12,12,18,0.82)';
+    f.fillRect(0, 0, w, h);
+    f.globalCompositeOperation = 'destination-out';
+    for (const id of sv.discovered) {
+      const l = LOCATIONS[id];
+      if (!l?.px || l.parent) continue;
+      const r = (sv.visited.includes(id) ? 70 : 34) * S.cam.z;
+      const cx = sx(l.px.x) - x, cy = sy(l.px.y) - y;
+      if (cx < -r || cy < -r || cx > w + r || cy > h + r) continue;
+      const g = f.createRadialGradient(cx, cy, r * 0.35, cx, cy, r);
+      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      f.fillStyle = g;
+      f.beginPath(); f.arc(cx, cy, r, 0, Math.PI * 2); f.fill();
+    }
+    ctx.drawImage(fc, x, y);
+  }
+
+  function drawRoutes(ctx, sv, pathSet) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(S.area.x, S.area.y, S.area.w, S.area.h); ctx.clip();
+    const labels = [];
+    for (const r of ROUTES) {
+      if (!isKnownRoute(sv, r, S.pflags)) continue;
+      const la = LOCATIONS[r.from], lb = LOCATIONS[r.to];
+      const dA = la.parent || lb.parent;
+      if (r.kind === 'district' && !(S.ringOf[r.from] || S.ringOf[r.to])) continue;
+      if (dA && r.kind !== 'district' && ((la.parent && !S.ringOf[r.from]) || (lb.parent && !S.ringOf[r.to]))) continue;
+      const a = nodePos(r.from), b = nodePos(r.to);
+      const st = ROUTE_STYLE[r.kind] || ROUTE_STYLE.trail;
+      const onPath = pathSet.has(r);
+      const near = r.from === sv.location || r.to === sv.location;
+      ctx.setLineDash(st.dash);
+      // dark under-stroke so lines read on the light sea
+      ctx.strokeStyle = 'rgba(10,10,16,0.75)'; ctx.lineWidth = st.w + 2.5;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.strokeStyle = onPath ? C.h : near ? C['5'] : C[st.color];
+      ctx.globalAlpha = r.hidden ? 0.7 : 1;
+      ctx.lineWidth = onPath ? st.w + 1.5 : st.w;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.globalAlpha = 1;
+      if (r.days > 0 && (onPath || near || S.cam.z >= 1.6)) labels.push({ r, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    }
+    ctx.setLineDash([]);
+    for (const { r, x, y } of labels) {
+      const s = `${r.days}${t('map.dayShort')}${r.fare ? ` ${routeFare(sv, r)}¢` : ''}`;
+      ctx.font = '12px monospace';
+      const w = ctx.measureText(s).width + 8 + r.danger * 7;
+      ctx.fillStyle = 'rgba(16,16,24,0.85)';
+      ctx.fillRect(x - w / 2, y - 8, w, 16);
+      text(ctx, s, x - w / 2 + 4, y - 6, C['5'], '12px monospace');
+      for (let k = 0; k < r.danger; k++) { ctx.fillStyle = C.c; ctx.fillRect(x + w / 2 - 4 - (r.danger - k) * 7 + 1, y - 3, 5, 5); }
+    }
+    ctx.restore();
+  }
+
+  function drawNodes(ctx, sv, game) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(S.area.x, S.area.y, S.area.w, S.area.h); ctx.clip();
+    const z = S.cam.z;
+    const scale = z >= 2 ? 2 : 1;
+    const half = 8 * scale;
+    const ids = visibleNodes(sv);
+    // region names over their discovered nodes (big, faint)
+    if (z < 2.6) {
+      for (const reg of Object.values(REGIONS)) {
+        const locs = ids.filter((id) => LOCATIONS[id].region === reg.id && !LOCATIONS[id].parent);
+        if (locs.length < 2) continue;
+        const cx = locs.reduce((s, id) => s + LOCATIONS[id].px.x, 0) / locs.length;
+        const cy = locs.reduce((s, id) => s + LOCATIONS[id].px.y, 0) / locs.length;
+        ctx.globalAlpha = 0.55;
+        text(ctx, reg.name.toUpperCase(), sx(cx), sy(cy) - 30, C['5'], 'bold 14px monospace', 'center');
+        ctx.globalAlpha = 1;
+      }
+    }
+    if (S.ringHub) {
+      const p = LOCATIONS[S.ringHub].px;
+      ctx.strokeStyle = C['3']; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), RING, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    const placed = [];
+    const order = [...ids].sort((a, b) => prio(sv, b) - prio(sv, a));
+    for (const id of [...order].reverse()) {
+      const l = LOCATIONS[id];
+      const { x, y } = nodePos(id);
+      if (x < -20 || y < S.area.y - 20 || x > S.area.x + S.area.w + 20 || y > S.area.y + S.area.h + 20) continue;
+      const visited = sv.visited.includes(id);
+      const f = locFaction(id);
+      const frame = f && sv.rep[f] != null ? tierColor(repTier(sv.rep[f])) : C['4'];
+      ctx.fillStyle = 'rgba(16,16,24,0.85)';
+      ctx.fillRect(x - half - 2, y - half - 2, half * 2 + 4, half * 2 + 4);
+      ctx.strokeStyle = S.hoverNode === id ? C['5'] : frame;
+      ctx.lineWidth = l.tier === 'capital' ? 3 : 2;
+      ctx.strokeRect(x - half - 2, y - half - 2, half * 2 + 4, half * 2 + 4);
+      drawMapIcon(ctx, iconOf(l, sv, visited, S.pflags), x - half, y - half, scale);
+    }
+    // labels: greedy by priority (current, hover, capitals, cities…), skipped on overlap
+    for (const id of order) {
+      const l = LOCATIONS[id];
+      const kind = l.tier || 'poi';
+      const force = id === sv.location || id === S.hoverNode || !!S.ringOf[id];
+      if (!force && z < (LABEL_ZOOM[kind] ?? 2)) continue;
+      const { x, y } = nodePos(id);
+      const font = LABEL_FONT[l.tier] || '12px monospace';
+      ctx.font = font;
+      const name = fit(ctx, l.name, 180, font);
+      const lw = ctx.measureText(name).width;
+      const rect = { x: x - lw / 2 - 3, y: y + half + 3, w: lw + 6, h: 16 };
+      if (!force && placed.some((r) => r.x < rect.x + rect.w && rect.x < r.x + r.w && r.y < rect.y + rect.h && rect.y < r.y + r.h)) continue;
+      placed.push(rect);
+      ctx.fillStyle = 'rgba(16,16,24,0.8)';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      const col = l.tier === 'capital' ? C.a : sv.visited.includes(id) ? C['5'] : C['4'];
+      text(ctx, name, x, rect.y + 2, col, font, 'center');
+    }
+    ctx.restore();
+    // hero marker (or travelling dot)
+    let hp = nodePos(sv.location);
+    if (S.travel) {
+      const hop = S.travel.hops[S.travel.i];
+      const a = nodePos(hop.from), b = nodePos(hop.to);
+      const k = Math.min(1, S.travel.t / Math.max(0.3, hopDays(hop.r, S.travel.night) * TRAVEL_DAY_S));
+      hp = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+    }
+    drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls, sv.hero.look), hp.x - 16, hp.y - 46, 2, { frame: idleFrame(S.time * 1000) });
+    drawMapIcon(ctx, 'party', hp.x - 8, hp.y - 62, 1);
+    void game;
+  }
+
+  function prio(sv, id) {
+    const l = LOCATIONS[id];
+    if (id === sv.location) return 100;
+    if (id === S.hoverNode) return 90;
+    return { capital: 50, city: 40, town: 30, village: 20, hamlet: 10 }[l.tier] ?? (S.ringOf[id] ? 45 : l.poi === 'author' ? 15 : 5);
+  }
+
+  function drawCard(ctx, sv, W, H) {
+    const id = S.hoverNode;
+    const l = LOCATIONS[id];
+    const f = locFaction(id);
+    if (S.hoverRoute?.id !== id || S.hoverRoute.from !== sv.location) S.hoverRoute = { id, from: sv.location, hops: findRoute(sv, sv.location, id, S.pflags) };
+    const hops = S.hoverRoute.hops;
+    const days = hops ? hops.reduce((s, h) => s + hopDays(h.r, S.night), 0) : null;
+    const fare = hops ? hops.reduce((s, h) => s + routeFare(sv, h.r), 0) : 0;
+    const rolls = hops ? hops.reduce((s, h) => s + (h.r.rolls || 0), 0) : 0;
+    const reg = REGIONS[l.region];
+    const lines = [
+      { text: l.name, color: C.h, font: FONT_B },
+      { text: `${reg?.name || ''}${l.tier ? ` · ${TIER_NAMES[l.tier]}${l.pop ? ` (${l.pop})` : ''}` : ''}`, color: C['4'] },
+      ...(reg ? [{ text: `${t('map.danger')}: ${'■'.repeat(l.danger ?? reg.danger) || '—'} · ${t('world.level')} ${reg.levels.join('–')}`, color: C.c }] : []),
+      ...(f ? [{ text: `${factionName(f)}: ${t(`tier.${repTier(sv.rep[f])}`)}`, color: tierColor(repTier(sv.rep[f])) }] : []),
+      { text: hops ? `${t('map.way')}: ${days} ${t('map.days')}, ${hops.length} ${t('map.hops')}, ${t('map.rolls')} ${rolls}${fare ? ` · ${t('map.fare')} ${fare}` : ''}` : t('map.noRoute'), color: hops ? (fare > sv.hero.credits ? C.c : C['5']) : C.c },
+      ...(l.terminal && (sv.visited.includes(id) || S.pflags.has('terminal-scan')) ? [{ text: `${t('map.terminal')}: ${t(`term.${sv.terminals[l.terminal.id]}`)}`, color: C.n }] : []),
+      ...(S.pflags.has('scout-node') && l.battles?.length ? [{ text: `${t('map.scout')}: ${l.battles.filter((b) => !(b.once && sv.battlesDone.includes(b.id))).map((b) => encounterName(b.encounter)).join(', ') || '—'}`, color: C.c }] : []),
+      ...(S.pflags.has('map-memory') && sv.visited.includes(id) && l.caches?.some((c) => !sv.caches.includes(c.id)) ? [{ text: t('map.cacheHere'), color: C.a }] : []),
+      ...(l.services.length ? [{ text: l.services.map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
+    ];
+    const w = 360, h = 16 + lines.length * LINE;
+    const p = nodePos(id);
+    const x = Math.min(W - w - 8, p.x + 24), y = Math.min(H - BOTTOM - h - 4, Math.max(TOP + 4, p.y - 20));
+    panel(ctx, x, y, w, h, C['0'], C['3']);
+    lines.forEach((ln, i) => text(ctx, fit(ctx, ln.text, w - 20, ln.font || FONT), x + 10, y + 8 + i * LINE, ln.color, ln.font || FONT));
+  }
+
+  function drawLegend(ctx, W) {
+    const items = [['road', t('map.kind.road')], ['trail', t('map.kind.trail')], ['wild', t('map.kind.wild')], ['sea', t('map.kind.sea')]];
+    let x = W - 16;
+    ctx.font = '12px monospace';
+    for (let i = items.length - 1; i >= 0; i--) {
+      const [k, label] = items[i];
+      const st = ROUTE_STYLE[k];
+      const lw = ctx.measureText(label).width;
+      x -= lw;
+      text(ctx, label, x, 32, C['4'], '12px monospace');
+      x -= 34;
+      ctx.setLineDash(st.dash); ctx.strokeStyle = C[st.color]; ctx.lineWidth = st.w;
+      ctx.beginPath(); ctx.moveTo(x, 39); ctx.lineTo(x + 28, 39); ctx.stroke(); ctx.setLineDash([]);
+      x -= 16;
+    }
+  }
+
   self = {
     id: 'worldmap',
     S,
-    enter(game) { game.visit = null; bindLog(game); layout(game); },
+    enter(game) {
+      game.visit = null; bindLog(game); layout(game); mapImage();
+      // test hooks (playwright scenarios): travel by id, node screen position
+      S.travelTo = (id) => startTravel(game, id);
+      S.pos = (id) => nodePos(id);
+    },
     resume(game) { layout(game); },
-    resize(game) { layout(game); },
+    resize(game) { S.fogCanvas = null; layout(game); },
     update(game, dt) {
       S.time += dt;
       const sv = save(game);
-      if (S.travel) { if (!S.paused) stepTravel(game, dt); return; }
       const inp = game.input;
       const m = inp.mouse;
+      // camera: wheel zoom, drag pan, keys — also while travelling
+      if (m.wheel && m.inside) zoomAt(m.wheel < 0 ? 1.25 : 1 / 1.25, m.x, m.y);
+      const kx = (inp.isDown('ArrowRight') || inp.isDown('KeyD') ? 1 : 0) - (inp.isDown('ArrowLeft') || inp.isDown('KeyA') ? 1 : 0);
+      const ky = (inp.isDown('ArrowDown') || inp.isDown('KeyS') ? 1 : 0) - (inp.isDown('ArrowUp') || inp.isDown('KeyW') ? 1 : 0);
+      if (kx || ky) { S.cam.x += (kx * PAN_KEYS * dt) / S.cam.z; S.cam.y += (ky * PAN_KEYS * dt) / S.cam.z; clampCam(); }
+      if (inp.wasPressed('Equal') || inp.wasPressed('NumpadAdd')) nav(game, 'zoomIn');
+      if (inp.wasPressed('Minus') || inp.wasPressed('NumpadSubtract')) nav(game, 'zoomOut');
+      if (inp.wasPressed('KeyC')) nav(game, 'center');
       S.hover = hitButton(S.buttons, m);
-      S.hoverNode = null;
-      if (!S.hover && m.inside) {
-        for (const id of sv.discovered) {
-          const l = LOCATIONS[id];
-          if (l && Math.hypot(px(l.pos) - m.x, py(l.pos) - m.y) < 20) { S.hoverNode = id; break; }
-        }
+      if (m.clicked && !S.hover && m.y >= S.area.y && m.y < S.area.y + S.area.h) S.drag = { x: m.x, y: m.y, cx: S.cam.x, cy: S.cam.y, moved: false };
+      if (S.drag && m.down) {
+        const dx = m.x - S.drag.x, dy = m.y - S.drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 6) S.drag.moved = true;
+        if (S.drag.moved) { S.cam.x = S.drag.cx - dx / S.cam.z; S.cam.y = S.drag.cy - dy / S.cam.z; clampCam(); }
       }
-      if (m.clicked) {
-        if (S.hover) { play('uiClick'); nav(game, S.hover.id); return; }
-        if (S.hoverNode) startTravel(game, S.hoverNode);
+      if (S.travel) { if (m.released) S.drag = null; if (!S.paused) stepTravel(game, dt); return; }
+      S.hoverNode = !S.hover && m.inside && m.y >= S.area.y && m.y < S.area.y + S.area.h ? nodeAt(sv, m.x, m.y) : null;
+      if (m.clicked && S.hover) { play('uiClick'); S.drag = null; nav(game, S.hover.id); return; }
+      // click on a node = pointer released without dragging (a quick click may release within the same step)
+      const release = m.released || (S.drag && !m.down);
+      if (release && S.drag) {
+        const d = S.drag; S.drag = null;
+        if (!d.moved) { const id = nodeAt(sv, d.x, d.y); if (id) { startTravel(game, id); return; } }
       }
       if (inp.wasPressed('Enter')) nav(game, 'enter');
       else if (inp.wasPressed('KeyN')) nav(game, 'night');
@@ -208,101 +555,26 @@ export function createWorldMapScene() {
       const { ctx, width: W, height: H } = game;
       const sv = save(game);
       clear(ctx, W, H);
-      text(ctx, t('map.title'), 40, 16, C.h, FONT_L);
-      text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level}`, W - 40, 22, C.b, FONT_B, 'right');
-      // region labels
-      for (const reg of Object.values(REGIONS)) {
-        const locs = Object.values(LOCATIONS).filter((l) => l.region === reg.id && sv.discovered.includes(l.id));
-        if (!locs.length) continue;
-        const cx = locs.reduce((s, l) => s + l.pos.x, 0) / locs.length, top = Math.min(...locs.map((l) => l.pos.y));
-        ctx.font = FONT_B;
-        drawMapIcon(ctx, `region-${reg.id}`, px({ x: cx }) - 8 - ctx.measureText(reg.name).width / 2 - 14, py({ y: top }) - 50, 1);
-        text(ctx, reg.name, px({ x: cx }), py({ y: top }) - 48, C['3'], FONT_B, 'center');
-      }
-      // routes
-      ctx.lineWidth = 2;
-      for (const r of ROUTES) {
-        if (!isKnownRoute(sv, r, S.pflags)) continue;
-        const a = LOCATIONS[r.from].pos, b = LOCATIONS[r.to].pos;
-        const near = r.from === sv.location || r.to === sv.location;
-        ctx.strokeStyle = near ? C['4'] : C['2'];
-        ctx.setLineDash(r.hidden ? [4, 4] : []);
-        ctx.beginPath(); ctx.moveTo(px(a), py(a)); ctx.lineTo(px(b), py(b)); ctx.stroke();
-        if (r.days > 0) {
-          const mx = (px(a) + px(b)) / 2, my = (py(a) + py(b)) / 2;
-          text(ctx, `${r.days}${t('map.dayShort')}`, mx, my - 18, C['4'], '12px monospace', 'center');
-          for (let k = 0; k < r.danger; k++) { ctx.fillStyle = C.c; ctx.fillRect(mx - r.danger * 4 + k * 8, my - 4, 6, 6); }
-        }
-      }
-      ctx.setLineDash([]);
-      // nodes (current location first so its label wins)
-      const labels = S.labels || (S.labels = []);
-      labels.length = 0;
-      for (const d of sv.discovered) { const l = LOCATIONS[d]; if (l) labels.push({ x: px(l.pos) - 19, y: py(l.pos) - 19, w: 38, h: 38 }); }
-      for (const id of [sv.location, ...sv.discovered.filter((d) => d !== sv.location)]) {
-        const l = LOCATIONS[id];
-        if (!l || (l.requires && !requiresOk(sv, l.requires))) continue;
-        const x = px(l.pos), y = py(l.pos);
-        const visited = sv.visited.includes(id);
-        const f = locFaction(id);
-        const frame = f && sv.rep[f] != null ? tierColor(repTier(sv.rep[f])) : C['4'];
-        const st = l.terminal ? sv.terminals[l.terminal.id] : null;
-        const showTerm = st && (visited || S.pflags.has('terminal-scan'));
-        const iconId = !visited ? 'fog' : showTerm ? `terminal-${st}` : id.startsWith('beacon') ? 'beacon' : id.startsWith('burg') ? 'burg' : l.kind;
-        ctx.strokeStyle = S.hoverNode === id ? C['5'] : frame;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x - 18, y - 18, 36, 36);
-        drawMapIcon(ctx, iconId, x - 16, y - 16, 2);
-        if (showTerm && !visited) drawMapIcon(ctx, `terminal-${st}`, x - 8, y - 8, 1);
-        // labels: greedy placement, skipped when they would overlap (the hover card shows the name anyway)
-        ctx.font = '12px monospace';
-        const name = fit(ctx, l.name, 150, '12px monospace');
-        const lw = ctx.measureText(name).width;
-        const rect = { x: x - lw / 2 - 2, y: y + 20, w: lw + 4, h: 14 };
-        const force = id === sv.location || id === S.hoverNode;
-        if (force || !labels.some((r) => r.x < rect.x + rect.w && rect.x < r.x + r.w && r.y < rect.y + rect.h && rect.y < r.y + r.h)) {
-          labels.push(rect);
-          text(ctx, name, x, y + 21, visited ? C['5'] : C['3'], '12px monospace', 'center');
-        }
-      }
-      // hero marker (or travelling dot)
-      let hp = LOCATIONS[sv.location].pos;
-      if (S.travel) {
-        const hop = S.travel.hops[S.travel.i];
-        const a = LOCATIONS[hop.from].pos, b = LOCATIONS[hop.to].pos;
-        const k = Math.min(1, S.travel.t / Math.max(0.25, hopDays(hop.r, S.travel.night) * TRAVEL_DAY_S));
-        hp = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
-      }
-      drawMapIcon(ctx, 'party', px(hp) - 8, py(hp) - 44, 1);
-      drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls), px(hp) - 16, py(hp) - 50, 2, { frame: idleFrame(S.time * 1000) });
-      // hover card
-      if (S.hoverNode) {
-        const l = LOCATIONS[S.hoverNode];
-        const f = locFaction(S.hoverNode);
-        if (S.hoverRoute?.id !== S.hoverNode || S.hoverRoute.from !== sv.location) S.hoverRoute = { id: S.hoverNode, from: sv.location, hops: findRoute(sv, sv.location, S.hoverNode, S.pflags) };
-        const hops = S.hoverRoute.hops;
-        const days = hops ? hops.reduce((s, h) => s + hopDays(h.r, S.night), 0) : null;
-        const lines = [
-          { text: l.name, color: C.h, font: FONT_B },
-          { text: REGIONS[l.region]?.name || '', color: C['4'] },
-          ...(f ? [{ text: `${factionName(f)}: ${t(`tier.${repTier(sv.rep[f])}`)}`, color: tierColor(repTier(sv.rep[f])) }] : []),
-          { text: hops ? `${t('map.way')}: ${days} ${t('map.days')}, ${hops.length} ${t('map.hops')}` : t('map.noRoute'), color: hops ? C['5'] : C.c },
-          ...(l.terminal && (sv.visited.includes(S.hoverNode) || S.pflags.has('terminal-scan')) ? [{ text: `${t('map.terminal')}: ${t(`term.${sv.terminals[l.terminal.id]}`)}`, color: C.n }] : []),
-          ...(S.pflags.has('scout-node') && l.battles?.length ? [{ text: `${t('map.scout')}: ${l.battles.filter((b) => !(b.once && sv.battlesDone.includes(b.id))).map((b) => encounterName(b.encounter)).join(', ') || '—'}`, color: C.c }] : []),
-          ...(S.pflags.has('map-memory') && sv.visited.includes(S.hoverNode) && l.caches?.some((c) => !sv.caches.includes(c.id)) ? [{ text: t('map.cacheHere'), color: C.a }] : []),
-          ...(l.services.length ? [{ text: l.services.map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
-        ];
-        const w = 300, h = 16 + lines.length * LINE;
-        const x = Math.min(W - w - 8, px(l.pos) + 20), y = Math.min(H - h - 160, Math.max(8, py(l.pos) - 20));
-        panel(ctx, x, y, w, h, C['0'], C['3']);
-        lines.forEach((ln, i) => text(ctx, fit(ctx, ln.text, w - 20, ln.font || FONT), x + 10, y + 8 + i * LINE, ln.color, ln.font || FONT));
-      }
-      // log
-      panel(ctx, 40, H - 140, W - 80 - 5 * 140 - 16, 120, C['1'], C['2']);
-      S.log.forEach((l, i) => text(ctx, fit(ctx, l.text, W - 80 - 5 * 140 - 40), 52, H - 132 + i * LINE, C[l.color] || C['4']));
-      if (!S.log.length) text(ctx, t('map.hint'), 52, H - 132, C['3']);
+      drawBackground(ctx);
+      drawFog(ctx, sv);
+      let path = null;
+      if (S.travel) path = S.travel.hops.slice(S.travel.i);
+      else if (S.hoverNode && S.hoverRoute?.id === S.hoverNode) path = S.hoverRoute.hops;
+      drawRoutes(ctx, sv, new Set((path || []).map((h) => h.r)));
+      drawNodes(ctx, sv, game);
+      // top bar
+      ctx.fillStyle = C['0']; ctx.fillRect(0, 0, W, TOP);
+      text(ctx, t('map.title'), 24, 12, C.h, FONT_L);
+      text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} · ${t('map.here')}: ${LOCATIONS[sv.location].name}`, 220, 8, C.b, FONT_B);
+      drawLegend(ctx, W);
+      if (S.hoverNode && !S.travel) drawCard(ctx, sv, W, H);
+      // bottom: log + buttons
+      ctx.fillStyle = C['0']; ctx.fillRect(0, H - BOTTOM, W, BOTTOM);
+      panel(ctx, 16, H - BOTTOM + 6, S.logW, 108, C['1'], C['2']);
+      S.log.forEach((l, i) => text(ctx, fit(ctx, l.text, S.logW - 24), 28, H - BOTTOM + 12 + i * LINE, C[l.color] || C['4']));
+      if (!S.log.length) text(ctx, fit(ctx, t('map.hint'), S.logW - 24), 28, H - BOTTOM + 12, C['3']);
       for (const b of S.buttons) button(ctx, b, S.hover === b);
-      text(ctx, `${t('map.here')}: ${LOCATIONS[sv.location].name}`, W - 40, H - 92, C['4'], FONT, 'right');
+      text(ctx, `${t('map.zoom')} ×${S.cam.z.toFixed(1)} · ${t('map.panHint')}`, 16, H - 40, C['3'], '12px monospace');
     },
   };
   return self;

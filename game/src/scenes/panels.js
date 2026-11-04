@@ -13,9 +13,10 @@ import { stageOf, currentGoalText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
+import { layoutGear, renderGear, clickGear } from './panel-gear.js';
 
 const BASE_W = 1280, BASE_H = 720;
-const TABS = ['party', 'rep', 'journal'];
+const TABS = ['party', 'gear', 'rep', 'journal'];
 
 export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
   const S = { tab, buttons: [], hover: null, time: 0, units: null };
@@ -32,7 +33,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     const sv = game.save;
     const it = ITEMS[item];
     const u = S.units[key];
-    const h = it?.use?.heal;
+    const h = it?.use?.heal || it?.field?.heal;
     if (!u || !h || !(sv.hero.items[item] > 0)) return;
     sv.hero.items[item]--;
     const entry = key === 'hero' ? sv.hero : sv.party.find((p) => p.npc === key);
@@ -93,6 +94,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       if (sv.hero.pendingTalents > 0) b.push({ kind: 'pick', label: t('talent.pending'), x: ox + 690, y: oy + BASE_H - 160, w: 280, h: 40, selected: true });
       b.push({ kind: 'ai', label: `${t('party.aiCompanions')}: ${sv.settings.aiCompanions ? t('party.on') : t('party.off')}`, x: ox + 690, y: oy + BASE_H - 110, w: 380, h: 40 });
     }
+    if (S.tab === 'gear') layoutGear(game, S, b);
     S.buttons = b;
   }
 
@@ -102,6 +104,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     play('uiClick');
     if (b.kind === 'tab') { S.tab = b.id; layout(game); return; }
     if (b.kind === 'back') { game.resume(back); return; }
+    if (clickGear(game, S, b)) { rebuild(game); return; }
     if (b.kind === 'm') {
       if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
       const p = sv.party.find((x) => x.npc === b.member);
@@ -132,7 +135,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       if (!u) return;
       const isHero = m.key === 'hero';
       panel(ctx, ox + 24, y, 640, 92, C['1'], isHero ? C.h : C['2']);
-      if (isHero) drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls), ox + 32, y + 12, 4, { frame: idleFrame(S.time * 1000, i * 0.3) });
+      if (isHero) drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls, sv.hero.look), ox + 32, y + 12, 4, { frame: idleFrame(S.time * 1000, i * 0.3) });
       else drawPortrait(ctx, m.key, ox + 32, y + 14, 2);
       const name = isHero ? sv.hero.name : NPCS[m.key].name;
       text(ctx, fit(ctx, name, 220, FONT_B), ox + 104, y + 8, isHero ? C.h : C['5'], FONT_B);
@@ -228,6 +231,12 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     legend(ctx, ox + 24, oy + BASE_H - 24);
   }
 
+  /** Backpack rows: name + stats; drawn before the hover comparison card. */
+  function renderGearButtons(game) {
+    for (const b of S.buttons) if (b.gear) button(game.ctx, b, S.hover === b);
+    renderGear(game, S, true);
+  }
+
   self = {
     id: 'panels',
     S,
@@ -242,6 +251,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       if (inp.mouse.clicked && S.hover) click(game, S.hover);
       if (inp.wasPressed('Escape')) { play('uiClick'); game.resume(back); }
       else if (inp.wasPressed('KeyP')) { S.tab = 'party'; layout(game); }
+      else if (inp.wasPressed('KeyG')) { S.tab = 'gear'; layout(game); }
       else if (inp.wasPressed('KeyR')) { S.tab = 'rep'; layout(game); }
       else if (inp.wasPressed('KeyJ')) { S.tab = 'journal'; layout(game); }
     },
@@ -249,9 +259,11 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       const { ctx, width: W, height: H } = game;
       clear(ctx, W, H);
       if (S.tab === 'party') renderParty(game);
+      else if (S.tab === 'gear') { /* drawn after buttons: renderGearButtons */ }
       else if (S.tab === 'rep') renderRep(game);
       else renderJournal(game);
-      for (const b of S.buttons) button(ctx, b, S.hover === b);
+      for (const b of S.buttons) if (!b.gear) button(ctx, b, S.hover === b);
+      if (S.tab === 'gear') renderGearButtons(game);
     },
   };
   return self;

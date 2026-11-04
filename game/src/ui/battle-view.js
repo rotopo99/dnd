@@ -139,7 +139,7 @@ const affected = new Set();
 const byDispY = (S) => (a, c) => S.disp[a.id].y - S.disp[c.id].y;
 
 function unitSprite(u) {
-  return u.kind === 'hero' ? heroSpriteIds(u.raceId, u.classId) : enemySpriteIds(u.enemyId);
+  return u.kind === 'hero' ? heroSpriteIds(u.raceId, u.classId, u.look) : enemySpriteIds(u.enemyId);
 }
 const markerTeam = (u) => (u.team === 'heroes' ? (u.kind === 'hero' ? 'player' : 'ally') : u.team === 'enemies' ? 'enemy' : 'a');
 
@@ -155,6 +155,15 @@ export function renderBattle(game, S) {
   // fire (animated)
   for (let i = 0; i < S.fireTiles.length; i += 2) {
     drawSprite(ctx, 'obj-fire', L.mapX + S.fireTiles[i] * L.cell, L.mapY + S.fireTiles[i + 1] * L.cell, L.s, { frame: idleFrame(tms * 0.8, i * 0.13) });
+  }
+  // v3: own traps (enemy traps stay hidden)
+  for (const tr of b.traps || []) {
+    if (tr.team !== 'heroes') continue;
+    const x = L.mapX + tr.x * L.cell, y = L.mapY + tr.y * L.cell, c = L.cell;
+    ctx.strokeStyle = C.a; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + c * 0.25, y + c * 0.25); ctx.lineTo(x + c * 0.75, y + c * 0.75);
+    ctx.moveTo(x + c * 0.75, y + c * 0.25); ctx.lineTo(x + c * 0.25, y + c * 0.75); ctx.stroke();
+    ctx.strokeRect(x + c * 0.18, y + c * 0.18, c * 0.64, c * 0.64);
   }
   const preview = drawHighlights(ctx, S);
   drawUnits(ctx, S, preview, tms);
@@ -494,7 +503,7 @@ function drawPanel(ctx, S, preview) {
   // hero card
   const hero = b.byId[S.heroId];
   panel(ctx, x - 6, y - 4, w + 12, 64, C['2'], C['3']);
-  drawSprite(ctx, heroSpriteIds(hero.raceId, hero.classId), x, y + 4, 3, { frame: idleFrame(S.time * 1000) });
+  drawSprite(ctx, heroSpriteIds(hero.raceId, hero.classId, hero.look), x, y + 4, 3, { frame: idleFrame(S.time * 1000) });
   const raceName = b.data.races[hero.raceId]?.name || '';
   const cls = b.data.classes[hero.classId];
   text(ctx, fit(ctx, S.name(hero.id), w - 60, FONT_B), x + 58, y + 6, C.h, FONT_B);

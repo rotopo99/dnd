@@ -10,6 +10,7 @@ import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hit
 import { menuScene } from './menu.js';
 import { startPrologue } from './prologue.js';
 import { createTalentsScene } from './create-talents.js';
+import { createBuildScene } from './create-build.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const NAME_MAX = 16;
@@ -35,7 +36,7 @@ function raceTraits(r, statuses) {
 }
 
 export function createCreateScene() {
-  const st = { race: PLAYABLE_RACES[0], cls: null, path: null, name: '', focus: { kind: 'race', id: PLAYABLE_RACES[0] }, time: 0 };
+  const st = { race: PLAYABLE_RACES[0], cls: null, path: null, name: '', mode: 'rec', focus: { kind: 'race', id: PLAYABLE_RACES[0] }, time: 0 };
   let buttons = [];
   let hover = null;
   let ox = 0, oy = 0;
@@ -63,6 +64,9 @@ export function createCreateScene() {
     });
     D.CLASSES[st.cls].paths.forEach((p, i) => buttons.push({ kind: 'path', id: p.id, label: p.name, font: FONT, sub: t(`role.${p.role || D.CLASSES[st.cls].role}`), x: ox + 488, y: oy + 100 + i * 64, w: 270, h: 56 }));
     buttons.push({ kind: 'name', id: 'name', label: '', x: ox + 488, y: oy + 340, w: 270, h: 40 });
+    // v3: recommended (fast) or flexible build («Свободная раскладка» → create-build.js)
+    buttons.push({ kind: 'mode', id: 'rec', label: t('create.mode.rec'), sub: t('create.mode.recSub'), font: FONT_B, x: ox + 488, y: oy + 420, w: 270, h: 52, selected: st.mode === 'rec' });
+    buttons.push({ kind: 'mode', id: 'flex', label: t('create.mode.flex'), sub: t('create.mode.flexSub'), font: FONT_B, x: ox + 488, y: oy + 480, w: 270, h: 52, selected: st.mode === 'flex' });
     buttons.push({ kind: 'back', id: 'back', label: t('create.back'), x: ox + 488, y: oy + 652, w: 128, h: 48 });
     buttons.push({ kind: 'start', id: 'start', label: t('create.next'), x: ox + 630, y: oy + 652, w: 128, h: 48 });
     for (const b of buttons) b.selected = (b.kind === 'race' && b.id === st.race) || (b.kind === 'class' && b.id === st.cls) || (b.kind === 'path' && b.id === st.path);
@@ -74,6 +78,7 @@ export function createCreateScene() {
     if (b.kind === 'race') st.race = b.id;
     else if (b.kind === 'class') st.cls = b.id;
     else if (b.kind === 'path') st.path = b.id;
+    else if (b.kind === 'mode') { st.mode = b.id; layout(game); return; }
     else if (b.kind === 'back') { game.setScene(menuScene); return; }
     else if (b.kind === 'start') { begin(game); return; }
     if (b.kind !== 'name') st.focus = { kind: b.kind, id: b.id };
@@ -83,7 +88,12 @@ export function createCreateScene() {
 
   function begin(game) {
     const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName') };
-    game.setScene(createTalentsScene(hero, self, (g, full) => { g.hero = full; startPrologue(g, full); }));
+    const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { g.hero = full; startPrologue(g, full); });
+    if (st.mode === 'flex') {
+      let build;
+      build = createBuildScene(hero, self, (g, full) => g.setScene(talents(full, build)));
+      game.setScene(build);
+    } else game.setScene(talents(hero, self));
   }
 
   // ---------------------------------------------------------------- render parts
@@ -226,6 +236,7 @@ export function createCreateScene() {
       text(ctx, t('create.class'), ox + 256, oy + 72, C['4'], FONT_B);
       text(ctx, t('create.path'), ox + 488, oy + 72, C['4'], FONT_B);
       text(ctx, t('create.name'), ox + 488, oy + 314, C['4'], FONT_B);
+      text(ctx, t('create.mode'), ox + 488, oy + 396, C['4'], FONT_B);
       for (const b of buttons) {
         if (b.kind === 'name') {
           panel(ctx, b.x, b.y, b.w, b.h, C['0'], hover === b ? C.h : C['3']);

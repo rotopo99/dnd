@@ -2,8 +2,6 @@
 // text/npc-dialogue.js, text/party-events.js) plus small helpers the UI needs. The rest of the world code
 // imports only from here.
 import { NPCS } from '../data/npcs.js';
-import { ENCOUNTERS as ENCOUNTERS_V1 } from '../data/enemies.js';
-import { ENEMIES_V3, ENCOUNTERS_V3 } from '../data/enemies-v3.js';
 import { QUESTS as QUESTS_V1 } from '../data/world/quests.js';
 import { QUESTS_V3 } from '../data/world/quests-v3.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
@@ -30,24 +28,8 @@ export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';
 export { NPC_DIALOGUE, PARTY_EVENTS_TEXT };
 
-/**
- * Temporary quest battles of quests-v3.js ('enc-*', list ENC_TODO there) → the closest v3 encounter (enemies-v3.js),
- * until the designer adds them under their own ids. An id already present in ENCOUNTERS_V3 wins.
- */
-export const ENC_FALLBACK = {
-  'enc-sputnik-raid': 'v3-cult-call', 'enc-cringe-base': 'v3-crg-concert', 'enc-vibe-burner': 'v3-boss-vibe-burner',
-  'enc-ice-ring': 'v3-boss-ice-ring', 'enc-brigands': 'v3-band-foxes', 'enc-harmony-fall': 'v3-cult-temple',
-  'enc-arsenal-cult': 'v3-cult-plague', 'enc-kiberspeys-door': 'v3-cult-temple', 'enc-judge': 'v3-cult-temple',
-  'enc-lis-drones': 'v3-mech-shop', 'enc-dawn-bodies': 'v3-mech-hive', 'enc-lox-clone': 'v3-ai-lox',
-  'enc-arena-final': 'v3-tin-arena', 'enc-great-mech': 'v3-boss-great-mech', 'enc-plague-seed': 'v3-boss-plague-seed',
-  'enc-plague-machines': 'v3-mech-plague', 'enc-warprom-patrol': 'v3-wp-corridor', 'enc-clone-vats': 'v3-ai-commissar',
-  'enc-border-clash': 'v3-mutz-hunt', 'enc-sokralnya-guard': 'v3-cult-call', 'enc-saboteurs': 'v3-ai-lox',
-  'enc-beast-pit': 'v3-mutz-pack', 'enc-proxy-storm': 'v3-tek-storm', 'enc-lake-monster': 'v3-mon-lake',
-  'enc-sea-monster': 'v3-mon-sea', 'enc-hill-monster': 'v3-mon-hills', 'enc-dungeon': 'v3-fauna-mine',
-};
-/** All battles: v1.0 (enemies.js) + v3 (enemies-v3.js) + fallbacks for quest ids. */
-export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3 };
-for (const [id, to] of Object.entries(ENC_FALLBACK)) if (!ENCOUNTERS[id] && ENCOUNTERS[to]) ENCOUNTERS[id] = { ...ENCOUNTERS[to], id, aliasOf: to };
+/** All battles: v1.0 (enemies.js) + v3 (enemies-v3.js), merged in data/index.js. */
+export const ENCOUNTERS = GAME_DATA.ENCOUNTERS;
 /** All quests: v1.0 (quests.js) + v3 (quests-v3.js, story by the writer). */
 export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3 };
 
@@ -57,16 +39,12 @@ export const sameLocation = (a, b) => !!a && !!b && resolveLocation(a) === resol
 /** Base enemy id: balance variants look like 'cleaner^2.2'. */
 export const baseId = (id) => String(id || '').split('^')[0];
 
-/**
- * One item catalogue for the world and battles: v3 gear (data/items/*) + v1.0 world items (locations.js ITEMS).
- * Same id in both (medkit, calmers, grenade) → one record: world fields (use, passives, price) over the v3 battle fields.
- */
-export const ITEMS = { ...WEAPONS, ...ARMOR, ...MODS, ...CONSUMABLES };
-for (const [id, it] of Object.entries(WORLD_ITEMS)) ITEMS[id] = { ...(ITEMS[id] || {}), ...it };
+/** One item catalogue (v3 gear + v1.0 world items), merged in data/index.js. */
+export const ITEMS = GAME_DATA.ITEMS;
 export { WEAPONS, ARMOR, MODS, CONSUMABLES, SHOPS, STARTER_KITS, WORLD_ITEMS };
 
 /** Rules data for the engine with the item catalogue (buildCreature equipment, combat useItem). */
-export const PLAY_DATA = { ...GAME_DATA, ENEMIES: { ...GAME_DATA.ENEMIES, ...ENEMIES_V3 }, ENCOUNTERS, ITEMS };
+export const PLAY_DATA = GAME_DATA;
 
 /** Starter kit of a class / path (shops.js STARTER_KITS, key 'cls:path' wins). Unknown items are dropped. */
 export function starterKit(cls, path) {

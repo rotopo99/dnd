@@ -4,9 +4,10 @@ import { createRng } from '../game/src/rules/rng.js';
 import { parseDice, rollDice, d20, avgDice } from '../game/src/rules/dice.js';
 import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost } from '../game/src/rules/character.js';
 import { parseMap, chebyshev, lineOfSight, hasCover, findPath, reachable, makeArena } from '../game/src/rules/grid.js';
-import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack,
+import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack, attackOdds,
   BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT } from '../game/src/rules/combat.js';
-import { chooseAction, playTurn } from '../game/src/rules/ai.js';
+import { chooseAction, playTurn, evalAction } from '../game/src/rules/ai.js';
+import { applyWithdrawal, clearWithdrawal } from '../game/src/rules/aftermath.js';
 import { skillCheck, skillTier } from '../game/src/rules/skills.js';
 import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS } from '../game/src/rules/progression.js';
 import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL } from '../game/src/rules/combat.js';
@@ -835,6 +836,298 @@ test('multiclass (level 3+): second class abilities up to level − 2 and the MU
   assert.equal(h.abilities.find((a) => a.id === 'zap').castStat, 'int');
   assert.throws(() => z({ level: 2, multiclass: { cls: 'itishnik' } }), /level 3/);
   assert.equal(rebuildHero(h, { level: 5, data: DATA }).multiclass.cls, 'itishnik');
+});
+
+console.log('v3.1: item properties (reach, thrown, arc, area, charges, enr, overheat, extra, onCrit, only, zone, ...)');
+const W3 = (o) => ({ slot: 'weapon', stat: 'str', range: 1, dmgType: 'pierce', dice: '1d8', ...o });
+const D31 = {
+  ...DATA,
+  WEAPONS: {
+    ...DATA.WEAPONS,
+    pike: W3({ id: 'pike', name: 'Вилы', type: 'polearm', props: { reach: true } }),
+    hatchet: W3({ id: 'hatchet', name: 'Топорик', type: 'axe', dice: '1d6', dmgType: 'slash', props: { thrown: 4 } }),
+    mortar: W3({ id: 'mortar', name: 'Картофелемёт', type: 'launcher', stat: 'dex', range: 8, dmgType: 'blunt', props: { arc: true } }),
+    rpg: W3({ id: 'rpg', name: 'РПГ', type: 'launcher', stat: 'dex', range: 10, dice: '2d6', dmgType: 'fire', props: { arc: true, area: { shape: 'radius', size: 1 }, charges: 2 } }),
+    plasma: W3({ id: 'plasma', name: 'Плазма', type: 'plasma', stat: 'dex', range: 8, dmgType: 'energy', props: { enr: 2, overheat: '1d6' } }),
+    coil: W3({ id: 'coil', name: 'Катушка', type: 'energy', stat: 'dex', range: 8, props: { overheat: { shots: 2, turns: 1 } } }),
+    bolter: W3({ id: 'bolter', name: 'Болтер', type: 'bolter', stat: 'dex', range: 8, props: { extra: { dice: '1d4', dmgType: 'fire' } } }),
+    zapper: W3({ id: 'zapper', name: 'Шокер', type: 'fist', props: { extra: { dice: '1d4', dmgType: 'electric', only: 'mechanical' } } }),
+    hook: W3({ id: 'hook', name: 'Багор', type: 'polearm', onCrit: [{ op: 'status', id: 'prone', turns: 1 }],
+      onHit: [{ op: 'status', id: 'prone', turns: 1, chance: 1, fromCrit: true }] }),
+    blade: W3({ id: 'blade', name: 'Кибер-клинок', type: 'cyberblade', props: { stigma: { tinBrotherhood: -5, tekhonki: -5 } } }),
+  },
+  ARMOR: {
+    ...DATA.ARMOR,
+    exo: { id: 'exo', name: 'Экзокостюм', slot: 'armor', type: 'mech', kb: 6, mech: { shield: 10 }, passives: [{ id: 'exo-str', op: { statBonus: { str: 2 } } }],
+      grants: [{ id: 'exo-core', name: 'Протокол', action: 'bonus', range: 0, target: 'self', roll: 'auto', usesPerBattle: 1, effects: [{ op: 'shield', value: 5, turns: 2 }] }] },
+  },
+  CONSUMABLES: {
+    ...DATA.CONSUMABLES,
+    emp: { id: 'emp', name: 'ЭМ-граната', slot: 'consumable', action: 'action', range: 8, target: 'tile', area: { shape: 'radius', size: 2 }, roll: 'auto',
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'electric', only: 'mechanical' }, { op: 'status', id: 'stun', turns: 1, only: 'mechanical' }] },
+    smoke: { id: 'smoke', name: 'Дым', slot: 'consumable', action: 'action', range: 8, target: 'tile', area: { shape: 'radius', size: 1 }, roll: 'auto',
+      effects: [{ op: 'zone', kind: 'smoke', turns: 2 }] },
+    adren: { id: 'adren', name: 'Адреналин', slot: 'consumable', action: 'bonus', range: 0, target: 'self', roll: 'auto',
+      effects: [{ op: 'extraAction', kind: 'action', nextTurnPenalty: 1 }] },
+    opium: { id: 'opium', name: 'Морфин', slot: 'consumable', action: 'bonus', range: 0, target: 'self', roll: 'auto', opiate: 3,
+      effects: [{ op: 'heal', dice: '2d6', resource: 'hp' }], withdrawal: { mrl: '1d4', nextBattle: { status: 'fear', turns: 1 } } },
+  },
+  ENEMIES: {
+    ...DATA.ENEMIES,
+    robot: { ...DATA.ENEMIES.thug, id: 'robot', tags: ['mechanical'], abilities: [] },
+    bloat: { ...DATA.ENEMIES.thug, id: 'bloat', hp: 5, abilities: [{ id: 'pop', name: 'Лопнуть', action: 'action', trigger: 'death', range: 0, target: 'tile',
+      area: { shape: 'radius', size: 2 }, roll: 'auto', effects: [{ op: 'damage', dice: '3d1', dmgType: 'blunt' }] }] },
+    lancer: { ...DATA.ENEMIES.thug, id: 'lancer', abilities: [], weapon: { name: 'Вилы', dice: '1d8', dmgType: 'pierce', stat: 'str', range: 1, hit: 0, attack: 3, item: 'pike' },
+      gear: { weapon: 'pike', armor: 'exo' } },
+    mortarman: { ...DATA.ENEMIES.gunner, id: 'mortarman', weapon: { name: 'Картофелемёт', dice: '1d8', dmgType: 'blunt', stat: 'dex', range: 8, hit: 0, attack: 4, item: 'mortar' } },
+    axeman: { ...DATA.ENEMIES.thug, id: 'axeman', abilities: [], weapon: { name: 'Топорик', dice: '1d6', dmgType: 'slash', stat: 'str', range: 1, hit: 0, attack: 3, item: 'hatchet' } },
+  },
+};
+const h31 = (over = {}) => buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data: D31, ...over });
+function battle31(grid, enemies, h = h31(), opts = {}) {
+  const b = createBattle({ map: { id: 't31', grid, win: 'killAll' }, heroes: [h], enemies, data: D31, seed: 3, autoReactions: false, ...opts });
+  const H = b.units.find((u) => u.team === 'heroes');
+  const E = b.units.filter((u) => u.team === 'enemies');
+  forceTurn(b, H);
+  return { b, H, E, E0: E[0] };
+}
+const LINE = (n) => ['#'.repeat(n + 2), '#' + 'P' + '.'.repeat(n - 1) + '#', '#'.repeat(n + 2)];
+
+test('reach: polearm hits 2 tiles away as melee; a plain sword does not', () => {
+  const { b, H, E0 } = battle31(['######', '#P.E.#', '######'], ['thug'], h31({ equipment: { weapon: 'pike' } }));
+  assert.equal(H.weapon.reach, true);
+  assert.equal(H.weapon.range, 2);
+  assert.ok(isMeleeAttack(b, H, { type: 'attack' }));
+  assert.ok(getLegalActions(b, H.id).some((a) => a.type === 'attack' && a.target === E0.id));
+  b.rng = stubRng([nat(15)]);
+  assert.ok(perform(b, { type: 'attack', unit: H.id, target: E0.id }).ok);
+  assert.equal(events(b, 'attack').pop().melee, true);
+  const s = battle31(['######', '#P.E.#', '######'], ['thug'], h31({ equipment: { weapon: 'sabre' } }));
+  assert.ok(!getLegalActions(s.b, s.H.id).some((a) => a.type === 'attack'));
+});
+
+test('thrown: ranged throw at 2..N, weapon drops near the target, fists until picked up; AI walks to it', () => {
+  const { b, H, E0 } = battle31(['########', '#......#', '#P..E..#', '#......#', '########'], ['thug'], h31({ equipment: { weapon: 'hatchet' } }));
+  assert.equal(H.weapon.thrown, 4);
+  assert.ok(getLegalActions(b, H.id).some((a) => a.type === 'throw' && a.target === E0.id));
+  b.rng = stubRng([nat(2)]); // miss: the target stays, the axe lands next to it
+  assert.ok(perform(b, { type: 'throw', unit: H.id, target: E0.id }).ok);
+  assert.equal(H.weapon.name, 'Кулак');
+  assert.equal(b.drops.length, 1);
+  const d = b.drops[0];
+  assert.ok(chebyshev(d.x, d.y, E0.x, E0.y) <= 1 && !(d.x === E0.x && d.y === E0.y));
+  assert.equal(events(b, 'attack').pop().melee, false);
+  // AI of the thrower: go and pick it up
+  H.control = 'ai'; H.abilities = [];
+  const act = chooseAction(b, H.id);
+  assert.equal(act.type, 'move');
+  assert.deepEqual(act.to, { x: d.x, y: d.y });
+  assert.ok(perform(b, act).ok);
+  assert.equal(H.weapon.id, 'hatchet');
+  assert.equal(b.drops.length, 0);
+  assert.equal(events(b, 'pickUp').length, 1);
+});
+
+test('arc: no line of sight needed, cover ignored; AI fires over a wall', () => {
+  const wall = ['#######', '#P.#.E#', '#######'];
+  const m = battle31(wall, ['thug'], h31({ equipment: { weapon: 'mortar' } }));
+  assert.ok(getLegalActions(m.b, m.H.id).some((a) => a.type === 'attack'));
+  const r = battle31(wall, ['thug'], h31({ equipment: { weapon: 'ak' } }));
+  assert.ok(!getLegalActions(r.b, r.H.id).some((a) => a.type === 'attack'));
+  const cov = battle31(['#######', '#P..cE#', '#######'], ['thug'], h31({ equipment: { weapon: 'mortar' } }));
+  cov.b.rng = stubRng([nat(10)]);
+  perform(cov.b, { type: 'attack', unit: cov.H.id, target: cov.E0.id });
+  assert.equal(events(cov.b, 'attack').pop().kb, getKb(cov.b, cov.E0));
+  const ai = createBattle({ map: { id: 'w', grid: ['#######', '#P.#.E#', '#######'], win: 'killAll' }, heroes: [h31()], enemies: ['mortarman'], data: D31, seed: 1, autoReactions: false });
+  const M = ai.units.find((u) => u.enemyId === 'mortarman');
+  assert.equal(M.weapon.arc, true, 'enemy weapon enriched from item');
+  forceTurn(ai, M);
+  assert.equal(chooseAction(ai, M.id).type, 'attack');
+});
+
+test('area + charges: save for half on everyone in the radius, 2 shots per battle', () => {
+  const { b, H, E } = battle31(['#########', '#P....EE#', '#########'], ['thug', 'thug'], h31({ equipment: { weapon: 'rpg' } }));
+  assert.equal(H.weaponCharges, 2);
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.type === 'burst'));
+  E[0].hp = E[1].hp = 99;
+  assert.ok(perform(b, { type: 'attack', unit: H.id, target: E[0].id }).ok);
+  const ev = events(b, 'weaponArea').pop();
+  assert.deepEqual(ev.targets.sort(), [E[0].id, E[1].id].sort());
+  assert.equal(events(b, 'save').length, 2);
+  assert.ok(E[0].hp < 99 && E[1].hp < 99);
+  assert.equal(H.weaponCharges, 1);
+  forceTurn(b, H);
+  assert.ok(perform(b, { type: 'attack', unit: H.id, tile: { x: E[1].x, y: E[1].y } }).ok);
+  assert.equal(H.weaponCharges, 0);
+  forceTurn(b, H);
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.type === 'attack'));
+  assert.equal(perform(b, { type: 'attack', unit: H.id, target: E[0].id }).error, 'charges');
+});
+
+test('enr: ENR per shot, no shot without ENR; overheat dice on natural 1', () => {
+  const { b, H, E0 } = battle31(LINE(5).map((r, i) => (i === 1 ? '#P...E#' : r)), ['thug'], h31({ equipment: { weapon: 'plasma' } }));
+  const enr0 = H.enr;
+  b.rng = stubRng([nat(15)]);
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  assert.equal(H.enr, enr0 - 2);
+  assert.equal(events(b, 'weaponEnr').length, 1);
+  forceTurn(b, H);
+  const hp0 = H.hp;
+  b.rng = stubRng([nat(1)]);
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  assert.equal(events(b, 'overheat').length, 1);
+  assert.ok(H.hp < hp0, 'shooter burns');
+  forceTurn(b, H);
+  H.enr = 1;
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.type === 'attack'));
+  assert.equal(perform(b, { type: 'attack', unit: H.id, target: E0.id }).error, 'energy');
+});
+
+test('overheat { shots }: after N shots the weapon skips its next turn', () => {
+  const { b, H, E0 } = battle31(['#######', '#P...E#', '#######'], ['thug'], h31({ equipment: { weapon: 'coil' } }));
+  E0.hp = 99;
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  forceTurn(b, H); b.turn.actions = 1;
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  assert.equal(H.weaponHot, true);
+  assert.equal(events(b, 'overheat').pop().turns, 1);
+  const toHero = () => { endTurn(b); while (b.turn.unitId !== H.id) endTurn(b); };
+  toHero();
+  assert.ok(!getLegalActions(b, H.id).some((a) => a.type === 'attack'), 'locked this turn');
+  toHero();
+  assert.ok(getLegalActions(b, H.id).some((a) => a.type === 'attack'), 'cooled down');
+});
+
+test('extra: bonus damage dice on a hit; `only` filters by target tag', () => {
+  const { b, H, E0 } = battle31(['#######', '#P...E#', '#######'], ['thug'], h31({ equipment: { weapon: 'bolter' } }));
+  E0.hp = 99;
+  b.rng = stubRng([nat(18)]);
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  const dm = events(b, 'damage').map((e) => e.dmgType);
+  assert.deepEqual(dm, ['pierce', 'fire']);
+  const z1 = battle31(['#####', '#PE.#', '#####'], ['thug'], h31({ equipment: { weapon: 'zapper' } }));
+  z1.E0.hp = 99; z1.b.rng = stubRng([nat(18)]);
+  perform(z1.b, { type: 'attack', unit: z1.H.id, target: z1.E0.id });
+  assert.deepEqual(events(z1.b, 'damage').map((e) => e.dmgType), ['pierce']);
+  const z2 = battle31(['#####', '#PE.#', '#####'], ['robot'], h31({ equipment: { weapon: 'zapper' } }));
+  z2.E0.hp = 99; z2.b.rng = stubRng([nat(18)]);
+  perform(z2.b, { type: 'attack', unit: z2.H.id, target: z2.E0.id });
+  assert.deepEqual(events(z2.b, 'damage').map((e) => e.dmgType), ['pierce', 'electric']);
+});
+
+test('onCrit: ops on a critical hit only; onHit copies with fromCrit are ignored', () => {
+  const { b, H, E0 } = battle31(['#####', '#PE.#', '#####'], ['thug'], h31({ equipment: { weapon: 'hook' } }));
+  E0.hp = 99;
+  b.rng = stubRng([nat(15)]);
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  assert.ok(!E0.statuses.some((s) => s.id === 'prone'), 'plain hit: no prone');
+  forceTurn(b, H);
+  b.rng = stubRng([nat(20)]);
+  perform(b, { type: 'attack', unit: H.id, target: E0.id });
+  assert.ok(E0.statuses.some((s) => s.id === 'prone'), 'crit: prone');
+});
+
+test('only: EMP hits and stuns only mechanical targets', () => {
+  const { b, H, E } = battle31(['########', '#P...EE#', '########'], ['thug', 'robot'], h31({ inventory: { emp: 1 } }));
+  const [thug, robot] = E;
+  const hp = [thug.hp, robot.hp];
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'emp', tile: { x: robot.x, y: robot.y } }).ok);
+  assert.equal(thug.hp, hp[0]);
+  assert.ok(robot.hp < hp[1]);
+  assert.ok(robot.statuses.some((s) => s.id === 'stun'));
+  assert.ok(!thug.statuses.some((s) => s.id === 'stun'));
+  assert.ok(events(b, 'onlySkip').length >= 2);
+});
+
+test('zone: smoke cloud gives disadvantage to ranged attacks through it, expires; AI values it', () => {
+  const { b, H, E0 } = battle31(['#########', '#P.....E#', '#########'], ['gunner'], h31({ inventory: { smoke: 1 } }));
+  assert.equal(attackOdds(b, E0, H, 4, false, true).mode, 'normal');
+  H.control = 'ai';
+  const sm = getLegalActions(b, H.id).filter((a) => a.type === 'useItem' && a.item === 'smoke');
+  assert.ok(sm.length && evalAction(b, H, sm[0]) > 0, 'AI sees value in smoking a shooter');
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'smoke', tile: { x: 4, y: 1 } }).ok);
+  assert.equal(b.zones.length, 1);
+  assert.equal(attackOdds(b, E0, H, 4, false, true).mode, 'dis');
+  assert.equal(attackOdds(b, H, E0, 4, true, true).mode, 'normal', 'melee is not affected');
+  const r0 = b.round;
+  while (b.zones.length && b.round < r0 + 5) endTurn(b);
+  assert.equal(b.round, r0 + 2);
+  assert.equal(events(b, 'zoneEnd').length, 1);
+});
+
+test('nextTurnPenalty: adrenaline gives an action now and takes one next turn', () => {
+  const { b, H } = battle31(['#######', '#P...E#', '#######'], ['thug'], h31({ inventory: { adren: 1 } }));
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'adren' }).ok);
+  assert.equal(b.turn.actions, 2);
+  endTurn(b); while (b.turn.unitId !== H.id) endTurn(b);
+  assert.equal(b.turn.actions, 0);
+  assert.equal(events(b, 'turnPenalty').length, 1);
+});
+
+test('onDeath: the bloat pops when it dies (not by choice)', () => {
+  const { b, H, E0 } = battle31(['######', '#PE..#', '######'], ['bloat']);
+  b.turn = { unitId: E0.id, move: 6, actions: 1, bonus: 1, disengaged: false, lostControl: false, aiMoves: 0, acted: false };
+  assert.ok(!getLegalActions(b, E0.id).some((a) => a.type === 'ability'));
+  forceTurn(b, H);
+  const hp0 = H.hp;
+  dealDamage(b, H, E0, 50, 'blunt');
+  assert.ok(E0.dead);
+  assert.equal(events(b, 'onDeath').length, 1);
+  assert.equal(H.hp, hp0 - 3);
+});
+
+test('mech armour: permanent shield, tier 3 needed (else disadvantage), passives and grants; enemy gear too', () => {
+  const low = h31({ equipment: { armor: 'exo' } });
+  assert.equal(low.mechShield, 10);
+  assert.equal(low.armorPenalty, true, 'zabivnoy has mech at tier 2');
+  const ok = h31({ equipment: { armor: 'exo' }, proficiencies: { armor: { mech: 3 } } });
+  assert.equal(ok.armorPenalty, false);
+  assert.equal(ok.stats.str, low.stats.str);
+  assert.equal(ok.stats.str, h31().stats.str + 2, 'armour passive');
+  assert.ok(ok.abilities.some((a) => a.id === 'exo-core'), 'armour grant');
+  const { b, H } = battle31(['######', '#P..E#', '######'], ['thug'], ok);
+  assert.deepEqual([H.shield.value, H.shield.mech], [10, true]);
+  endTurn(b); endTurn(b); endTurn(b);
+  assert.equal(H.shield.value, 10, 'does not expire');
+  const L = buildEnemy('lancer', { data: D31 });
+  assert.equal(L.mechShield, 10);
+  assert.equal(L.weapon.reach, true);
+  assert.equal(L.weapon.range, 2);
+});
+
+test('withdrawal: opiate queues withdrawal; after battle −MRL and a debuff until rest', () => {
+  const h = h31({ inventory: { opium: 1 } });
+  const { b, H } = battle31(['######', '#P..E#', '######'], ['thug'], h);
+  H.hp -= 5;
+  assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'opium' }).ok);
+  assert.equal(H.withdrawalPending.length, 1);
+  const res = applyWithdrawal(h, H, createRng(1));
+  assert.ok(res.loss >= 1 && res.loss <= 4);
+  assert.equal(h.mrl, H.mrl - res.loss);
+  assert.equal(h.withdrawal.until, 'rest');
+  const b2 = createBattle({ map: { id: 'x', grid: ['######', '#P..E#', '######'], win: 'killAll' }, heroes: [h], enemies: ['thug'], data: D31, seed: 2 });
+  assert.ok(b2.units.find((u) => u.team === 'heroes').statuses.some((s) => s.id === 'fear'));
+  clearWithdrawal(h);
+  const b3 = createBattle({ map: { id: 'x', grid: ['######', '#P..E#', '######'], win: 'killAll' }, heroes: [h], enemies: ['thug'], data: D31, seed: 2 });
+  assert.ok(!b3.units.find((u) => u.team === 'heroes').statuses.some((s) => s.id === 'fear'));
+});
+
+test('stigma: gear puts world flags with the source item', () => {
+  const h = h31({ equipment: { weapon: 'blade' } });
+  const st = h.worldFlags.filter((f) => f.id === 'stigma');
+  assert.deepEqual(st, [
+    { id: 'stigma', value: -5, factions: ['tinBrotherhood'], source: 'blade' },
+    { id: 'stigma', value: -5, factions: ['tekhonki'], source: 'blade' },
+  ]);
+});
+
+test('AI uses thrown, arc and area weapons in fixture battles without errors', () => {
+  for (let i = 0; i < 30; i++) {
+    const w = ['hatchet', 'rpg', 'mortar', 'pike', 'plasma', 'coil'][i % 6];
+    const heroes = [h31({ equipment: { weapon: w }, inventory: { smoke: 1, adren: 1, emp: 1 } })];
+    const r = simulateBattle({ map: makeArena({ heroes: 1, enemies: 3 }), heroes, enemies: ['axeman', 'mortarman', 'bloat'], data: D31, seed: 500 + i, maxRounds: 30, log: true });
+    assert.ok(['heroes', 'enemies', 'draw'].includes(r.winner));
+  }
 });
 
 console.log('simulation');

@@ -119,5 +119,5 @@ export const TRINKETS = {
     desc: 'Номер стёрт. Клоны Lox узнают его и стреляют первыми.' },
   'cup-crown': { id: 'cup-crown', name: 'Корона из кубков', cat: 'trinket', quality: 'relic', unique: true, price: 0,
     passives: [{ id: 'item-cup-crown', name: 'Король на час', desc: '+2 ХАР.', op: { statBonus: { cha: 2 } } }],
-    desc: 'Украденная корона Короля свалок. Кто носит — тот и король. Мусорщики так считают. Король — нет.', needs: 'stigma: мусорщики видят короля' },
+    desc: 'Украденная корона Короля свалок. Кто носит — тот и король. Мусорщики так считают. Король — нет.', stigma: { scavengers: -20 } },
 };

@@ -22,7 +22,12 @@ export function createTalentsScene(hero, back, onStart) {
   let self;
 
   const origins = () => Object.values(ORIGINS).filter((o) => originAllowed(o.id, hero.race));
-  const built = (game) => buildCreature({ race: hero.race, cls: hero.cls, path: hero.path, data: game.data, anyStat: st.anyStat || undefined });
+  const built = (game) => {
+    // flexible build (create-build.js): its stats / skills / gear go into the preview too
+    const flex = { stats: hero.stats || undefined, skills: hero.skills || undefined, proficiencies: hero.proficiencies || undefined, equipment: hero.equipment || undefined };
+    try { return buildCreature({ race: hero.race, cls: hero.cls, path: hero.path, data: game.data, anyStat: st.anyStat || undefined, ...flex }); }
+    catch { return buildCreature({ race: hero.race, cls: hero.cls, path: hero.path, data: game.data, anyStat: st.anyStat || undefined }); }
+  };
   function ctx(game) {
     const u = built(game);
     return { race: hero.race, cls: hero.cls, origin: st.origin, alignment: st.alignment, stats: u.stats, level: 1, weaponRange: u.weapon?.range || 1, tags: u.tags };

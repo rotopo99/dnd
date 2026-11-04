@@ -200,7 +200,7 @@ export function createCyberspaceScene() {
         panel(ctx, x, y, cw, 200, C['0'], col);
         text(ctx, `${t('cyber.node')} ${i + 1}`, x + cw / 2, y + 16, col, FONT_L, 'center');
         text(ctx, n === 'pass' ? t('cyber.passed') : n === 'fail' ? t('cyber.nodeFailed') : i === cur ? t('cyber.here') : '…', x + cw / 2, y + 160, col, FONT_B, 'center');
-        if (i === cur) drawSprite(ctx, heroSpriteIds(game.save.hero.race, game.save.hero.cls), x + cw / 2 - 48, y + 50, 6, { frame: idleFrame(time * 1000), alpha: 0.7, tint: 'h' });
+        if (i === cur) drawSprite(ctx, heroSpriteIds(game.save.hero.race, game.save.hero.cls, game.save.hero.look), x + cw / 2 - 48, y + 50, 6, { frame: idleFrame(time * 1000), alpha: 0.7, tint: 'h' });
       });
       let y = 390;
       if (c.helped) y = textBlock(ctx, t('cyber.helped'), W / 2 - 400, y, 800, C.j, FONT, LINE, 2);

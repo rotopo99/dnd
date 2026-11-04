@@ -88,7 +88,13 @@ export function createBattleScene(opts) {
     if (opts.heroes) heroes = typeof opts.heroes === 'function' ? opts.heroes(game) : opts.heroes;
     else {
       const h = opts.hero;
-      heroes = [buildCreature({ race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero', anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id })];
+      const base = { race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero', anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id };
+      // v3 flexible build (prologue hero): stats, skills, proficiencies, phobias, chosen gear
+      const flex = { stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined, equipment: h.equipment || undefined };
+      let u;
+      try { u = buildCreature({ ...base, ...flex }); } catch { u = buildCreature(base); }
+      u.look = h.look || null;
+      heroes = [u];
     }
     S.queue = [];
     let enemies = opts.enemies;
@@ -151,12 +157,15 @@ export function createBattleScene(opts) {
     const hero = b.byId[S.heroId];
     S.reach = null;
     S.attackTargets = new Set();
+    S.burstTargets = new Set();
     S.specs = {};
     if (S.playerTurn) {
       if (b.turn.move > 0) S.reach = getReachable(b, S.heroId);
       for (const act of getLegalActions(b, S.heroId, { noMoves: true })) {
         if (act.target && isHiddenFoe(b.byId[act.target])) continue;
         if (act.type === 'attack') S.attackTargets.add(act.target);
+        else if (act.type === 'burst') S.burstTargets.add(act.target);
+        else if (act.type === 'useItem') (S.specs[`item:${act.item}`] || (S.specs[`item:${act.item}`] = [])).push(act);
         else if (act.type === 'ability') (S.specs[act.ability] || (S.specs[act.ability] = [])).push(act);
       }
     }
@@ -181,6 +190,17 @@ export function createBattleScene(opts) {
         selected: S.sel?.kind === 'ability' && S.sel.a.id === a.id,
       });
     }
+    // v3: «Очередь» (weapon rof > 1) and belt items (unit.inventory → useItem)
+    if ((hero.weapon?.rof || 1) > 1) {
+      r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : hero.noAttack ? 'disarm' : S.burstTargets.size ? null : 'noTargets';
+      btns.push({ id: 'burst', label: t('battle.burst'), sub: `×${hero.weapon.rof}${hero.weapon.recoil ? ` · ${t('item.recoil')} ${hero.weapon.recoil}` : ''}`, key: 'B', disabled: !!r, reason: reasonOf(r), selected: S.sel?.kind === 'attack' && !!S.sel.burst });
+    }
+    const belt = Object.entries(hero.inventory || {}).filter(([id, n]) => n > 0 && combat.isBattleItem(S.b.data.items[id]));
+    if (belt.length) {
+      const any = belt.some(([id]) => (S.specs[`item:${id}`] || []).length);
+      r = !S.playerTurn ? 'turn' : any ? null : bt.actions <= 0 && bt.bonus <= 0 ? 'action' : 'noTargets';
+      btns.push({ id: 'items', label: t('battle.items'), sub: `${belt.reduce((s2, [, n]) => s2 + n, 0)} ${t('battle.itemsPcs')}`, key: 'I', disabled: !!r, reason: reasonOf(r), selected: !!S.sel?.item });
+    }
     r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : null;
     btns.push({ id: 'dash', label: t('battle.dash'), sub: t('act.action'), disabled: !!r, reason: reasonOf(r) });
     r = !S.playerTurn ? 'turn' : bt.bonus <= 0 || bt.disengaged ? 'bonus' : null;
@@ -194,7 +214,7 @@ export function createBattleScene(opts) {
     if (S.sel && S.playerTurn) {
       const cells = new Map();
       if (S.sel.kind === 'attack') {
-        for (const id of S.attackTargets) { const u = b.byId[id]; cells.set(u.y * b.grid.w + u.x, { target: id }); }
+        for (const id of S.sel.burst ? S.burstTargets : S.attackTargets) { const u = b.byId[id]; cells.set(u.y * b.grid.w + u.x, { target: id }); }
       } else {
         for (const act of S.specs[S.sel.a.id] || []) {
           if (act.target) { const u = b.byId[act.target]; cells.set(u.y * b.grid.w + u.x, { target: act.target }); }
@@ -271,7 +291,9 @@ export function createBattleScene(opts) {
     play('uiClick');
     const b = S.b;
     switch (btn.id) {
-      case 'attack': S.sel = S.sel?.kind === 'attack' ? null : { kind: 'attack' }; break;
+      case 'attack': S.sel = S.sel?.kind === 'attack' && !S.sel.burst ? null : { kind: 'attack' }; break;
+      case 'burst': S.sel = S.sel?.burst ? null : { kind: 'attack', burst: true }; break;
+      case 'items': openItems(); return;
       case 'dash': doAction({ type: 'dash' }); break;
       case 'disengage': doAction({ type: 'disengage' }); break;
       case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
@@ -288,13 +310,39 @@ export function createBattleScene(opts) {
     S.dirty = true;
   }
 
+  /** Belt items: pick one in a modal → target like an ability (grenade: area preview, trap: a tile next to you). */
+  function openItems() {
+    const game = S.game;
+    const b = S.b;
+    const hero = b.byId[S.heroId];
+    const items = b.data.items;
+    const list = Object.entries(hero.inventory || {}).filter(([id, n]) => n > 0 && combat.isBattleItem(items[id]));
+    game.openModal({
+      title: t('battle.itemsTitle'), width: 760,
+      lines: list.length ? [] : [{ text: t('battle.noItems'), color: '4' }],
+      options: [...list.map(([id, n]) => {
+        const it = items[id];
+        const specs = S.specs[`item:${id}`] || [];
+        const why = combat.itemUsable(b, hero, id);
+        const kind = it.trap ? t('battle.trap') : t(`act.${it.action || 'action'}`);
+        return { label: `${it.name} ×${n}`, sub: `${kind} · ${it.desc || it.battle?.desc || ''}`, disabled: !!why || !specs.length,
+          run: () => {
+            const a = combat.itemAbility(it);
+            if (specs.length === 1 && !specs[0].target && !specs[0].tile) doAction({ type: 'useItem', item: id });
+            else { S.sel = { kind: 'ability', a, item: id }; S.dirty = true; }
+          } };
+      }), { label: t('loc.close'), run: () => {} }],
+    });
+  }
+
   function clickCell(cx, cy) {
     const b = S.b;
     const idx = cy * b.grid.w + cx;
     if (S.sel) {
       const tc = S.targetCells && S.targetCells.get(idx);
       if (!tc) { S.sel = null; S.dirty = true; return; }
-      if (S.sel.kind === 'attack') doAction({ type: 'attack', target: tc.target });
+      if (S.sel.kind === 'attack') doAction({ type: S.sel.burst ? 'burst' : 'attack', target: tc.target });
+      else if (S.sel.item) doAction({ type: 'useItem', item: S.sel.item, ...(tc.target ? { target: tc.target } : { tile: tc.tile }) });
       else doAction({ type: 'ability', ability: S.sel.a.id, ...(tc.target ? { target: tc.target } : { tile: tc.tile }) });
       return;
     }
@@ -479,6 +527,8 @@ export function createBattleScene(opts) {
       if (inp.wasPressed(`Digit${i}`) || inp.wasPressed(`Numpad${i}`)) selectButton(S.buttons.find((x) => x.key === String(i)));
     }
     if (inp.wasPressed('KeyA')) selectButton(S.buttons[0]);
+    if (inp.wasPressed('KeyB')) selectButton(S.buttons.find((x) => x.id === 'burst'));
+    if (inp.wasPressed('KeyI')) selectButton(S.buttons.find((x) => x.id === 'items'));
     if (inp.wasPressed('Space') || inp.wasPressed('Enter')) selectButton(S.buttons.find((x) => x.id === 'endTurn'));
   }
 

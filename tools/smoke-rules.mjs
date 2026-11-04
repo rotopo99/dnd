@@ -1,5 +1,6 @@
 // Smoke test of the rules engine on real game data:
-// every class x every playable race x levels 1 and 5 vs ENCOUNTERS.standard1/5, N battles each.
+// every class x every playable race x levels 1 and 5 vs ENCOUNTERS.standard1/5, N battles each;
+// story maps; every v3 weapon (items/weapons.js) on a hero vs ENCOUNTERS_V3 (counts v3.1 item-property events).
 // Usage: node tools/smoke-rules.mjs [--n 20] [--seed 1]   (exit code 1 on exceptions)
 import fs from 'node:fs';
 import { RACES } from '../game/src/data/races.js';
@@ -62,6 +63,39 @@ for (const f of fs.readdirSync(mapDir).filter((x) => x.endsWith('.js')).sort()) 
   }
   rows.push(`map ${map.id.padEnd(12)} win ${(100 * wins / N).toFixed(0).padStart(3)}%  (enemies ${JSON.stringify(map.enemies)}, allies ${JSON.stringify(map.allies || [])}, win ${map.win})`);
 }
+
+// v3 / v3.1: every weapon of items/weapons.js on a hero vs v3 encounters (GAME_DATA: ENEMIES + ENEMIES_V3, ITEMS)
+const { GAME_DATA } = await import('../game/src/data/index.js');
+const { WEAPONS } = await import('../game/src/data/items/weapons.js');
+const { ENCOUNTERS_V3 } = await import('../game/src/data/enemies-v3.js');
+const v3enc = Object.values(ENCOUNTERS_V3).filter((e) => (e.enemies || []).every((id) => GAME_DATA.ENEMIES[id]));
+const kit = { 'smoke-grenade': 1, 'emp-grenade': 1, 'adrenaline-stim': 1, 'codeine-syrup': 1 };
+const seen = {};
+const NEW_EVENTS = ['throw', 'pickUp', 'weaponArea', 'weaponCharge', 'weaponEnr', 'overheat', 'zone', 'onlySkip', 'onDeath', 'turnPenalty', 'withdrawalPending'];
+let v3wins = 0, v3total = 0;
+const wlist = Object.values(WEAPONS);
+for (let wi = 0; wi < wlist.length; wi++) {
+  const w = wlist[wi];
+  for (let i = 0; i < N; i++) {
+    const enc = v3enc[(wi * 7 + i) % v3enc.length];
+    const cid = CLASS_ORDER[(wi + i) % CLASS_ORDER.length];
+    try {
+      const level = Math.max(1, Math.min(5, enc.level || 1));
+      const race = isAllowed('human', CLASSES[cid]) ? 'human' : CLASSES[cid].allowedRaces[0];
+      const h1 = buildCreature({ race, cls: cid, level, data: GAME_DATA, equipment: { weapon: w.id }, inventory: kit });
+      const h2 = buildCreature({ race: 'human', cls: CLASS_ORDER[(wi + i + 3) % CLASS_ORDER.length], level, data: GAME_DATA });
+      const r = simulateBattle({ heroes: [h1, h2], enemies: enc.enemies, data: GAME_DATA, seed: SEED + wi * 31 + i, maxRounds: 30, log: true });
+      battles++; v3total++;
+      if (r.winner === 'heroes') v3wins++;
+      for (const e of r.log) if (NEW_EVENTS.includes(e.type)) seen[e.type] = (seen[e.type] || 0) + 1;
+    } catch (e) {
+      errors++;
+      if (errors <= 5) console.error(`ERROR v3 weapon ${w.id} vs ${enc.id} seed ${SEED + i}:`, e.stack.split('\n').slice(0, 4).join('\n'));
+    }
+  }
+}
+rows.push(`v3 weapons x encounters: ${v3total} battles, heroes win ${(100 * v3wins / Math.max(1, v3total)).toFixed(0)}% (${v3enc.length}/${Object.keys(ENCOUNTERS_V3).length} encounters resolvable)`);
+rows.push(`v3.1 events: ${JSON.stringify(seen)}`);
 
 console.log(rows.join('\n'));
 console.log(`\n${battles} battles, ${errors} exceptions, ${skipped} disallowed class/race pairs skipped (per level), ${Date.now() - t0} ms`);

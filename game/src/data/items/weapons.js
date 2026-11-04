@@ -81,7 +81,7 @@ export const CLASS_PROFICIENCY = Object.fromEntries(Object.entries(PROF_LISTS).m
 }]));
 
 // onCrit пока эмулируется движком как onHit с шансом CRIT_PROC (крит-хука в движке нет): op.fromCrit = true.
-// Когда появится хук — перенести ops с fromCrit в onCrit (needs: 'onCrit').
+// Хук onCrit в движке есть (v3.1) — ops с fromCrit можно перенести в onCrit.
 export const CRIT_PROC = 0.15;
 
 const w = (o) => {
@@ -117,16 +117,16 @@ const LIST = [
   // --- Древковое
   w({ id: 'pitchfork', name: 'Вилы', wtype: 'polearm', dice: '1d8', dmgType: 'pierce', stat: 'str', range: 1, hands: 2, weight: 2,
     props: { reach: true }, tier: 1, price: 15, factions: ['agrozone', 'renegades', 'neutralVillages'],
-    desc: 'Оружие восстания Агрозоны. Достаёт через клетку.', needs: 'reach' }),
+    desc: 'Оружие восстания Агрозоны. Достаёт через клетку.' }),
   w({ id: 'boat-hook', name: 'Багор', wtype: 'polearm', dice: '1d8', dmgType: 'pierce', stat: 'str', range: 1, hands: 2, weight: 2,
     props: { reach: true }, onCrit: [{ op: 'status', id: 'prone', turns: 1 }], tier: 1, price: 30, factions: ['pirates'],
-    desc: 'Цепляет и роняет: крит — цель лежит.', needs: 'reach' }),
+    desc: 'Цепляет и роняет: крит — цель лежит.' }),
   w({ id: 'rebar-spear', name: 'Копьё из арматуры', wtype: 'polearm', dice: '1d8', dmgType: 'pierce', stat: 'str', range: 1, hands: 2, weight: 2,
     props: { reach: true, thrown: 4 }, tier: 1, price: 35, factions: ['renegades', 'scavengers'],
-    desc: 'Как у Куксиуса на знамёнах, только хуже. Можно метнуть на 4 клетки.', needs: 'reach, thrown' }),
+    desc: 'Как у Куксиуса на знамёнах, только хуже. Можно метнуть на 4 клетки.' }),
   w({ id: 'sign-halberd', name: 'Алебарда из дорожного знака', wtype: 'polearm', dice: '1d10', dmgType: 'slash', stat: 'str', range: 1, hands: 2, weight: 3,
     props: { reach: true }, req: { str: 13 }, slots: MELEE_SLOTS, tier: 2, price: 80, factions: ['scavengers', 'tinBrotherhood'],
-    desc: 'Знак «Уступи дорогу» на трубе. Враги уступают.', needs: 'reach' }),
+    desc: 'Знак «Уступи дорогу» на трубе. Враги уступают.' }),
 
   // --- Кулачное
   w({ id: 'brass-knuckles', name: 'Кастет', wtype: 'fist', dice: '1d4', dmgType: 'blunt', stat: 'str', range: 1, noise: 0,
@@ -136,12 +136,12 @@ const LIST = [
     desc: 'Перчатка надзирателя Агрозоны. Крит — оглушение.' }),
   w({ id: 'hydro-fist', name: 'Гидрокулак', wtype: 'fist', dice: '1d10', dmgType: 'blunt', stat: 'str', range: 1, weight: 3, noise: 2,
     req: { str: 14 }, props: { ap: 1 }, tier: 3, price: 220, factions: ['mechanids', 'scavengers'],
-    desc: 'Снят с меха свалок. Бьёт сквозь броню (бронебойность 1).', needs: 'ap' }),
+    desc: 'Снят с меха свалок. Бьёт сквозь броню (бронебойность 1).' }),
 
   // --- Ножи
   w({ id: 'finka', name: 'Финка', wtype: 'knife', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 1, noise: 0,
     props: { thrown: 4 }, slots: MELEE_SLOTS, tier: 1, price: 25, factions: ['pirates', 'scavengers', 'neutralVillages'],
-    desc: 'Стартовое оружие Уголовника. Наборная ручка, ни одной честной зарубки.', needs: 'thrown' }),
+    desc: 'Стартовое оружие Уголовника. Наборная ручка, ни одной честной зарубки.' }),
   w({ id: 'shiv', name: 'Заточка', wtype: 'knife', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 1, noise: 0, quality: 'junk',
     onCrit: [{ op: 'status', id: 'bleed', turns: 2 }], tier: 1, price: 5, factions: ['scavengers'], desc: 'Ложка, у которой была тяжёлая жизнь.' }),
   w({ id: 'bayonet', name: 'Штык-нож', wtype: 'knife', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 1, noise: 0,
@@ -159,10 +159,10 @@ const LIST = [
 
   // --- Топоры
   w({ id: 'hatchet', name: 'Топорик', wtype: 'axe', dice: '1d6', dmgType: 'slash', stat: 'str', range: 1,
-    props: { thrown: 4 }, slots: MELEE_SLOTS, tier: 1, price: 15, factions: ['neutralVillages', 'mutantsBeast'], desc: 'Колет дрова, летит в лоб.', needs: 'thrown' }),
+    props: { thrown: 4 }, slots: MELEE_SLOTS, tier: 1, price: 15, factions: ['neutralVillages', 'mutantsBeast'], desc: 'Колет дрова, летит в лоб.' }),
   w({ id: 'fire-axe', name: 'Пожарный топор', wtype: 'axe', dice: '1d8', dmgType: 'slash', stat: 'str', range: 1, weight: 2,
     props: { ap: 1 }, slots: MELEE_SLOTS, tier: 2, price: 45, factions: ['neutralVillages', 'scavengers'],
-    desc: 'Красный, со щита «При пожаре». Рубит двери и пластины (бронебойность 1).', needs: 'ap' }),
+    desc: 'Красный, со щита «При пожаре». Рубит двери и пластины (бронебойность 1).' }),
 
   // --- Молоты
   w({ id: 'armatura', name: 'Арматура', wtype: 'hammer', dice: '1d8', dmgType: 'blunt', stat: 'str', range: 1, weight: 2,
@@ -185,7 +185,7 @@ const LIST = [
     desc: 'Аналоговая сталь, ни одного чипа. «Электроника врёт, железо — никогда».' }),
   w({ id: 'monofil-katana', name: 'Мономолекулярная катана', wtype: 'katana', dice: '1d8', dmgType: 'slash', stat: 'dex', range: 1,
     props: { ap: 2 }, slots: MELEE_SLOTS, tier: 4, price: 650, factions: ['aiParty', 'pirates'],
-    desc: 'Довоенная разработка Партии, у пиратов — краденая. Режет броню как масло (бронебойность 2).', needs: 'ap' }),
+    desc: 'Довоенная разработка Партии, у пиратов — краденая. Режет броню как масло (бронебойность 2).' }),
 
   // --- Полуторное
   w({ id: 'spring-bastard', name: 'Полуторный меч из листовой рессоры', wtype: 'bastard', dice: '1d10', dmgType: 'slash', stat: 'str', range: 1, weight: 2,
@@ -201,10 +201,10 @@ const LIST = [
     req: { str: 13 }, slots: MELEE_SLOTS, tier: 2, price: 90, factions: ['mutantsBeast', 'neutralVillages'], desc: 'Рубили Лесянку. Лесянка отомстила.' }),
   w({ id: 'sleeper-blade', name: 'Шпалорез', wtype: 'twohanded', dice: '2d6', dmgType: 'slash', stat: 'str', range: 1, hands: 2, weight: 3, noise: 2,
     req: { str: 15 }, props: { ap: 1 }, slots: MELEE_SLOTS, tier: 4, price: 260, factions: ['tinBrotherhood', 'scavengers'],
-    desc: 'Слишком большой, чтобы быть мечом. Кусок рельса с заточкой. Бронебойность 1.', needs: 'ap' }),
+    desc: 'Слишком большой, чтобы быть мечом. Кусок рельса с заточкой. Бронебойность 1.' }),
   w({ id: 'chainsaw-glaive', name: 'Бензопила-глефа', wtype: 'twohanded', dice: '1d12', dmgType: 'slash', stat: 'str', range: 1, hands: 2, weight: 3, noise: 3,
     req: { str: 14 }, props: { reach: true }, onHit: [{ op: 'status', id: 'bleed', turns: 1 }], tier: 4, price: 340, factions: ['scavengers', 'mechanids'],
-    desc: 'Пила «Дружба» на древке. Всё, что задело, кровит. Очень громкая.', needs: 'reach, onHit' }),
+    desc: 'Пила «Дружба» на древке. Всё, что задело, кровит. Очень громкая.' }),
 
   // ================================================================ Дальний бой
   // --- Пистолеты
@@ -215,31 +215,31 @@ const LIST = [
   w({ id: 'nagan-revolver', name: 'Револьвер «Наган-кустарь»', wtype: 'pistol', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 10, noise: 3,
     slots: ['optic'], tier: 2, price: 110, factions: ['neutralVillages', 'tinBrotherhood'], desc: 'Аналоговый, без единой микросхемы. Братство одобряет.' }),
   w({ id: 'sawed-off', name: 'Обрез', wtype: 'pistol', dice: '2d4', dmgType: 'pierce', stat: 'dex', range: 5, noise: 3, rof: 2, recoil: 3,
-    tier: 1, price: 50, factions: ['renegades', 'scavengers', 'agrozone'], desc: 'Два ствола — очередь из двух выстрелов с отдачей 3.', needs: 'burst' }),
+    tier: 1, price: 50, factions: ['renegades', 'scavengers', 'agrozone'], desc: 'Два ствола — очередь из двух выстрелов с отдачей 3.' }),
   w({ id: 'nailgun', name: 'Гвоздомёт', wtype: 'pistol', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 8, noise: 1,
     slots: ['mag'], tier: 1, price: 45, factions: ['scavengers', 'mechanids', 'tekhonki'], desc: 'Стартовое оружие Айтишника. Строительный, тихий, обидный.' }),
   w({ id: 'bolt-pistol', name: 'Болт-пистолет', wtype: 'bolter', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 8, noise: 3, weight: 2,
     req: { str: 12 }, props: { extra: { dice: '1d4', dmgType: 'fire' } }, tier: 4, price: 550, factions: ['warprom'],
-    desc: 'Реактивный болт взрывается в цели: +1d4 огня.', needs: 'extra' }),
+    desc: 'Реактивный болт взрывается в цели: +1d4 огня.' }),
 
   // --- ПП
   w({ id: 'pipe-smg', name: 'ПП из водопроводных труб', wtype: 'smg', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 6, noise: 2, quality: 'junk',
-    rof: 3, recoil: 3, slots: ['mag'], tier: 1, price: 60, factions: ['scavengers'], desc: 'Очередь 3, отдача 3. Сантехник одобрил бы.', needs: 'burst' }),
+    rof: 3, recoil: 3, slots: ['mag'], tier: 1, price: 60, factions: ['scavengers'], desc: 'Очередь 3, отдача 3. Сантехник одобрил бы.' }),
   w({ id: 'kedrach', name: 'ПП «Кедрач»', wtype: 'smg', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 8, noise: 2,
-    rof: 3, recoil: 2, slots: GUN_SLOTS, tier: 2, price: 180, factions: ['warprom', 'pirates', 'renegades'], desc: 'Компактный, злой. Очередь 3, отдача 2.', needs: 'burst' }),
+    rof: 3, recoil: 2, slots: GUN_SLOTS, tier: 2, price: 180, factions: ['warprom', 'pirates', 'renegades'], desc: 'Компактный, злой. Очередь 3, отдача 2.' }),
   w({ id: 'tishina-smg', name: 'ПП «Тишина»', wtype: 'smg', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 8, noise: 0,
     rof: 2, recoil: 1, slots: ['optic', 'mag'], tier: 3, price: 340, factions: ['renegades', 'pirates'],
-    desc: 'Интегрированный глушитель. Любимец диверсантов Хатаб-Сити.', needs: 'burst, noise' }),
+    desc: 'Интегрированный глушитель. Любимец диверсантов Хатаб-Сити.' }),
 
   // --- Винтовки
   w({ id: 'hunting-carbine', name: 'Охотничий карабин', wtype: 'rifle', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 16, hands: 2, weight: 2, noise: 2,
     slots: GUN_SLOTS, tier: 1, price: 90, factions: ['neutralVillages', 'mutantsBeast'], desc: 'Стартовое оружие Рейнджера.' }),
   w({ id: 'pump-shotgun', name: 'Помповое ружьё', wtype: 'rifle', dice: '2d4', dmgType: 'pierce', stat: 'dex', range: 6, hands: 2, weight: 2, noise: 3,
     onHit: [{ op: 'push', tiles: 1 }], slots: ['muzzle', 'mag'], tier: 2, price: 120, factions: ['neutralVillages', 'pirates', 'agrozone'],
-    desc: 'Попадание отталкивает на 1 клетку.', needs: 'onHit' }),
+    desc: 'Попадание отталкивает на 1 клетку.' }),
   w({ id: 'mosin', name: 'Трёхлинейка', wtype: 'rifle', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 18, hands: 2, weight: 2, noise: 3,
     props: { ap: 1 }, slots: ['optic', 'muzzle'], tier: 2, price: 150, factions: ['tinBrotherhood', 'renegades'],
-    desc: 'Сто лет, ни одного сбоя. Бронебойность 1.', needs: 'ap' }),
+    desc: 'Сто лет, ни одного сбоя. Бронебойность 1.' }),
   w({ id: 'sniper-rifle', name: 'Снайперская винтовка', wtype: 'rifle', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 20, hands: 2, weight: 2, noise: 3,
     grants: [ability({ id: 'item-aimed-shot', name: 'Прицельный выстрел', range: 'weapon', usesPerBattle: 2,
       effects: [{ op: 'weapon', hit: 2 }], desc: 'Выстрел с +2 к атаке.' })],
@@ -250,43 +250,43 @@ const LIST = [
   // --- Автоматы
   w({ id: 'rusty-ak', name: 'Автомат «Ржавый Калаш»', wtype: 'assault', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 12, hands: 2, weight: 2, noise: 3,
     rof: 3, recoil: 3, slots: GUN_SLOTS, tier: 2, price: 160, factions: ['renegades', 'scavengers', 'pirates', 'neutralVillages'],
-    desc: 'Закопан в 2004-м, выкопан в 2014-м, стреляет до сих пор. Очередь 3, отдача 3.', needs: 'burst' }),
+    desc: 'Закопан в 2004-м, выкопан в 2014-м, стреляет до сих пор. Очередь 3, отдача 3.' }),
   w({ id: 'av15', name: 'Автомат Военпрома АВ-15', wtype: 'assault', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 13, hands: 2, weight: 2, noise: 3,
-    rof: 3, recoil: 2, slots: GUN_SLOTS, tier: 3, price: 300, factions: ['warprom'], desc: 'Серийный, по стандарту. Очередь 3, отдача 2.', needs: 'burst' }),
+    rof: 3, recoil: 2, slots: GUN_SLOTS, tier: 3, price: 300, factions: ['warprom'], desc: 'Серийный, по стандарту. Очередь 3, отдача 2.' }),
   w({ id: 'ukaz-rifle', name: 'Штурмовая винтовка «Указ»', wtype: 'assault', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 13, hands: 2, weight: 2, noise: 2, hit: 1,
-    rof: 2, recoil: 2, slots: GUN_SLOTS, tier: 4, price: 450, factions: ['aiParty'], desc: 'Буллпап Партии. На прикладе выбит указ № 1.', needs: 'burst' }),
+    rof: 2, recoil: 2, slots: GUN_SLOTS, tier: 4, price: 450, factions: ['aiParty'], desc: 'Буллпап Партии. На прикладе выбит указ № 1.' }),
 
   // --- Пулемёты
   w({ id: 'conveyor-mg', name: 'Пулемёт из ленты конвейера', wtype: 'mg', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 10, hands: 2, weight: 3, noise: 3,
     rof: 4, recoil: 3, req: { str: 14 }, slots: ['mag'], tier: 3, price: 260, factions: ['scavengers', 'mechanids'],
-    desc: 'Очередь 4, отдача 3. Тяжёлый: при СИЛ < 14 — помеха.', needs: 'burst' }),
+    desc: 'Очередь 4, отдача 3. Тяжёлый: при СИЛ < 14 — помеха.' }),
   w({ id: 'kosilshik', name: 'Пулемёт «Косильщик»', wtype: 'mg', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 14, hands: 2, weight: 3, noise: 3,
     rof: 5, recoil: 2, req: { str: 15 }, slots: GUN_SLOTS, tier: 5, price: 650, factions: ['warprom'],
-    desc: 'Тяжёлое оружие Военпрома. Очередь 5, отдача 2.', needs: 'burst' }),
+    desc: 'Тяжёлое оружие Военпрома. Очередь 5, отдача 2.' }),
 
   // --- Гранатомёты (с траекторией)
   w({ id: 'potato-cannon', name: 'Картофелемёт', wtype: 'launcher', dice: '1d8', dmgType: 'blunt', stat: 'dex', range: 8, hands: 2, weight: 2, noise: 2,
     props: { arc: true }, onCrit: [{ op: 'status', id: 'prone', turns: 1 }], tier: 1, price: 40, factions: ['agrozone', 'neutralVillages'],
-    desc: 'Навесом через укрытие. Боеприпас — урожай Агрозоны. Кринжово, но больно.', needs: 'arc' }),
+    desc: 'Навесом через укрытие. Боеприпас — урожай Агрозоны. Кринжово, но больно.' }),
   w({ id: 'rpg-tube', name: 'Труба-гранатомёт', wtype: 'launcher', dice: '2d6', dmgType: 'fire', stat: 'dex', range: 12, hands: 2, weight: 3, noise: 3,
     props: { arc: true, area: { shape: 'radius', size: 1 }, charges: 2 }, tier: 3, price: 500, factions: ['warprom', 'renegades'],
-    desc: '2 выстрела за бой. Взрыв радиусом 1 (спас ЛВК — половина).', needs: 'arc, area, charges' }),
+    desc: '2 выстрела за бой. Взрыв радиусом 1 (спас ЛВК — половина).' }),
   w({ id: 'drum-launcher', name: 'Барабанный гранатомёт', wtype: 'launcher', dice: '2d4', dmgType: 'fire', stat: 'dex', range: 10, hands: 2, weight: 3, noise: 3,
     props: { arc: true, area: { shape: 'radius', size: 1 }, charges: 4 }, tier: 4, price: 700, factions: ['warprom', 'pirates'],
-    desc: '4 выстрела за бой, радиус 1.', needs: 'arc, area, charges' }),
+    desc: '4 выстрела за бой, радиус 1.' }),
 
   // --- Арбалеты
   w({ id: 'spring-crossbow', name: 'Арбалет на рессоре', wtype: 'crossbow', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 12, hands: 2, weight: 2, noise: 0,
     slots: ['optic'], tier: 2, price: 90, factions: ['tinBrotherhood', 'neutralVillages'], desc: 'Бесшумный. Без электроники — Братство довольно.' }),
   w({ id: 'rebar-crossbow', name: 'Арматурный самострел', wtype: 'crossbow', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 10, hands: 2, weight: 2, noise: 0,
-    props: { ap: 1 }, tier: 1, price: 70, factions: ['scavengers', 'renegades'], desc: 'Болт — обрезок арматуры. Бронебойность 1.', needs: 'ap' }),
+    props: { ap: 1 }, tier: 1, price: 70, factions: ['scavengers', 'renegades'], desc: 'Болт — обрезок арматуры. Бронебойность 1.' }),
 
   // --- Луки
   w({ id: 'ski-bow', name: 'Блочный лук из лыж', wtype: 'bow', dice: '1d8', dmgType: 'pierce', stat: 'dex', range: 14, hands: 2, weight: 1, noise: 0,
     tier: 1, price: 80, factions: ['mutantsBeast', 'neutralVillages'], desc: 'Блоки — от велосипеда, тетива — трос.' }),
   w({ id: 'thorn-bow', name: 'Живой лук-шиполист', wtype: 'bow', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 12, hands: 2, weight: 1, noise: 0,
     onHit: [{ op: 'status', id: 'poison', turns: 1 }], tier: 3, price: 180, factions: ['mutantsPlant'],
-    desc: 'Растёт у мутантов-Р. Стрелы-шипы отравляют на 1 ход. Поливать.', needs: 'onHit' }),
+    desc: 'Растёт у мутантов-Р. Стрелы-шипы отравляют на 1 ход. Поливать.' }),
 
   // --- Метание
   w({ id: 'throwing-knives', name: 'Связка метательных ножей', wtype: 'throwing', dice: '1d4', dmgType: 'pierce', stat: 'dex', range: 5, noise: 0,
@@ -301,47 +301,47 @@ const LIST = [
   // --- Болтерное
   w({ id: 'kremlin-bolter', name: 'Болтер «Молот Кремля»', wtype: 'bolter', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 10, hands: 2, weight: 3, noise: 3,
     rof: 2, recoil: 3, req: { str: 14 }, props: { extra: { dice: '1d4', dmgType: 'fire' } }, slots: ['optic', 'mag'], tier: 5, price: 950, factions: ['warprom'],
-    desc: 'Реактивные болты: +1d4 огня с каждого попадания. Очередь 2, отдача 3.', needs: 'burst, extra' }),
+    desc: 'Реактивные болты: +1d4 огня с каждого попадания. Очередь 2, отдача 3.' }),
 
   // ================================================================ Особое
   // --- Плазма (перегрев: натуральная 1 — 1d6 огня стрелку)
   w({ id: 'plasma-pistol', name: 'Плазменный пистолет', wtype: 'plasma', group: 'special', dice: '1d10', dmgType: 'energy', stat: 'dex', range: 8, noise: 2,
     props: { enr: 1, overheat: '1d6' }, onCrit: [{ op: 'status', id: 'burn', turns: 2 }], slots: ENERGY_SLOTS, tier: 4, price: 700, factions: ['aiParty'],
-    desc: '1 ЭНР за выстрел. Крит — горение. Натуральная 1 — перегрев, 1d6 огня в руку.', needs: 'enr, overheat' }),
+    desc: '1 ЭНР за выстрел. Крит — горение. Натуральная 1 — перегрев, 1d6 огня в руку.' }),
   w({ id: 'plasma-rifle', name: 'Плазменная винтовка', wtype: 'plasma', group: 'special', dice: '2d6', dmgType: 'energy', stat: 'dex', range: 12, hands: 2, weight: 2, noise: 2,
     props: { enr: 2, overheat: '2d6' }, onCrit: [{ op: 'status', id: 'burn', turns: 2 }], slots: ENERGY_SLOTS, tier: 5, price: 1200, factions: ['aiParty'],
-    desc: '2 ЭНР за выстрел. Перегрев — 2d6 огня стрелку.', needs: 'enr, overheat' }),
+    desc: '2 ЭНР за выстрел. Перегрев — 2d6 огня стрелку.' }),
   // --- Лазер
   w({ id: 'laser-pistol', name: 'Лазерный пистолет «Луч»', wtype: 'laser', group: 'special', dice: '1d6', dmgType: 'energy', stat: 'dex', range: 12, noise: 0, hit: 1,
-    props: { enr: 1 }, slots: ENERGY_SLOTS, tier: 3, price: 320, factions: ['aiParty', 'pirates'], desc: 'Бесшумный, точный (+1). 1 ЭНР за выстрел.', needs: 'enr' }),
+    props: { enr: 1 }, slots: ENERGY_SLOTS, tier: 3, price: 320, factions: ['aiParty', 'pirates'], desc: 'Бесшумный, точный (+1). 1 ЭНР за выстрел.' }),
   w({ id: 'laser-rifle', name: 'Лазерная винтовка', wtype: 'laser', group: 'special', dice: '1d8', dmgType: 'energy', stat: 'dex', range: 16, hands: 2, weight: 2, noise: 0, hit: 1,
-    rof: 2, recoil: 1, props: { enr: 1 }, slots: ENERGY_SLOTS, tier: 4, price: 620, factions: ['aiParty'], desc: 'Очередь 2 с отдачей 1. 1 ЭНР за очередь.', needs: 'enr, burst' }),
+    rof: 2, recoil: 1, props: { enr: 1 }, slots: ENERGY_SLOTS, tier: 4, price: 620, factions: ['aiParty'], desc: 'Очередь 2 с отдачей 1. 1 ЭНР за очередь.' }),
   // --- Мельта
   w({ id: 'melta-cutter', name: 'Мельта-резак', wtype: 'melta', group: 'special', dice: '2d8', dmgType: 'fire', stat: 'dex', range: 3, hands: 2, weight: 3, noise: 2,
     req: { str: 12 }, props: { ap: 3, enr: 3 }, tier: 5, price: 1100, factions: ['mechanids', 'warprom'],
-    desc: 'Промышленный резак механидов. 3 клетки, бронебойность 3, 3 ЭНР. Против мехов — лучший друг.', needs: 'ap, enr' }),
+    desc: 'Промышленный резак механидов. 3 клетки, бронебойность 3, 3 ЭНР. Против мехов — лучший друг.' }),
   // --- Энерго
   w({ id: 'energy-pistol', name: 'Энергопистолет', wtype: 'energy', group: 'special', dice: '1d6', dmgType: 'energy', stat: 'dex', range: 8, noise: 1,
     slots: ENERGY_SLOTS, tier: 2, price: 200, factions: ['pirates', 'aiParty'], desc: 'Краденый у Партии, перепрошит пиратами. Сам подзаряжается.' }),
   w({ id: 'arc-thrower', name: 'Дуговой разрядник', wtype: 'energy', group: 'special', dice: '1d8', dmgType: 'electric', stat: 'int', range: 5, hands: 2, weight: 2, noise: 2,
     props: { enr: 1, area: { shape: 'line', size: 5 } }, tier: 3, price: 420, factions: ['tekhonki', 'mechanids'],
-    desc: 'Молния по линии 5 клеток (спас ЛВК — половина). Стреляет ИНТ. 1 ЭНР.', needs: 'enr, area' }),
+    desc: 'Молния по линии 5 клеток (спас ЛВК — половина). Стреляет ИНТ. 1 ЭНР.' }),
   // --- Прокси-оружие техоньков (кустарщина; прокси: ×1.5 по механическим, ×0.5 по живым, не критует)
   w({ id: 'proxy-sling', name: 'Прокси-праща', wtype: 'proxy', group: 'special', dice: '1d8', dmgType: 'proxy', stat: 'int', range: 8, noise: 1,
     tier: 1, price: 90, factions: ['tekhonki'], desc: 'Камень, обмотанный проводом с «молитвой». Для машин — смерть, для людей — синяк.' }),
   w({ id: 'proxy-wrench', name: 'Прокси-ключ с катушкой', wtype: 'proxy', group: 'special', dice: '1d10', dmgType: 'proxy', stat: 'str', range: 1, weight: 2,
     slots: ['core'], tier: 2, price: 160, factions: ['tekhonki'], desc: 'Освящённый ключ, но с катушкой. Откручивает роботам души.' }),
   w({ id: 'coil-staff', name: 'Посох-катушка', wtype: 'proxy', group: 'special', dice: '2d6', dmgType: 'proxy', stat: 'int', range: 6, hands: 2, weight: 2, noise: 2,
-    props: { enr: 1 }, slots: ['core'], tier: 4, price: 480, factions: ['tekhonki'], desc: 'Жезл ритуальщицы Искры. «Почему взрывается — не спрашивай».', needs: 'enr' }),
+    props: { enr: 1 }, slots: ['core'], tier: 4, price: 480, factions: ['tekhonki'], desc: 'Жезл ритуальщицы Искры. «Почему взрывается — не спрашивай».' }),
   // --- Кибер-клинки Судьи (стигма: братство и техоньки узнают оружие культа)
   w({ id: 'cyber-blade', name: 'Кибер-клинок', wtype: 'cyberblade', group: 'special', dice: '1d6', dmgType: 'cyber', stat: 'dex', range: 1, noise: 0,
     props: { stigma: { tinBrotherhood: -5, tekhonki: -5 } }, slots: ['edge'], tier: 2, price: 280, factions: ['cult'],
-    desc: 'Клинок скрилета. Шепчет. Братство и техоньки косятся (−5 к репутации, пока на виду).', needs: 'stigma' }),
+    desc: 'Клинок скрилета. Шепчет. Братство и техоньки косятся (−5 к репутации, пока на виду).' }),
   w({ id: 'verdict-scythe', name: 'Коса приговора', wtype: 'cyberblade', group: 'special', dice: '2d6', dmgType: 'cyber', stat: 'str', range: 1, hands: 2, weight: 2, noise: 0,
     props: { reach: true, stigma: { tinBrotherhood: -10, tekhonki: -10 } },
     grants: [ability({ id: 'item-soul-reap', name: 'Жатва души', range: 'weapon', usesPerBattle: 1,
       effects: [{ op: 'drain', dice: '1d8', dmgType: 'cyber', to: 'hp', ratio: 0.5 }], desc: '1d8 кибер, лечит на половину нанесённого.' })],
-    tier: 5, price: 900, factions: ['cult'], desc: 'Оружие палачей Судьи.', needs: 'reach, stigma' }),
+    tier: 5, price: 900, factions: ['cult'], desc: 'Оружие палачей Судьи.' }),
   // --- Кринж-инструменты (урон по МРЛ)
   w({ id: 'mic-cord', name: 'Микрофон на шнуре', wtype: 'cringe', group: 'special', dice: '1d6', dmgType: 'blunt', stat: 'dex', range: 1,
     tier: 1, price: 30, factions: ['neutralVillages', 'cringegons'], desc: 'Стартовое оружие Рэпера. Раскрутил — и в лоб.' }),
@@ -362,7 +362,7 @@ const LIST = [
     props: { enr: 1 },
     grants: [ability({ id: 'item-boombox-hype', name: 'Качаем!', action: 'bonus', range: 0, target: 'ally', area: { shape: 'radius', size: 3 },
       roll: 'auto', usesPerBattle: 1, effects: [{ op: 'status', id: 'inspired', turns: 2 }], desc: 'Союзники в радиусе 3: вдохновение.' })],
-    tier: 3, price: 300, factions: ['pirates', 'cringegons'], desc: 'Питается от ЭНР и от зависти соседей.', needs: 'enr' }),
+    tier: 3, price: 300, factions: ['pirates', 'cringegons'], desc: 'Питается от ЭНР и от зависти соседей.' }),
   w({ id: 'electro-balalaika', name: 'Электробалалайка', wtype: 'cringe', group: 'special', dice: '1d8', dmgType: 'cringe', stat: 'cha', range: 6, noise: 3,
     onCrit: [{ op: 'status', id: 'cringed', turns: 2 }], slots: ['core'], tier: 4, price: 380, factions: ['tekhonki', 'cringegons'],
     desc: 'Три струны, сто децибел. Крит — кринж-эффект.' }),
@@ -371,7 +371,7 @@ const LIST = [
   w({ id: 'lis-2', name: 'Лис-2 (система залпового огня)', wtype: 'launcher', dice: '3d6', dmgType: 'fire', stat: 'dex', range: 14, hands: 2, weight: 3, noise: 3,
     quality: 'relic', unique: true, req: { str: 15 }, props: { arc: true, area: { shape: 'radius', size: 2 }, charges: 2 },
     tier: 5, price: 0, factions: [],
-    desc: 'Переносная система залпового огня проекта «Лис»: 2 залпа за бой, радиус 2. Спарена с мехом Лис-1.', needs: 'arc, area, charges' }),
+    desc: 'Переносная система залпового огня проекта «Лис»: 2 залпа за бой, радиус 2. Спарена с мехом Лис-1.' }),
 
   // ================================================================ Реликты (по лору, по одному на мир)
   w({ id: 'kuksius-spear', name: 'Копьё Куксиуса Первого', wtype: 'polearm', dice: '1d10', dmgType: 'pierce', stat: 'str', range: 1, hands: 2, weight: 2, hit: 1,
@@ -381,21 +381,21 @@ const LIST = [
       desc: 'Союзники в радиусе 4: +1 к атаке на 3 хода и вдохновение.' })],
     slots: MELEE_SLOTS, tier: 4, price: 0, factions: ['renegades'],
     desc: '«Один флаг. Много народов. Одно копьё». Пропало из Хатаб-Сити. Отступники отдадут за него что угодно.',
-    canon: 'lore/faction-stances.md', needs: 'reach' }),
+    canon: 'lore/faction-stances.md' }),
   w({ id: 'judge-gavel', name: 'Молоток Судьи', wtype: 'hammer', dice: '1d8', dmgType: 'cyber', stat: 'str', range: 1,
     quality: 'relic', unique: true, props: { stigma: { tinBrotherhood: -15, tekhonki: -15 } },
     grants: [ability({ id: 'item-gavel-verdict', name: 'Встать, суд идёт', range: 6, roll: 'save', save: 'wil', usesPerBattle: 1,
       effects: [{ op: 'status', id: 'stun', turns: 1 }], desc: 'Оглушение на 1 ход (спас ТВД).' })],
-    tier: 5, price: 0, factions: ['cult'], desc: 'Трофей с Кибер-Жреца. Каждый удар — приговор. Каждый приговор — его.', needs: 'stigma' }),
+    tier: 5, price: 0, factions: ['cult'], desc: 'Трофей с Кибер-Жреца. Каждый удар — приговор. Каждый приговор — его.' }),
   w({ id: 'great-mech-fist', name: 'Кулак Великого Меха', wtype: 'fist', dice: '2d6', dmgType: 'blunt', stat: 'str', range: 1, weight: 3, noise: 3,
     quality: 'relic', unique: true, req: { str: 16 }, props: { ap: 2 }, onCrit: [{ op: 'push', tiles: 2 }],
-    tier: 5, price: 0, factions: [], desc: 'Оторван у Великого Меха. Бронебойность 2, крит — отбрасывает на 2.', needs: 'ap' }),
+    tier: 5, price: 0, factions: [], desc: 'Оторван у Великого Меха. Бронебойность 2, крит — отбрасывает на 2.' }),
   w({ id: 'ice-ring-gloves', name: 'Перчатки Ледяного ринга', wtype: 'fist', dice: '1d8', dmgType: 'blunt', stat: 'str', range: 1, noise: 0,
     quality: 'relic', unique: true, onHit: [{ op: 'status', id: 'slow', turns: 1 }],
-    tier: 4, price: 0, factions: [], desc: 'Пояс чемпиона забыли, перчатки — нет. Каждое попадание замедляет.', needs: 'onHit' }),
+    tier: 4, price: 0, factions: [], desc: 'Пояс чемпиона забыли, перчатки — нет. Каждое попадание замедляет.' }),
   w({ id: 'sputnik-laser', name: 'Лазер со Спутника', wtype: 'laser', group: 'special', dice: '2d6', dmgType: 'energy', stat: 'dex', range: 20, hands: 2, weight: 3, noise: 0, hit: 1,
     quality: 'relic', unique: true, props: { enr: 2 }, slots: ['optic'],
-    tier: 5, price: 0, factions: [], desc: 'Снят с упавшего спутника. Луч видно из Кремля.', needs: 'enr' }),
+    tier: 5, price: 0, factions: [], desc: 'Снят с упавшего спутника. Луч видно из Кремля.' }),
   w({ id: 'babka-ladle', name: 'Половник Бабки', wtype: 'hammer', dice: '1d6', dmgType: 'blunt', stat: 'str', range: 1,
     quality: 'relic', unique: true,
     grants: [ability({ id: 'item-babka-soup', name: 'Поешь, худой какой', action: 'bonus', range: 1, target: 'ally', roll: 'auto', usesPerBattle: 2,

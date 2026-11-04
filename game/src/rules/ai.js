@@ -9,6 +9,7 @@ import {
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
   abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS, itemAbility,
+  isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop,
 } from './combat.js';
 
 const STATUS_VALUE = {
@@ -51,10 +52,49 @@ function dmgValue(b, t, amt, dmgType) {
   return v;
 }
 
+/** Average extra damage of weapon.extra on t (v3.1). */
+function extraAvg(b, w, t) {
+  let v = 0;
+  for (const ex of w.extra || []) if (ex && ex.dice && (!ex.only || tagOk(t, ex.only))) v += dmgValue(b, t, avgDice(ex.dice), ex.dmgType || w.dmgType);
+  return v;
+}
+
+/** Scarce weapon shots (charges / ENR) cost a little value. */
+function weaponShotCost(u) {
+  const w = u.weapon;
+  if (!w) return 0;
+  return (w.charges != null ? 1.5 : 0) + (w.enr && u.maxEnr > 0 ? w.enr * 0.3 : 0);
+}
+
+/** Area weapon (v3.1): sum over targets of the save-gated damage. */
+function areaWeaponEV(b, u, center) {
+  const w = u.weapon;
+  const dc = weaponDc(b, u);
+  let v = 0;
+  for (const t of abilityTargets(b, u, weaponAreaAbility(u), center)) {
+    if (!isAlive(t)) continue;
+    const base = avgDice(w.dice) + weaponDamageBonus(b, u, t);
+    const pf = saveFailChance(b, t, w.area.save || 'dex', dc);
+    v += dmgValue(b, t, base, w.dmgType) * (pf + (1 - pf) * 0.5) + extraAvg(b, w, t) * pf;
+  }
+  return v - weaponShotCost(u);
+}
+
+/** Thrown weapon: ranged attack, then fists until picked up (penalty unless it likely kills). */
+const THROW_LOSS = 3;
+function throwEV(b, u, t) {
+  const w = u.weapon;
+  const odds = attackOdds(b, u, t, weaponAttackBonus(b, u), false, true);
+  const base = avgDice(w.dice) + weaponDamageBonus(b, u, t);
+  const v = odds.chance * (dmgValue(b, t, base, w.dmgType) + extraAvg(b, w, t));
+  const kills = base >= t.hp + (t.shield ? t.shield.value : 0);
+  return v - (kills ? 0.5 : THROW_LOSS);
+}
+
 function weaponEV(b, u, t, op) {
   const w = u.weapon;
   if (!w) return 0;
-  const melee = weaponRange(u) <= 1;
+  const melee = isMeleeWeapon(u);
   const odds = attackOdds(b, u, t, weaponAttackBonus(b, u) + ((op && op.hit) || 0), melee, true);
   let extraWD = 0;
   for (const s of u.statuses) extraWD += statusDef(b, s.id)?.mods?.extraWeaponDice || 0;
@@ -63,21 +103,23 @@ function weaponEV(b, u, t, op) {
   let v = odds.chance * dmgValue(b, t, base, w.dmgType);
   if (w.dmgType !== 'proxy') v += odds.critChance * dmgValue(b, t, avgDice(w.dice), w.dmgType) * 0.8;
   if (op && op.extraDice) v += odds.chance * dmgValue(b, t, avgDice(op.extraDice), op.extraType || w.dmgType);
+  if (w.extra) v += odds.chance * extraAvg(b, w, t);
+  if (!op) v -= weaponShotCost(u);
   return { v, chance: odds.chance };
 }
 
 /** «Очередь»: shot i hits at need + recoil × i (same roll mode). */
 function burstEV(b, u, t) {
   const w = u.weapon;
-  if (!w || !((w.rof || 1) > 1)) return 0;
-  const melee = weaponRange(u) <= 1;
+  if (!w || !((w.rof || 1) > 1) || w.area) return 0;
+  const melee = isMeleeWeapon(u);
   const odds = attackOdds(b, u, t, weaponAttackBonus(b, u), melee, true);
   const one = weaponEV(b, u, t, null);
   if (one.chance <= 0) return 0;
-  const perHit = one.v / one.chance;
+  const perHit = (one.v + weaponShotCost(u)) / one.chance;
   let v = 0;
   for (let i = 0; i < w.rof; i++) v += chanceD20(odds.need + (w.recoil || 0) * i, odds.mode) * perHit;
-  return v;
+  return v - weaponShotCost(u);
 }
 
 /** Scarcity: using an item costs a bit of value so AI keeps them for when they matter. */
@@ -147,7 +189,8 @@ export function evalAbility(b, u, a, spec) {
     }
     let gate = 1;
     for (const op of effects) {
-      if (op.self || op.op === 'summon' || op.op === 'extraAction' || op.op === 'move') continue;
+      if (op.self || op.op === 'summon' || op.op === 'extraAction' || op.op === 'move' || op.op === 'zone') continue;
+      if (op.only && op.op !== 'heal' && !tagOk(t, op.only)) continue;
       const p = pass * gate;
       switch (op.op) {
         case 'weapon': {
@@ -205,22 +248,53 @@ export function evalAbility(b, u, a, spec) {
     if (op.op === 'summon') {
       const def = b.data.summons[op.unit] || b.data.enemies[op.unit];
       v += def ? (def.noAttack ? 4 : 6 + (def.hp || 5) * 0.3) : 0;
-    } else if (op.op === 'extraAction') v += 6;
+    } else if (op.op === 'extraAction') {
+      const pen = op.nextTurnPenalty ?? a.nextTurnPenalty;
+      v += 6 - (pen ? 5 * (typeof pen === 'number' ? pen : (pen.actions || 0) + (pen.bonus || 0) * 0.4) : 0);
+    }
     else if (op.self && op.op === 'buff') v += (BUFF_WEIGHT[op.stat] ?? 0.4) * (op.value || 0) * Math.min(op.turns || 1, 3);
     else if (op.self && op.op === 'shield') v += (op.value ?? avgDice(op.dice)) * 0.5;
   }
-  if (!targets.length && !effects.some((e) => e.op === 'summon' || e.op === 'extraAction')) return 0;
+  const z = zoneOf(a);
+  if (z) v += zoneValue(b, u, a, z, spec);
+  if (!targets.length && !z && !effects.some((e) => e.op === 'summon' || e.op === 'extraAction')) return 0;
   const cost = a.cost || 0;
   v -= cost * 0.3;
   if (cost > u.enr) v -= 8; // overcast risk
   return v;
 }
 
+/**
+ * Smoke zone value: hostile ranged units inside (their shots get disadvantage) minus own ranged units that
+ * would have to shoot into it.
+ */
+function zoneValue(b, u, a, z, spec) {
+  const c = spec && spec.unit && b.byId[spec.unit] ? b.byId[spec.unit] : spec && spec.x != null ? spec : u;
+  const zone = { x: c.x, y: c.y, size: z.size ?? (a.area ? a.area.size || 1 : 1) };
+  const turns = Math.min(z.turns ?? 2, 3);
+  if ((z.kind || 'smoke') !== 'smoke' && !z.rangedDis) return 0;
+  let v = 0;
+  for (const e of b.units) {
+    if (!isStanding(e) || e.noAttack || isMeleeWeapon(e) || !inZone(zone, e.x, e.y)) continue;
+    v += (isHostile(b, u, e) ? 1.5 : -1) * turns;
+  }
+  return v;
+}
+
 export function evalAction(b, u, act) {
   switch (act.type) {
     case 'attack': {
+      if (u.weapon && u.weapon.area) {
+        const t = act.target ? b.byId[act.target] : null;
+        const c = t ? { x: t.x, y: t.y } : act.tile ? { x: act.tile.x, y: act.tile.y } : null;
+        return c ? areaWeaponEV(b, u, c) : 0;
+      }
       const t = b.byId[act.target];
       return t ? weaponEV(b, u, t, null).v : 0;
+    }
+    case 'throw': {
+      const t = b.byId[act.target];
+      return t && u.weapon ? throwEV(b, u, t) : 0;
     }
     case 'ability': {
       const a = u.abilities.find((x) => x.id === act.ability);
@@ -262,10 +336,20 @@ function buildOptions(b, u) {
     for (const e of b.units) {
       if (!isAlive(e) || !isHostile(b, u, e) || e.down) continue;
       if (taunt && taunt !== e) continue;
-      const v = Math.max(weaponEV(b, u, e, null).v, burstEV(b, u, e));
+      const v = u.weapon.area ? areaWeaponEV(b, u, { x: e.x, y: e.y }) : Math.max(weaponEV(b, u, e, null).v, burstEV(b, u, e));
       if (v > 0) list.push({ t: e, v });
     }
-    if (list.length) opts.push({ range: weaponRange(u), noLos: false, ranged: weaponRange(u) > 1, action: true, list: list.sort((x, y) => y.v - x.v) });
+    const arc = !!u.weapon.arc;
+    if (list.length) opts.push({ range: weaponRange(u), noLos: arc, arc, ranged: !isMeleeWeapon(u), action: true, list: list.sort((x, y) => y.v - x.v) });
+    if (u.weapon.thrown) {
+      const tl = [];
+      for (const e of b.units) {
+        if (!isAlive(e) || !isHostile(b, u, e) || e.down || (taunt && taunt !== e)) continue;
+        const v = throwEV(b, u, e);
+        if (v > 0) tl.push({ t: e, v });
+      }
+      if (tl.length) opts.push({ range: u.weapon.thrown, minRange: 2, noLos: false, ranged: true, action: true, list: tl.sort((x, y) => y.v - x.v) });
+    }
   }
   for (const a of u.abilities) {
     if (a.action === 'reaction' || a.target === 'self') continue;
@@ -339,6 +423,7 @@ export function planTile(b, u, opts) {
   // v1.2: ranged attack rolls with an enemy adjacent have disadvantage (~0.55 of the EV); option EVs were
   // computed from the current tile, so rescale relative to it
   const adjNow = enemyAdjacent(b, u);
+  const drop = b.drops.length ? ownDrop(b, u) : null;
   for (const idx of reach.list) {
     const x = idx % g.w, y = (idx / g.w) | 0;
     if (reach.dist[idx] > 0 && !approachOk(b, u, x, y)) continue;
@@ -348,10 +433,10 @@ export function planTile(b, u, opts) {
     for (const o of options) {
       for (const it of o.list) {
         const d = chebyshev(x, y, it.t.x, it.t.y);
-        if (d > o.range || (d === 0)) continue;
+        if (d > o.range || (d === 0) || (o.minRange && d < o.minRange)) continue;
         if (!o.noLos && d > 1 && !lineOfSight(g, x, y, it.t.x, it.t.y)) continue;
         let v = it.v;
-        if (o.ranged && d > 1 && hasCover(g, x, y, it.t.x, it.t.y)) v *= 0.8;
+        if (o.ranged && !o.arc && d > 1 && hasCover(g, x, y, it.t.x, it.t.y)) v *= 0.8;
         if (o.ranged) v *= rangedMul;
         if (o.action) { if (v > potA) potA = v; } else if (v > potB) potB = v;
         break;
@@ -371,12 +456,13 @@ export function planTile(b, u, opts) {
         const d = chebyshev(x, y, e.x, e.y);
         if (d <= 1 && isMeleeUnit(e)) adj++;
         else if (d <= 2) near++;
-        if (!cover && weaponRange(e) > 1 && hasCover(g, e.x, e.y, x, y)) cover = true;
+        if (!cover && !isMeleeWeapon(e) && hasCover(g, e.x, e.y, x, y)) cover = true;
       }
       s -= adj * 4 + near;
       if (cover) s += 1.5;
     }
     if (tileAt(g, x, y) === T_HAZARD) s -= 6;
+    if (drop && x === drop.x && y === drop.y) s += 8; // v3.1: pick the thrown weapon back up
     if (!ignoreOA) s -= oaRisk(b, u, x, y);
     s -= reach.dist[idx] * 0.05;
     const cand = { x, y, score: s, pot };
@@ -413,7 +499,7 @@ export function chooseAction(b, unitId) {
   const legal = getLegalActions(b, unitId, { noMoves: true });
   let best = null, bestBonus = null;
   for (const act of legal) {
-    if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus' && act.type !== 'burst' && act.type !== 'useItem') continue;
+    if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus' && act.type !== 'burst' && act.type !== 'useItem' && act.type !== 'throw') continue;
     const v = evalAction(b, u, act);
     const isBonus = (act.type === 'ability' && u.abilities.find((x) => x.id === act.ability)?.action === 'bonus')
       || (act.type === 'useItem' && b.data.items[act.item]?.action === 'bonus');

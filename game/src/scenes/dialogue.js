@@ -71,7 +71,7 @@ export function createDialogueScene({ title = '', lines, hero = null, portraits 
       const stageY = Math.floor(H / 2) - 120;
       ctx.fillStyle = C['1'];
       ctx.fillRect(0, stageY + 150, W, 2);
-      if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
+      if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls, hero.look), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
       const portrait = portraits?.[cur.who] || PORTRAITS[cur.who];
       if (NPCS[cur.who] && !PORTRAITS[cur.who]) drawPortrait(ctx, cur.who, Math.floor(W / 2) + 120, stageY - 48, 6, { flip: true });
       else if (portrait) drawSprite(ctx, portrait, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });

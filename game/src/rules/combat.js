@@ -51,10 +51,22 @@
 //     'broken', unit.removed = unit.broken = true, leaves the grid, counts as defeated. Overcast at most
 //     OVERCAST_LIMIT (2) times per unit per battle (unit.overcastsUsed). Ranged attack rolls (weapon or ability,
 //     range > 1) have disadvantage while a standing hostile is adjacent to the attacker (enemyAdjacent).
+// 17. v3.1 item properties (schema — equipment.js header). Reach weapons are melee at range 2 (isMeleeWeapon).
+//     ENR / charges are paid per weapon attack (a burst pays once); units with max ENR 0 ignore ENR costs.
+//     Area weapons: attack { target | tile } → save (area.save || 'dex') vs 8 + prof + mod(weapon stat), half on
+//     success, only enemies are hit. Thrown: { type: 'throw', target } at distance 2..thrown, the weapon lands on the
+//     nearest free tile to the target (b.drops), the thrower fights with fists (UNARMED) until it steps on that tile.
+//     Zones (ability/item `zone` or op 'zone'): b.zones, last `turns` rounds (decrement at roundStart); 'smoke' gives
+//     disadvantage to ranged attacks whose line (ends included) touches the zone. `only: tag` on any op skips targets
+//     without the tag ('hybrid' counts as any). onDeath: abilities with trigger 'death' fire from the dead unit's
+//     tile (saves as usual, no action cost) and are never chosen voluntarily. nextTurnPenalty (op extraAction or
+//     ability): next own turn starts with fewer actions. Opiates (item.withdrawal) queue unit.withdrawalPending;
+//     aftermath.js applies it after the battle. Mech armour shield = permanent shield (turns null) at battle start.
 
 import { createRng } from './rng.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
 import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './character.js';
+import { UNARMED } from './equipment.js';
 import {
   parseMap, makeArena, chebyshev, lineOfSight, hasCover, reachable, pathTo, walkLine,
   tileAt, isPassable, inBounds, nearestFree, DIRS8, T_HAZARD, T_EXIT, T_WALL,
@@ -90,7 +102,7 @@ export const STATUS_FALLBACK = {
 };
 
 const MRL_TYPES = { cringe: 1, psychic: 1 };
-const CASTER_OPS = { move: 1, summon: 1, extraAction: 1 };
+const CASTER_OPS = { move: 1, summon: 1, extraAction: 1, zone: 1 };
 const HERO_KINDS = { hero: 1, ally: 1 };
 const DEFAULT_STATUS_DC = 12;
 /** v1.2: overcasts (casting without ENR) per unit per battle. */
@@ -253,7 +265,9 @@ export function getKb(b, u, attacker, ranged) {
 }
 
 export function weaponRange(u) { return u.weapon ? (u.weapon.range || 1) : 1; }
-export const isMeleeUnit = (u) => !!u.weapon && !u.noAttack && weaponRange(u) <= 1;
+/** Melee weapon: range 1 or reach (weapon.melee). */
+export const isMeleeWeapon = (u) => !u.weapon || !!u.weapon.melee || weaponRange(u) <= 1;
+export const isMeleeUnit = (u) => !!u.weapon && !u.noAttack && isMeleeWeapon(u);
 
 export function weaponAttackBonus(b, u) {
   const w = u.weapon;
@@ -295,7 +309,52 @@ export function isHostile(b, a, t) {
   return !!(b.turn && b.turn.unitId === a.id && b.turn.lostControl);
 }
 
-const canUseWeapon = (b, u) => !!u.weapon && !u.noAttack && !modFlag(b, u, 'blockWeapon');
+/** v3.1: ENR, charges and overheat lock of the current weapon. Returns null or a reason. */
+export function weaponBlocked(b, u) {
+  const w = u.weapon;
+  if (!w) return 'noWeapon';
+  if (u.weaponHot) return 'overheat';
+  if (w.charges != null && (u.weaponCharges ?? w.charges) <= 0) return 'charges';
+  if (w.enr && u.maxEnr > 0 && u.enr < w.enr) return 'energy';
+  return null;
+}
+const canUseWeapon = (b, u) => !!u.weapon && !u.noAttack && !modFlag(b, u, 'blockWeapon') && !weaponBlocked(b, u);
+
+/** Pay ENR / one charge for a weapon attack. */
+function payWeapon(b, u) {
+  const w = u.weapon;
+  if (!w) return;
+  if (w.enr && u.maxEnr > 0) {
+    u.enr = Math.max(0, u.enr - w.enr);
+    emit(b, { type: 'weaponEnr', actor: u.id, value: w.enr, enr: u.enr });
+  }
+  if (w.charges != null) {
+    u.weaponCharges = Math.max(0, (u.weaponCharges ?? w.charges) - 1);
+    emit(b, { type: 'weaponCharge', actor: u.id, left: u.weaponCharges });
+  }
+}
+
+/** Overheat after a shot (natural — d20 or null). Returns true if the weapon stops firing. */
+function afterShot(b, u, natural) {
+  const w = u.weapon;
+  const oh = w && w.overheat;
+  if (!oh) return false;
+  if (typeof oh === 'string' || (oh.dice && !oh.shots)) {
+    if (natural !== 1) return false;
+    const dice = typeof oh === 'string' ? oh : oh.dice;
+    emit(b, { type: 'overheat', actor: u.id, dice });
+    dealDamage(b, null, u, rollDice(b.rng, dice), (oh && oh.dmgType) || 'fire');
+    return true;
+  }
+  u.weaponShots = (u.weaponShots || 0) + 1;
+  if (u.weaponShots < oh.shots) return false;
+  u.weaponShots = 0;
+  u.weaponLock = oh.turns ?? 1;
+  u.weaponHot = true;
+  emit(b, { type: 'overheat', actor: u.id, turns: u.weaponLock });
+  if (oh.dice) dealDamage(b, null, u, rollDice(b.rng, oh.dice), oh.dmgType || 'fire');
+  return true;
+}
 
 // ---------------------------------------------------------------- battle setup
 
@@ -309,6 +368,10 @@ function initUnit(u) {
   c.summonTurns = null; c.summoner = null; c.nadlom = false; c.initiative = 0;
   c.overcastsUsed = 0; c.broken = false;
   c.inventory = { ...(u.inventory || {}) };
+  c.weaponCharges = u.weapon && u.weapon.charges != null ? u.weapon.charges : null;
+  c.weaponShots = 0; c.weaponLock = 0; c.weaponHot = false; c.turnPenalty = null; c.withdrawalPending = [];
+  c.deathFired = false;
+  if (u.mechShield > 0) c.shield = { value: u.mechShield, turns: null, fresh: false, mech: true };
   c.phobias = (u.phobias || []).map((p) => ({ ...p, lastRound: -1 }));
   if (c.hp <= 0 && HERO_KINDS[c.kind]) c.down = true;
   return c;
@@ -365,7 +428,7 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
     units: [], byId: {}, order: [], turnIndex: -1, round: 1, turn: null,
     log: log ? [] : null, onEvent, winner: null, occ: new Int32Array(grid.w * grid.h), occVersion: 0,
     summonCount: 0, reactionDepth: 0, statusCache: {}, autoReactions, reachCache: null,
-    traps: [], trapCount: 0,
+    traps: [], trapCount: 0, drops: [], zones: [], zoneCount: 0,
   };
   const spawn = (list, starts, team, kind) => {
     list.forEach((item, i) => {
@@ -383,6 +446,11 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
   spawn(heroes, grid.starts.P, 'heroes', 'hero');
   spawn(allies || mapDef.allies || [], grid.starts.A.length ? grid.starts.A : grid.starts.P, 'heroes', 'ally');
   spawn(enemyList, grid.starts.E, 'enemies', 'enemy');
+  // opiate withdrawal carried over from earlier battles (aftermath.js): status at battle start
+  for (const u of b.units) {
+    const nb = u.withdrawal && u.withdrawal.nextBattle;
+    if (nb && nb.status) applyStatus(b, u, nb.status, nb.turns || 1, null);
+  }
 
   const rolls = b.units.map((u) => {
     const r = d20(b.rng);
@@ -422,6 +490,7 @@ function startNextTurn(b) {
       b.round++;
       for (const u of b.units) u.roundHpLoss = 0;
       emit(b, { type: 'roundStart' });
+      tickZones(b);
     }
     const u = b.byId[b.order[b.turnIndex]];
     if (!u || u.dead || u.removed) continue;
@@ -436,6 +505,15 @@ function beginTurn(b, u) {
   b.turn = { unitId: u.id, move: 0, actions: 1, bonus: 1 + (u.extraBonusActions || 0), disengaged: false, lostControl: false, aiMoves: 0, acted: false };
   b.reachCache = null;
   emit(b, { type: 'turnStart', actor: u.id });
+  u.weaponHot = u.weaponLock > 0;
+  if (u.weaponHot) u.weaponLock--;
+  if (u.turnPenalty) {
+    const p = u.turnPenalty;
+    u.turnPenalty = null;
+    b.turn.actions = Math.max(0, b.turn.actions - (p.actions || 0));
+    b.turn.bonus = Math.max(0, b.turn.bonus - (p.bonus || 0));
+    emit(b, { type: 'turnPenalty', actor: u.id, actions: p.actions || 0, bonus: p.bonus || 0 });
+  }
   if (u.down) {
     u.downTurns++;
     emit(b, { type: 'downTick', actor: u.id, turns: u.downTurns });
@@ -515,7 +593,7 @@ function finishTurn(b, u) {
   decTimed(u.buffs, (s) => emit(b, { type: 'buffEnd', target: u.id, stat: s.stat }));
   if (u.shield) {
     if (u.shield.fresh) u.shield.fresh = false;
-    else if (--u.shield.turns <= 0) { u.shield = null; emit(b, { type: 'shieldEnd', target: u.id }); }
+    else if (u.shield.turns != null && --u.shield.turns <= 0) { u.shield = null; emit(b, { type: 'shieldEnd', target: u.id }); }
   }
   if (u.summonTurns != null) u.summonTurns--;
   if (u.lostControl > 0) {
@@ -569,10 +647,35 @@ export function checkVictory(b) {
 
 function kill(b, u, reason) {
   if (u.dead) return;
+  const x = u.x, y = u.y;
   u.dead = true; u.down = false; u.hp = 0; u.shield = null;
   clearPos(b, u);
   emit(b, { type: 'death', target: u.id, reason });
+  if (!u.deathFired) { u.deathFired = true; deathEffects(b, u, x, y); }
   checkVictory(b);
+}
+
+/** onDeath: abilities with trigger 'death' (or onDeath: true) fire from the death tile. */
+export const isDeathAbility = (a) => !!a && (a.trigger === 'death' || a.onDeath === true);
+function deathEffects(b, u, x, y) {
+  const list = (u.abilities || []).filter(isDeathAbility);
+  if (!list.length || x < 0) return;
+  for (const a of list) {
+    emit(b, { type: 'onDeath', actor: u.id, ability: a.id, x, y });
+    const dc = getDc(b, u, a);
+    const size = a.area ? a.area.size || 1 : 1;
+    const all = a.target === 'any';
+    for (const t of b.units.slice()) {
+      if (!isAlive(t) || t === u || (!all && t.team === u.team)) continue;
+      if (chebyshev(x, y, t.x, t.y) > size || !lineOfSight(b.grid, x, y, t.x, t.y)) continue;
+      let half = false;
+      if (a.roll === 'save' && a.save && rollSave(b, t, a.save, dc, u, a.id)) {
+        if (a.onSave !== 'half') continue;
+        half = true;
+      }
+      for (const op of a.effects || []) if (isAlive(t)) applyOp(b, u, t, op, { half, dc, ability: a });
+    }
+  }
 }
 
 function unsummon(b, u) {
@@ -829,11 +932,12 @@ export function enemyAdjacent(b, att, x = att.x, y = att.y) {
   return false;
 }
 
-function attackMode(b, att, tgt, melee, isWeapon, fx, fy) {
+function attackMode(b, att, tgt, melee, isWeapon, fx = att.x, fy = att.y) {
   const adv = !!modFlag(b, att, 'attackAdv') || !!modFlag(b, att, 'firstAttackAdv') || !!modFlag(b, tgt, 'attackedAdv')
     || (melee && !!modFlag(b, tgt, 'attackedAdvMelee')) || tgt.down;
   const dis = !!modFlag(b, att, 'attackDisadv') || !!modFlag(b, tgt, 'attackedDisadv')
-    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy)) || !!att.armorPenalty;
+    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy)) || !!att.armorPenalty
+    || (!melee && b.zones.length > 0 && smokeBetween(b, fx, fy, tgt.x, tgt.y));
   return { adv, dis };
 }
 
@@ -854,14 +958,15 @@ function attackRoll(b, att, tgt, bonus, melee, isWeapon, opts) {
   const extraDice = isWeapon ? statusMod(b, att, 'extraWeaponDice') : 0;
   const r = d20(b.rng, attackMode(b, att, tgt, melee, isWeapon));
   const total = r.natural + bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att);
-  const kb = getKb(b, tgt, att, !melee) - apReduction(att, tgt, isWeapon) + ((opts && opts.kbPenalty) || 0);
+  const arc = isWeapon && !melee && att.weapon && att.weapon.arc;
+  const kb = getKb(b, tgt, arc ? null : att, !melee) - apReduction(att, tgt, isWeapon) + ((opts && opts.kbPenalty) || 0);
   let crit = r.natural >= Math.min(20, att.critRange || 20);
   const hit = r.natural !== 1 && (crit || total >= kb);
   if (hit && tgt.down) crit = true;
   if (!hit) crit = false;
   emit(b, { type: 'attack', actor: att.id, target: tgt.id, roll: { natural: r.natural, rolls: r.rolls, mode: r.mode, bonus: total - r.natural, total }, kb, hit, crit, melee });
   breakStatuses(b, att, 'attack');
-  return { hit, crit, extraDice };
+  return { hit, crit, extraDice, natural: r.natural };
 }
 
 function attackDmgBonus(b, att, tgt, kind) {
@@ -870,9 +975,9 @@ function attackDmgBonus(b, att, tgt, kind) {
   return v;
 }
 
-function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType) {
+function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType, ranged) {
   const w = att.weapon;
-  const melee = weaponRange(att) <= 1;
+  const melee = !ranged && isMeleeWeapon(att);
   const critDice = crit && w.dmgType !== 'proxy';
   let amt = rollDice(b.rng, w.dice, critDice) + mod(effStat(b, att, w.stat || 'str')) + attackDmgBonus(b, att, tgt, melee ? 'melee' : 'ranged')
     + (w.dmg || 0) + dmgTypeTier(att, w.dmgType);
@@ -886,7 +991,22 @@ function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType) 
     const c = crit && type !== 'proxy';
     dealDamage(b, att, tgt, rollDice(b.rng, extraDice, c), type, { crit: c });
   }
-  if (w.onHit && w.onHit.length && isAlive(tgt)) weaponOnHit(b, att, tgt, w);
+  weaponExtra(b, att, tgt, w, crit, false);
+  if (((w.onHit && w.onHit.length) || (crit && w.onCrit)) && isAlive(tgt)) weaponOnHit(b, att, tgt, w, crit);
+}
+
+/** v3.1 extra damage on a hit: [{ dice, dmgType, only?, cond? }] (half — area weapon save). */
+function weaponExtra(b, att, tgt, w, crit, half) {
+  if (!w.extra) return;
+  for (const ex of w.extra) {
+    if (!isAlive(tgt)) break;
+    if (!ex || !ex.dice || (ex.only && !tagOk(tgt, ex.only)) || (ex.cond && !condMatches(ex.cond, tgt))) continue;
+    const type = ex.dmgType || w.dmgType;
+    const c = crit && type !== 'proxy';
+    let amt = rollDice(b.rng, ex.dice, c);
+    if (half) amt = Math.floor(amt / 2);
+    dealDamage(b, att, tgt, amt, type, { crit: c });
+  }
 }
 
 /** «Тип урона» tier bonus (equipment.js DMG_TYPE_TIER_DMG). */
@@ -895,9 +1015,11 @@ function dmgTypeTier(u, dmgType) {
 }
 
 /** v3 weapon properties on a hit: ops (status with chance / save vs 8 + prof + mod(weapon stat)). */
-function weaponOnHit(b, att, tgt, w) {
+function weaponOnHit(b, att, tgt, w, crit) {
   const dc = 8 + att.prof + mod(effStat(b, att, w.stat || 'str'));
-  for (const op of w.onHit) {
+  const hasCrit = !!(w.onCrit && w.onCrit.length);
+  const list = [...(w.onHit || []).filter((op) => !(hasCrit && op.fromCrit)), ...(crit && hasCrit ? w.onCrit : [])];
+  for (const op of list) {
     if (!isAlive(tgt)) break;
     if (op.chance != null && b.rng() >= op.chance) continue;
     if (op.save && rollSave(b, tgt, op.save, dc, att, 'onHit:' + (w.id || w.name))) continue;
@@ -918,13 +1040,107 @@ function applyThorns(b, att, tgt) {
 /** Full weapon attack (roll + damage). Returns { hit, crit }. */
 function weaponAttack(b, att, tgt, op) {
   if (!att.weapon) return { hit: false, crit: false };
-  const melee = weaponRange(att) <= 1;
+  const melee = isMeleeWeapon(att);
+  payWeapon(b, att);
   const res = attackRoll(b, att, tgt, weaponAttackBonus(b, att) + ((op && op.hit) || 0), melee, true);
   if (res.hit) {
     weaponDamage(b, att, tgt, res.crit, res.extraDice, op && op.extraDice, op && op.extraType);
     if (melee) applyThorns(b, att, tgt);
   }
+  if (res.natural != null && isAlive(att)) afterShot(b, att, res.natural);
   return res;
+}
+
+/** Weapon save DC (area weapons): 8 + prof + mod(weapon stat). */
+export const weaponDc = (b, u) => 8 + u.prof + mod(effStat(b, u, (u.weapon && u.weapon.stat) || 'str'));
+/** Ability-shaped view of an area weapon (targeting via abilityTargets / inArea). */
+export const weaponAreaAbility = (u) => ({ id: 'weapon:area', target: 'tile', area: u.weapon.area, range: weaponRange(u), effects: [] });
+
+/** v3.1 area weapon: everyone hostile in the area saves; damage = weapon dice + mod + bonuses, half on save. */
+function areaWeaponAttack(b, att, center) {
+  const w = att.weapon;
+  payWeapon(b, att);
+  const save = w.area.save || 'dex';
+  const dc = weaponDc(b, att);
+  const targets = abilityTargets(b, att, weaponAreaAbility(att), center);
+  emit(b, { type: 'weaponArea', actor: att.id, x: center.x, y: center.y, shape: w.area.shape, size: w.area.size || 1, targets: targets.map((t) => t.id) });
+  for (const t of targets) {
+    if (!isAlive(t)) continue;
+    const half = rollSave(b, t, save, dc, att, 'weapon:' + (w.id || w.name));
+    let amt = rollDice(b.rng, w.dice) + mod(effStat(b, att, w.stat || 'str')) + attackDmgBonus(b, att, t, 'ranged') + (w.dmg || 0) + dmgTypeTier(att, w.dmgType);
+    if (half) amt = Math.floor(amt / 2);
+    dealDamage(b, att, t, Math.max(0, amt), w.dmgType);
+    weaponExtra(b, att, t, w, false, half);
+    if (!half && w.onHit && w.onHit.length && isAlive(t)) weaponOnHit(b, att, t, w, false);
+  }
+  breakStatuses(b, att, 'attack');
+  if (isAlive(att)) afterShot(b, att, null);
+}
+
+/** v3.1 thrown melee weapon: ranged attack, the weapon drops near the target; fists until picked up. */
+function throwWeapon(b, att, tgt) {
+  const w = att.weapon;
+  payWeapon(b, att);
+  const res = attackRoll(b, att, tgt, weaponAttackBonus(b, att), false, true);
+  if (res.hit) weaponDamage(b, att, tgt, res.crit, res.extraDice, null, null, true);
+  const spot = isAlive(tgt) && tgt.x >= 0 ? nearestFree(b.grid, tgt.x, tgt.y, b.occ) || { x: att.x, y: att.y } : { x: tgt.x, y: tgt.y };
+  const drop = { id: `drop${b.drops.length + 1}`, x: spot.x, y: spot.y, owner: att.id, weapon: w, tier: att.weaponTier, attackBonus: att.attackBonus };
+  b.drops.push(drop);
+  att.weapon = { ...UNARMED };
+  att.weaponTier = 2;
+  if (att.attackBonus != null) att.attackBonus = mod(effStat(b, att, 'str')) + att.prof;
+  emit(b, { type: 'throw', actor: att.id, target: tgt.id, hit: res.hit, drop: drop.id, x: spot.x, y: spot.y, item: w.id || w.name });
+  return res;
+}
+
+/** Own dropped weapon on u's tile → back in hand. */
+function pickUpCheck(b, u) {
+  const i = b.drops.findIndex((d) => d.owner === u.id && d.x === u.x && d.y === u.y);
+  if (i < 0) return;
+  const d = b.drops.splice(i, 1)[0];
+  u.weapon = d.weapon; u.weaponTier = d.tier; u.attackBonus = d.attackBonus;
+  emit(b, { type: 'pickUp', actor: u.id, drop: d.id, item: d.weapon.id || d.weapon.name });
+}
+export const ownDrop = (b, u) => b.drops.find((d) => d.owner === u.id) || null;
+
+// ---------------------------------------------------------------- zones (smoke)
+
+/** Zone spec of an ability: a.zone or an effect { op: 'zone' }. */
+export function zoneOf(a) {
+  if (!a) return null;
+  if (a.zone) return a.zone;
+  return (a.effects || []).find((e) => e.op === 'zone') || null;
+}
+
+function placeZone(b, u, a, center) {
+  const z = zoneOf(a);
+  const zone = {
+    id: `zone${++b.zoneCount}`, kind: z.kind || 'smoke', x: center.x, y: center.y,
+    size: z.size ?? (a.area ? a.area.size || 1 : 1), turns: z.turns ?? 2, owner: u.id, team: u.team,
+    rangedDis: z.rangedDis ?? (z.kind || 'smoke') === 'smoke',
+  };
+  b.zones.push(zone);
+  emit(b, { type: 'zone', actor: u.id, zone: zone.id, kind: zone.kind, x: zone.x, y: zone.y, size: zone.size, turns: zone.turns });
+  return zone;
+}
+
+function tickZones(b) {
+  for (let i = b.zones.length - 1; i >= 0; i--) {
+    const z = b.zones[i];
+    if (--z.turns <= 0) { b.zones.splice(i, 1); emit(b, { type: 'zoneEnd', zone: z.id }); }
+  }
+}
+
+export const inZone = (z, x, y) => chebyshev(z.x, z.y, x, y) <= z.size;
+
+/** Does the line a → t (ends included) touch a smoke zone? */
+export function smokeBetween(b, ax, ay, tx, ty) {
+  for (const z of b.zones) {
+    if (!z.rangedDis) continue;
+    if (inZone(z, ax, ay) || inZone(z, tx, ty)) return true;
+    if (walkLine(ax, ay, tx, ty, (x, y) => inZone(z, x, y))) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------- movement
@@ -989,6 +1205,7 @@ function walk(b, u, path, noProvoke) {
     seg.push({ x: step.x, y: step.y });
     if (tileAt(b.grid, u.x, u.y) === T_HAZARD) { flush(); hazardEnter(b, u); }
     if (b.traps.length && trapAt(b, u.x, u.y, u)) { flush(); trapCheck(b, u); }
+    if (b.drops.length) pickUpCheck(b, u);
   }
   flush();
   return steps;
@@ -1043,6 +1260,7 @@ function moveOp(a) { return a.effects ? a.effects.find((e) => e.op === 'move') :
 /** null if usable now, else a reason string. asReaction — checks reaction instead of action economy. */
 export function abilityUsable(b, u, a, asReaction) {
   if (a.todo) return 'todo';
+  if (isDeathAbility(a)) return 'trigger';
   if (!isStanding(u)) return 'down';
   if (a.usesPerBattle != null && (u.uses[a.id] || 0) >= a.usesPerBattle) return 'uses';
   const cost = a.cost || 0;
@@ -1214,6 +1432,7 @@ export { tagOk };
  */
 export function applyOp(b, caster, t, op, ctx = {}) {
   if (!isAlive(t)) return;
+  if (op.only && op.op !== 'heal' && !tagOk(t, op.only)) { emit(b, { type: 'onlySkip', actor: caster.id, target: t.id, op: op.op, only: op.only }); return; }
   const half = !!ctx.half;
   if (half && op.op !== 'damage' && op.op !== 'drain') return;
   const a = ctx.ability || null;
@@ -1296,8 +1515,16 @@ export function applyOp(b, caster, t, op, ctx = {}) {
       if (b.turn && b.turn.unitId === caster.id) {
         if (op.kind === 'bonus') b.turn.bonus++; else b.turn.actions++;
         emit(b, { type: 'extraAction', actor: caster.id, kind: op.kind || 'action' });
+        const pen = op.nextTurnPenalty ?? (a && a.nextTurnPenalty);
+        if (pen) {
+          const p = typeof pen === 'number' ? { actions: pen } : pen;
+          const cur = caster.turnPenalty || { actions: 0, bonus: 0 };
+          caster.turnPenalty = { actions: (cur.actions || 0) + (p.actions || 0), bonus: (cur.bonus || 0) + (p.bonus || 0) };
+        }
       }
       break;
+    case 'zone':
+      break; // placed once per ability in resolveAbility
     case 'move':
       if (op.random) randomHop(b, t, op.tiles || 1);
       break; // caster moves are handled before the roll in resolveAbility
@@ -1404,7 +1631,7 @@ function partTargets(b, u, primary, part) {
   }
   const tags = part.filterTags || part.tags;
   if (tags) list = list.filter((x) => tags.some((tg) => x.tags.includes(tg)));
-  if (part.filter && part.filter.ranged) list = list.filter((x) => weaponRange(x) > 1);
+  if (part.filter && part.filter.ranged) list = list.filter((x) => !isMeleeWeapon(x));
   return list;
 }
 
@@ -1468,7 +1695,8 @@ function burstAttack(b, att, tgt) {
   const w = att.weapon;
   const n = Math.max(1, w.rof || 1);
   const recoil = w.recoil || 0;
-  const melee = weaponRange(att) <= 1;
+  const melee = isMeleeWeapon(att);
+  payWeapon(b, att);
   emit(b, { type: 'burst', actor: att.id, target: tgt.id, shots: n, recoil });
   let hits = 0, fired = 0;
   for (let i = 0; i < n; i++) {
@@ -1480,6 +1708,7 @@ function burstAttack(b, att, tgt) {
       weaponDamage(b, att, tgt, res.crit, res.extraDice, null, null);
       if (melee) applyThorns(b, att, tgt);
     }
+    if (res.natural != null && isAlive(att) && afterShot(b, att, res.natural)) break;
   }
   emit(b, { type: 'burstEnd', actor: att.id, target: tgt.id, shots: fired, hits });
   return hits;
@@ -1496,6 +1725,7 @@ export function itemAbility(it) {
     range: it.range ?? (it.target === 'self' ? 0 : 1), target: it.target || 'self', area: it.area || null,
     roll: it.roll || 'auto', save: it.save || null, onSave: it.onSave || 'none', usesPerBattle: null,
     effects: it.trap ? [] : (it.effects || []), castStat: it.castStat || 'dex', dc: it.dc ?? null, item: it.id, trap: it.trap || null,
+    zone: it.zone || null, nextTurnPenalty: it.nextTurnPenalty || null,
   };
 }
 
@@ -1545,6 +1775,11 @@ function useItem(b, u, it, spec) {
     return;
   }
   resolveAbility(b, u, itemAbility(it), spec, false);
+  if (it.withdrawal) {
+    const t = (spec.unit && b.byId[spec.unit]) || u;
+    t.withdrawalPending.push({ item: it.id, opiate: it.opiate || 0, ...it.withdrawal });
+    emit(b, { type: 'withdrawalPending', actor: u.id, target: t.id, item: it.id });
+  }
 }
 
 /** null if u can use item id now, else a reason. */
@@ -1570,7 +1805,7 @@ function itemTargetValid(b, u, it, spec) {
 
 /** Is this attack-roll ability melee (no cover, no point-blank disadvantage)? Same rule as attackRoll. */
 function abilityIsMelee(u, a) {
-  return hasOp(a, 'weapon') ? weaponRange(u) <= 1 : abilityRange(u, a) <= 1;
+  return hasOp(a, 'weapon') ? isMeleeWeapon(u) : abilityRange(u, a) <= 1;
 }
 
 /**
@@ -1579,7 +1814,8 @@ function abilityIsMelee(u, a) {
  */
 export function isMeleeAttack(b, u, action) {
   if (!action) return false;
-  if (action.type === 'attack') return weaponRange(u) <= 1;
+  if (action.type === 'attack') return isMeleeWeapon(u);
+  if (action.type === 'throw') return false;
   if (action.type === 'ability') {
     const a = u.abilities.find((x) => x.id === action.ability);
     return !!a && abilityIsMelee(u, a);
@@ -1648,6 +1884,11 @@ function resolveAbility(b, u, a, spec, asReaction) {
       if (!isAlive(t) || !isStanding(u)) break;
     }
     if (ctx.thorns) applyThorns(b, u, t);
+  }
+  if (zoneOf(a)) {
+    const c = isSelfCentered(u, a, spec) ? { x: u.x, y: u.y } : spec && spec.unit && b.byId[spec.unit] ? { x: b.byId[spec.unit].x, y: b.byId[spec.unit].y }
+      : spec && spec.x != null ? { x: spec.x, y: spec.y } : { x: u.x, y: u.y };
+    placeZone(b, u, a, c);
   }
   for (const op of effects) {
     if (op.op === 'summon') spawnSummon(b, u, op.unit, op.turns, spec && spec.x != null ? spec : null, op.side === 'hostileToAll' ? 'chaos' : op.team);
@@ -1724,7 +1965,13 @@ export function getLegalActions(b, unitId, opts) {
       if (canAttack(b, u, e, range)) out.push({ type: 'attack', unit: unitId, target: e.id });
     }
   }
-  if (t.actions > 0 && canUseWeapon(b, u) && (u.weapon.rof || 1) > 1) {
+  if (t.actions > 0 && canUseWeapon(b, u) && u.weapon.thrown) {
+    for (const e of b.units) {
+      if (!isAlive(e) || !isHostile(b, u, e)) continue;
+      if (canThrow(b, u, e)) out.push({ type: 'throw', unit: unitId, target: e.id });
+    }
+  }
+  if (t.actions > 0 && canUseWeapon(b, u) && (u.weapon.rof || 1) > 1 && !u.weapon.area) {
     const range = weaponRange(u);
     for (const e of b.units) {
       if (!isAlive(e) || !isHostile(b, u, e)) continue;
@@ -1751,7 +1998,22 @@ function canAttack(b, u, e, range) {
   const ts = tauntSource(b, u);
   if (ts && ts !== e) return false;
   const d = chebyshev(u.x, u.y, e.x, e.y);
-  return d <= range && (d <= 1 || lineOfSight(b.grid, u.x, u.y, e.x, e.y));
+  return d <= range && (d <= 1 || !!(u.weapon && u.weapon.arc) || lineOfSight(b.grid, u.x, u.y, e.x, e.y));
+}
+
+/** Thrown weapon: distance 2..weapon.thrown, line of sight. */
+function canThrow(b, u, e) {
+  const ts = tauntSource(b, u);
+  if (ts && ts !== e) return false;
+  const d = chebyshev(u.x, u.y, e.x, e.y);
+  return d >= 2 && d <= (u.weapon.thrown || 0) && lineOfSight(b.grid, u.x, u.y, e.x, e.y);
+}
+
+/** Area weapon fired at a tile (no unit needed). */
+function areaTileOk(b, u, x, y) {
+  if (!inBounds(b.grid, x, y) || tileAt(b.grid, x, y) === T_WALL) return false;
+  const d = chebyshev(u.x, u.y, x, y);
+  return d >= 1 && d <= weaponRange(u) && (d <= 1 || !!u.weapon.arc || lineOfSight(b.grid, u.x, u.y, x, y));
 }
 
 /** Candidate target specs for an ability (enumeration for UI/AI). */
@@ -1842,20 +2104,42 @@ export function perform(b, action) {
     }
     case 'attack': {
       if (t.actions <= 0) return fail(b, start, 'noAction');
-      if (!canUseWeapon(b, u)) return fail(b, start, 'noWeapon');
+      if (!canUseWeapon(b, u)) return fail(b, start, weaponBlocked(b, u) || 'noWeapon');
+      if (u.weapon.area && action.tile && !action.target) {
+        if (!areaTileOk(b, u, action.tile.x, action.tile.y)) return fail(b, start, 'outOfRange');
+        t.actions--;
+        t.acted = true;
+        areaWeaponAttack(b, u, { x: action.tile.x, y: action.tile.y });
+        checkVictory(b);
+        break;
+      }
       let tgt = b.byId[action.target];
       if (!tgt || !isAlive(tgt) || !isHostile(b, u, tgt)) return fail(b, start, 'badTarget');
       if (!canAttack(b, u, tgt, weaponRange(u))) return fail(b, start, 'outOfRange');
       t.actions--;
       t.acted = true;
       tgt = hallucinate(b, u, tgt, weaponRange(u));
-      weaponAttack(b, u, tgt, null);
+      if (u.weapon.area) areaWeaponAttack(b, u, { x: tgt.x, y: tgt.y });
+      else weaponAttack(b, u, tgt, null);
+      checkVictory(b);
+      break;
+    }
+    case 'throw': {
+      if (t.actions <= 0) return fail(b, start, 'noAction');
+      if (!canUseWeapon(b, u) || !u.weapon.thrown) return fail(b, start, 'noThrow');
+      let tgt = b.byId[action.target];
+      if (!tgt || !isAlive(tgt) || !isHostile(b, u, tgt)) return fail(b, start, 'badTarget');
+      if (!canThrow(b, u, tgt)) return fail(b, start, 'outOfRange');
+      t.actions--;
+      t.acted = true;
+      tgt = hallucinate(b, u, tgt, u.weapon.thrown);
+      throwWeapon(b, u, tgt);
       checkVictory(b);
       break;
     }
     case 'burst': {
       if (t.actions <= 0) return fail(b, start, 'noAction');
-      if (!canUseWeapon(b, u) || !((u.weapon.rof || 1) > 1)) return fail(b, start, 'noBurst');
+      if (!canUseWeapon(b, u) || !((u.weapon.rof || 1) > 1) || u.weapon.area) return fail(b, start, 'noBurst');
       let tgt = b.byId[action.target];
       if (!tgt || !isAlive(tgt) || !isHostile(b, u, tgt)) return fail(b, start, 'badTarget');
       if (!canAttack(b, u, tgt, weaponRange(u))) return fail(b, start, 'outOfRange');
@@ -1930,7 +2214,7 @@ export function damageMultiplier(b, tgt, dmgType) {
 /** Flat damage bonus of a weapon hit (stat mod + passives + buffs + marks on target). */
 export function weaponDamageBonus(b, att, tgt) {
   if (!att.weapon) return 0;
-  return mod(effStat(b, att, att.weapon.stat || 'str')) + attackDmgBonus(b, att, tgt, weaponRange(att) <= 1 ? 'melee' : 'ranged')
+  return mod(effStat(b, att, att.weapon.stat || 'str')) + attackDmgBonus(b, att, tgt, isMeleeWeapon(att) ? 'melee' : 'ranged')
     + (att.weapon.dmg || 0) + dmgTypeTier(att, att.weapon.dmgType);
 }
 export function spellDamageBonus(b, att, tgt) { return attackDmgBonus(b, att, tgt, 'spell'); }
@@ -1949,5 +2233,7 @@ export function unitView(b, u) {
     statuses: u.statuses.map((s) => ({ id: s.id, turns: s.turns, value: s.value })),
     buffs: u.buffs.map((s) => ({ stat: s.stat, value: s.value, turns: s.turns })),
     down: u.down, dead: u.dead, nadlom: u.nadlom, lostControl: u.lostControl > 0,
+    weaponCharges: u.weaponCharges, weaponHot: !!u.weaponHot, weaponBlocked: u.weapon ? weaponBlocked(b, u) : null,
+    mechShield: !!(u.shield && u.shield.mech),
   };
 }

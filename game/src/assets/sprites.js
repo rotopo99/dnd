@@ -1243,10 +1243,27 @@ export const SUMMON_IDS = ['drone', 'turret', 'beast-wolf', 'cyber-demon', 'gang
 // ---------------------------------------------------------------------------
 // Id helpers
 // ---------------------------------------------------------------------------
-export function heroSpriteIds(raceId, classId) {
+export function heroSpriteIds(raceId, classId, look = null) {
   const ids = [SPRITES[`race-${raceId}`] ? `race-${raceId}` : 'race-human'];
-  if (classId && SPRITES[`class-${classId}`]) ids.push(`class-${classId}`);
+  if (classId && SPRITES[`class-${classId}`]) ids.push(look ? recolorSprite(`class-${classId}`, look) : `class-${classId}`);
   return ids;
+}
+
+/**
+ * Clothes colour variant (flexible creation, `hero.look` = palette key): the class layer with its most common
+ * colour (outline '0' excluded) swapped for `key`. Registered once as SPRITES['<id>@<key>'].
+ */
+export function recolorSprite(baseId, key) {
+  const d = SPRITES[baseId];
+  if (!d || !PALETTE_KEYS.includes(key)) return baseId;
+  const id = `${baseId}@${key}`;
+  if (!SPRITES[id]) {
+    const n = {};
+    for (const rows of d.frames) for (const r of rows) for (const ch of r) if (ch !== '.' && ch !== '0') n[ch] = (n[ch] || 0) + 1;
+    const main = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
+    SPRITES[id] = { ...d, frames: d.frames.map((rows) => rows.map((r) => (main ? r.split(main).join(key) : r))) };
+  }
+  return id;
 }
 
 export function enemySpriteIds(enemyId) {

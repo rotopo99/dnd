@@ -60,7 +60,7 @@ const LIST = [
   a({ id: 'quilted-jacket', name: 'Ватник', atype: 'cloth', kb: 1, tier: 1, price: 10, factions: ['neutralVillages', 'agrozone', 'renegades'],
     desc: 'Греет, держит нож. Иногда.' }),
   a({ id: 'cult-robe', name: 'Ряса культиста', atype: 'cloth', kb: 1, tier: 1, price: 20, factions: ['cult'],
-    props: { stigma: { tinBrotherhood: -5 } }, desc: 'На спине — QR-код «Суд идёт». Братство не любит.', needs: 'stigma' }),
+    props: { stigma: { tinBrotherhood: -5 } }, desc: 'На спине — QR-код «Суд идёт». Братство не любит.' }),
   a({ id: 'hazmat-suit', name: 'Химзащита ОЗК', atype: 'cloth', kb: 1, stealth: true, noise: 1, resist: { toxin: 'resist' },
     tier: 2, price: 80, factions: ['agrozone', 'mutantsPlant', 'scavengers'], desc: 'Шуршит на всю пустошь, зато споры мимо.' }),
   a({ id: 'wire-mantle', name: 'Мантия из проводов', atype: 'cloth', kb: 1, resist: { electric: 'resist' },
@@ -126,16 +126,16 @@ const LIST = [
   a({ id: 'loader-exo', name: 'Экзоскелет-погрузчик Агрозоны', atype: 'mech', kb: 6, noise: 2, speed: -1,
     passives: [{ id: 'item-loader-exo', name: 'Гидроусилитель', desc: '+2 СИЛ.', op: { statBonus: { str: 2 } } }],
     mech: { shield: 10, weapon: null, tag: 'hybrid' }, slots: ['plate'], tier: 2, price: 900, factions: ['agrozone', 'aiParty'],
-    desc: 'Таскал мешки нормы. Теперь таскает тебя.', needs: 'mech' }),
+    desc: 'Таскал мешки нормы. Теперь таскает тебя.' }),
   a({ id: 'junk-mech-suit', name: 'Мех-костюм со свалки', atype: 'mech', kb: 7, noise: 3, speed: -2, resist: { pierce: 'resist' },
     mech: { shield: 15, weapon: 'hydro-fist', tag: 'hybrid' }, slots: ['plate'], tier: 3, price: 1500, factions: ['scavengers'],
-    desc: 'Король свалок продаёт такие «почти новыми». Почти.', needs: 'mech' }),
+    desc: 'Король свалок продаёт такие «почти новыми». Почти.' }),
   a({ id: 'proxy-golem-shell', name: 'Прокси-голем', atype: 'mech', kb: 7, noise: 2, speed: -1, resist: { proxy: 'resist', electric: 'resist' },
     mech: { shield: 20, weapon: 'proxy-wrench', tag: 'hybrid' }, slots: ['plate'], tier: 4, price: 2000, factions: ['tekhonki'],
-    desc: 'Освящённая оболочка техоньков. Не боится прокси-бурь.', needs: 'mech' }),
+    desc: 'Освящённая оболочка техоньков. Не боится прокси-бурь.' }),
   a({ id: 'kuznechik-walker', name: 'Шагоход Военпрома «Кузнечик»', atype: 'mech', kb: 8, noise: 3, speed: -1, resist: { pierce: 'resist', slash: 'resist' },
     mech: { shield: 25, weapon: 'conveyor-mg', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 3500, factions: ['warprom'],
-    desc: 'Пилот сидит в кабине. Пулемёт — в комплекте.', needs: 'mech' }),
+    desc: 'Пилот сидит в кабине. Пулемёт — в комплекте.' }),
 
   // ---------------------------------------------------------------- Проект «Лис» (секретный оружейный проект неизвестной компании; канон автора)
   a({ id: 'lis-1', name: 'Лис-1 (мех-экзокостюм с ИИ)', atype: 'mech', kb: 8, noise: 3, speed: 0, quality: 'relic', unique: true,
@@ -145,7 +145,7 @@ const LIST = [
     grants: [ability({ id: 'item-lis1-core', name: 'Протокол «Лис»', action: 'bonus', usesPerBattle: 1,
       effects: [{ op: 'shield', value: 15, turns: 3 }, { op: 'status', id: 'haste', turns: 2 }], desc: 'Щит 15 на 3 хода и ускорение на 2 хода: ИИ берёт на себя манёвр.' })],
     mech: { shield: 25, weapon: 'lis-2', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 0, factions: [],
-    desc: 'Огромный экзокостюм с собственным ИИ. Требует мастерства мехов (ступень 3+, иначе помеха). Хранился в Бункере Лиса.', needs: 'mech, req: armor tier 3' }),
+    desc: 'Огромный экзокостюм с собственным ИИ. Требует мастерства мехов (ступень 3+, иначе помеха). Хранился в Бункере Лиса.' }),
 
   // ---------------------------------------------------------------- Реликты
   a({ id: 'predlozhka-greatcoat', name: 'Шинель забытого войска', atype: 'medium', kb: 4, stealth: false, quality: 'relic', unique: true,
