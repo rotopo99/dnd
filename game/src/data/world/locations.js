@@ -417,7 +417,7 @@ export const ALIASES = {
   'warprom-corridor': 'dungeons-m12',
   'king-dumps': 'svalka',
   'scavenger-camp': 'svalka',
-  'khatab-city': 'shtabtsentr',
+  'khatab-city': 'raytsentr', // автор: Хатаб-Сити — столица пиратов (бург Райцентр)
   'west-sector': 'battlefields-m9',
   'ai-capital': 'putin-inner',
   'tin-citadel': 'slavotech',
@@ -524,6 +524,9 @@ export const ITEMS = {
   'blank-chips': { id: 'blank-chips', name: 'Пустые ID-чипы', price: 0, desc: 'Квестовый предмет Лёвы.' },
   'alik-package': { id: 'alik-package', name: 'Посылка Алика', price: 0, contraband: true, desc: 'Не открывать. Не трясти. Не спрашивать.' },
   'soul-shard': { id: 'soul-shard', name: 'Осколок памяти', price: 0, desc: 'Чужая память, тёплая на ощупь.' },
+  'terminal-shard': { id: 'terminal-shard', name: 'Осколок терминала', price: 40, desc: 'С могилы Виктора. Голубая метка «К.». Иногда шепчет голосом, который умеет ждать.' },
+  'plague-sample': { id: 'plague-sample', name: 'Проба чумы металла', price: 0, desc: 'Ржавчина, которая шевелится. Держать в банке.' },
+  'cup-crown': { id: 'cup-crown', name: 'Корона из кубков', price: 150, desc: 'Корона Короля свалок. Один кубок — за третье место.' },
   'oak-amulet': { id: 'oak-amulet', name: 'Дубовый амулет', price: 30, desc: 'Пиратская защита от Судьи. Эффективность не подтверждена. Совсем.' },
   // --- предметы ивентов партии (world/events.js)
   'dawn-schematic': { id: 'dawn-schematic', name: 'Схема проекта «Рассвет»', price: 0, key: true,

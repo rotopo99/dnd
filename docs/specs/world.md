@@ -61,7 +61,7 @@ NPC: явный `npcs` узла или (если пусто) NPC, чей `npcs.j
 | npcs.js: `flat-lagoon`, `lagoon-bar` / `pirate-fleet` | `pirates-m30` / `pirates-m29` | пиратские воды |
 | `warprom` / `warprom-corridor` | `kreml` / `dungeons-m12` | столица Военпрома |
 | `king-dumps`, `scavenger-camp` | `svalka` | Король свалок = Глава Мусора |
-| `khatab-city` | `shtabtsentr` | ❓ Хатаб-Сити нет на карте |
+| `khatab-city` | `raytsentr` | автор: Хатаб-Сити — столица пиратов (на карте бург «Райцентр») |
 | `west-sector` | `battlefields-m9` | «Разгром завода АИ в Западном секторе» |
 | `ai-capital` | `putin-inner` | закрытый внутренний город |
 | `tin-citadel` / `tin-arena` / `tin-consulate` | `slavotech` / `velikaya-arena` / `selyshko` | |
