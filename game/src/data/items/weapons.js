@@ -367,6 +367,12 @@ const LIST = [
     onCrit: [{ op: 'status', id: 'cringed', turns: 2 }], slots: ['core'], tier: 4, price: 380, factions: ['tekhonki', 'cringegons'],
     desc: 'Три струны, сто децибел. Крит — кринж-эффект.' }),
 
+  // ================================================================ Проект «Лис»
+  w({ id: 'lis-2', name: 'Лис-2 (система залпового огня)', wtype: 'launcher', dice: '3d6', dmgType: 'fire', stat: 'dex', range: 14, hands: 2, weight: 3, noise: 3,
+    quality: 'relic', unique: true, req: { str: 15 }, props: { arc: true, area: { shape: 'radius', size: 2 }, charges: 2 },
+    tier: 5, price: 0, factions: [],
+    desc: 'Переносная система залпового огня проекта «Лис»: 2 залпа за бой, радиус 2. Спарена с мехом Лис-1.', needs: 'arc, area, charges' }),
+
   // ================================================================ Реликты (по лору, по одному на мир)
   w({ id: 'kuksius-spear', name: 'Копьё Куксиуса Первого', wtype: 'polearm', dice: '1d10', dmgType: 'pierce', stat: 'str', range: 1, hands: 2, weight: 2, hit: 1,
     quality: 'relic', unique: true, props: { reach: true },

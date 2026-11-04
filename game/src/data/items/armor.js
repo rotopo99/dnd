@@ -137,6 +137,16 @@ const LIST = [
     mech: { shield: 25, weapon: 'conveyor-mg', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 3500, factions: ['warprom'],
     desc: 'Пилот сидит в кабине. Пулемёт — в комплекте.', needs: 'mech' }),
 
+  // ---------------------------------------------------------------- Проект «Лис» (секретный оружейный проект неизвестной компании; канон автора)
+  a({ id: 'lis-1', name: 'Лис-1 (мех-экзокостюм с ИИ)', atype: 'mech', kb: 8, noise: 3, speed: 0, quality: 'relic', unique: true,
+    resist: { pierce: 'resist', blunt: 'resist' },
+    passives: [{ id: 'item-lis1-ai', name: 'Бортовой ИИ «Лис»', desc: '+2 СИЛ, +1 к инициативе.', op: { statBonus: { str: 2 } } },
+      { id: 'item-lis1-init', name: 'Бортовой ИИ «Лис»', desc: '', op: { init: 1 } }],
+    grants: [ability({ id: 'item-lis1-core', name: 'Протокол «Лис»', action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'shield', value: 15, turns: 3 }, { op: 'status', id: 'haste', turns: 2 }], desc: 'Щит 15 на 3 хода и ускорение на 2 хода: ИИ берёт на себя манёвр.' })],
+    mech: { shield: 25, weapon: 'lis-2', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 0, factions: [],
+    desc: 'Огромный экзокостюм с собственным ИИ. Требует мастерства мехов (ступень 3+, иначе помеха). Хранился в Бункере Лиса.', needs: 'mech, req: armor tier 3' }),
+
   // ---------------------------------------------------------------- Реликты
   a({ id: 'predlozhka-greatcoat', name: 'Шинель забытого войска', atype: 'medium', kb: 4, stealth: false, quality: 'relic', unique: true,
     resist: { cringe: 'resist' }, passives: [{ id: 'item-greatcoat', name: 'Нас забыли', desc: 'Иммунитет к страху и кринж-эффекту.', op: { immuneStatus: ['fear', 'cringed'] } }],
