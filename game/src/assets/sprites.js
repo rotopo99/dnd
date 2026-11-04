@@ -1250,6 +1250,7 @@ export function heroSpriteIds(raceId, classId) {
 }
 
 export function enemySpriteIds(enemyId) {
+  enemyId = String(enemyId).split('^')[0]; // scaled variants from balance: 'cleaner^2.2' -> 'cleaner'
   const extra = { skrilet: ['race-skrilet', 'layer-skrilet-blades'], cultist: ['mob-cultist', 'layer-sickle'],
     'cultist-gunner': ['mob-cultist-gunner', 'layer-cult-rifle'], scavenger: ['mob-scavenger', 'layer-pipe'],
     'npc-gans': ['mob-npc-gans', 'class-ranger'],

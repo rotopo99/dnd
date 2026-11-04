@@ -200,12 +200,12 @@ function printWorld() {
   for (const id of ids) {
     if (ONLY && id !== ONLY) continue;
     const enc0 = ENCOUNTERS[id]; const kind = WORLD_KIND[id] || 'normal';
-    const PW = Number(opt('--power', 0)); const sc = (x) => (PW ? scaledEnemy(x, PW) : x);
+    const PW = Number(opt('--power', 0)); const sc = (x) => (PW ? scaledEnemy(x.split('^')[0], PW) : x);
     const enc = { ...enc0, enemies: enc0.enemies.map(sc), reduce: (enc0.reduce || []).map(sc) };
     const variants = id === 'w-cc-finale' ? [['0 terminals off', enc.enemies, 'finale0'], ['all off (reduce)', enc.enemies.filter((_, i) => true), 'finale6']] : [['', enc.enemies, kind]];
     for (const [label, list0, tk] of variants) {
       let list = (EXP_ENC && ONLY) ? EXP_ENC.split(',').map((x) => { const [b, q] = x.split('^'); return q ? scaledEnemy(b, Number(q)) : sc(x); }) : list0;
-      if (tk === 'finale6') { list = [...enc.enemies]; for (const r of enc.reduce) { const i = list.indexOf(r); if (i >= 0) list.splice(i, 1); } }
+      if (tk === 'finale6') { list = [...enc.enemies]; for (const r of enc.reduce.slice(0, 5)) { const i = list.indexOf(r); if (i >= 0) list.splice(i, 1); } }
       const r = worldRate(id, size, N, SEED, list, nt);
       const tgt = size === 4 ? WORLD_TARGET[tk] : (kind === 'normal' ? WORLD_TARGET.size2 : null);
       const flag = tgt ? (r.rate < tgt[0] - 0.02 ? ' <-- TOO HARD' : r.rate > tgt[1] + 0.02 ? ' <-- TOO EASY' : '') : '';

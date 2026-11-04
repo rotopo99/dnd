@@ -284,3 +284,109 @@ race mean effect: human +0.2 | skeleton +0.6 | android +1.1 | mutant-beast +1.6 
 3. **Пролог:** p1 79% (цель 85–90), p3 83% (цель 65–80): враги общие с партийными боями, а у СлавоТеха/Рэпера соло против босса 55–69%. Дальше упирается в то, что состав карт нельзя менять; можно завести отдельных `acolyte-p3`/`cultist-p1`, но карты ссылаются на id.
 4. **Партия ур.1 66%** — на границе. Состав дискретный: +1 враг даёт −15…−20 п.п.
 5. **Правила, мешающие балансу:** (а) `range:0, target:'tile'` ИИ не использует; (б) прокси-урон ×0.5 по живым делает Прокси-Мастера слабым соло против культа (лор, оставлено); (в) суммоны не масштабируются уровнем (дрон/турель одинаковы на ур.1 и 5), поэтому Изобретатель на ур.5 получил отдельного меха; (г) кринж против боссов не «ломает» (по правилам), против тварей без психики (`NO_MIND`) бесполезен.
+
+## Мир v1.0: бои `w-*` (партия из 4 своего уровня; случайные классы, пути, расы, боевые таланты и примочка)
+Команда: `node tools/sim/balance.mjs --mode world [--size 2] [--no-talents] --n 800 --seed 71`. Таланты: до `COMBAT_TALENT_LIMIT` случайных боевых из слотов race/job/faction/alignment (с вероятностью 0.75 на слот), примочка `gadgetFor(cls)`. Компаньоны не моделировались.
+Цели: обычные 75–90%, квесты и терминалы 65–80%, элита 60–70%, финал без снятых терминалов 40–50%, со всеми снятыми 70–80%; партия из 2 — 60–80% на обычных.
+
+### Итог
+| Цель | Было (до правок, `power` отсутствует) | Стало |
+|---|---|---|
+| Обычные 75–90% | 100% во всех | 82–90%, все в цели (n=800, шум ±2.5) |
+| Квесты/терминалы 65–80% | 100% | 68–77%, все в цели |
+| Элита 60–70% | 100% | checkpoint 69%, svoboda-raid 64% |
+| Финал 0 снято 40–50% | 32% (8 врагов) | 45% |
+| Финал все сняты 70–80% | 100% | 68% (на 2 п.п. ниже цели) |
+| Партия из 2, обычные 60–80% | не считалось | 64–74% в цели у 7 из 13; выше цели — cult-cell 83, jesters 100, hatch 85, cyberspace 86; ниже — cc-gate 53, cc-dead 59 |
+
+### Партия из 4 с талантами и примочками (n=800)
+```
+=== World: party of 4 (random combat talents + gadget), n=800, seed 71 ===
+w-harmony-riot                     L1 foes  6 normal win  86% rounds  7.1  target 75-90
+w-harmony-cult-cell                L1 foes  6 normal win  82% rounds  7.8  target 75-90
+w-road-crawlers                    L1 foes  4 normal win  84% rounds  6.9  target 75-90
+w-road-scavengers                  L2 foes  6 normal win  88% rounds  8.8  target 75-90
+w-road-pirates                     L2 foes  4 normal win  90% rounds  8.5  target 75-90
+w-villages-jesters                 L1 foes  4 normal win  88% rounds 10.5  target 75-90
+w-villages-beacon                  L2 foes  6 quest  win  68% rounds 17.4  target 65-80
+w-villages-hatch                   L2 foes  4 normal win  87% rounds 12.9  target 75-90
+w-agro-burning-field               L2 foes  6 normal win  83% rounds  9.7  target 75-90
+w-villages-terminal                L2 foes  6 quest  win  71% rounds  9.1  target 65-80
+w-agro-cleaners                    L2 foes  4 normal win  85% rounds 10.4  target 75-90
+w-agro-checkpoint                  L3 foes  6 elite  win  69% rounds 13.2  target 60-70
+w-agro-rebels                      L2 foes  6 normal win  87% rounds  7.9  target 75-90
+w-agro-svoboda-raid                L3 foes  6 elite  win  64% rounds 11.4  target 60-70
+w-agro-terminal                    L3 foes  6 quest  win  70% rounds 10.2  target 65-80
+w-cc-gate                          L4 foes  4 normal win  86% rounds 11.0  target 75-90
+w-cc-dead                          L3 foes  4 normal win  89% rounds 16.4  target 75-90
+w-cc-duel                          L3 foes  4 quest  win  74% rounds 11.0  target 65-80
+w-cc-terminal                      L4 foes  4 quest  win  77% rounds 11.2  target 65-80
+w-cc-finale 0 terminals off        L5 foes  9 normal win  45% rounds 22.1  target 40-50
+w-cc-finale all off (reduce)       L5 foes  4 normal win  68% rounds 20.4  target 70-80
+w-cyberspace                       L2 foes  4 normal win  88% rounds 10.0  target 75-90
+```
+
+### Партия из 2 (n=500)
+```
+=== World: party of 2 (random combat talents + gadget), n=500, seed 71 ===
+w-harmony-riot                     L1 foes  3 normal win  74% rounds  6.9  target 60-80
+w-harmony-cult-cell                L1 foes  3 normal win  83% rounds  7.6  target 60-80 <-- TOO EASY
+w-road-crawlers                    L1 foes  2 normal win  72% rounds  6.3  target 60-80
+w-road-scavengers                  L2 foes  3 normal win  64% rounds  8.8  target 60-80
+w-road-pirates                     L2 foes  2 normal win  72% rounds  8.3  target 60-80
+w-villages-jesters                 L1 foes  2 normal win 100% rounds  8.1  target 60-80 <-- TOO EASY
+w-villages-beacon                  L2 foes  3 quest  win  29% rounds 16.3  target -
+w-villages-hatch                   L2 foes  2 normal win  85% rounds  6.5  target 60-80 <-- TOO EASY
+w-agro-burning-field               L2 foes  3 normal win  73% rounds  8.7  target 60-80
+w-villages-terminal                L2 foes  3 quest  win  48% rounds  8.3  target -
+w-agro-cleaners                    L2 foes  2 normal win  78% rounds  9.1  target 60-80
+w-agro-checkpoint                  L3 foes  3 elite  win  43% rounds 13.5  target -
+w-agro-rebels                      L2 foes  3 normal win  78% rounds  7.2  target 60-80
+w-agro-svoboda-raid                L3 foes  3 elite  win  36% rounds 10.6  target -
+w-agro-terminal                    L3 foes  3 quest  win  65% rounds  8.8  target -
+w-cc-gate                          L4 foes  2 normal win  53% rounds 11.6  target 60-80 <-- TOO HARD
+w-cc-dead                          L3 foes  2 normal win  59% rounds 14.3  target 60-80
+w-cc-duel                          L3 foes  2 quest  win  60% rounds  8.7  target -
+w-cc-terminal                      L4 foes  2 quest  win  48% rounds 11.3  target -
+w-cc-finale 0 terminals off        L5 foes  5 normal win   0% rounds  7.6  target 60-80 <-- TOO HARD
+w-cc-finale all off (reduce)       L5 foes  2 normal win  14% rounds 22.4  target 60-80 <-- TOO HARD
+w-cyberspace                       L2 foes  2 normal win  86% rounds 10.5  target 60-80 <-- TOO EASY
+```
+
+### Партия из 4 без талантов и примочек (n=400)
+```
+=== World: party of 4 (no talents/gadgets), n=400, seed 71 ===
+w-harmony-riot                     L1 foes  6 normal win  80% rounds  7.4  target 75-90
+w-harmony-cult-cell                L1 foes  6 normal win  72% rounds  8.1  target 75-90 <-- TOO HARD
+w-road-crawlers                    L1 foes  4 normal win  74% rounds  7.3  target 75-90
+w-road-scavengers                  L2 foes  6 normal win  80% rounds  9.3  target 75-90
+w-road-pirates                     L2 foes  4 normal win  83% rounds  8.9  target 75-90
+w-villages-jesters                 L1 foes  4 normal win  86% rounds 10.7  target 75-90
+w-villages-beacon                  L2 foes  6 quest  win  59% rounds 17.8  target 65-80 <-- TOO HARD
+w-villages-hatch                   L2 foes  4 normal win  74% rounds 14.7  target 75-90
+w-agro-burning-field               L2 foes  6 normal win  78% rounds 11.0  target 75-90
+w-villages-terminal                L2 foes  6 quest  win  62% rounds  9.5  target 65-80 <-- TOO HARD
+w-agro-cleaners                    L2 foes  4 normal win  82% rounds 11.2  target 75-90
+w-agro-checkpoint                  L3 foes  6 elite  win  62% rounds 12.9  target 60-70
+w-agro-rebels                      L2 foes  6 normal win  82% rounds  7.9  target 75-90
+w-agro-svoboda-raid                L3 foes  6 elite  win  56% rounds 11.6  target 60-70 <-- TOO HARD
+w-agro-terminal                    L3 foes  6 quest  win  61% rounds 10.0  target 65-80 <-- TOO HARD
+w-cc-gate                          L4 foes  4 normal win  77% rounds 12.1  target 75-90
+w-cc-dead                          L3 foes  4 normal win  82% rounds 18.1  target 75-90
+w-cc-duel                          L3 foes  4 quest  win  60% rounds 11.6  target 65-80 <-- TOO HARD
+w-cc-terminal                      L4 foes  4 quest  win  67% rounds 11.6  target 65-80
+w-cc-finale 0 terminals off        L5 foes  9 normal win  24% rounds 20.6  target 40-50 <-- TOO HARD
+w-cc-finale all off (reduce)       L5 foes  4 normal win  59% rounds 21.3  target 70-80 <-- TOO HARD
+w-cyberspace                       L2 foes  4 normal win  84% rounds 10.0  target 75-90
+```
+
+### Влияние талантов и примочек
+Таланты (до 2–3 боевых) и примочка дают партии из 4 **+6…+15 п.п.** (бой с таким же составом без них: обычные 72–86%, квесты 59–67%, финал 24% / 59%). Спека называет боевой талант ≈ +3–5 п.п., примочку «как один талант», то есть ожидаемо около +9…+15 п.п. на героя при трёх источниках, и это в целом сходится. Конкретных поломов (талант, дающий игре победу сам по себе) в сим не искал: для этого нужен отдельный замер вклада каждого таланта парной заменой (`--mode party` расширить на таланты). Замечание: вклад заметно растёт с уровнем боя (финал +21 п.п. против +6…+10 на ур.1–2), потому что на ур.4 лимит талантов вырастает до трёх.
+
+### Что не достигнуто и почему
+1. **Партия из 2.** Правило `ceil(n·s/4)` даёт для двух героев `n/2` врагов: ядро (первые враги) вместо всей группы. Состав из 4 или 6 врагов выравнивает пропорцию, но бои, где ядро — босс или тяжёлый враг (`w-villages-beacon`: маяк, `w-agro-checkpoint`: капитан, `w-agro-svoboda-raid`), для двух героев выходят на 29–43% (для них цель партии из 2 не задана). Финал при партии из 2 невозможен (0% / 14%): ядро (жрец + аколит) слишком сильно для двух героев. Предложение: для финала требовать партию ≥3 или добавить союзников из `finaleMods`; либо правило для s<4 — не брать боссов.
+2. **Длина боёв.** Чтобы дотянуть бой до 75–90% без толп, врагам пришлось дать ×2–3 ЗДР. Боёв по 8–17 раундов: `w-villages-beacon` 17, `w-cc-dead` 16, финал 20–22, `w-villages-hatch` 13. Причина — низкий урон героев по сравнению с ЗДР (ур.1–3 герои бьют ~5–8 за ход). Если это слишком долго для UI, нужно поднимать урон героев (не в этой задаче) или заменить толстых врагов числом.
+3. **Крутизна порога.** `power` влияет на результат скачком: +0.05 даёт до ±20 п.п. из-за округления атаки и урона. Подобрано массивом `power` ([2.25, 2.24]) там, где нужно промежуточное значение. Дальнейшая правка составов — осторожно, перемерять.
+4. **Финал со всеми снятыми** 68% против 70–80%: ниже цели на 2 п.п. (шум ±2).
+5. **Партия без талантов** на квестах и элите в 3–10 п.п. ниже цели. Если игрок будет играть без выбора талантов, бои станут жёстче; сейчас баланс настроен на героя с талантами.
+6. **Компаньоны** (`recruitables`, блок `companion`) в сим не включены: нужны правила набора партии.

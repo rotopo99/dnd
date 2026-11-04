@@ -753,50 +753,52 @@ export const ENCOUNTERS = {
   // ------------------------------------------------------------ Мир v1.0 (docs/specs/world.md)
   // Составы — на партию из 4. Для партии из s героев берутся первые ceil(n × s / 4) врагов:
   // порядок в списке = приоритет (первые — «ядро» боя, боссы всегда первыми).
-  // reduce — кого убрать из финала за каждый выключенный/перепрошитый терминал (по порядку).
-  'w-harmony-riot': { id: 'w-harmony-riot', name: 'Сектор D: голодный бунт', level: 1,
-    enemies: ['rioter', 'rioter', 'rioter', 'rioter', 'rioter'] },
-  'w-harmony-cult-cell': { id: 'w-harmony-cult-cell', name: 'Сектор D: ячейка Повестки', level: 1,
-    enemies: ['cultist', 'cultist-gunner', 'cultist', 'cultist-gunner', 'cultist'] },
-  'w-road-crawlers': { id: 'w-road-crawlers', name: 'Дорога: ползуны', level: 1,
+  // reduce — кого убрать из финала за каждый выключенный/перепрошитый терминал (по порядку; терминалов 5, записей 5).
+  // power — множитель силы врагов боя (см. scaledEnemy внизу файла); подобран симулятором `tools/sim/balance.mjs --mode world`.
+  'w-harmony-riot': { id: 'w-harmony-riot', name: 'Сектор D: голодный бунт', level: 1, power: 2.65,
+    enemies: ['rioter', 'rioter', 'rioter', 'rioter', 'rioter', 'rioter'] },
+  'w-harmony-cult-cell': { id: 'w-harmony-cult-cell', name: 'Сектор D: ячейка Повестки', level: 1, power: 2.15,
+    enemies: ['cultist', 'cultist-gunner', 'cultist', 'cultist-gunner', 'cultist', 'cultist-gunner'] },
+  'w-road-crawlers': { id: 'w-road-crawlers', name: 'Дорога: ползуны', level: 1, power: 2.55,
     enemies: ['crawler', 'crawler', 'crawler', 'crawler'] },
-  'w-road-scavengers': { id: 'w-road-scavengers', name: 'Дорога: мусорщики', level: 2,
-    enemies: ['scavenger-gunner', 'scavenger', 'scavenger', 'scavenger-hunter', 'scavenger'] },
-  'w-road-pirates': { id: 'w-road-pirates', name: 'Дорога: пиратский патруль', level: 2,
+  'w-road-scavengers': { id: 'w-road-scavengers', name: 'Дорога: мусорщики', level: 2, power: 2.0,
+    enemies: ['scavenger-gunner', 'scavenger', 'scavenger-hunter', 'scavenger', 'scavenger', 'scavenger-gunner'] },
+  'w-road-pirates': { id: 'w-road-pirates', name: 'Дорога: пиратский патруль', level: 2, power: 2.2,
     enemies: ['pirate', 'pirate-gunner', 'pirate', 'pirate'] },
-  'w-villages-jesters': { id: 'w-villages-jesters', name: 'Селения: кринж-разведка', level: 1,
+  'w-villages-jesters': { id: 'w-villages-jesters', name: 'Селения: кринж-разведка', level: 1, power: 2.9,
     enemies: ['cringe-jester', 'cringe-jester', 'cringe-warrior', 'cringe-jester'] },
-  'w-villages-beacon': { id: 'w-villages-beacon', name: 'Кринж-маяк', level: 2,
-    enemies: ['cringe-beacon', 'cringe-jester', 'cringe-warrior', 'cringe-jester', 'cringe-jester'] },
-  'w-villages-hatch': { id: 'w-villages-hatch', name: 'Люк под дачей: гнездо', level: 2, map: 'hatch-1',
-    enemies: ['junk-mech', 'crawler', 'crawler', 'crawler'] },
-  'w-agro-burning-field': { id: 'w-agro-burning-field', name: 'Горящие поля: зачистка', level: 2, map: 'burning-field-1',
-    enemies: ['cleaner', 'cleaner', 'cleaner', 'cleaner', 'cleaner'] },
-  'w-villages-terminal': { id: 'w-villages-terminal', name: 'Вышка: ритуальный терминал', level: 2,
-    enemies: ['skrilet', 'cultist', 'cultist-gunner', 'cultist', 'cultist-gunner'] },
-  'w-agro-cleaners': { id: 'w-agro-cleaners', name: 'Агрозона: патруль Чистильщиков', level: 2,
+  'w-villages-beacon': { id: 'w-villages-beacon', name: 'Кринж-маяк', level: 2, power: 2.8,
+    enemies: ['cringe-beacon', 'cringe-warrior', 'cringe-jester', 'cringe-jester', 'cringe-jester', 'cringe-jester'] },
+  'w-villages-hatch': { id: 'w-villages-hatch', name: 'Люк под дачей: гнездо', level: 2, power: [2.74, 2.75], map: 'hatch-1',
+    enemies: ['crawler', 'crawler', 'junk-mech', 'crawler'] },
+  'w-agro-burning-field': { id: 'w-agro-burning-field', name: 'Горящие поля: зачистка', level: 2, power: 1.5, map: 'burning-field-1',
+    enemies: ['cleaner', 'cleaner', 'cleaner', 'cleaner', 'cleaner', 'cleaner'] },
+  'w-villages-terminal': { id: 'w-villages-terminal', name: 'Вышка: ритуальный терминал', level: 2, power: [2.25, 2.24],
+    enemies: ['skrilet', 'cultist', 'cultist-gunner', 'cultist', 'cultist-gunner', 'cultist'] },
+  'w-agro-cleaners': { id: 'w-agro-cleaners', name: 'Агрозона: патруль Чистильщиков', level: 2, power: 2.2,
     enemies: ['cleaner', 'cleaner', 'cleaner', 'cleaner'] },
-  'w-agro-checkpoint': { id: 'w-agro-checkpoint', name: 'Блокпост Чистильщиков', level: 3,
-    enemies: ['cleaner-captain', 'cleaner', 'cleaner', 'cleaner', 'cleaner'] },
-  'w-agro-rebels': { id: 'w-agro-rebels', name: 'Агрозона: повстанцы', level: 2,
-    enemies: ['rebel-gunner', 'rebel', 'rebel', 'rebel', 'rebel-gunner'] },
-  'w-agro-svoboda-raid': { id: 'w-agro-svoboda-raid', name: 'Штурм бурга «Свобода»', level: 3,
+  'w-agro-checkpoint': { id: 'w-agro-checkpoint', name: 'Блокпост Чистильщиков', level: 3, power: 1.7,
+    enemies: ['cleaner-captain', 'cleaner', 'cleaner', 'cleaner', 'cleaner', 'cleaner'] },
+  'w-agro-rebels': { id: 'w-agro-rebels', name: 'Агрозона: повстанцы', level: 2, power: 2.1,
+    enemies: ['rebel-gunner', 'rebel', 'rebel', 'rebel', 'rebel-gunner', 'rebel'] },
+  'w-agro-svoboda-raid': { id: 'w-agro-svoboda-raid', name: 'Штурм бурга «Свобода»', level: 3, power: [2.25, 2.24],
     enemies: ['rebel-veteran', 'rebel-gunner', 'rebel', 'rebel', 'rebel-gunner', 'rebel'] },
-  'w-agro-terminal': { id: 'w-agro-terminal', name: 'Элеватор: ритуальный терминал', level: 3,
-    enemies: ['skrilet', 'cultist-3', 'cultist-gunner', 'cultist-3', 'cultist-gunner'] },
-  'w-cc-gate': { id: 'w-cc-gate', name: 'Ворота Коррупция-Сити', level: 4,
+  'w-agro-terminal': { id: 'w-agro-terminal', name: 'Элеватор: ритуальный терминал', level: 3, power: 2.1,
+    enemies: ['skrilet', 'cultist-3', 'cultist-gunner', 'cultist-3', 'cultist-gunner', 'cultist-3'] },
+  'w-cc-gate': { id: 'w-cc-gate', name: 'Ворота Коррупция-Сити', level: 4, power: 2.2,
     enemies: ['cleaner-5', 'cleaner', 'cleaner', 'cleaner'] },
-  'w-cc-dead': { id: 'w-cc-dead', name: 'Улицы мёртвых', level: 3,
-    enemies: ['materialized-soul', 'materialized-soul', 'skrilet', 'materialized-soul'] },
-  'w-cc-duel': { id: 'w-cc-duel', name: 'Дуэльный клуб: испытание', level: 3,
-    enemies: ['pirate', 'pirate-gunner', 'pirate'] },
-  'w-cc-terminal': { id: 'w-cc-terminal', name: 'Городской ритуальный терминал', level: 4,
+  'w-cc-dead': { id: 'w-cc-dead', name: 'Улицы мёртвых', level: 3, power: 3.1,
+    enemies: ['materialized-soul', 'skrilet', 'materialized-soul', 'materialized-soul'] },
+  'w-cc-duel': { id: 'w-cc-duel', name: 'Дуэльный клуб: испытание', level: 3, power: 2.65,
+    enemies: ['pirate', 'pirate-gunner', 'pirate', 'pirate-hacker'] },
+  'w-cc-terminal': { id: 'w-cc-terminal', name: 'Городской ритуальный терминал', level: 4, power: 1.95,
     enemies: ['skrilet-5', 'cultist-3', 'cultist-gunner-5', 'cultist-3'] },
   'w-cc-finale': { id: 'w-cc-finale', name: 'Главный узел: Третий исход', level: 5,
-    enemies: ['cyber-priest', 'skrilet-5', 'acolyte-5', 'cultist-5', 'cultist-gunner-5', 'cultist-5', 'skrilet-5', 'cultist-gunner-5'],
-    reduce: ['skrilet-5', 'cultist-gunner-5', 'cultist-5', 'acolyte-5', 'skrilet-5', 'cultist-gunner-5'] },
-  'w-cyberspace': { id: 'w-cyberspace', name: 'Киберспейс: сторожа узла', level: 2,
-    enemies: ['scriptlet', 'scriptlet', 'materialized-soul'] },
+    enemies: [scaledEnemy('cyber-priest', 1.85), scaledEnemy('acolyte-5', 1.5), scaledEnemy('skrilet-5', 1.25), scaledEnemy('skrilet-5', 1.25),
+      'cultist', 'cultist', 'cultist', 'cultist-gunner', 'cultist-gunner'],
+    reduce: ['cultist-gunner', 'cultist-gunner', 'cultist', 'cultist', 'cultist'] },
+  'w-cyberspace': { id: 'w-cyberspace', name: 'Киберспейс: сторожа узла', level: 2, power: 2.6,
+    enemies: ['scriptlet', 'materialized-soul', 'scriptlet', 'scriptlet'] },
 };
 
 // ------------------------------------------------------------ Масштаб силы боя (balance-tester, мир v1.0)
@@ -823,6 +825,8 @@ export function scaledEnemy(id, p) {
 }
 for (const enc of Object.values(ENCOUNTERS)) {
   if (!enc.power || enc.power === 1) continue;
-  enc.enemies = enc.enemies.map((id) => scaledEnemy(id, enc.power));
-  if (enc.reduce) enc.reduce = enc.reduce.map((id) => scaledEnemy(id, enc.power));
+  // power может быть массивом: множитель берётся по кругу по индексу врага (даёт промежуточную силу между «ступеньками» округления)
+  const pw = (i) => (Array.isArray(enc.power) ? enc.power[i % enc.power.length] : enc.power);
+  enc.enemies = enc.enemies.map((id, i) => scaledEnemy(id, pw(i)));
+  if (enc.reduce) enc.reduce = enc.reduce.map((id, i) => scaledEnemy(id, pw(i)));
 }
