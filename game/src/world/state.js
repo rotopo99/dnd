@@ -1,6 +1,9 @@
 // World state helpers over the save object (world.md §8): new game, party members, creatures for battle,
 // experience and levels, rewards (Effects), deeds/approval, discovery, travel and encounters.
 import { buildCreature, isAllowed } from '../rules/character.js';
+import { t } from '../data/text/index.js';
+import { talentAllowed } from '../data/talents.js';
+import { WORLD_RULES as R } from '../data/world/rules.js';
 import { gainXp as engineGainXp, levelForXp } from '../rules/progression.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
@@ -22,7 +25,7 @@ export function newSave(hero) {
   const save = {
     version: 1, seed: (Math.random() * 1e9) | 0, day: 1,
     hero: { ...hero, level: 1, xp: 0, activeCombat: combat.slice(0, COMBAT_TALENT_LIMIT(1)), gadget: gadget ? gadget.id : null,
-      hp: null, mrl: null, judgeMarks: 0, credits: 50, items: { medkit: 1 }, uniqueTalent: false, pendingTalents: 0 },
+      hp: null, mrl: null, judgeMarks: 0, credits: R.start.credits, items: { ...R.start.items }, uniqueTalent: false, pendingTalents: 0 },
     party: [],
     location: START_LOCATION, prevLocation: null,
     discovered: [...START_DISCOVERED], visited: [],
@@ -34,6 +37,9 @@ export function newSave(hero) {
   visit(save, START_LOCATION);
   return save;
 }
+
+/** t() with {name} style placeholders. */
+export const tf = (key, vars = {}) => t(key).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''));
 
 export function journal(save, text) {
   save.journal.push({ day: save.day, text });
@@ -50,20 +56,48 @@ function restore(u, hp, mrl) {
   if (mrl != null) u.mrl = Math.max(0, Math.min(u.maxMrl, mrl));
 }
 
+/** Weapon range of the hero's class/path (for item requirements without building). */
+function weaponRangeOf(data, cls, path) {
+  const c = data.CLASSES[cls];
+  const p = c?.paths?.find((x) => x.id === path);
+  return (p?.weapon || c?.weapon)?.range || 1;
+}
+
+/**
+ * Items with passives/world (locations.js ITEMS) work while in the inventory, like a gadget (no combat talent limit).
+ * The engine takes one gadget: the class gadget and such items are merged into one pseudo-gadget.
+ */
+function gadgetWithItems(save, data) {
+  const h = save.hero;
+  const base = h.gadget ? data.GADGETS?.[h.gadget] : null;
+  const range = weaponRangeOf(data, h.cls, h.path);
+  const items = Object.entries(h.items || {}).filter(([id, n]) => n > 0 && ITEMS[id] && (ITEMS[id].passives || ITEMS[id].world))
+    .map(([id]) => ITEMS[id]).filter((it) => !it.req?.weapon || (it.req.weapon === 'ranged' ? range > 1 : range <= 1));
+  if (!items.length) return { data, gadget: h.gadget || undefined };
+  const id = `${h.gadget || 'none'}+items`;
+  const merged = {
+    id, name: base?.name || items[0].name, desc: base?.desc || '',
+    passives: [...(base?.passives || []), ...items.flatMap((it) => it.passives || [])],
+    abilities: [...(base?.abilities || [])],
+    world: [...(base?.world || []), ...items.flatMap((it) => (it.world || []).map((w) => ({ ...w })))],
+  };
+  return { data: { ...data, GADGETS: { ...(data.GADGETS || {}), [id]: merged } }, gadget: id };
+}
+
 export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const h = save.hero;
+  const G = gadgetWithItems(save, data);
   const talents = safeTalents(h.talents);
   const activeCombat = safeTalents(h.activeCombat).filter((id) => talents.includes(id)).slice(0, COMBAT_TALENT_LIMIT(h.level));
-  const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data, id: 'hero', anyStat: h.anyStat || undefined };
+  const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined };
   let u;
   try {
-    u = buildCreature({ ...spec, talents, activeCombat, gadget: h.gadget || undefined });
+    u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget });
   } catch {
-    try { u = buildCreature({ ...spec, talents, activeCombat, gadget: h.gadget || undefined, race: h.race }); } catch { u = buildCreature({ ...spec, race: h.race }); }
+    try { u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget, race: h.race }); } catch { u = buildCreature({ ...spec, data, race: h.race }); }
   }
-  // items with passives (locations.js ITEMS) — like a talent passive, without the combat talent limit
   const marks = h.judgeMarks || 0;
-  if (marks) { u.maxMrl = Math.max(1, u.maxMrl - 2 * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
+  if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
   restore(u, h.hp, h.mrl);
   return u;
 }
@@ -126,7 +160,7 @@ export function recruit(save, npcId) {
   if (old) Object.assign(old, { state, approval: Math.max(old.approval, -40) });
   else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: 0, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false });
   save.npcs[npcId] = { ...(save.npcs[npcId] || {}), met: true, recruited: true };
-  journal(save, `${n.name}: в партии.`);
+  journal(save, tf('fx.joined', { name: n.name }));
   return state;
 }
 
@@ -143,7 +177,12 @@ export function requiresOk(save, req, data = GAME_DATA) {
   if (req.alignment && save.hero.alignment !== req.alignment) return false;
   if (req.item && !hasItem(save, req.item)) return false;
   if (req.credits && save.hero.credits < req.credits) return false;
-  if (req.quest && !(save.quests[req.quest.id || req.quest]?.stage === req.stage || save.quests[req.quest.id || req.quest]?.state === req.quest.state)) return false;
+  if (req.quest) {
+    const q = save.quests[req.quest.id || req.quest];
+    if (!q) return false;
+    if (req.stage && q.stage !== req.stage) return false;
+    if (req.quest.state && q.state !== req.quest.state) return false;
+  }
   return true;
 }
 
@@ -154,15 +193,15 @@ export function requiresOk(save, req, data = GAME_DATA) {
 export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}) {
   const out = [];
   if (!r) return out;
-  if (r.credits) { save.hero.credits = Math.max(0, save.hero.credits + r.credits); out.push({ text: `${r.credits > 0 ? '+' : ''}${r.credits} кредов`, color: 'b' }); }
+  if (r.credits) { save.hero.credits = Math.max(0, save.hero.credits + r.credits); out.push({ text: tf('fx.credits', { n: `${r.credits > 0 ? '+' : ''}${r.credits}` }), color: 'b' }); }
   for (const it of r.items || []) { save.hero.items[it.item] = (save.hero.items[it.item] || 0) + (it.n || 1); out.push({ text: `+ ${itemName(it.item)}${it.n > 1 ? ` ×${it.n}` : ''}`, color: 'a' }); }
   for (const it of r.removeItems || []) save.hero.items[it.item] = Math.max(0, (save.hero.items[it.item] || 0) - (it.n || 1));
   for (const f of r.flags || []) save.flags[f] = true;
   if (r.flag) save.flags[r.flag] = true;
   if (r.terminal) save.terminals[r.terminal.id] = r.terminal.state;
   if (r.rep) for (const [f, d] of Object.entries(r.rep)) out.push(...repToasts(applyRep(save, f, repDelta(save, d, data))));
-  if (r.talent && TALENTS[r.talent] && !save.hero.talents.includes(r.talent)) out.push(...learnTalent(save, r.talent));
-  if (r.recruit && NPCS[r.recruit] && canRecruit(save, r.recruit) !== 'already') { recruit(save, r.recruit); out.push({ text: `${NPCS[r.recruit].name}: в партии`, color: 'j' }); }
+  if (r.talent && TALENTS[r.talent] && !save.hero.talents.includes(r.talent)) out.push(...learnTalent(save, r.talent, data));
+  if (r.recruit && NPCS[r.recruit] && canRecruit(save, r.recruit) !== 'already') { recruit(save, r.recruit); out.push({ text: tf('fx.joined', { name: NPCS[r.recruit].name }), color: 'j' }); }
   if (r.hp || r.mrl) damageParty(save, r.hp || 0, r.mrl || 0, data);
   if (r.xp) out.push(...gainXp(save, r.xp, data));
   for (const d of r.deeds || []) out.push(...deed(save, d, keyChoice));
@@ -172,12 +211,25 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
 
 const itemName = (id) => ITEMS[id]?.name || id;
 
-export function learnTalent(save, id) {
+/** Can the hero take this world-given talent: race, tags, weapon, stats, level (jobs/origins are not checked). */
+export function talentOk(save, id, data = GAME_DATA) {
   const tl = TALENTS[id];
+  if (!tl) return false;
+  const u = buildHero(save, data);
+  const req = { ...(tl.req || {}) };
+  delete req.jobs; delete req.origins; delete req.alignment;
+  return talentAllowed({ ...tl, req }, { race: save.hero.race, cls: save.hero.cls, stats: u.stats, level: save.hero.level, weaponRange: u.weapon?.range || 1, tags: u.tags });
+}
+
+/** Learn a talent (quest reward, trainer, companion, Cyberspace). Checks talentOk; returns toasts. */
+export function learnTalent(save, id, data = GAME_DATA, { force = false } = {}) {
+  const tl = TALENTS[id];
+  if (!tl || save.hero.talents.includes(id)) return [];
+  if (!force && !talentOk(save, id, data)) return [{ text: tf('fx.talentNotAllowed', { name: tl.name }), color: 'c' }];
   save.hero.talents.push(id);
   if (isCombatTalent(tl) && save.hero.activeCombat.length < COMBAT_TALENT_LIMIT(save.hero.level)) save.hero.activeCombat.push(id);
-  journal(save, `Новый талант: ${tl.name}`);
-  return [{ text: `Новый талант: ${tl.name}`, color: 'a' }];
+  journal(save, tf('fx.talent', { name: tl.name }));
+  return [{ text: tf('fx.talent', { name: tl.name }), color: 'a' }];
 }
 
 function damageParty(save, dhp, dmrl, data) {
@@ -208,13 +260,23 @@ export function gainXp(save, xp, data = GAME_DATA) {
   if (!xp) return out;
   const r = engineGainXp(save.hero, xp, data);
   save.hero.xp = r.xp;
-  out.push({ text: `+${xp} опыта`, color: 'h' });
+  out.push({ text: tf('fx.xp', { n: xp }), color: 'h' });
   if (r.leveledUp) {
+    // keepDamage (rules/progression.js rebuildHero): new max − damage taken, at least 1
+    const before = [buildHero(save, data), ...activeCompanions(save).map((p) => [p, buildCompanion(save, p, data)])];
     save.hero.level = r.level;
-    save.hero.hp = null; save.hero.mrl = null; // level-up: full resources
+    const keep = (entry, oldU, newU) => {
+      if (!oldU || !newU) return;
+      entry.hp = Math.max(1, newU.maxHp - Math.max(0, oldU.maxHp - oldU.hp));
+      entry.mrl = Math.max(1, newU.maxMrl - Math.max(0, oldU.maxMrl - oldU.mrl));
+    };
+    const h0 = before[0];
+    save.hero.hp = null; save.hero.mrl = null;
+    keep(save.hero, h0, buildHero(save, data));
+    for (const [p, oldU] of before.slice(1)) { const hp = p.hp, mrl = p.mrl; p.hp = null; p.mrl = null; const nu = buildCompanion(save, p, data); p.hp = hp; p.mrl = mrl; keep(p, oldU, nu); }
     save.hero.pendingTalents = (save.hero.pendingTalents || 0) + r.talentPicks;
-    out.push({ text: `Новый уровень: ${r.level}`, color: 'a' });
-    journal(save, `Уровень ${r.level}.`);
+    out.push({ text: tf('fx.level', { n: r.level }), color: 'a' });
+    journal(save, tf('fx.level', { n: r.level }));
   }
   return out;
 }
@@ -228,16 +290,18 @@ export function deed(save, tag, key) {
     const n = NPCS[p.npc];
     const likes = n.companion?.likes || n.likes || [];
     const dislikes = n.companion?.dislikes || n.dislikes || [];
-    const d = likes.includes(tag) ? (key ? 15 : 5) : dislikes.includes(tag) ? (key ? -15 : -5) : 0;
+    const A = R.approval;
+    const step = key ? A.keyDeed : A.deed;
+    const d = likes.includes(tag) ? step : dislikes.includes(tag) ? -step : 0;
     if (!d) continue;
-    p.approval = Math.max(-100, Math.min(100, p.approval + d));
-    out.push({ text: `${n.name}: ${d > 0 ? 'одобряет' : 'не одобряет'} (${d > 0 ? '+' : ''}${d})`, color: d > 0 ? 'j' : 'c' });
-    if (p.approval <= -70) out.push(leave(save, p, 'approval'));
-    else if (p.approval <= -50 && !p.warned) { p.warned = true; out.push({ text: `${n.name}: «Ещё раз — и я ухожу».`, color: 'a' }); }
+    p.approval = Math.max(A.min, Math.min(A.max, p.approval + d));
+    out.push({ text: tf(d > 0 ? 'fx.approves' : 'fx.disapproves', { name: n.name, n: `${d > 0 ? '+' : ''}${d}` }), color: d > 0 ? 'j' : 'c' });
+    if (p.approval <= A.leave) out.push(leave(save, p, 'approval'));
+    else if (p.approval <= A.warn && !p.warned) { p.warned = true; out.push({ text: tf('fx.warn', { name: n.name }), color: 'a' }); }
     const teaches = n.companion?.teaches || (n.companion?.talents || [])[0];
-    if (p.approval >= 50 && !p.taught && teaches && TALENTS[teaches]) {
+    if (p.approval >= A.teach && !p.taught && teaches && TALENTS[teaches]) {
       p.taught = true;
-      if (!save.hero.talents.includes(teaches)) out.push(...learnTalent(save, teaches));
+      out.push(...learnTalent(save, teaches));
     }
   }
   return out;
@@ -246,8 +310,8 @@ export function deed(save, tag, key) {
 function leave(save, p, why) {
   const n = NPCS[p.npc];
   p.state = 'left';
-  journal(save, `${n.name} уходит (${why === 'approval' ? 'не согласен с твоими поступками' : 'конфликт с фракцией'}).`);
-  return { text: `${n.name} уходит из партии`, color: 'c' };
+  journal(save, tf(why === 'approval' ? 'fx.leftApproval' : 'fx.leftFaction', { name: n.name }));
+  return { text: tf('fx.leaves', { name: n.name }), color: 'c' };
 }
 
 /** Hero became an ally of an enemy of the companion's faction → ultimatum, the next such step → leaves. */
@@ -260,7 +324,7 @@ export function companionRepCheck(save) {
     const enemyAllies = Object.keys(RELATIONS[f]).filter((g) => RELATIONS[f][g] === 'enemy' && repTier(save.rep[g]) === 'ally').length;
     if (enemyAllies > (p.enemyAllies || 0)) {
       if (p.ultimatum) out.push(leave(save, p, 'faction'));
-      else { p.ultimatum = true; out.push({ text: `${NPCS[p.npc].name}: ультиматум — ты дружишь с нашими врагами`, color: 'a' }); }
+      else { p.ultimatum = true; out.push({ text: tf('fx.ultimatum', { name: NPCS[p.npc].name }), color: 'a' }); }
     }
     p.enemyAllies = enemyAllies;
   }
@@ -301,12 +365,35 @@ export function restParty(save, data = GAME_DATA, frac = 1) {
 export const routesFrom = (id) => ROUTES.filter((r) => r.from === id || r.to === id);
 export const otherEnd = (r, id) => (r.from === id ? r.to : r.from);
 
-/** Route is usable: both ends discovered, hidden ones need their reveal flag (or hidden-routes / squeeze), requires ok. */
-export function isKnownRoute(save, r) {
+/**
+ * Route is usable: both ends discovered; a hidden route also needs its reveal flag, an opened-route flag
+ * (`route:from:to`, set when the hidden node was found), a discovered hidden end node or a party flag
+ * hidden-routes / squeeze (pass partyFlags: Set of world flags); requires ok.
+ */
+export function isKnownRoute(save, r, partyFlags = null) {
   if (!save.discovered.includes(r.from) || !save.discovered.includes(r.to)) return false;
-  if (r.hidden && !(r.reveal && save.flags[r.reveal]) && !save.flags[`route:${r.from}:${r.to}`]) return false;
+  if (r.hidden) {
+    const open = (r.reveal && save.flags[r.reveal]) || save.flags[routeFlag(r)]
+      || [r.from, r.to].some((id) => LOCATIONS[id]?.hidden && save.discovered.includes(id))
+      || (partyFlags && R.hiddenRouteFlags.some((f) => partyFlags.has(f)));
+    if (!open) return false;
+  }
   if (r.requires && !requiresOk(save, r.requires)) return false;
   return true;
+}
+export const routeFlag = (r) => `route:${r.from}:${r.to}`;
+
+/** Party world flags as a Set (for isKnownRoute and similar per-frame checks). */
+export function partyFlagSet(save, data = GAME_DATA) {
+  const set = new Set();
+  for (const m of members(save, data)) for (const w of m.unit.worldFlags || []) set.add(w.id);
+  return set;
+}
+
+/** A hidden node was found (check, rumor, flag): discover it and open the hidden routes leading to it. */
+export function openHidden(save, id) {
+  discover(save, id);
+  for (const r of routesFrom(id)) if (r.hidden) save.flags[routeFlag(r)] = true;
 }
 
 /** Visit a node: mark visited, discover non-hidden neighbours (and hidden ones whose reveal flag is set). */
@@ -320,7 +407,7 @@ export function visit(save, id) {
     const l = LOCATIONS[o];
     const revealed = (r.reveal && save.flags[r.reveal]) || (l?.hidden?.reveal || []).some((f) => save.flags[f]);
     if ((r.hidden || l?.hidden) && !revealed) continue;
-    if (r.hidden) save.flags[`route:${r.from}:${r.to}`] = true;
+    if (r.hidden) save.flags[routeFlag(r)] = true;
     discover(save, o);
   }
 }
@@ -364,4 +451,5 @@ export function pickEncounter(save, regionId, rng = Math.random) {
 
 export const hasFlagInParty = (save, data, flag) => hasWorldFlag(members(save, data), flag);
 export const partySize = (save) => 1 + activeCompanions(save).filter((p) => p.hp !== 0).length;
+export const partyMax = MAX_PARTY;
 export { levelForXp as levelFor };

@@ -16,20 +16,24 @@ import {
 import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputation.js';
 import {
   members, activeCompanions, buildHero, canRecruit, recruit, grant, restParty, restDepartures, journal,
-  locFaction, regionOf, hasFlagInParty, discover, pickEncounter, learnTalent,
+  locFaction, regionOf, hasFlagInParty, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
 } from '../world/state.js';
-import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress } from '../world/quests.js';
+import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions } from '../world/quests.js';
 import { startWorldBattle } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
+import { openShop } from './shop.js';
+import { runEncounter } from './encounter.js';
+import { hasWorldFlag } from '../world/checks.js';
+import { WORLD_RULES } from '../data/world/rules.js';
+import { FIELD_CAMP } from '../world/data.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const PAGE = 7;
 const MAX_ACTIONS = 9;
 const TIER_COL = { hostile: 'c', suspicious: 'a', neutral: '4', friendly: 'j', ally: 'h' };
 export const tierColor = (tier) => C[TIER_COL[tier] || '4'];
-const priceMult = (tier) => (tier === 'suspicious' ? 1.25 : tier === 'friendly' ? 0.9 : tier === 'ally' ? 0.8 : 1);
 
 export function createLocationScene(locId) {
   const S = { page: 0, apage: 0, buttons: [], hover: null, time: 0, gate: false, visit: {} };
@@ -43,19 +47,36 @@ export function createLocationScene(locId) {
   const refresh = (game) => { toastAll(game, autoProgress(save(game), game.data)); persist(game); layout(game); };
   const ms = (game) => members(save(game), game.data);
   const homeTier = (game) => facTier(game, locFaction(locId) || (loc.region === 'harmony' ? 'technikums' : null));
-  const toMap = (g) => import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene()));
+  const toMap = (g) => { g.visit = null; import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene())); };
   const again = (g) => g.setScene(createLocationScene(locId));
+  /** Visit state lives in game.visit (survives scene re-creation after battles), reset when leaving to the map. */
+  const V = (g) => (g.visit && g.visit.loc === locId ? g.visit : (g.visit = { loc: locId, gate: false, gig: false, enterEvents: false }));
+  /** After the gate is passed: entry events, then talent choices. */
+  function afterGate(g) {
+    const v = V(g);
+    v.gate = true;
+    persist(g);
+    if (!v.enterEvents) {
+      v.enterEvents = true;
+      const ev = eventsFor(save(g), locId, 'enter')[0];
+      if (ev) { runEvent(g, ev, (g2) => again(g2)); return; }
+    }
+    pendingChoice(g);
+  }
 
   // ---------------------------------------------------------------- entry gate (world.md §3)
   function gateCheck(game) {
-    S.gate = true;
     const e = loc.entry;
     if (!e) return false;
     const f = e.faction;
     let tier = facTier(game, f);
     const party = ms(game);
-    if (tier === 'suspicious' && party.some((m) => (m.unit.worldFlags || []).some((w) => w.id === 'badge-entry' || w.id === 'disguise'))) tier = 'neutral';
-    if (tier === 'suspicious' && f.startsWith('mutants') && hasFlagInParty(save(game), game.data, 'mutant-kin')) tier = 'neutral';
+    const sv0 = save(game);
+    const has = (flag) => hasWorldFlag(party, flag);
+    if (tier === 'suspicious' && has('badge-entry')) tier = 'neutral';
+    if (tier === 'suspicious' && f.startsWith('mutants') && has('mutant-kin') ) tier = 'neutral';
+    const G = WORLD_RULES.gate;
+    const pass = (g) => afterGate(g);
     const leave = (g) => {
       const sv = save(g);
       if (sv.prevLocation && LOCATIONS[sv.prevLocation]) sv.location = sv.prevLocation;
@@ -63,30 +84,35 @@ export function createLocationScene(locId) {
       toMap(g);
     };
     const fightEnc = e.battle || (ENCOUNTER_TABLES[loc.region] || []).find((x) => x.kind === 'battle' && x.faction === f)?.encounter || 'w-road-scavengers';
-    const fight = (g) => startWorldBattle(g, { encounter: fightEnc, faction: f, onWin: again });
+    // the gate battle counts as passing: after the win the scene is re-created with game.visit.gate = true
+    const fight = (g) => { V(g).gate = true; startWorldBattle(g, { encounter: fightEnc, faction: f, onWin: again }); };
     if (tier === 'hostile') {
-      game.openModal({
-        title: t('loc.gateHostile'), border: 'c', onCancel: false,
-        lines: [{ text: t('loc.gateHostileText').replace('{f}', factionName(f)) }],
-        options: [
-          { label: t('loc.gateFight'), sub: encounterName(fightEnc), run: fight },
-          { label: t('loc.gateSneak'), sub: `${t('check.group')} · ${t('battle.dc')} 14`, run: (g) => openGroupCheck(g, { title: t('loc.gateSneak'), skill: 'stealth', dc: 14, members: party,
-            onDone: (g2, ok) => { if (!ok) leave(g2); else g2.toast(t('loc.gateSneaked'), 'j'); } }) },
-          { label: t('loc.gateLeave'), run: leave },
-        ],
-      });
+      const opts = [
+        { label: t('loc.gateFight'), sub: encounterName(fightEnc), run: fight },
+        { label: t('loc.gateSneak'), sub: `${t('check.group')} · ${t('battle.dc')} ${G.sneakDc}`, run: (g) => openGroupCheck(g, { title: t('loc.gateSneak'), skill: 'stealth', dc: G.sneakDc, members: party, memoKey: `gate:${locId}:${sv0.day}:sneak`,
+          onDone: (g2, ok) => { if (!ok) leave(g2); else { g2.toast(t('loc.gateSneaked'), 'j'); pass(g2); } } }) },
+      ];
+      // disguise: once per rest — enter as if neutral; parley: talk instead of a fight (Persuasion)
+      if (has('disguise') && !sv0.flags['used:disguise']) opts.push({ label: t('loc.gateDisguise'), run: (g) => { sv0.flags['used:disguise'] = true; g.toast(t('loc.gateDisguised'), 'j'); pass(g); } });
+      if (has('parley')) opts.push({ label: t('loc.gateParley'), sub: `${t('skill.persuasion')} · ${t('battle.dc')} ${G.parleyDc}`,
+        run: (g) => openCheck(g, { title: t('loc.gateParley'), skill: 'persuasion', dc: G.parleyDc, members: party, memoKey: `gate:${locId}:${sv0.day}:parley`, onDone: (g2, ok) => (ok ? pass(g2) : fight(g2)) }) });
+      opts.push({ label: t('loc.gateLeave'), run: leave });
+      game.openModal({ title: t('loc.gateHostile'), border: 'c', onCancel: false, lines: [{ text: t('loc.gateHostileText').replace('{f}', factionName(f)) }], options: opts });
       return true;
     }
     if (tier === 'suspicious') {
-      const ch = e.check || { skills: ['persuasion', 'deception'], dc: 13 };
-      const toll = SERVICE_PRICES.toll(e.toll || 20);
+      const ch = e.check || { skills: G.talkSkills, dc: G.talkDc };
+      const toll = SERVICE_PRICES.toll(e.toll || G.toll);
+      // forge-pass: AI Party checkpoints (aiParty / agrozone) — the document check with advantage
+      const forge = has('forge-pass') && ['aiParty', 'agrozone'].includes(f) ? t('flag.forge-pass') : null;
       game.openModal({
         title: t('loc.gateSuspicious'), border: 'a', onCancel: false,
         lines: [{ text: t('loc.gateSuspiciousText').replace('{f}', factionName(f)) }],
         options: [
           { label: t('loc.gateTalk'), sub: `${ch.skills.map((s) => t(`skill.${s}`)).join(' / ')} · ${t('battle.dc')} ${ch.dc}`,
-            run: (g) => openCheck(g, { title: loc.name, skills: ch.skills, dc: ch.dc, members: party, onDone: (g2, ok) => { if (!ok) { if (e.battle) fight(g2); else leave(g2); } } }) },
-          { label: `${t('loc.gateToll')} — ${toll}`, disabled: save(game).hero.credits < toll, run: (g) => { save(g).hero.credits -= toll; refresh(g); } },
+            run: (g) => openCheck(g, { title: loc.name, skills: ch.skills, dc: ch.dc, members: party, extraAdv: forge, memoKey: `gate:${locId}:${sv0.day}:talk`,
+              onDone: (g2, ok) => { if (!ok) { if (e.battle) fight(g2); else leave(g2); } else pass(g2); } }) },
+          { label: `${t('loc.gateToll')} — ${toll}`, disabled: save(game).hero.credits < toll, run: (g) => { save(g).hero.credits -= toll; refresh(g); pass(g); } },
           { label: t('loc.gateLeave'), run: leave },
         ],
       });
@@ -127,7 +153,7 @@ export function createLocationScene(locId) {
     const sv = save(game);
     const tier = facTier(game, npcRepFaction(npc));
     if (act === 'talk') return talk(game, npc, tier);
-    if (act === 'trade') return openShop(game, npc.name, tier);
+    if (act === 'trade') return openShopHere(game, npc.name, tier);
     if (act === 'train') return openTrain(game, npc);
     if (act === 'recruit') {
       const state = recruit(sv, npc.id);
@@ -174,25 +200,8 @@ export function createLocationScene(locId) {
     });
   }
 
-  function openShop(game, who, tier) {
-    const m = priceMult(tier);
-    game.openModal({
-      width: 900,
-      build: (g) => ({
-        title: `${t('loc.trade')}: ${who}`,
-        lines: [{ text: `${t('world.credits')}: ${save(g).hero.credits}`, color: 'b' }, ...(m !== 1 ? [{ text: `${t('loc.prices')} ×${m}`, color: '4' }] : [])],
-        options: [
-          ...SHOP_STOCK.map((id) => {
-            const it = ITEMS[id];
-            const price = Math.round(it.price * m);
-            const have = save(g).hero.items[id] || 0;
-            return { label: `${it.name} — ${price}`, sub: `${it.desc} (${t('loc.have')} ${have})`, keep: true, disabled: save(g).hero.credits < price,
-              run: (g2) => { save(g2).hero.credits -= price; save(g2).hero.items[id] = have + 1; play('buff'); persist(g2); } };
-          }),
-          { label: t('loc.close'), run: (g2) => back(g2) },
-        ],
-      }),
-    });
+  function openShopHere(game, who, tier, stock = SHOP_STOCK) {
+    openShop(game, { title: `${t('loc.trade')}: ${who}`, stock, tier, faction: locFaction(locId), onClose: (g) => back(g) });
   }
 
   function openTrain(game, npc) {
@@ -214,7 +223,7 @@ export function createLocationScene(locId) {
               const needLvl = !talentAllowed(x, ctx);
               const why = owned ? t('loc.owned') : needRep ? t('loc.needRep') : needItem ? `${t('loc.needItem')}: ${ITEMS[x.source.item]?.name}` : needLvl ? t('loc.needLevel') : sv.hero.credits < cost ? t('loc.noMoney') : null;
               return { label: `${x.name} — ${cost}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: why || x.desc, disabled: !!why, keep: true,
-                run: (g2) => { sv.hero.credits -= cost; toastAll(g2, learnTalent(sv, x.id)); play('buff'); persist(g2); } };
+                run: (g2) => { sv.hero.credits -= cost; toastAll(g2, learnTalent(sv, x.id, g2.data, { force: true })); play('buff'); persist(g2); } };
             }),
             { label: t('loc.close'), run: (g2) => back(g2) },
           ],
@@ -233,7 +242,7 @@ export function createLocationScene(locId) {
     if (s.kind === 'choice') {
       return { label: `${t('loc.decide')}: ${q.name}`, sub: s.stage.text, run: (g) => g.openModal({
         title: q.name, width: 960, lines: [{ text: s.stage.text }],
-        options: [...s.choice.options.map((o) => {
+        options: [...availableOptions(sv, s).map((o) => {
           const ok = !o.requires || requires(g, o.requires);
           return { label: o.text, disabled: !ok, sub: ok ? null : t('loc.notAvailable'), run: (g2) => { toastAll(g2, chooseOption(sv, s, o.id, g2.data)); refresh(g2); } };
         }), { label: t('loc.questLater'), run: () => {} }],
@@ -241,12 +250,12 @@ export function createLocationScene(locId) {
     }
     if (goal.kind === 'battle') {
       return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}`,
-        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { again(g2); done(g2); } }) };
+        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); persist(g2); again(g2); } }) };
     }
     if (goal.kind === 'check') {
       const party = ms(game);
       return { label: `${t('loc.solve')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goal.dc}`,
-        run: (g) => (goal.group ? openGroupCheck : openCheck)(g, { title: q.name, skills: goal.skills, dc: goal.dc, members: party, cancel: !goal.group,
+        run: (g) => (goal.group ? openGroupCheck : openCheck)(g, { title: q.name, skills: goal.skills, dc: goal.dc, members: party, cancel: !goal.group, memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`,
           onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
     if (goal.kind === 'challenge') {
@@ -319,7 +328,7 @@ export function createLocationScene(locId) {
       out.push({ label: t('loc.rest'), sub: cost ? `${cost} ${t('world.credits')} · 100%` : `${t('loc.free')} · 100%`, disabled: sv.hero.credits < cost,
         run: (g) => { sv.hero.credits -= cost; doRest(g, 1); } });
     } else if (loc.region !== 'harmony' && loc.kind !== 'boss') {
-      out.push({ label: t('loc.camp'), sub: t('loc.campSub'), run: (g) => doRest(g, 0.5, true) });
+      out.push({ label: t('loc.camp'), sub: t('loc.campSub'), run: (g) => doRest(g, FIELD_CAMP.restore, true) });
     }
     if (svc.includes('heal')) out.push({ label: t('loc.heal'), sub: t('loc.healSub'), run: (g) => { restParty(sv, g.data, 1); g.toast(t('loc.healed'), 'j'); refresh(g); } });
     const cyber = sv.party.filter((p) => p.state === 'cyberspace');
@@ -327,34 +336,43 @@ export function createLocationScene(locId) {
       const free = loc.region === 'harmony' && tierAtLeast(facTier(game, 'technikums'), 'friendly');
       const cost = free ? 0 : SERVICE_PRICES.revive(sv.hero.level) * cyber.length;
       out.push({ label: t('loc.revive'), sub: cost ? `${cost} ${t('world.credits')}` : t('loc.free'), disabled: sv.hero.credits < cost,
-        run: (g) => { sv.hero.credits -= cost; for (const p of cyber) { p.state = 'active'; p.hp = null; p.mrl = null; } g.toast(t('loc.revived'), 'j'); refresh(g); } });
+        run: (g) => { sv.hero.credits -= cost; for (const p of cyber) { p.state = activeCompanions(sv).length < MAX_PARTY ? 'active' : 'waiting'; p.hp = null; p.mrl = null; } g.toast(t('loc.revived'), 'j'); refresh(g); } });
     }
-    if (svc.includes('trade') && !npcsAt(locId).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: t('loc.shopSub'), run: (g) => openShop(g, loc.name, tier) });
-    if (svc.includes('rumors')) out.push({ label: t('loc.rumor'), sub: `10 ${t('world.credits')}`, disabled: sv.hero.credits < 10, run: (g) => { sv.hero.credits -= 10; rumor(g); refresh(g); } });
-    if (hasFlagInParty(sv, game.data, 'gig') && ['town', 'hub'].includes(loc.kind) && !S.visit.gig) {
-      out.push({ label: t('loc.perform'), sub: `${t('skill.persuasion')} ${t('battle.dc')} 13`, run: (g) => openCheck(g, { title: t('loc.perform'), skill: 'persuasion', dc: 13, members: [ms(g)[0]],
-        onDone: (g2, ok) => { S.visit.gig = true; const f = locFaction(locId) || 'technikums'; if (ok) toastAll(g2, grant(sv, { credits: 20, rep: { [f]: 3 } }, g2.data)); refresh(g2); } }) });
+    if (svc.includes('trade') && !npcsAt(locId).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: t('loc.shopSub'), run: (g) => openShopHere(g, loc.name, tier) });
+    if (hasFlagInParty(sv, game.data, 'black-market') && ['town', 'hub'].includes(loc.kind)) out.push({ label: t('loc.blackMarket'), sub: t('loc.blackMarketSub'), run: (g) => openShopHere(g, t('loc.blackMarket'), tier, WORLD_RULES.blackMarket) });
+    if (svc.includes('rumors')) out.push({ label: t('loc.rumor'), sub: `${WORLD_RULES.rumorPrice} ${t('world.credits')}`, disabled: sv.hero.credits < WORLD_RULES.rumorPrice, run: (g) => { sv.hero.credits -= WORLD_RULES.rumorPrice; rumor(g); refresh(g); } });
+    if (hasFlagInParty(sv, game.data, 'gig') && ['town', 'hub'].includes(loc.kind) && !V(game).gig) {
+      out.push({ label: t('loc.perform'), sub: `${t(`skill.${WORLD_RULES.gig.skill}`)} ${t('battle.dc')} ${WORLD_RULES.gig.dc}`, run: (g) => openCheck(g, { title: t('loc.perform'), skill: WORLD_RULES.gig.skill, dc: WORLD_RULES.gig.dc, members: [ms(g)[0]],
+        memoKey: `gig:${locId}:${sv.day}`, onDone: (g2, ok) => { V(g2).gig = true; const f = locFaction(locId) || 'technikums'; const gg = WORLD_RULES.gig; if (ok) toastAll(g2, grant(sv, { credits: gg.credits, rep: { [f]: gg.rep } }, g2.data)); refresh(g2); } }) });
     }
     return out;
   }
 
   function doRest(game, frac, field) {
     const sv = save(game);
-    restParty(sv, game.data, frac);
-    if (hasFlagInParty(sv, game.data, 'free-medkit') || hasFlagInParty(sv, game.data, 'herb-medkit')) sv.hero.items.medkit = (sv.hero.items.medkit || 0) + 1;
+    const party = ms(game);
+    const has = (f) => hasWorldFlag(party, f);
+    // rest-heal: a field camp restores everything; rest-mrl: MRL fully
+    restParty(sv, game.data, field && has('rest-heal') ? 1 : frac);
+    if (field && has('rest-mrl') && !has('rest-heal')) { sv.hero.mrl = null; for (const p of activeCompanions(sv)) p.mrl = null; }
+    if (has('free-medkit') || has('herb-medkit') || has('multitool')) sv.hero.items.medkit = (sv.hero.items.medkit || 0) + 1;
+    delete sv.flags['used:disguise'];
+    delete sv.flags['used:silent-pick'];
     S.canSwap = true;
     game.toast(frac >= 1 ? t('loc.rested') : t('loc.camped'), 'j');
     toastAll(game, restDepartures(sv));
     refresh(game);
     const ev = eventsFor(sv, locId, 'rest')[0];
     if (ev) return runEvent(game, ev, (g) => again(g));
-    if (field) {
-      const need = Math.max(1, 3 * (regionOf(locId)?.danger || 0));
+    if (field && FIELD_CAMP.encounterRoll) {
+      // as a travel day (world.md §2): d20 ≤ 3 × danger + mod, the encounter through the shared handler
+      const th = encounterThreshold(sv, { to: locId }, game.data);
+      if (!th.need) return;
       const roll = 1 + Math.floor(Math.random() * 20);
-      game.toast(`${t('world.encounterRoll')}: d20 = ${roll} ≤ ${need}?`, roll <= need ? 'c' : '4');
-      if (roll <= need) {
+      game.toast(`${t('world.encounterRoll')}: d20 = ${roll} ${t('map.vs')} ≤ ${th.need}`, roll <= th.need ? 'c' : '4');
+      if (roll <= th.need) {
         const e = pickEncounter(sv, loc.region);
-        if (e && e.kind === 'battle') startWorldBattle(game, { encounter: e.encounter, faction: e.faction, location: locId, onWin: again });
+        if (e) runEncounter(game, e, loc.region, self, () => { game.resume(self); refresh(game); });
       }
     }
   }
@@ -364,7 +382,7 @@ export function createLocationScene(locId) {
     const pool = Object.values(LOCATIONS).filter((l) => !sv.discovered.includes(l.id) && !l.requires);
     if (!pool.length) { game.toast(t('loc.noRumor'), '4'); return; }
     const l = pool[Math.floor(Math.random() * pool.length)];
-    discover(sv, l.id);
+    openHidden(sv, l.id);
     journal(sv, `${t('loc.rumorFound')}: ${l.name}`);
     game.toast(`${t('loc.rumorFound')}: ${l.name}`, 'a');
   }
@@ -374,7 +392,7 @@ export function createLocationScene(locId) {
     const loot = { items: c.loot.filter((x) => x.item), credits: c.loot.reduce((s, x) => s + (x.credits || 0), 0) };
     const take = (g) => { sv.caches.push(c.id); g.toast(t('loc.found'), 'a'); toastAll(g, grant(sv, loot, g.data)); refresh(g); };
     if (!c.check || hasFlagInParty(sv, game.data, 'find-cache')) return take(game);
-    openCheck(game, { title: t('loc.search'), skill: c.check.skill, dc: c.check.dc, members: ms(game), cancel: true,
+    openCheck(game, { title: t('loc.search'), skill: c.check.skill, dc: c.check.dc, members: ms(game), cancel: true, memoKey: `cache:${c.id}`,
       onDone: (g, ok) => { if (ok) take(g); else { sv.caches.push(c.id); g.toast(t('loc.notFound'), 'c'); refresh(g); } } });
   }
 
@@ -382,7 +400,7 @@ export function createLocationScene(locId) {
     const sv = save(game);
     const party = ms(game);
     const adv = (ta.advFlags || []).find((f) => hasFlagInParty(sv, game.data, f));
-    openCheck(game, { title: `${loc.name}: ${ta.name}`, skills: ta.check.skills, dc: ta.check.dc, members: party, extraAdv: adv ? t(`flag.${adv}`) : null, cancel: true,
+    openCheck(game, { title: `${loc.name}: ${ta.name}`, skills: ta.check.skills, dc: ta.check.dc, members: party, extraAdv: adv ? t(`flag.${adv}`) : null, cancel: true, memoKey: `term:${loc.terminal.id}:${aid}`,
       onDone: (g, ok) => {
         if (ok) {
           sv.terminals[loc.terminal.id] = ta.result;
@@ -400,10 +418,10 @@ export function createLocationScene(locId) {
     const sv = save(game);
     const list = (sv.pendingTalentChoice || []).shift();
     if (!list) return false;
-    const opts = list.filter((id) => TALENTS[id] && !sv.hero.talents.includes(id));
+    const opts = list.filter((id) => TALENTS[id] && !sv.hero.talents.includes(id) && talentOk(sv, id, game.data));
     if (!opts.length) return pendingChoice(game);
     game.openModal({ title: t('talent.choice'), width: 900, onCancel: false, lines: [{ text: t('talent.choiceText'), color: 'a' }],
-      options: opts.map((id) => ({ label: TALENTS[id].name, sub: TALENTS[id].desc, run: (g) => { toastAll(g, learnTalent(sv, id)); refresh(g); pendingChoice(g); } })) });
+      options: opts.map((id) => ({ label: TALENTS[id].name, sub: TALENTS[id].desc, run: (g) => { toastAll(g, learnTalent(sv, id, g.data)); refresh(g); pendingChoice(g); } })) });
     return true;
   }
 
@@ -471,11 +489,9 @@ export function createLocationScene(locId) {
     enter(game) {
       S.time = 0;
       layout(game);
-      if (!S.gate && gateCheck(game)) return;
-      const ev = eventsFor(save(game), locId, 'enter')[0];
-      if (ev) { runEvent(game, ev, (g) => again(g)); return; }
-      pendingChoice(game);
-      persist(game);
+      const v = V(game);
+      if (!v.gate && gateCheck(game)) return;
+      afterGate(game);
     },
     resume(game) { layout(game); pendingChoice(game); },
     resize(game) { layout(game); },

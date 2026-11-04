@@ -7,7 +7,7 @@ import { drawSprite, heroSpriteIds, idleFrame, drawPortrait } from '../assets/sp
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, LINE, text, textBlock, fit, panel, button, hitButton, clear, resLine } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS } from '../world/reputation.js';
-import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, journal } from '../world/state.js';
+import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, learnTalent } from '../world/state.js';
 import { QUESTS, gadgetFor, ITEMS } from '../world/data.js';
 import { stageOf, currentGoalText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
@@ -54,11 +54,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       title: t('talent.pending'), width: 980,
       lines: [{ text: t('talent.pickLevel'), color: 'a' }],
       options: pool.slice(0, 16).map((x) => ({ label: `${x.name}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: x.desc, run: (g) => {
-        sv.hero.talents.push(x.id);
         sv.hero.pendingTalents--;
-        if (isCombatTalent(x) && sv.hero.activeCombat.length < COMBAT_TALENT_LIMIT(sv.hero.level)) sv.hero.activeCombat.push(x.id);
-        journal(sv, `${t('talent.new')}: ${x.name}`);
-        g.toast(`${t('talent.new')}: ${x.name}`, 'a');
+        for (const m of learnTalent(sv, x.id, g.data, { force: true })) g.toast(m.text, m.color);
         saveGame(sv);
         rebuild(g);
       } })),

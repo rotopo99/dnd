@@ -12,10 +12,11 @@ import { hasSave, loadGame } from '../save.js';
 
 /** Load the save and go to its location (or back into an unfinished Cyberspace episode). */
 export function continueGame(game) {
-  const save = loadGame();
+  const save = loadGame(game.data);
   if (!save) { game.toast(t('menu.noSave'), 'c'); layout(game); return; }
   game.save = save;
-  if (save.cyberspace) import('./cyberspace.js').then((m) => game.setScene(m.createCyberspaceScene()));
+  if (save.cyberspace?.pending || (save.cyberspace && !save.cyberspace.nodes)) import('./cyberspace.js').then((m) => m.startCyberspace(game, save.cyberspace));
+  else if (save.cyberspace) import('./cyberspace.js').then((m) => game.setScene(m.createCyberspaceScene()));
   else import('./location.js').then((m) => game.setScene(m.createLocationScene(save.location)));
 }
 

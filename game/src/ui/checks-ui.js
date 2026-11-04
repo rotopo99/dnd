@@ -2,7 +2,9 @@
 // openCheck — single check; openGroupCheck — everyone rolls, success if at least half pass;
 // openChallenge — N successes before M failures, each round: skill + performer.
 import { t } from '../data/text/index.js';
-import { checkInfo, checkChance, rollCheck, skillName } from '../world/checks.js';
+import { checkInfo, checkChance, rollCheck, skillName, hasWorldFlag } from '../world/checks.js';
+import { saveGame } from '../save.js';
+import { WORLD_RULES as R } from '../data/world/rules.js';
 import { play } from '../audio/sfx.js';
 
 const MODE = { adv: 'check.adv', normal: 'check.normal', dis: 'check.dis' };
@@ -53,14 +55,38 @@ export function openCheck(game, o) {
     });
     return;
   }
+  const save = game.save;
+  const finish = (g, ok, res, m) => {
+    if (save && o.memoKey) { delete save.memo[o.memoKey]; }
+    o.onDone(g, ok, res, m);
+    if (save) saveGame(save);
+  };
+  // a roll already made for this check (the page was reloaded before «Дальше»): no re-roll
+  const memo = save && o.memoKey ? save.memo?.[o.memoKey] : null;
+  if (memo) {
+    game.openModal({ title: o.title, lines: [...memo.lines, { text: t('check.memo'), color: '4' }], border: memo.success ? 'j' : 'c', onCancel: false,
+      options: [{ label: t('battle.continue'), run: (g2) => finish(g2, memo.success, null, null) }] });
+    return;
+  }
   const opts = performerOptions(o.members, o.skill, o.dc, o.extraAdv, (g, m, info) => {
     const res = rollCheck(m, info, o.dc);
     play(res.success ? 'buff' : 'miss');
+    const lines = resultLines(m.name, res);
+    if (save && o.memoKey) { save.memo = save.memo || {}; save.memo[o.memoKey] = { success: res.success, lines }; saveGame(save); }
     g.openModal({
-      title: o.title, lines: resultLines(m.name, res), border: res.success ? 'j' : 'c', onCancel: false,
-      options: [{ label: t('battle.continue'), run: (g2) => o.onDone(g2, res.success, res, m) }],
+      title: o.title, lines, border: res.success ? 'j' : 'c', onCancel: false,
+      options: [{ label: t('battle.continue'), run: (g2) => finish(g2, res.success, res, m) }],
     });
   });
+  // world flags that replace the roll: bribe (social), break-door (athletics, once per node), silent-pick (lockpicking, once per rest)
+  if (save && o.members?.length) {
+    const auto = (label, mark) => opts.push({ label, run: (g) => { mark(); play('buff'); g.openModal({ title: o.title, lines: [{ text: label, color: 'j' }, { text: t('check.success'), color: 'j', font: 'bold 24px monospace' }], onCancel: false,
+      options: [{ label: t('battle.continue'), run: (g2) => finish(g2, true, null, null) }] }); } });
+    const cost = R.bribePerLevel * (save.hero.level || 1);
+    if (R.socialSkills.includes(o.skill) && hasWorldFlag(o.members, 'bribe') && save.hero.credits >= cost) auto(`${t('check.bribe')} — ${cost}`, () => { save.hero.credits -= cost; });
+    if (o.skill === 'athletics' && hasWorldFlag(o.members, 'break-door') && !game.visit?.breakDoor) auto(t('check.breakDoor'), () => { game.visit = { ...(game.visit || {}), breakDoor: true }; });
+    if (o.skill === 'lockpicking' && hasWorldFlag(o.members, 'silent-pick') && !save.flags['used:silent-pick']) auto(t('check.silentPick'), () => { save.flags['used:silent-pick'] = true; });
+  }
   if (o.cancel) opts.push({ label: t('check.cancel'), run: () => {} });
   game.openModal({
     title: o.title,
@@ -80,6 +106,13 @@ function bestOf(members, skill, dc, extraAdv) {
 
 /** Everyone rolls; success when at least half pass. With o.skills — the party picks one skill first. */
 export function openGroupCheck(game, o) {
+  const save = game.save;
+  const memo = save && o.memoKey ? save.memo?.[o.memoKey] : null;
+  if (memo) {
+    game.openModal({ title: o.title, lines: [...memo.lines, { text: t('check.memo'), color: '4' }], onCancel: false,
+      options: [{ label: t('battle.continue'), run: (g) => { delete save.memo[o.memoKey]; o.onDone(g, memo.success); saveGame(save); } }] });
+    return;
+  }
   if (!o.skill && o.skills) {
     if (o.skills.length === 1) return openGroupCheck(game, { ...o, skill: o.skills[0] });
     game.openModal({ title: o.title, lines: [...(o.lines || []), { text: `${t('check.group')}: ${t('check.pickSkill')} · ${t('battle.dc')} ${o.dc}`, color: 'a' }], onCancel: false,
@@ -95,9 +128,10 @@ export function openGroupCheck(game, o) {
   }
   const success = ok * 2 >= o.members.length;
   lines.push({ text: `${t('check.group')}: ${ok}/${o.members.length} — ${success ? t('check.success') : t('check.fail')}`, color: success ? 'j' : 'c', font: 'bold 24px monospace' });
+  if (save && o.memoKey) { save.memo = save.memo || {}; save.memo[o.memoKey] = { success, lines }; saveGame(save); }
   game.openModal({
     title: o.title, lines: [...(o.lines || []), { text: `${skillName(o.skill)}, ${t('battle.dc')} ${o.dc}`, color: 'a' }, ...lines],
-    onCancel: false, options: [{ label: t('battle.continue'), run: (g) => o.onDone(g, success) }],
+    onCancel: false, options: [{ label: t('battle.continue'), run: (g) => { if (save && o.memoKey) delete save.memo[o.memoKey]; o.onDone(g, success); if (save) saveGame(save); } }],
   });
 }
 

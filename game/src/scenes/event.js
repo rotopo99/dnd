@@ -63,10 +63,10 @@ export function runEvent(game, ev, then) {
   }
 
   function pick(g, c) {
-    for (const d of c.deeds || []) for (const x of deed(save, d, true)) g.toast(x.text, x.color);
+    for (const d of c.deeds || []) for (const x of deed(save, d, false)) g.toast(x.text, x.color);
     if (!c.check) return outcome(g, c.success);
     const opener = c.check.group ? openGroupCheck : openCheck;
-    opener(g, { title: storyText(ev.name), skill: c.check.skill, dc: c.check.dc, members: members(save, g.data),
+    opener(g, { title: storyText(ev.name), skill: c.check.skill, dc: c.check.dc, members: members(save, g.data), memoKey: `event:${ev.id}:${c.id}`,
       onDone: (g2, ok) => outcome(g2, ok ? c.success : c.fail || c.success) });
   }
 

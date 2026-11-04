@@ -51,7 +51,7 @@ export function layoutBattle(game, S) {
 layoutBattle.buttons = (S) => {
   const L = S.L;
   const gap = 6;
-  const FIXED = { attack: 92, dash: 100, disengage: 100, endTurn: 116 };
+  const FIXED = { attack: 92, dash: 100, disengage: 100, endTurn: 116, retreat: 100 };
   let fixed = 0, nAb = 0;
   for (const b of S.buttons) { if (FIXED[b.id]) fixed += FIXED[b.id]; else nAb++; }
   const free = L.bar.w - fixed - gap * (S.buttons.length - 1);

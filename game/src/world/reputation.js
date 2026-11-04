@@ -1,5 +1,6 @@
 // Reputation helpers for the UI over data/world/origins.js (world.md §3): tiers, names, spread with change list.
 import { FACTIONS } from '../data/factions.js';
+import { t } from '../data/text/index.js';
 import { EXTRA_FACTIONS } from '../data/npcs.js';
 import { REP_FACTIONS, REP_TIERS, repTier as tierOf, spreadRep, startingRep as start, PROLOGUE_REP } from '../data/world/origins.js';
 import { FACTION_ALIAS } from './data.js';
@@ -9,8 +10,7 @@ export const TIERS = ['hostile', 'suspicious', 'neutral', 'friendly', 'ally'];
 export const TIER_NAMES = Object.fromEntries(REP_TIERS.map((x) => [x.id, x.name]));
 export const TIER_MIN = Object.fromEntries(REP_TIERS.map((x) => [x.id, x.min]));
 export const normFaction = (id) => FACTION_ALIAS[id] || id;
-const MINOR_NAMES = { technikums: 'Техникумы', predlozhka: 'Предложка' };
-export const factionName = (id) => FACTIONS[id]?.name || MINOR_NAMES[id] || EXTRA_FACTIONS[id]?.name || id;
+export const factionName = (id) => FACTIONS[id]?.name || (t(`faction.${id}`) !== `faction.${id}` ? t(`faction.${id}`) : null) || EXTRA_FACTIONS[id]?.name || id;
 export const repTier = (v) => tierOf(v ?? 0);
 export const tierAtLeast = (tier, min) => TIERS.indexOf(tier) >= TIERS.indexOf(min);
 

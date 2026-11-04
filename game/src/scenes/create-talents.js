@@ -14,7 +14,7 @@ const SLOT_ROWS = 8;
 /** createTalentsScene(hero {race, cls, path, name}, back scene, onStart(game, fullHero)) */
 export function createTalentsScene(hero, back, onStart) {
   const st = {
-    origin: null, alignment: 'good', anyStat: null, picks: {}, focus: null, time: 0,
+    origin: null, alignment: 'good', anyStat: null, picks: {}, focus: null, time: 0, pages: {}, lists: {},
   };
   let buttons = [];
   let hover = null;
@@ -27,11 +27,13 @@ export function createTalentsScene(hero, back, onStart) {
     const u = built(game);
     return { race: hero.race, cls: hero.cls, origin: st.origin, alignment: st.alignment, stats: u.stats, level: 1, weaponRange: u.weapon?.range || 1, tags: u.tags };
   }
-  const list = (game, slot) => talentsForSlot(slot, ctx(game));
+  const list = (game, slot) => st.lists[slot] || talentsForSlot(slot, ctx(game));
   const combatCount = (except) => CREATION_SLOTS.filter((s) => s !== except && st.picks[s] && isCombatTalent(TALENTS[st.picks[s]])).length;
 
   function validate(game) {
     if (!st.origin || !originAllowed(st.origin, hero.race)) st.origin = origins()[0]?.id || null;
+    const c = ctx(game);
+    for (const slot of CREATION_SLOTS) st.lists[slot] = talentsForSlot(slot, c); // cached until the next change
     for (const slot of CREATION_SLOTS) {
       const l = list(game, slot);
       if (!l.some((x) => x.id === st.picks[slot])) {
@@ -55,7 +57,14 @@ export function createTalentsScene(hero, back, onStart) {
     }
     CREATION_SLOTS.forEach((slot, si) => {
       const x = ox + 300 + (si % 2) * 306, y = oy + 100 + Math.floor(si / 2) * 290;
-      list(game, slot).slice(0, SLOT_ROWS).forEach((tl, i) => {
+      const all = list(game, slot);
+      const pages = Math.max(1, Math.ceil(all.length / SLOT_ROWS));
+      const page = Math.min(st.pages[slot] || 0, pages - 1);
+      if (pages > 1) {
+        buttons.push({ kind: 'spage', slot, dir: -1, label: '‹', x: x + 232, y: y - 4, w: 30, h: 24, font: FONT_B, disabled: page === 0 });
+        buttons.push({ kind: 'spage', slot, dir: 1, label: '›', x: x + 266, y: y - 4, w: 30, h: 24, font: FONT_B, disabled: page >= pages - 1 });
+      }
+      all.slice(page * SLOT_ROWS, page * SLOT_ROWS + SLOT_ROWS).forEach((tl, i) => {
         const combat = isCombatTalent(tl);
         const blocked = combat && st.picks[slot] !== tl.id && combatCount(slot) >= COMBAT_TALENT_LIMIT(1);
         buttons.push({ kind: 'talent', slot, id: tl.id, label: tl.name, combat, x, y: y + 28 + i * 30, w: 296, h: 28, font: FONT, selected: st.picks[slot] === tl.id, disabled: blocked,
@@ -73,12 +82,14 @@ export function createTalentsScene(hero, back, onStart) {
     else if (b.kind === 'align') st.alignment = b.id;
     else if (b.kind === 'any') st.anyStat = b.id;
     else if (b.kind === 'talent') { st.picks[b.slot] = b.id; st.focus = { kind: 'talent', id: b.id }; }
+    else if (b.kind === 'spage') st.pages[b.slot] = (st.pages[b.slot] || 0) + b.dir;
     else if (b.kind === 'back') { game.resume(back); return; }
     else if (b.kind === 'start') return start(game);
     layout(game);
   }
 
   function start(game) {
+    if (buttons.find((b) => b.kind === 'start')?.disabled) { game.toast(t('create.pickAll'), 'c'); return; }
     const talents = CREATION_SLOTS.map((s) => st.picks[s]).filter(Boolean);
     onStart(game, { ...hero, origin: st.origin, alignment: st.alignment, anyStat: st.anyStat, talents });
   }

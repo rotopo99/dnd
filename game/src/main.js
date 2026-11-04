@@ -2,6 +2,8 @@ import { createInput } from './input.js';
 import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture } from './audio/sfx.js';
 import { GAME_DATA } from './data/index.js';
+import { setSaveErrorHandler } from './save.js';
+import { t } from './data/text/index.js';
 import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
 
 // Minimal logical size: the UI is laid out for >= 1280x720. Bigger windows get a bigger canvas
@@ -59,6 +61,7 @@ window.addEventListener('resize', resize);
 resize();
 unlockAudioOnFirstGesture(window);
 
+setSaveErrorHandler(() => game.toast(t('save.failed'), 'c'));
 game.setScene(menuScene);
 
 let last = performance.now();

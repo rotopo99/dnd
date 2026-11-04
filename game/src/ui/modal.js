@@ -44,6 +44,7 @@ export function updateModal(game) {
   const spec = specOf(game, m);
   const L = layout(game, spec);
   m._layout = L;
+  m._spec = spec; // render reuses it (one build per frame)
   const inp = game.input;
   const hb = hitButton(L.buttons, inp.mouse);
   m._hover = hb;
@@ -75,7 +76,7 @@ export function renderModal(game) {
   ctx.fillStyle = 'rgba(20,20,28,0.72)';
   ctx.fillRect(0, 0, game.width, game.height);
   const m = game.modals[game.modals.length - 1];
-  const spec = specOf(game, m);
+  const spec = m._spec || specOf(game, m);
   const L = m._layout || layout(game, spec);
   panel(ctx, L.x, L.y, L.w, L.h, C['1'], spec.border ? C[spec.border] : C.h);
   text(ctx, fit(ctx, spec.title || '', L.w - 48, FONT_L), L.x + 24, L.y + 22, spec.titleColor ? C[spec.titleColor] : C.h, FONT_L);

@@ -185,6 +185,7 @@ export function createBattleScene(opts) {
     btns.push({ id: 'dash', label: t('battle.dash'), sub: t('act.action'), disabled: !!r, reason: reasonOf(r) });
     r = !S.playerTurn ? 'turn' : bt.bonus <= 0 || bt.disengaged ? 'bonus' : null;
     btns.push({ id: 'disengage', label: t('battle.disengage'), sub: t('act.bonus'), disabled: !!r, reason: r === 'bonus' ? t('battle.noBonus') : reasonOf(r) });
+    if (opts.onRetreat) btns.push({ id: 'retreat', label: t('battle.retreat'), sub: t('battle.retreatSub'), disabled: !S.playerTurn });
     btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: t('battle.endTurnKey'), disabled: !S.playerTurn, reason: S.playerTurn ? null : t('battle.notTurn') });
     S.buttons = btns;
     layoutBattle.buttons(S);
@@ -265,6 +266,7 @@ export function createBattleScene(opts) {
   const say = (text) => { S.message = { text, t: 2.2 }; };
 
   function selectButton(btn) {
+    const game = S.game;
     if (!btn || btn.disabled) { if (btn?.reason) say(btn.reason); return; }
     play('uiClick');
     const b = S.b;
@@ -273,6 +275,7 @@ export function createBattleScene(opts) {
       case 'dash': doAction({ type: 'dash' }); break;
       case 'disengage': doAction({ type: 'disengage' }); break;
       case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
+      case 'retreat': opts.onRetreat(game, S); return;
       default: {
         const a = btn.a;
         if (S.sel?.kind === 'ability' && S.sel.a.id === a.id) { S.sel = null; break; }
@@ -495,6 +498,7 @@ export function createBattleScene(opts) {
     resize(game) { layoutBattle(game, S); S.dirty = true; },
     update(game, dt) {
       S.time += dt;
+      S.game = game;
       animate(dt);
       processQueue();
       if (S.dirty) refresh();

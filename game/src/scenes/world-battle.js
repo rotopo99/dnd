@@ -12,9 +12,12 @@ import { applyRep } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
 import { MAPS } from '../data/index.js';
 import { saveGame } from '../save.js';
+import { rollDice } from '../rules/dice.js';
+import { WORLD_RULES as R } from '../data/world/rules.js';
+import { tf } from '../world/state.js';
 
-const FINALE_ENCOUNTER = 'w-cc-finale';
-const FINALE_MIN_PARTY = 3; // heroes + finaleMods allies (balance rule)
+const FINALE_ENCOUNTER = R.finale.encounter;
+const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
 
 /** Enemies (+allies) of an encounter id for the current party; the finale is reduced by closed terminals. */
 export function encounterSetup(save, encId) {
@@ -56,6 +59,15 @@ export function startWorldBattle(game, o) {
     onWin: (g, S) => { for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color); afterBattle(g, S, o); },
     onLose: (g, S) => { writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
     onExit: (g) => (o.onLose || defaultLose)(g),
+    // world flag 'retreat': leave a non-boss battle — back to the previous node, no loot
+    onRetreat: o.encounter !== FINALE_ENCOUNTER && !o.boss && hasFlagInParty(save, data, 'retreat') ? (g, S) => {
+      writeBack(g, S, false, o, { retreat: true });
+      if (save.prevLocation && LOCATIONS[save.prevLocation]) save.location = save.prevLocation;
+      saveGame(save);
+      g.toast(t('battle.retreated'), 'a');
+      g.visit = null;
+      import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene()));
+    } : null,
   });
   game.setScene(scene);
 }
@@ -73,7 +85,7 @@ function afterBattle(game, S, o) {
 }
 
 /** Copy results into the save. Returns toasts. */
-function writeBack(game, S, won, o) {
+function writeBack(game, S, won, o, { retreat = false } = {}) {
   const save = game.save;
   const b = S.b;
   const revive = hasFlagInParty(save, game.data, 'revive-down');
@@ -88,7 +100,7 @@ function writeBack(game, S, won, o) {
   for (const p of activeCompanions(save)) {
     const u = b.byId[`c-${p.npc}`];
     if (!u) continue;
-    if (u.dead && won) {
+    if (u.dead) {
       p.state = 'cyberspace'; p.hp = 0;
       const msg = t('world.companionCyber').replace('{name}', u.name);
       journal(save, msg);
@@ -98,11 +110,24 @@ function writeBack(game, S, won, o) {
     const r = after(u);
     p.hp = r.hp; p.mrl = r.mrl;
   }
+  // Cyberspace is decided right here (synchronously): a reload before the next scene still sends the hero there
+  if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
   if (won) {
     out.push(...gainXp(save, battleXp(b, game.data), game.data));
+    // scrap-loot (mechanical enemies) / battle-loot: an extra loot roll each
+    const ms = partyUnits(save, game.data);
+    const flags = new Set(ms.flatMap((u) => (u.worldFlags || []).map((w) => w.id)));
+    const mech = b.units.some((u) => u.team === 'enemies' && (u.tags || []).includes('mechanical'));
+    const rolls = (flags.has('battle-loot') ? 1 : 0) + (flags.has('scrap-loot') && mech ? 1 : 0);
+    if (rolls) {
+      let c = 0;
+      for (let i = 0; i < rolls; i++) c += rollDice(Math.random, R.loot.dice) * R.loot.mult;
+      save.hero.credits += c;
+      out.push({ text: tf('fx.credits', { n: `+${c}` }), color: 'b' });
+    }
     const killed = b.units.filter((u) => u.team === 'enemies' && u.kind !== 'summon' && (u.dead || u.removed)).length;
-    if (o.faction && killed) out.push(...repToasts(applyRep(save, o.faction, -Math.min(10, 2 * killed))));
-    if (o.id) save.battlesDone.push(o.id);
+    if (o.faction && killed) out.push(...repToasts(applyRep(save, o.faction, Math.max(R.killRep.maxPerBattle, R.killRep.perKill * killed))));
+    if (o.id && !save.battlesDone.includes(o.id)) save.battlesDone.push(o.id);
   }
   return out;
 }

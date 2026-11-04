@@ -3,19 +3,21 @@
 // an 'ours' terminal at the current location — the first node counts as passed.
 // Success: back to the nearest 'ours' terminal with 50% ЗДР/МРЛ. Failure: a Judge mark; the 3rd mark ends the game.
 import { t } from '../data/text/index.js';
-import { TALENTS, talentAllowed } from '../data/talents.js';
+import { TALENTS } from '../data/talents.js';
 import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, FONT_XL, LINE, text, textBlock, panel, button, hitButton, clear } from '../ui/draw.js';
 import { openCheck } from '../ui/checks-ui.js';
 import { createBattleScene } from './battle.js';
 import { makeWorldMap } from '../world/arena.js';
-import { buildHero, hasFlagInParty, journal, visit, routesFrom, otherEnd } from '../world/state.js';
+import { buildHero, buildCompanion, hasFlagInParty, journal, visit, routesFrom, otherEnd, learnTalent, talentOk } from '../world/state.js';
+import { WORLD_RULES } from '../data/world/rules.js';
 import { LOCATIONS, DEFAULT_RESPAWN, encounterEnemies } from '../world/data.js';
 import { saveGame, deleteSave } from '../save.js';
 
-const SKILLS = ['meditation', 'judge', 'hacking', 'religion'];
-export const MAX_MARKS = 3;
+const CS = WORLD_RULES.cyberspace;
+const SKILLS = CS.skills;
+export const MAX_MARKS = CS.maxMarks;
 
 /** Nearest location with an 'ours' terminal (BFS over routes), default — Harmony Reactor. */
 export function nearestOursTerminal(save) {
@@ -51,7 +53,7 @@ export function createCyberspaceScene() {
   const failed = (c) => c.nodes.filter((n) => n === 'fail').length;
   const current = (c) => c.nodes.findIndex((n) => n === null);
   const adv = (game) => (st(game).helped || hasFlagInParty(game.save, game.data, 'cyberspace-adv') ? t('cyber.helpAdv') : null);
-  const dc = (game) => 13 + (game.save.hero.judgeMarks || 0);
+  const dc = (game) => CS.baseDc + (game.save.hero.judgeMarks || 0);
 
   function spiritMember(game) {
     return { key: 'hero', isHero: true, name: game.save.hero.name, unit: spiritUnit(game), items: game.save.hero.items };
@@ -114,42 +116,45 @@ export function createCyberspaceScene() {
   function finish(game) {
     const save = game.save;
     const c = st(game);
-    const ok = passed(c) >= 2;
+    const ok = passed(c) >= CS.needed;
     const lines = [];
     if (!ok) {
       save.hero.judgeMarks = (save.hero.judgeMarks || 0) + 1;
       lines.push({ text: t('cyber.mark').replace('{n}', save.hero.judgeMarks), color: 'n' });
       if (save.hero.judgeMarks >= MAX_MARKS) {
+        // the end: the save is deleted; the modal is shown over the menu (this scene must not render without a save)
         deleteSave();
         game.save = null;
-        game.openModal({ title: t('cyber.absorbedTitle'), titleColor: 'n', border: 'n', onCancel: false, lines: [{ text: t('cyber.absorbed') }],
-          options: [{ label: t('menu.back'), run: (g) => import('./menu.js').then((m) => g.setScene(m.menuScene)) }] });
+        import('./menu.js').then((m) => {
+          game.setScene(m.menuScene);
+          game.openModal({ title: t('cyber.absorbedTitle'), titleColor: 'n', border: 'n', onCancel: false, lines: [{ text: t('cyber.absorbed') }],
+            options: [{ label: t('menu.back'), run: (g) => g.setScene(m.menuScene) }] });
+        });
         return;
       }
     } else lines.push({ text: t('cyber.escaped'), color: 'j' });
     if (c.reason === 'wipe') {
-      const lost = Math.floor(save.hero.credits * 0.1);
+      const lost = Math.floor(save.hero.credits * CS.robFrac);
       save.hero.credits -= lost;
       if (lost) lines.push({ text: t('cyber.robbed').replace('{n}', lost), color: 'c' });
     }
     // unique talent: d20 1–5, once per game
     const roll = 1 + Math.floor(Math.random() * 20);
-    if (roll <= 5 && !save.hero.uniqueTalent) {
-      const u = buildHero(save, game.data);
-      const ctx = { race: save.hero.race, cls: save.hero.cls, origin: save.hero.origin, alignment: save.hero.alignment, stats: u.stats, level: save.hero.level, tags: u.tags };
-      const pool = Object.values(TALENTS).filter((x) => x.slot === 'unique' && talentAllowed(x, ctx) && !save.hero.talents.includes(x.id));
+    if (roll <= CS.uniqueMax && !save.hero.uniqueTalent) {
+      const pool = Object.values(TALENTS).filter((x) => x.slot === 'unique' && !save.hero.talents.includes(x.id) && talentOk(save, x.id, game.data));
       if (pool.length) {
         const tl = pool[Math.floor(Math.random() * pool.length)];
-        save.hero.talents.push(tl.id);
+        learnTalent(save, tl.id, game.data);
         save.hero.uniqueTalent = true;
         lines.push({ text: `${t('cyber.unique')} (d20 = ${roll}): ${tl.name}`, color: 'a' });
       }
     }
     // back with 50% ЗДР/МРЛ
-    const hu = buildHero(save, game.data);
-    save.hero.hp = Math.ceil(hu.maxHp / 2);
-    save.hero.mrl = Math.ceil(hu.maxMrl / 2);
-    if (c.reason === 'wipe') for (const p of save.party) if (p.state === 'active') { p.hp = null; p.mrl = null; }
+    const half = (entry, u) => { entry.hp = Math.max(1, Math.ceil(u.maxHp * CS.returnFrac)); entry.mrl = Math.max(1, Math.ceil(u.maxMrl * CS.returnFrac)); };
+    save.hero.hp = null; save.hero.mrl = null;
+    half(save.hero, buildHero(save, game.data));
+    // after a wipe the living companions come back with 50% too; the dead stay in Cyberspace (revive on an 'ours' terminal)
+    if (c.reason === 'wipe') for (const p of save.party) if (p.state === 'active' && p.hp !== 0) { p.hp = null; p.mrl = null; const u = buildCompanion(save, p, game.data); if (u) half(p, u); }
     const to = c.returnTo;
     save.cyberspace = null;
     visit(save, to);
@@ -169,6 +174,7 @@ export function createCyberspaceScene() {
     resize(game) { layout(game); },
     update(game, dt) {
       time += dt;
+      if (!game.save?.cyberspace) return;
       const m = game.input.mouse;
       hover = hitButton(buttons, m);
       if (m.clicked && hover) { play('uiClick'); act(game, hover.id); }
@@ -176,6 +182,7 @@ export function createCyberspaceScene() {
     },
     render(game) {
       const { ctx, width: W, height: H } = game;
+      if (!game.save?.cyberspace) { clear(ctx, W, H); return; }
       const c = st(game);
       clear(ctx, W, H);
       // scanlines: cyberspace look (dark teal / cyan / cult purple)
@@ -183,7 +190,7 @@ export function createCyberspaceScene() {
       for (let y = (Math.floor(time * 20) % 6); y < H; y += 6) ctx.fillRect(0, y, W, 1);
       if (!c) return;
       text(ctx, t('cyber.title'), W / 2, 40, C.h, FONT_XL, 'center');
-      text(ctx, `${t('cyber.progress')}: ${passed(c)}/2 · ${t('cyber.marks')}: ${game.save.hero.judgeMarks || 0}/${MAX_MARKS}`, W / 2, 104, C.n, FONT_B, 'center');
+      text(ctx, `${t('cyber.progress')}: ${passed(c)}/${CS.needed} · ${t('cyber.marks')}: ${game.save.hero.judgeMarks || 0}/${MAX_MARKS}`, W / 2, 104, C.n, FONT_B, 'center');
       const cw = 280, gap = 40;
       const x0 = Math.floor((W - 3 * cw - 2 * gap) / 2);
       const cur = current(c);
