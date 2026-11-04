@@ -11,7 +11,8 @@ export const BURGS = [
   "port": false,
   "type": "River",
   "x": 662,
-  "y": 167
+  "y": 167,
+  "slug": "raytsentr"
  },
  {
   "id": "b2",
@@ -22,7 +23,8 @@ export const BURGS = [
   "port": false,
   "type": "River",
   "x": 1294,
-  "y": 390
+  "y": 390,
+  "slug": "kreml"
  },
  {
   "id": "b3",
@@ -33,7 +35,8 @@ export const BURGS = [
   "port": false,
   "type": "River",
   "x": 1140,
-  "y": 475
+  "y": 475,
+  "slug": "putinlyandiya"
  },
  {
   "id": "b4",
@@ -44,7 +47,8 @@ export const BURGS = [
   "port": true,
   "type": "Lake",
   "x": 381,
-  "y": 337
+  "y": 337,
+  "slug": "zhestoboy"
  },
  {
   "id": "b5",
@@ -55,7 +59,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 1117,
-  "y": 359
+  "y": 359,
+  "slug": "shtabtsentr"
  },
  {
   "id": "b6",
@@ -66,7 +71,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 142,
-  "y": 301
+  "y": 301,
+  "slug": "betonka"
  },
  {
   "id": "b7",
@@ -77,7 +83,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 1404,
-  "y": 221
+  "y": 221,
+  "slug": "pepelnoe-gornilo"
  },
  {
   "id": "b8",
@@ -88,7 +95,8 @@ export const BURGS = [
   "port": false,
   "type": "River",
   "x": 588,
-  "y": 268
+  "y": 268,
+  "slug": "svalka"
  },
  {
   "id": "b9",
@@ -99,7 +107,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 72,
-  "y": 408
+  "y": 408,
+  "slug": "zavod"
  },
  {
   "id": "b10",
@@ -110,7 +119,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 105,
-  "y": 535
+  "y": 535,
+  "slug": "svoboda"
  },
  {
   "id": "b11",
@@ -121,7 +131,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 946,
-  "y": 418
+  "y": 418,
+  "slug": "gidroponika"
  },
  {
   "id": "b12",
@@ -132,7 +143,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 866,
-  "y": 443
+  "y": 443,
+  "slug": "garmoniya"
  },
  {
   "id": "b13",
@@ -143,7 +155,8 @@ export const BURGS = [
   "port": false,
   "type": "Naval",
   "x": 1035,
-  "y": 397
+  "y": 397,
+  "slug": "sokralnya"
  },
  {
   "id": "b14",
@@ -154,7 +167,8 @@ export const BURGS = [
   "port": true,
   "type": "Naval",
   "x": 512,
-  "y": 423
+  "y": 423,
+  "slug": "vonyuchka"
  },
  {
   "id": "b83",
@@ -165,7 +179,8 @@ export const BURGS = [
   "port": true,
   "type": "Hunting",
   "x": 361,
-  "y": 415
+  "y": 415,
+  "slug": "slavotech"
  },
  {
   "id": "b84",
@@ -176,7 +191,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 385,
-  "y": 444
+  "y": 444,
+  "slug": "noch"
  },
  {
   "id": "b85",
@@ -187,7 +203,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 434,
-  "y": 418
+  "y": 418,
+  "slug": "selyshko"
  },
  {
   "id": "b86",
@@ -198,7 +215,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 455,
-  "y": 326
+  "y": 326,
+  "slug": "dodze"
  },
  {
   "id": "b87",
@@ -209,7 +227,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 170,
-  "y": 386
+  "y": 386,
+  "slug": "stanok"
  },
  {
   "id": "b88",
@@ -220,7 +239,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 186,
-  "y": 456
+  "y": 456,
+  "slug": "smotreltse"
  },
  {
   "id": "b89",
@@ -231,7 +251,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 210,
-  "y": 552
+  "y": 552,
+  "slug": "agrara"
  },
  {
   "id": "b90",
@@ -242,7 +263,8 @@ export const BURGS = [
   "port": false,
   "type": "Generic",
   "x": 268,
-  "y": 649
+  "y": 649,
+  "slug": "stoikost"
  },
  {
   "id": "b91",
@@ -253,7 +275,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 419,
-  "y": 601
+  "y": 601,
+  "slug": "svyatost"
  },
  {
   "id": "b92",
@@ -264,7 +287,8 @@ export const BURGS = [
   "port": false,
   "type": "River",
   "x": 306,
-  "y": 666
+  "y": 666,
+  "slug": "belba"
  },
  {
   "id": "b93",
@@ -275,7 +299,8 @@ export const BURGS = [
   "port": false,
   "type": "River",
   "x": 433,
-  "y": 515
+  "y": 515,
+  "slug": "boynik"
  },
  {
   "id": "b94",
@@ -286,7 +311,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 465,
-  "y": 465
+  "y": 465,
+  "slug": "lesyanka"
  },
  {
   "id": "b95",
@@ -297,7 +323,8 @@ export const BURGS = [
   "port": false,
   "type": "Nomadic",
   "x": 454,
-  "y": 566
+  "y": 566,
+  "slug": "kalostok"
  },
  {
   "id": "b96",
@@ -308,7 +335,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 423,
-  "y": 539
+  "y": 539,
+  "slug": "zhesternya"
  },
  {
   "id": "b97",
@@ -319,7 +347,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 824,
-  "y": 617
+  "y": 617,
+  "slug": "sheryanka"
  },
  {
   "id": "b98",
@@ -330,7 +359,8 @@ export const BURGS = [
   "port": false,
   "type": "Generic",
   "x": 1276,
-  "y": 181
+  "y": 181,
+  "slug": "nadezhda"
  },
  {
   "id": "b99",
@@ -341,7 +371,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 523,
-  "y": 597
+  "y": 597,
+  "slug": "proeb"
  },
  {
   "id": "b100",
@@ -352,7 +383,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 359,
-  "y": 599
+  "y": 599,
+  "slug": "peremoga"
  },
  {
   "id": "b101",
@@ -363,7 +395,8 @@ export const BURGS = [
   "port": false,
   "type": "Generic",
   "x": 323,
-  "y": 638
+  "y": 638,
+  "slug": "ostanovka"
  },
  {
   "id": "b102",
@@ -374,7 +407,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 354,
-  "y": 484
+  "y": 484,
+  "slug": "fortetsiya"
  },
  {
   "id": "b103",
@@ -385,7 +419,8 @@ export const BURGS = [
   "port": false,
   "type": "Hunting",
   "x": 341,
-  "y": 432
+  "y": 432,
+  "slug": "dzen"
  },
  {
   "id": "b104",
@@ -396,7 +431,8 @@ export const BURGS = [
   "port": false,
   "type": "Nomadic",
   "x": 294,
-  "y": 330
+  "y": 330,
+  "slug": "stoikost-2"
  },
  {
   "id": "b105",
@@ -407,7 +443,8 @@ export const BURGS = [
   "port": false,
   "type": "Generic",
   "x": 979,
-  "y": 173
+  "y": 173,
+  "slug": "baza-predlozhki"
  }
 ];
 export const MARKERS = [
@@ -419,7 +456,8 @@ export const MARKERS = [
   "y": 244,
   "near": "b8",
   "nearKm": 194,
-  "custom": false
+  "custom": false,
+  "slug": "volcanoes-m0"
  },
  {
   "id": "m1",
@@ -429,7 +467,8 @@ export const MARKERS = [
   "y": 449,
   "near": "b3",
   "nearKm": 232,
-  "custom": false
+  "custom": false,
+  "slug": "hot-springs-m1"
  },
  {
   "id": "m2",
@@ -439,7 +478,8 @@ export const MARKERS = [
   "y": 510,
   "near": "b88",
   "nearKm": 238,
-  "custom": false
+  "custom": false,
+  "slug": "water-sources-m2"
  },
  {
   "id": "m3",
@@ -449,7 +489,8 @@ export const MARKERS = [
   "y": 332,
   "near": "b104",
   "nearKm": 83,
-  "custom": false
+  "custom": false,
+  "slug": "mines-m3"
  },
  {
   "id": "m4",
@@ -459,7 +500,8 @@ export const MARKERS = [
   "y": 475,
   "near": "b3",
   "nearKm": 0,
-  "custom": false
+  "custom": false,
+  "slug": "bridges-m4"
  },
  {
   "id": "m5",
@@ -469,7 +511,8 @@ export const MARKERS = [
   "y": 420,
   "near": "b3",
   "nearKm": 232,
-  "custom": false
+  "custom": false,
+  "slug": "inns-m5"
  },
  {
   "id": "m6",
@@ -479,7 +522,8 @@ export const MARKERS = [
   "y": 359,
   "near": "b5",
   "nearKm": 0,
-  "custom": true
+  "custom": true,
+  "slug": "marta"
  },
  {
   "id": "m7",
@@ -489,7 +533,8 @@ export const MARKERS = [
   "y": 232,
   "near": "b86",
   "nearKm": 383,
-  "custom": false
+  "custom": false,
+  "slug": "waterfalls-m7"
  },
  {
   "id": "m8",
@@ -499,7 +544,8 @@ export const MARKERS = [
   "y": 288,
   "near": "b104",
   "nearKm": 216,
-  "custom": false
+  "custom": false,
+  "slug": "waterfalls-m8"
  },
  {
   "id": "m9",
@@ -509,7 +555,8 @@ export const MARKERS = [
   "y": 355,
   "near": "b86",
   "nearKm": 139,
-  "custom": false
+  "custom": false,
+  "slug": "battlefields-m9"
  },
  {
   "id": "m10",
@@ -519,7 +566,8 @@ export const MARKERS = [
   "y": 253,
   "near": "b6",
   "nearKm": 224,
-  "custom": false
+  "custom": false,
+  "slug": "battlefields-m10"
  },
  {
   "id": "m11",
@@ -529,7 +577,8 @@ export const MARKERS = [
   "y": 610,
   "near": "b97",
   "nearKm": 306,
-  "custom": false
+  "custom": false,
+  "slug": "battlefields-m11"
  },
  {
   "id": "m12",
@@ -539,7 +588,8 @@ export const MARKERS = [
   "y": 444,
   "near": "b2",
   "nearKm": 262,
-  "custom": false
+  "custom": false,
+  "slug": "dungeons-m12"
  },
  {
   "id": "m13",
@@ -549,7 +599,8 @@ export const MARKERS = [
   "y": 270,
   "near": "b8",
   "nearKm": 243,
-  "custom": false
+  "custom": false,
+  "slug": "dungeons-m13"
  },
  {
   "id": "m14",
@@ -559,7 +610,8 @@ export const MARKERS = [
   "y": 189,
   "near": "b98",
   "nearKm": 422,
-  "custom": false
+  "custom": false,
+  "slug": "dungeons-m14"
  },
  {
   "id": "m15",
@@ -569,7 +621,8 @@ export const MARKERS = [
   "y": 183,
   "near": "b4",
   "nearKm": 617,
-  "custom": false
+  "custom": false,
+  "slug": "dungeons-m15"
  },
  {
   "id": "m16",
@@ -579,7 +632,8 @@ export const MARKERS = [
   "y": 228,
   "near": "b104",
   "nearKm": 413,
-  "custom": false
+  "custom": false,
+  "slug": "dungeons-m16"
  },
  {
   "id": "m17",
@@ -589,7 +643,8 @@ export const MARKERS = [
   "y": 307,
   "near": "b86",
   "nearKm": 247,
-  "custom": false
+  "custom": false,
+  "slug": "dungeons-m17"
  },
  {
   "id": "m18",
@@ -599,7 +654,8 @@ export const MARKERS = [
   "y": 308,
   "near": "b86",
   "nearKm": 76,
-  "custom": false
+  "custom": false,
+  "slug": "lake-monsters-m18"
  },
  {
   "id": "m19",
@@ -609,7 +665,8 @@ export const MARKERS = [
   "y": 380,
   "near": "b12",
   "nearKm": 476,
-  "custom": false
+  "custom": false,
+  "slug": "sea-monsters-m19"
  },
  {
   "id": "m20",
@@ -619,7 +676,8 @@ export const MARKERS = [
   "y": 429,
   "near": "b103",
   "nearKm": 272,
-  "custom": false
+  "custom": false,
+  "slug": "hill-monsters-m20"
  },
  {
   "id": "m21",
@@ -629,7 +687,8 @@ export const MARKERS = [
   "y": 517,
   "near": "b12",
   "nearKm": 323,
-  "custom": false
+  "custom": false,
+  "slug": "sacred-forests-m21"
  },
  {
   "id": "m22",
@@ -639,7 +698,8 @@ export const MARKERS = [
   "y": 520,
   "near": "b12",
   "nearKm": 384,
-  "custom": false
+  "custom": false,
+  "slug": "sacred-forests-m22"
  },
  {
   "id": "m23",
@@ -649,7 +709,8 @@ export const MARKERS = [
   "y": 310,
   "near": "b2",
   "nearKm": 348,
-  "custom": false
+  "custom": false,
+  "slug": "sacred-forests-m23"
  },
  {
   "id": "m24",
@@ -659,7 +720,8 @@ export const MARKERS = [
   "y": 190,
   "near": "b98",
   "nearKm": 213,
-  "custom": false
+  "custom": false,
+  "slug": "sacred-pineries-m24"
  },
  {
   "id": "m25",
@@ -669,7 +731,8 @@ export const MARKERS = [
   "y": 462,
   "near": "b9",
   "nearKm": 224,
-  "custom": false
+  "custom": false,
+  "slug": "brigands-m25"
  },
  {
   "id": "m26",
@@ -679,7 +742,8 @@ export const MARKERS = [
   "y": 273,
   "near": "b105",
   "nearKm": 505,
-  "custom": false
+  "custom": false,
+  "slug": "brigands-m26"
  },
  {
   "id": "m27",
@@ -689,7 +753,8 @@ export const MARKERS = [
   "y": 358,
   "near": "b86",
   "nearKm": 183,
-  "custom": false
+  "custom": false,
+  "slug": "brigands-m27"
  },
  {
   "id": "m28",
@@ -699,7 +764,8 @@ export const MARKERS = [
   "y": 393,
   "near": "b9",
   "nearKm": 74,
-  "custom": false
+  "custom": false,
+  "slug": "brigands-m28"
  },
  {
   "id": "m29",
@@ -709,7 +775,8 @@ export const MARKERS = [
   "y": 504,
   "near": "b94",
   "nearKm": 322,
-  "custom": false
+  "custom": false,
+  "slug": "pirates-m29"
  },
  {
   "id": "m30",
@@ -719,7 +786,8 @@ export const MARKERS = [
   "y": 252,
   "near": "b105",
   "nearKm": 466,
-  "custom": false
+  "custom": false,
+  "slug": "pirates-m30"
  },
  {
   "id": "m31",
@@ -729,7 +797,8 @@ export const MARKERS = [
   "y": 504,
   "near": "b94",
   "nearKm": 237,
-  "custom": false
+  "custom": false,
+  "slug": "statues-m31"
  },
  {
   "id": "m32",
@@ -739,7 +808,8 @@ export const MARKERS = [
   "y": 377,
   "near": "b11",
   "nearKm": 179,
-  "custom": false
+  "custom": false,
+  "slug": "statues-m32"
  },
  {
   "id": "m33",
@@ -749,7 +819,8 @@ export const MARKERS = [
   "y": 207,
   "near": "b105",
   "nearKm": 338,
-  "custom": false
+  "custom": false,
+  "slug": "statues-m33"
  },
  {
   "id": "m34",
@@ -759,7 +830,8 @@ export const MARKERS = [
   "y": 401,
   "near": "b103",
   "nearKm": 181,
-  "custom": false
+  "custom": false,
+  "slug": "statues-m34"
  },
  {
   "id": "m35",
@@ -769,7 +841,8 @@ export const MARKERS = [
   "y": 258,
   "near": "b1",
   "nearKm": 373,
-  "custom": false
+  "custom": false,
+  "slug": "ruins-m35"
  },
  {
   "id": "m36",
@@ -779,7 +852,8 @@ export const MARKERS = [
   "y": 431,
   "near": "b9",
   "nearKm": 231,
-  "custom": false
+  "custom": false,
+  "slug": "ruins-m36"
  },
  {
   "id": "m37",
@@ -789,7 +863,8 @@ export const MARKERS = [
   "y": 603,
   "near": "b97",
   "nearKm": 398,
-  "custom": false
+  "custom": false,
+  "slug": "ruins-m37"
  },
  {
   "id": "m38",
@@ -799,7 +874,8 @@ export const MARKERS = [
   "y": 540,
   "near": "b12",
   "nearKm": 459,
-  "custom": false
+  "custom": false,
+  "slug": "ruins-m38"
  },
  {
   "id": "m39",
@@ -809,7 +885,8 @@ export const MARKERS = [
   "y": 349,
   "near": "b9",
   "nearKm": 233,
-  "custom": false
+  "custom": false,
+  "slug": "libraries-m39"
  },
  {
   "id": "m40",
@@ -819,7 +896,8 @@ export const MARKERS = [
   "y": 218,
   "near": "b1",
   "nearKm": 271,
-  "custom": false
+  "custom": false,
+  "slug": "circuses-m40"
  },
  {
   "id": "m41",
@@ -829,7 +907,8 @@ export const MARKERS = [
   "y": 301,
   "near": "b6",
   "nearKm": 0,
-  "custom": false
+  "custom": false,
+  "slug": "jousts-m41"
  },
  {
   "id": "m42",
@@ -839,7 +918,8 @@ export const MARKERS = [
   "y": 209,
   "near": "b105",
   "nearKm": 419,
-  "custom": false
+  "custom": false,
+  "slug": "canoes-m42"
  },
  {
   "id": "m43",
@@ -849,7 +929,8 @@ export const MARKERS = [
   "y": 653,
   "near": "b3",
   "nearKm": 746,
-  "custom": false
+  "custom": false,
+  "slug": "migration-m43"
  },
  {
   "id": "m44",
@@ -859,7 +940,8 @@ export const MARKERS = [
   "y": 512,
   "near": "b3",
   "nearKm": 378,
-  "custom": false
+  "custom": false,
+  "slug": "migration-m44"
  },
  {
   "id": "m45",
@@ -869,7 +951,8 @@ export const MARKERS = [
   "y": 27,
   "near": "b105",
   "nearKm": 655,
-  "custom": false
+  "custom": false,
+  "slug": "migration-m45"
  },
  {
   "id": "m46",
@@ -879,7 +962,8 @@ export const MARKERS = [
   "y": 236,
   "near": "b104",
   "nearKm": 380,
-  "custom": false
+  "custom": false,
+  "slug": "caves-m46"
  },
  {
   "id": "m47",
@@ -889,7 +973,8 @@ export const MARKERS = [
   "y": 122,
   "near": "b1",
   "nearKm": 397,
-  "custom": false
+  "custom": false,
+  "slug": "necropolises-m47"
  },
  {
   "id": "m48",
@@ -899,7 +984,8 @@ export const MARKERS = [
   "y": 156,
   "near": "b98",
   "nearKm": 132,
-  "custom": false
+  "custom": false,
+  "slug": "necropolises-m48"
  },
  {
   "id": "m49",
@@ -909,7 +995,8 @@ export const MARKERS = [
   "y": 600,
   "near": "b3",
   "nearKm": 647,
-  "custom": false
+  "custom": false,
+  "slug": "necropolises-m49"
  },
  {
   "id": "m50",
@@ -919,7 +1006,8 @@ export const MARKERS = [
   "y": 393,
   "near": "b87",
   "nearKm": 172,
-  "custom": false
+  "custom": false,
+  "slug": "encounters-m50"
  },
  {
   "id": "m51",
@@ -929,7 +1017,8 @@ export const MARKERS = [
   "y": 218,
   "near": "b98",
   "nearKm": 163,
-  "custom": false
+  "custom": false,
+  "slug": "encounters-m51"
  },
  {
   "id": "m53",
@@ -939,7 +1028,8 @@ export const MARKERS = [
   "y": 216,
   "near": "b105",
   "nearKm": 239,
-  "custom": false
+  "custom": false,
+  "slug": "encounters-m53"
  },
  {
   "id": "m54",
@@ -949,7 +1039,8 @@ export const MARKERS = [
   "y": 449,
   "near": "b13",
   "nearKm": 217,
-  "custom": false
+  "custom": false,
+  "slug": "encounters-m54"
  },
  {
   "id": "m55",
@@ -959,7 +1050,8 @@ export const MARKERS = [
   "y": 201,
   "near": "b6",
   "nearKm": 428,
-  "custom": false
+  "custom": false,
+  "slug": "encounters-m55"
  },
  {
   "id": "m56",
@@ -969,7 +1061,8 @@ export const MARKERS = [
   "y": 319,
   "near": "b8",
   "nearKm": 211,
-  "custom": false
+  "custom": false,
+  "slug": "encounters-m56"
  },
  {
   "id": "m57",
@@ -979,7 +1072,8 @@ export const MARKERS = [
   "y": 386,
   "near": "b14",
   "nearKm": 303,
-  "custom": false
+  "custom": false,
+  "slug": "marker-m57"
  },
  {
   "id": "m58",
@@ -989,7 +1083,8 @@ export const MARKERS = [
   "y": 574,
   "near": "b95",
   "nearKm": 35,
-  "custom": true
+  "custom": true,
+  "slug": "dacha-babki"
  },
  {
   "id": "m59",
@@ -999,7 +1094,8 @@ export const MARKERS = [
   "y": 561,
   "near": "b95",
   "nearKm": 51,
-  "custom": true
+  "custom": true,
+  "slug": "bunker-lisa"
  },
  {
   "id": "m60",
@@ -1009,7 +1105,8 @@ export const MARKERS = [
   "y": 547,
   "near": "b95",
   "nearKm": 78,
-  "custom": true
+  "custom": true,
+  "slug": "dozorka-dzhona"
  },
  {
   "id": "m61",
@@ -1019,7 +1116,8 @@ export const MARKERS = [
   "y": 357,
   "near": "b5",
   "nearKm": 324,
-  "custom": true
+  "custom": true,
+  "slug": "bunker-kuksiusa"
  },
  {
   "id": "m62",
@@ -1029,7 +1127,8 @@ export const MARKERS = [
   "y": 599,
   "near": "b99",
   "nearKm": 44,
-  "custom": true
+  "custom": true,
+  "slug": "liza"
  },
  {
   "id": "m63",
@@ -1039,7 +1138,8 @@ export const MARKERS = [
   "y": 319,
   "near": "b8",
   "nearKm": 241,
-  "custom": true
+  "custom": true,
+  "slug": "artem"
  },
  {
   "id": "m64",
@@ -1049,7 +1149,8 @@ export const MARKERS = [
   "y": 382,
   "near": "b2",
   "nearKm": 286,
-  "custom": true
+  "custom": true,
+  "slug": "mogila-viktora"
  },
  {
   "id": "m65",
@@ -1059,7 +1160,8 @@ export const MARKERS = [
   "y": 599,
   "near": "b91",
   "nearKm": 10,
-  "custom": true
+  "custom": true,
+  "slug": "lox"
  },
  {
   "id": "m66",
@@ -1069,7 +1171,8 @@ export const MARKERS = [
   "y": 540,
   "near": "b96",
   "nearKm": 8,
-  "custom": true
+  "custom": true,
+  "slug": "lox-2"
  },
  {
   "id": "m67",
@@ -1079,7 +1182,8 @@ export const MARKERS = [
   "y": 386,
   "near": "b87",
   "nearKm": 24,
-  "custom": true
+  "custom": true,
+  "slug": "lox-3"
  },
  {
   "id": "m68",
@@ -1089,7 +1193,8 @@ export const MARKERS = [
   "y": 318,
   "near": "b8",
   "nearKm": 222,
-  "custom": true
+  "custom": true,
+  "slug": "lox-4"
  },
  {
   "id": "m69",
@@ -1099,7 +1204,8 @@ export const MARKERS = [
   "y": 345,
   "near": "b5",
   "nearKm": 60,
-  "custom": true
+  "custom": true,
+  "slug": "lox-5"
  },
  {
   "id": "m70",
@@ -1109,7 +1215,8 @@ export const MARKERS = [
   "y": 359,
   "near": "b13",
   "nearKm": 151,
-  "custom": true
+  "custom": true,
+  "slug": "vooruzhenie"
  },
  {
   "id": "m71",
@@ -1119,7 +1226,8 @@ export const MARKERS = [
   "y": 276,
   "near": "b8",
   "nearKm": 38,
-  "custom": true
+  "custom": true,
+  "slug": "sputnik"
  },
  {
   "id": "m72",
@@ -1129,7 +1237,8 @@ export const MARKERS = [
   "y": 214,
   "near": "b7",
   "nearKm": 30,
-  "custom": true
+  "custom": true,
+  "slug": "vyzhigatel-vayba"
  },
  {
   "id": "m73",
@@ -1139,7 +1248,8 @@ export const MARKERS = [
   "y": 405,
   "near": "b13",
   "nearKm": 42,
-  "custom": true
+  "custom": true,
+  "slug": "kiberspeys"
  },
  {
   "id": "m74",
@@ -1149,7 +1259,8 @@ export const MARKERS = [
   "y": 292,
   "near": "b5",
   "nearKm": 365,
-  "custom": true
+  "custom": true,
+  "slug": "krushenie-nebesnogo-bazara"
  },
  {
   "id": "m75",
@@ -1159,7 +1270,8 @@ export const MARKERS = [
   "y": 377,
   "near": "b12",
   "nearKm": 453,
-  "custom": true
+  "custom": true,
+  "slug": "mesto-krusheniya-alfa-garmonii"
  },
  {
   "id": "m76",
@@ -1169,7 +1281,8 @@ export const MARKERS = [
   "y": 322,
   "near": "b86",
   "nearKm": 25,
-  "custom": true
+  "custom": true,
+  "slug": "velikiy-khram"
  },
  {
   "id": "m77",
@@ -1179,7 +1292,8 @@ export const MARKERS = [
   "y": 418,
   "near": "b83",
   "nearKm": 19,
-  "custom": true
+  "custom": true,
+  "slug": "velikaya-arena"
  },
  {
   "id": "m78",
@@ -1189,7 +1303,8 @@ export const MARKERS = [
   "y": 126,
   "near": "b1",
   "nearKm": 489,
-  "custom": true
+  "custom": true,
+  "slug": "ledyanoy-ring"
  },
  {
   "id": "m79",
@@ -1199,7 +1314,8 @@ export const MARKERS = [
   "y": 199,
   "near": "b6",
   "nearKm": 504,
-  "custom": true
+  "custom": true,
+  "slug": "semya-chumy"
  },
  {
   "id": "m80",
@@ -1209,7 +1325,8 @@ export const MARKERS = [
   "y": 307,
   "near": "b6",
   "nearKm": 245,
-  "custom": true
+  "custom": true,
+  "slug": "ekspeditsiya-istseleniya"
  },
  {
   "id": "m81",
@@ -1219,7 +1336,8 @@ export const MARKERS = [
   "y": 334,
   "near": "b4",
   "nearKm": 41,
-  "custom": true
+  "custom": true,
+  "slug": "velikiy-mekh"
  }
 ];
 export const ROUTES = [
