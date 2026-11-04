@@ -9,6 +9,7 @@
 
 import { WEAPONS } from './items/weapons.js';
 import { ARMOR } from './items/armor.js';
+import { ENEMIES as ENEMIES_V1 } from './enemies.js';
 
 const mod = (v) => Math.floor(((v ?? 10) - 10) / 2);
 const st = (str, dex, con, int, wil, cha, per) => ({ str, dex, con, int, wil, cha, per });
@@ -1066,3 +1067,32 @@ export const ENCOUNTERS_V3 = Object.fromEntries([
     ['crawler-5', 'crawler', 'crawler', 'fauna-wire-spider'], { traps: true }),
 ].map((x) => [x.id, x]));
 // Примечание: 'materialized-soul', 'scriptlet' (v3-boss-bazaar) — из enemies.js; движку нужен общий реестр ENEMIES + ENEMIES_V3.
+
+// ------------------------------------------------------------------------- Масштаб силы боя v3 (balance-tester)
+// POWER_V3[id боя] — множитель силы врагов боя (1 = как в ENEMIES_V3). Не толстит только ЗДР: ЗДР ×(1+0.5(p−1)), атака +round(3(p−1)),
+// урон +round(2(p−1)) (оружие — через характеристику, способности — через `bonus`), КБ +round(1.5(p−1)), опыт ×p.
+// power может быть массивом (по кругу по индексу врага). Производные враги — `base^p` в ENEMIES_V3. Таблица пишется `tools/sim/tune-v3.mjs`.
+export function scaleV3(id, p) {
+  if (!p || p === 1) return id;
+  const nid = `${id}^${p}`;
+  if (ENEMIES_V3[nid]) return nid;
+  const e = ENEMIES_V3[id] || ENEMIES_V1[id];
+  const hpK = 1 + 0.5 * (p - 1), d = Math.round(2 * (p - 1)), a = Math.round(3 * (p - 1)), k = Math.round(1.5 * (p - 1));
+  const def = { ...e, id: nid, hp: Math.max(1, Math.round(e.hp * hpK)), mrl: Math.round((e.mrl || 0) * hpK), kb: e.kb + k, xp: Math.round((e.xp || 0) * p), stats: { ...e.stats } };
+  if (e.weapon) {
+    def.weapon = { ...e.weapon, attack: e.weapon.attack != null ? e.weapon.attack + a : e.weapon.attack };
+    if (def.stats[e.weapon.stat] != null) def.stats[e.weapon.stat] += 2 * d;
+  }
+  def.abilities = (e.abilities || []).map((ab) => ({ ...ab, effects: (ab.effects || []).map((ef) => (ef.op === 'damage' ? { ...ef, bonus: (ef.bonus || 0) + d } : ef)) }));
+  ENEMIES_V3[nid] = def;
+  return nid;
+}
+export const POWER_V3 = {
+};
+for (const encn of Object.values(ENCOUNTERS_V3)) {
+  const p = POWER_V3[encn.id];
+  if (!p || p === 1) continue;
+  const pw = (i) => (Array.isArray(p) ? p[i % p.length] : p);
+  encn.power = p;
+  encn.enemies = encn.enemies.map((x, i) => scaleV3(x, pw(i)));
+}

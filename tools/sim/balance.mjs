@@ -4,6 +4,9 @@
 //         Paired: same trio and battle seed for every candidate. contribution = winrate(candidate) - mean winrate over all candidates (pp).
 //         Absolute party winrate = mean over all candidates (≈ random 4-hero party).
 //  solo:  sim B. One hero vs standard{L}; races rotate over trials.
+//  v3:    all ENCOUNTERS_V3, party of 4 of the encounter level, random class/race, talents, gadget, STARTER KITS (weapon, armor, belt).
+//         --kind elite|quest|normal filter by KIND_V3; --power override via tune-v3.mjs. Reports win %, rounds, target.
+//  gear:  [--items id,id] [--cat weapon|armor] paired: hero with item X vs the same hero with his starter item; delta in pp.
 //  races: sim A, fixed class (or all), race effect = winrate with race - class mean (pp).
 import { RACES } from '../../game/src/data/races.js';
 import { STATUSES, VEIL_TABLE, PROXY_STORM_TABLE } from '../../game/src/data/effects.js';
@@ -15,6 +18,11 @@ import { MAPS, GAME_DATA } from '../../game/src/data/index.js';
 import { TALENTS, COMBAT_TALENT_LIMIT, talentsForSlot, isCombatTalent } from '../../game/src/data/talents.js';
 import { gadgetFor } from '../../game/src/data/gadgets.js';
 import { createRng } from '../../game/src/rules/rng.js';
+import { ENCOUNTERS_V3, ENEMIES_V3, scaleV3 } from '../../game/src/data/enemies-v3.js';
+import { WEAPONS } from '../../game/src/data/items/weapons.js';
+import { ARMOR } from '../../game/src/data/items/armor.js';
+import { STARTER_KITS } from '../../game/src/data/items/shops.js';
+import { defaultProficiencies } from '../../game/src/rules/equipment.js';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -213,7 +221,123 @@ function printWorld() {
     }
   }
 }
+// ---- v3: battles ENCOUNTERS_V3 and gear
+const KIND_V3 = { // quest battles (enc-*), elite and boss markers; everything else is 'normal'
+  elite: ['v3-pir-flagship', 'v3-wp-walker', 'v3-ai-commissar', 'v3-tin-renegade', 'v3-mech-hive', 'v3-crg-collector', 'v3-scv-kings-yard', 'v3-tek-golem', 'v3-agro-chief', 'v3-mutr-grove', 'v3-cult-temple', 'v3-mutz-alpha', 'v3-band-bisons',
+    'v3-mon-lake', 'v3-mon-sea', 'v3-mon-hills', 'v3-boss-great-mech', 'v3-boss-plague-seed', 'v3-boss-vibe-burner', 'v3-boss-ice-ring', 'v3-boss-sputnik', 'v3-boss-bazaar', 'v3-boss-armory', 'v3-boss-lis-1',
+    'enc-vibe-burner', 'enc-judge', 'enc-great-mech', 'enc-plague-seed', 'enc-lake-monster', 'enc-sea-monster', 'enc-hill-monster', 'enc-arena-final'],
+};
+const kindV3 = (id) => (KIND_V3.elite.includes(id) ? 'elite' : id.startsWith('enc-') ? 'quest' : 'normal');
+const TARGET_V3 = { normal: [0.75, 0.90], quest: [0.65, 0.80], elite: [0.50, 0.65] };
+const mkEquip = (cid, path) => {
+  const k = STARTER_KITS[`${cid}:${path}`] || STARTER_KITS[cid];
+  const inv = {}; for (const id of k.belt || []) if (GAME_DATA.ITEMS[id]) inv[id] = (inv[id] || 0) + 1;
+  return { equipment: { weapon: k.weapon, armor: k.armor, offhand: null, mods: [] }, inventory: inv };
+};
+function v3Hero(h, level, equipment, inventory, proficiencies) {
+  const kit = mkEquip(h.b.cid, h.b.path);
+  return buildCreature({ race: h.race, cls: h.b.cid, level, path: h.b.path, data: GAME_DATA, talents: h.talents, activeCombat: h.active, gadget: h.gadget,
+    equipment: equipment || kit.equipment, inventory: inventory || kit.inventory, ...(proficiencies ? { proficiencies } : {}) });
+}
+export function v3Rate(enc, n, seedBase, size = 4) {
+  const level = enc.level; const list = enc.enemies;
+  for (const id of list) if (!GAME_DATA.ENEMIES[id] && ENEMIES_V3[id]) GAME_DATA.ENEMIES[id] = ENEMIES_V3[id];
+  const k = Math.ceil(list.length * size / 4);
+  const rng = createRng(seedBase * 104729 + enc.id.length * 31 + size + (enc.id.charCodeAt(enc.id.length - 1) * 977));
+  let w = 0, rounds = 0, wr = 0;
+  const map = enc.map ? MAPS[enc.map] : undefined;
+  for (let t = 0; t < n; t++) {
+    const hs = []; for (let i = 0; i < size; i++) hs.push(worldHero(rng, level, false));
+    const heroes = hs.map((h) => v3Hero(h, level));
+    const r = simulateBattle({ map, heroes, enemies: list.slice(0, k), data: GAME_DATA, seed: rng.int(1, 1e9), maxRounds: 30 });
+    if (r.winner === 'heroes') { w++; wr += r.rounds; } rounds += r.rounds;
+  }
+  return { rate: w / n, rounds: rounds / n, winRounds: w ? wr / w : 0 };
+}
+function printV3() {
+  const kf = opt('--kind', null);
+  console.log(`\n=== v3 battles: party of 4 of own level, starter kits + talents + gadget, n=${N}, seed ${SEED} ===`);
+  let bad = 0, cnt = 0, sumR = 0;
+  for (const enc of Object.values(ENCOUNTERS_V3)) {
+    if (ONLY && enc.id !== ONLY) continue; const kind = kindV3(enc.id); if (kf && kf !== kind) continue;
+    const r = v3Rate(enc, N, SEED); const tg = TARGET_V3[kind];
+    const flag = r.rate < tg[0] - 0.03 ? ' <-- HARD' : r.rate > tg[1] + 0.03 ? ' <-- EASY' : ''; const lg = r.rounds > 10.5 ? ' LONG' : '';
+    if (flag) bad++; cnt++; sumR += r.rounds;
+    console.log(`${enc.id.padEnd(26)} L${enc.level} foes ${String(enc.enemies.length).padStart(2)} ${kind.padEnd(6)} win ${pc(r.rate)} rounds ${r.rounds.toFixed(1).padStart(4)}${lg} pw ${JSON.stringify(enc.power ?? 1)} tgt ${tg.map((x) => 100 * x).join('-')}${flag}`);
+  }
+  console.log(`out of target: ${bad}/${cnt}; mean rounds ${(sumR / cnt).toFixed(1)}`);
+}
+// gear: tier -> battery of encounters (provisional levels); item X vs hero's own starter item, same trio / seed
+const GEAR_BATTERY = { 1: ['v3-pir-dock', 'v3-ai-rally', 'v3-scv-pickers'], 2: ['v3-tin-trial', 'v3-mech-shop', 'v3-agro-field'], 3: ['v3-pir-raid', 'v3-wp-corridor', 'v3-cult-plague'], 4: ['v3-tin-arena', 'v3-crg-concert', 'v3-ai-lox'], 5: ['v3-pir-flagship', 'v3-wp-walker', 'v3-agro-chief'] };
+const KIT_TIER = {}; // used only for reporting
+function candidates(item, kind) {
+  const out = [];
+  for (const b of builds) {
+    const cls = GAME_DATA.CLASSES[b.cid]; const path = cls.paths.find((x) => x.id === b.path);
+    const pr = defaultProficiencies(cls, path || {});
+    let ok, grant = null;
+    if (kind === 'weapon') { ok = (pr.weaponTypes[item.type] || 0) >= 3; if (!ok) { const rs = (path?.recommended || cls.recommended || {}); const top = Object.entries(rs).sort((a, c) => c[1] - a[1])[0]?.[0]; ok = top === item.stat; grant = { weaponTypes: { [item.type]: 3 } }; } }
+    else { ok = (pr.armor[item.type] || 0) >= 3; if (!ok) { ok = (item.type === 'mech' || item.type === 'heavy') && (pr.armor.heavy >= 3); grant = { armor: { [item.type]: 3 } }; } }
+    if (ok) out.push({ b, grant: (grant && !(kind === 'weapon' ? (pr.weaponTypes[item.type] || 0) >= 3 : (pr.armor[item.type] || 0) >= 3)) ? grant : null });
+  }
+  return out;
+}
+function gearDelta(item, kind, n, seedBase, noMods) {
+  const tier = item.tier || 1; const encs = GEAR_BATTERY[tier].map((id) => ENCOUNTERS_V3[id]);
+  const cands = candidates(item, kind); if (!cands.length) return null;
+  const rng = createRng(seedBase * 7717 + item.id.length * 13 + tier);
+  let wa = 0, wb = 0, N2 = 0, ra = 0, rb = 0;
+  for (let t = 0; t < n; t++) {
+    const enc = encs[t % encs.length]; const level = Math.max(enc.level, tier === 1 ? 1 : tier);
+    const trio = [0, 1, 2].map(() => worldHero(rng, enc.level, false));
+    const c = cands[rng.int(0, cands.length - 1)]; const ch = worldHero(rng, enc.level, false); ch.b = c.b; ch.race = randRace(rng, c.b.cid);
+    // talents of the candidate hero depend on build: recompute
+    const ch2 = (() => { const x = worldHeroFor(rng, enc.level, c.b, ch.race); return x; })();
+    const kit = mkEquip(c.b.cid, c.b.path);
+    const eqB = kit.equipment; const eqX = { ...eqB, [kind]: item.id };
+    const bs = rng.int(1, 1e9);
+    const base = trio.map((h) => v3Hero(h, enc.level));
+    const run = (eq, prof) => simulateBattle({ heroes: [...base.map((_, i) => v3Hero(trio[i], enc.level)), v3Hero(ch2, enc.level, eq, kit.inventory, prof)], enemies: enc.enemies, data: GAME_DATA, seed: bs, maxRounds: 30 });
+    const A = run(eqB, null), B = run(eqX, c.grant);
+    wa += A.winner === 'heroes' ? 1 : 0; wb += B.winner === 'heroes' ? 1 : 0; ra += A.rounds; rb += B.rounds; N2++;
+  }
+  return { base: wa / N2, item: wb / N2, d: (wb - wa) / N2, dr: (rb - ra) / N2, nb: cands.length };
+}
+function worldHeroFor(rng, level, b, race) {
+  const cls = CLASSES[b.cid]; const path = cls.paths.find((p) => p.id === b.path); const weapon = path?.weapon || cls.weapon;
+  const ctx = { race: race.id, cls: b.cid, origin: null, alignment: rng.pick(ALIGN), stats: cls.recommended, level, weaponRange: weapon.range, tags: race.tags };
+  const owned = [];
+  for (const slot of ['race', 'job', 'faction', 'alignment']) { const opts = talentsForSlot(slot, ctx).filter(isCombatTalent); if (opts.length && rng() < 0.75) owned.push(rng.pick(opts)); }
+  const uniq = [...new Map(owned.map((t) => [t.id, t])).values()]; const active = uniq.slice(0, COMBAT_TALENT_LIMIT(level)).map((t) => t.id);
+  return { b, race, talents: active, active, gadget: gadgetFor(b.cid)?.id || null };
+}
+function printGear() {
+  const cat = opt('--cat', 'both'); const only = opt('--items', null)?.split(',');
+  console.log(`\n=== Gear: hero with item X vs the same hero with his starter item (paired), n=${N}/item, seed ${SEED}; d = pp winrate, dR = rounds ===`);
+  const rows = [];
+  for (const [kind, pool] of [['weapon', WEAPONS], ['armor', ARMOR]]) {
+    if (cat !== 'both' && cat !== kind) continue;
+    for (const it of Object.values(pool)) {
+      if (only && !only.includes(it.id)) continue; if (it.natural) continue;
+      const r = gearDelta(it, kind, N, SEED);
+      if (!r) { console.log(`${kind} ${it.id} t${it.tier}: no candidates`); continue; }
+      rows.push({ kind, it, r });
+      console.log(`${kind.padEnd(6)} ${it.id.padEnd(20)} t${it.tier} ${(it.type || '').padEnd(10)} p${String(it.price).padStart(5)} base ${pc(r.base)} item ${pc(r.item)} d ${pp(r.d).padStart(6)} dR ${r.dr.toFixed(1).padStart(5)} builds ${r.nb}`);
+    }
+  }
+  // tier x category means and outliers
+  const groups = {};
+  for (const x of rows) { const k = `${x.kind}:${x.it.type === 'cloth' || x.kind === 'armor' ? x.it.type : 'w'}:t${x.it.tier}`; (groups[k] ||= []).push(x); }
+  const tm = {}; for (const x of rows) { const k = `${x.kind}:t${x.it.tier}`; (tm[k] ||= []).push(x.r.d); }
+  console.log('\ntier means (kind:tier -> mean d, n):'); for (const k of Object.keys(tm).sort()) console.log(`  ${k.padEnd(10)} ${pp(tm[k].reduce((a, b) => a + b, 0) / tm[k].length).padStart(6)} (${tm[k].length})`);
+  console.log('outliers (|d - tier mean| > 8pp):');
+  for (const x of rows) { const k = `${x.kind}:t${x.it.tier}`; const m = tm[k].reduce((a, b) => a + b, 0) / tm[k].length; if (Math.abs(x.r.d - m) > 0.08) console.log(`  ${x.it.id} t${x.it.tier} d ${pp(x.r.d)} vs mean ${pp(m)}${x.it.unique ? ' (relic)' : ''}`); }
+}
+export { kindV3, TARGET_V3 };
 const t0 = Date.now();
+if (process.argv[1] && process.argv[1].endsWith('balance.mjs')) {
+if (MODE === 'v3') printV3();
+if (MODE === 'gear') printGear();
 for (const L of levels) {
   if (MODE === 'party' || MODE === 'all') printParty(L);
   if (MODE === 'solo' || MODE === 'all') printSolo(L);
@@ -222,3 +346,4 @@ for (const L of levels) {
 if (MODE === 'prologue' || MODE === 'all') printPrologue();
 if (MODE === 'world') printWorld();
 console.log(`\n(${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+}
