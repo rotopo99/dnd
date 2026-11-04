@@ -2,7 +2,7 @@
 // must never break the game. loadGame() normalises the object (defaults, types, unknown ids dropped).
 import { TALENTS } from './data/talents.js';
 import { NPCS } from './data/npcs.js';
-import { LOCATIONS, START_LOCATION, START_DISCOVERED, QUESTS, ITEMS } from './world/data.js';
+import { LOCATIONS, START_LOCATION, START_DISCOVERED, QUESTS, ITEMS, resolveLocation, starterKit } from './world/data.js';
 import { FACTION_IDS } from './world/reputation.js';
 import { WORLD_RULES as R } from './data/world/rules.js';
 
@@ -43,6 +43,7 @@ export function normalizeSave(s, data) {
     judgeMarks: Math.max(0, Math.min(R.cyberspace.maxMarks, num(h.judgeMarks))), credits: Math.max(0, num(h.credits, R.start.credits)),
     items: Object.fromEntries(Object.entries(obj(h.items)).filter(([k]) => ITEMS[k]).map(([k, v]) => [k, Math.max(0, num(v))])),
     pendingTalents: Math.max(0, num(h.pendingTalents)), uniqueTalent: !!h.uniqueTalent,
+    equipment: normEquipment(h.equipment, h.cls, h.path),
   };
   out.party = arr(s.party).filter((p) => p && NPCS[p.npc]).map((p) => ({
     approval: 0, talents: [], warned: false, ultimatum: false, ...p,
@@ -50,23 +51,39 @@ export function normalizeSave(s, data) {
     hp: p.hp == null ? null : Math.max(0, num(p.hp)), mrl: p.mrl == null ? null : Math.max(0, num(p.mrl)),
     approval: num(p.approval), talents: arr(p.talents).filter((id) => TALENTS[id]),
   }));
-  out.location = LOCATIONS[s.location] ? s.location : START_LOCATION;
-  out.prevLocation = LOCATIONS[s.prevLocation] ? s.prevLocation : null;
-  out.discovered = uniq([...START_DISCOVERED, ...arr(s.discovered).filter((id) => LOCATIONS[id]), out.location]);
-  out.visited = uniq(arr(s.visited).filter((id) => LOCATIONS[id]));
+  // v3: v1.0 ids are aliases on the canon map → stored as their real node (resolveLocation)
+  const loc = (id) => (LOCATIONS[id] ? resolveLocation(id) : null);
+  const locs = (a) => uniq(arr(a).map(loc).filter(Boolean));
+  out.location = loc(s.location) || START_LOCATION;
+  out.prevLocation = loc(s.prevLocation);
+  out.discovered = uniq([...START_DISCOVERED, ...locs(s.discovered), out.location]);
+  out.visited = locs(s.visited);
   const rep = obj(s.rep);
   out.rep = Object.fromEntries(FACTION_IDS.map((f) => [f, Math.max(-100, Math.min(100, num(rep[f])))]));
   out.quests = Object.fromEntries(Object.entries(obj(s.quests)).filter(([id, q]) => QUESTS[id] && q && QUESTS[id].stages.some((x) => x.id === q.stage))
     .map(([id, q]) => [id, { opt: null, subs: {}, fails: {}, failedOpts: {}, ...q, subs: obj(q.subs), fails: obj(q.fails), failedOpts: obj(q.failedOpts) }]));
   out.terminals = obj(s.terminals);
   for (const l of Object.values(LOCATIONS)) if (l.terminal && !['ritual', 'dead', 'ours'].includes(out.terminals[l.terminal.id])) out.terminals[l.terminal.id] = l.terminal.state;
-  out.flags = obj(s.flags); out.deeds = obj(s.deeds); out.npcs = obj(s.npcs); out.memo = obj(s.memo);
+  out.flags = Object.fromEntries(Object.entries(obj(s.flags)).map(([k, v]) => {
+    const m = /^route:([^:]+):([^:]+)$/.exec(k); // opened hidden routes keyed by old ids
+    return [m ? `route:${loc(m[1]) || m[1]}:${loc(m[2]) || m[2]}` : k, v];
+  })); out.deeds = obj(s.deeds); out.npcs = obj(s.npcs); out.memo = obj(s.memo);
   out.caches = uniq(arr(s.caches)); out.battlesDone = uniq(arr(s.battlesDone)); out.events = arr(s.events);
   out.journal = arr(s.journal).filter((e) => e && typeof e.text === 'string').slice(-200);
   out.settings = { aiCompanions: false, ...obj(s.settings) };
   out.cyberspace = s.cyberspace && typeof s.cyberspace === 'object' ? s.cyberspace : null;
   out.pendingTalentChoice = arr(s.pendingTalentChoice);
   return out;
+}
+
+/** Equipment ids must exist in the item catalogue; a save without gear gets the class starter kit (same numbers as the class weapon). */
+function normEquipment(e, cls, path) {
+  const ok = (id, cat) => (typeof id === 'string' && ITEMS[id]?.slot === cat ? id : null);
+  if (!e || typeof e !== 'object') {
+    const k = starterKit(cls, path);
+    return k ? { weapon: k.weapon, armor: k.armor, offhand: null, mods: [] } : null;
+  }
+  return { weapon: ok(e.weapon, 'weapon'), armor: ok(e.armor, 'armor'), offhand: ok(e.offhand, 'offhand'), mods: uniq(arr(e.mods).filter((m) => ok(m, 'mod'))) };
 }
 
 /** Returns the normalised save or null (missing / corrupted / other version). */
