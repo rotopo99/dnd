@@ -43,8 +43,18 @@ function performerOptions(members, skill, dc, extraAdv, pick) {
  * cancel — show «Отмена» (onDone not called).
  */
 export function openCheck(game, o) {
+  if (!o.skill && o.skills) {
+    if (o.skills.length === 1) return openCheck(game, { ...o, skill: o.skills[0] });
+    game.openModal({
+      title: o.title, lines: [...(o.lines || []), { text: `${t('check.pickSkill')} · ${t('battle.dc')} ${o.dc}`, color: 'a' }],
+      onCancel: o.cancel ? undefined : false,
+      options: [...o.skills.map((sk) => ({ label: skillName(sk), sub: bestOf(o.members, sk, o.dc, o.extraAdv), run: (g) => openCheck(g, { ...o, skill: sk, cancel: false }) })),
+        ...(o.cancel ? [{ label: t('check.cancel'), run: () => {} }] : [])],
+    });
+    return;
+  }
   const opts = performerOptions(o.members, o.skill, o.dc, o.extraAdv, (g, m, info) => {
-    const res = rollCheck(info, o.dc);
+    const res = rollCheck(m, info, o.dc);
     play(res.success ? 'buff' : 'miss');
     g.openModal({
       title: o.title, lines: resultLines(m.name, res), border: res.success ? 'j' : 'c', onCancel: false,
@@ -59,12 +69,27 @@ export function openCheck(game, o) {
   });
 }
 
-/** Everyone rolls; success when at least half pass. */
+function bestOf(members, skill, dc, extraAdv) {
+  let best = null;
+  for (const m of members) {
+    const c = checkChance(checkInfo(m, skill, extraAdv), dc);
+    if (!best || c > best.c) best = { c, m };
+  }
+  return best ? `${t('check.best')}: ${best.m.name} · ${Math.round(best.c * 100)}%` : '';
+}
+
+/** Everyone rolls; success when at least half pass. With o.skills — the party picks one skill first. */
 export function openGroupCheck(game, o) {
+  if (!o.skill && o.skills) {
+    if (o.skills.length === 1) return openGroupCheck(game, { ...o, skill: o.skills[0] });
+    game.openModal({ title: o.title, lines: [...(o.lines || []), { text: `${t('check.group')}: ${t('check.pickSkill')} · ${t('battle.dc')} ${o.dc}`, color: 'a' }], onCancel: false,
+      options: o.skills.map((sk) => ({ label: skillName(sk), run: (g) => openGroupCheck(g, { ...o, skill: sk }) })) });
+    return;
+  }
   const lines = [];
   let ok = 0;
   for (const m of o.members) {
-    const res = rollCheck(checkInfo(m, o.skill, o.extraAdv), o.dc);
+    const res = rollCheck(m, checkInfo(m, o.skill, o.extraAdv), o.dc);
     if (res.success) ok++;
     lines.push({ text: `${m.name}: d20[${res.rolls.join('|')}] ${sign(res.info.total)} = ${res.total} — ${res.success ? t('check.success') : t('check.fail')}`, color: res.success ? 'j' : 'c' });
   }
@@ -94,7 +119,7 @@ export function openChallenge(game, o) {
         label: skillName(sk), run: (g2) => g2.openModal({
           title: `${o.title}: ${skillName(sk)}`, onCancel: false, lines: [{ text: t('check.pick'), color: 'a' }],
           options: performerOptions(o.members, sk, o.dc, null, (g3, m, info) => {
-            const res = rollCheck(info, o.dc);
+            const res = rollCheck(m, info, o.dc);
             if (res.success) st.ok++;
             else if (!st.forgiven) st.forgiven = true;
             else st.bad++;

@@ -1,68 +1,64 @@
-// Skill checks outside battle (world.md §5): d20 + mod(stat) [+ prof] + bonuses vs DC.
-// Specialisation of the class → advantage + proficiency; related → normal + proficiency; others → disadvantage.
-// Talents/gadgets: { check, bonus } and { check, adv: true } (the skill becomes a specialisation).
-import { SKILLS, TALENTS } from '../data/talents.js';
-import { mod, profBonus } from '../rules/character.js';
-import { CLASS_SKILLS, GADGETS } from './data.js';
+// Skill checks outside battle (world.md §5) over the engine's skillCheck (rules/skills.js).
+// A member is { key, name, isHero, unit } — unit is a built creature (talents/gadget world effects in unit.skillMods).
+// Items in the hero's inventory with world { check, bonus } add to the hero's checks (locations.js ITEMS note).
+import { SKILLS } from '../data/talents.js';
+import { mod } from '../rules/character.js';
+import { skillTier, skillCheck, SKILL_STATS } from '../rules/skills.js';
+import { GAME_DATA } from '../data/index.js';
+import { ITEMS, SPECIALIZATIONS } from './data.js';
 
-export const DC = { easy: 10, medium: 13, hard: 16, veryHard: 19 };
 export const skillName = (s) => SKILLS[s]?.name || s;
 
-/** World effects of a member: talents + class gadget. */
-export function worldEffects(member) {
+function itemMods(member, skill) {
   const out = [];
-  for (const id of member.talents || []) {
-    const t = TALENTS[id];
-    if (t) for (const w of t.world || []) out.push({ ...w, src: t.name });
+  if (!member.isHero || !member.items) return out;
+  for (const [id, n] of Object.entries(member.items)) {
+    if (!(n > 0)) continue;
+    for (const w of ITEMS[id]?.world || []) if (w.check === skill && w.bonus) out.push({ text: ITEMS[id].name, bonus: w.bonus });
   }
-  const g = member.isHero ? GADGETS[member.cls] : null;
-  if (g) for (const w of g.world || []) out.push({ ...w, src: g.name });
   return out;
 }
 
-export function hasWorldFlag(members, flag) {
-  for (const m of members) for (const w of worldEffects(m)) if (w.worldFlag === flag) return true;
-  return false;
-}
-
-/**
- * Preview of a check for a member: { mode, prof, statMod, bonus, total, notes[] }.
- * member: { name, cls, level, stats, talents, isHero }. extraAdv — reason string for external advantage.
- */
+/** Preview: { skill, stat, kind: 'spec'|'related'|'other', mode, prof, statMod, bonus, total, notes[] }. */
 export function checkInfo(member, skill, extraAdv) {
-  const sk = SKILLS[skill] || { stat: 'int' };
-  const table = CLASS_SKILLS[member.cls] || { spec: [], related: [] };
-  let kind = table.spec.includes(skill) ? 'spec' : table.related.includes(skill) ? 'related' : 'other';
+  const u = member.unit;
+  const stat = SKILLS[skill]?.stat || SKILL_STATS[skill] || 'int';
+  const kind = skillTier(u, skill, SPECIALIZATIONS);
   const notes = [];
   let bonus = 0;
-  for (const w of worldEffects(member)) {
-    if (w.check !== skill) continue;
-    if (w.adv) { kind = 'spec'; notes.push({ text: w.src, adv: true }); }
-    if (w.bonus) { bonus += w.bonus; notes.push({ text: w.src, bonus: w.bonus }); }
+  const m = u.skillMods?.[skill];
+  if (m) for (const s of m.sources) {
+    if (s.adv) notes.push({ text: s.name || s.id, adv: true });
+    if (s.bonus) { bonus += s.bonus; notes.push({ text: s.name || s.id, bonus: s.bonus }); }
   }
-  let mode = kind === 'spec' ? 'adv' : kind === 'related' ? 'normal' : 'dis';
-  if (extraAdv) {
-    notes.push({ text: extraAdv, adv: true });
-    mode = mode === 'dis' ? 'normal' : 'adv';
-  }
-  const prof = kind !== 'other' ? profBonus(member.level || 1) : 0;
-  const statMod = mod(member.stats?.[sk.stat] ?? 10);
-  return { skill, stat: sk.stat, kind, mode, prof, statMod, bonus, total: statMod + prof + bonus, notes };
+  const items = itemMods(member, skill);
+  for (const it of items) { bonus += it.bonus; notes.push(it); }
+  let adv = kind === 'spec', dis = kind === 'other';
+  if (extraAdv) { notes.push({ text: extraAdv, adv: true }); adv = true; }
+  const mode = adv && dis ? 'normal' : adv ? 'adv' : dis ? 'dis' : 'normal';
+  const prof = kind !== 'other' ? u.prof || 2 : 0;
+  const statMod = mod(u.stats?.[stat] ?? 10);
+  return { skill, stat, kind, mode, prof, statMod, bonus, total: statMod + prof + bonus, notes, extraAdv: !!extraAdv, itemBonus: items.reduce((s, x) => s + x.bonus, 0) };
 }
 
-/** Success chance of a check preview vs dc. */
 export function checkChance(info, dc) {
-  const need = Math.min(20, Math.max(2, dc - info.total));
-  const p = (21 - need) / 20;
+  const need = Math.min(21, Math.max(1, dc - info.total));
+  const p = Math.max(0, Math.min(1, (21 - need) / 20));
   return info.mode === 'adv' ? 1 - (1 - p) * (1 - p) : info.mode === 'dis' ? p * p : p;
 }
 
-/** Roll a check. rng() ∈ [0,1). Returns { rolls, natural, total, dc, success, info }. */
-export function rollCheck(info, dc, rng = Math.random) {
-  const d = () => 1 + Math.floor(rng() * 20);
-  const a = d();
-  const rolls = info.mode === 'normal' ? [a] : [a, d()];
-  const natural = info.mode === 'adv' ? Math.max(...rolls) : info.mode === 'dis' ? Math.min(...rolls) : a;
-  const total = natural + info.total;
-  return { rolls, natural, total, dc, success: total >= dc, info };
+/** Roll through the engine. Returns { rolls, natural, total, dc, success, info }. */
+export function rollCheck(member, info, dc) {
+  const r = skillCheck(member.unit, info.skill, dc, { adv: info.extraAdv, bonus: info.itemBonus || 0, data: GAME_DATA });
+  return { rolls: r.rolls, natural: r.natural, total: r.total, dc, success: r.success, info };
+}
+
+/** Any member has a world flag (talents / gadget / items). */
+export function hasWorldFlag(members, flag) {
+  return members.some((m) => (m.unit.worldFlags || []).some((w) => w.id === flag));
+}
+export function worldFlagValues(members, flag) {
+  const out = [];
+  for (const m of members) for (const w of m.unit.worldFlags || []) if (w.id === flag) out.push(w.value ?? 1);
+  return out.sort((a, b) => b - a);
 }
