@@ -4,7 +4,7 @@
 export const REGIONS = {
   harmony: {
     id: 'harmony', name: 'Альфа-Гармония', wave: '1.0',
-    faction: null, minorFaction: 'tekhnikumy',
+    faction: null, minorFaction: 'technikums',
     danger: 0, levels: [1, 1], hazard: null,
     mapColor: 'teal',
     desc: 'Летающая платформа, зависшая у утёса. 5000+ беженцев; формально правит совет техников, фактически — пираты через поставки.',

@@ -97,6 +97,7 @@ export function createBattleScene(opts) {
     const b = S.b;
     S.heroId = heroes[0].id; // the player-controlled unit whose turn it is (party: switches every turn)
     S.mainId = heroes[0].id;
+    S.partySize = heroes.length;
     // display names: duplicates get a number
     const count = {};
     for (const u of b.units) count[u.name] = (count[u.name] || 0) + 1;

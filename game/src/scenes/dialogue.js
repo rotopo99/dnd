@@ -27,7 +27,7 @@ export function toLines(v) {
   return v;
 }
 
-export function createDialogueScene({ title = '', lines, hero = null, onDone }) {
+export function createDialogueScene({ title = '', lines, hero = null, portraits = null, onDone }) {
   let i = 0;
   let shown = 0;
   let time = 0;
@@ -71,7 +71,7 @@ export function createDialogueScene({ title = '', lines, hero = null, onDone }) 
       ctx.fillStyle = C['1'];
       ctx.fillRect(0, stageY + 150, W, 2);
       if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
-      const portrait = PORTRAITS[cur.who];
+      const portrait = portraits?.[cur.who] || PORTRAITS[cur.who];
       if (portrait) drawSprite(ctx, portrait, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
       // window
       const w = Math.min(1100, W - 64);
@@ -79,7 +79,7 @@ export function createDialogueScene({ title = '', lines, hero = null, onDone }) 
       const x = Math.floor((W - w) / 2);
       const y = H - h - 40;
       panel(ctx, x, y, w, h, C['1'], C['3']);
-      const name = speaker(cur.who);
+      const name = cur.name ?? speaker(cur.who);
       if (name) {
         ctx.font = FONT_B;
         const nw = ctx.measureText(name).width + 24;

@@ -9,22 +9,24 @@ export const ROUTES = [
   { from: 'alpha-harmony', to: 'harmony-reactor', days: 0, danger: 0 },
   { from: 'alpha-harmony', to: 'harmony-sector-d', days: 0, danger: 0 },
   { from: 'alpha-harmony', to: 'funicular', days: 0, danger: 0 },
+  { from: 'alpha-harmony', to: 'harmony-workshop', days: 0, danger: 0 },
+  { from: 'alpha-harmony', to: 'harmony-post', days: 0, danger: 0 },
   // --- дорога «к маякам»
   { from: 'funicular', to: 'galina-dacha', days: 1, danger: 1 },
   { from: 'galina-dacha', to: 'dacha-hatch', days: 0, danger: 0, hidden: true, reveal: 'galina-told' },
   { from: 'galina-dacha', to: 'neutral-villages', days: 1, danger: 1 },
   { from: 'neutral-villages', to: 'villages-tower', days: 1, danger: 1 },
   { from: 'neutral-villages', to: 'cringe-border', days: 1, danger: 2 },
-  { from: 'cringe-border', to: 'beacon-north', days: 0, danger: 2 },
-  { from: 'cringe-border', to: 'beacon-east', days: 0, danger: 2 },
-  { from: 'cringe-border', to: 'beacon-swamp', days: 1, danger: 2, hidden: true, reveal: 'khikhik-talked' },
+  { from: 'cringe-border', to: 'beacon-1', days: 0, danger: 2 },
+  { from: 'cringe-border', to: 'beacon-2', days: 0, danger: 2 },
+  { from: 'cringe-border', to: 'beacon-3', days: 1, danger: 2, hidden: true, reveal: 'khikhik-talked' },
   // --- дорога «к огню»
   { from: 'funicular', to: 'agrozone', days: 2, danger: 2 },
   { from: 'neutral-villages', to: 'agrozone', days: 2, danger: 2 },
   { from: 'agrozone', to: 'burg-svoboda', days: 1, danger: 2 },
   { from: 'agrozone', to: 'burg-beton', days: 1, danger: 1 },
   { from: 'agrozone', to: 'cleaner-checkpoint', days: 1, danger: 2 },
-  { from: 'burg-svoboda', to: 'agro-elevator', days: 1, danger: 2 },
+  { from: 'burg-svoboda', to: 'agro-terminal', days: 1, danger: 2 },
   { from: 'cleaner-checkpoint', to: 'burg-svoboda', days: 1, danger: 2 },
   // --- дорога «к мёртвым»
   { from: 'funicular', to: 'cc-gate', days: 2, danger: 3 },
@@ -84,8 +86,7 @@ export const ENCOUNTER_TABLES = {
     { w: 2, kind: 'trader', stock: ['medkit', 'calmers', 'oak-amulet'] },
     { w: 1, kind: 'rumor' },
     { w: 1, kind: 'npc', npc: 'nomad-vetla' },
-    { w: 1, kind: 'unique', npc: 'artyom', event: 'cameo-artyom', once: true },
-  ],
+    ],
 
   agrozone: [
     { w: 4, kind: 'battle', encounter: 'w-agro-cleaners', faction: 'agrozone' },
@@ -93,7 +94,7 @@ export const ENCOUNTER_TABLES = {
     { w: 1, kind: 'battle', encounter: 'w-road-scavengers', faction: 'scavengers', raceWeight: { skeleton: 3 } },
     { w: 2, kind: 'event', id: 'ev-refugees', text: 'Колонна беженцев с полей. Просят воды и дорогу к Гармонии.',
       check: { skills: ['persuasion', 'survival'], dc: 12 },
-      success: { text: 'Показали дорогу. Кто-то сунул вам банку тушёнки.', xp: 60, rep: { renegades: 2, tekhnikumy: 2 }, items: [{ item: 'medkit', n: 1 }] },
+      success: { text: 'Показали дорогу. Кто-то сунул вам банку тушёнки.', xp: 60, rep: { renegades: 2, technikums: 2 }, items: [{ item: 'medkit', n: 1 }] },
       fail: { text: 'Колонна разбрелась. Чистильщики найдут их раньше.', mrl: -3 } },
     { w: 2, kind: 'event', id: 'ev-burning-row', text: 'Огонь перекинулся на дорогу. Обход — полдня.',
       check: { skills: ['athletics', 'acrobatics'], dc: 13, group: true },
@@ -102,7 +103,6 @@ export const ENCOUNTER_TABLES = {
     { w: 1, kind: 'trader', stock: ['medkit', 'rations'] },
     { w: 1, kind: 'rumor' },
     { w: 1, kind: 'npc', npc: 'mad-nail' },
-    { w: 1, kind: 'unique', npc: 'party-victor', event: 'cameo-victor', once: true },
   ],
 
   corruption: [
@@ -120,10 +120,6 @@ export const ENCOUNTER_TABLES = {
     { w: 1, kind: 'trader', stock: ['medkit', 'calmers', 'grenade', 'oak-amulet'] },
     { w: 1, kind: 'rumor' },
     { w: 1, kind: 'npc', npc: 'wanderer-knife' },
-    { w: 1, kind: 'unique', npc: 'liza', event: 'cameo-liza', once: true },
-    { w: 1, kind: 'unique', npc: 'kuksius', event: 'cameo-kuksius', once: true },
   ],
 };
-
-/** Отдельные события для уникальных встреч, которые не привязаны к таблице (пишет сценарист). */
-export const UNIQUE_EVENTS = ['cameo-artyom', 'cameo-victor', 'cameo-liza', 'cameo-kuksius', 'cameo-repa'];
+// Уникальные ивенты партии настолки — не в таблицах встреч, а в world/events.js (EVENTS, триггер на узле).

@@ -75,7 +75,7 @@ const LIST = [
   {
     id: 'nikola', name: 'Никола', faction: 'technikums', race: 'human', key: true,
     role: 'протезист-самоучка, «умные протезы» из остатков', location: 'alpha-harmony', services: ['trade', 'train'],
-    talents: ['Быстрая пайка', 'установка: Подкожная броня', 'установка: Встроенный сканер'],
+    talents: ['weapon-tuning', 'subdermal-armor', 'builtin-scanner', 'holo-projection'],
     character: 'Гений без диплома и тормозов. Верит, что у протеза должна быть душа — или хотя бы мнение.',
     speech: 'Тараторит, говорит о протезах как о людях («Вася сегодня не в духе»).',
     gives: 'Кибер-импланты и протезы, ремонт; выучить «Быструю пайку».',
@@ -87,7 +87,7 @@ const LIST = [
   {
     id: 'gans', name: 'Ганс', faction: 'technikums', race: 'human', key: true,
     role: 'техник-милитарист, бывший боец ГО и ЧС', location: 'alpha-harmony', services: ['train', 'quest'],
-    talents: ['Хладнокровие', 'Быстрая перезарядка'],
+    talents: ['cold-blood', 'bullet-dodge'],
     character: 'Без аугментаций, в автокамуфляже. Молчалив, работает чисто.',
     speech: 'Коротко, по-армейски.',
     gives: 'Учит «Хладнокровию»; задания на разминирование.',
@@ -110,7 +110,7 @@ const LIST = [
   {
     id: 'paracetamol', name: 'Парацетамол', faction: 'technikums', race: 'skeleton', key: true,
     role: 'робот-медик, создан Серой; помогает Николе ставить протезы', location: 'alpha-harmony', services: ['trade', 'train'],
-    talents: ['Диагноз на глаз', 'Кровавая печать'],
+    talents: ['field-surgery', 'macgyver-kit'],
     character: 'Заботлив по программе и, кажется, уже не только по ней. Учится шутить.',
     speech: '«Диагноз… Рекомендация…», шутки с пояснением «это шутка».',
     gives: 'Лечение, медикаменты; «Диагноз на глаз».',
@@ -271,7 +271,7 @@ const LIST = [
   {
     id: 'boomerang', name: 'Мадемуазель Бумеранг', faction: 'none', race: 'human', key: false,
     role: 'бывшая цирковая убийца, наставница', location: 'corruption-city', services: ['train'],
-    talents: ['Бросок с отскоком'],
+    talents: ['bounce-throw'],
     character: 'Ушла из цирка убийц, потому что там перестали аплодировать.',
     speech: 'Театрально, с поклонами.',
     gives: 'Учит «Броску с отскоком».',
@@ -283,7 +283,7 @@ const LIST = [
   {
     id: 'duel-master', name: 'Распорядитель Сабля', faction: 'none', race: 'android', key: false,
     role: 'хозяин подпольного дуэльного клуба', location: 'corruption-city', services: ['train', 'quest'],
-    talents: ['Танец клинка'],
+    talents: ['blade-dance'],
     character: 'Безупречно вежлив. Ставки принимает до первой крови и после.',
     speech: 'Изысканно, по протоколу дуэли.',
     gives: 'Учит «Танцу клинка»; арена с призами.',
@@ -295,7 +295,7 @@ const LIST = [
   {
     id: 'old-lockpick', name: 'Дед Отмычка', faction: 'none', race: 'skeleton', key: false,
     role: 'старый вор на пенсии', location: 'lagoon-bar', services: ['train', 'info'],
-    talents: ['Взлом на слух'],
+    talents: ['ear-cracking'],
     character: 'Вскрыл всё, что было до ЭВК. Новое вскрывает из принципа.',
     speech: 'Ворчливо, байками «а вот в моё время».',
     gives: 'Учит «Взлому на слух».',
@@ -387,7 +387,7 @@ const LIST = [
   {
     id: 'announcer-rovnya', name: 'Товарищ Ровня', faction: 'aiParty', race: 'android', key: false,
     role: 'пропагандист и информатор', location: 'corruption-city', services: ['info', 'train'],
-    talents: ['Пропагандистский жаргон'],
+    talents: ['propaganda-jargon'],
     character: 'Андроид из элиты, искренне любит Партию и немножко — сплетни.',
     speech: 'Официально, бодро, лозунгами.',
     gives: 'Учит «Пропагандистскому жаргону»; слухи о распоряжениях Партии.',
@@ -399,7 +399,7 @@ const LIST = [
   {
     id: 'archivist-nine', name: 'Архивариус Девятый', faction: 'aiParty', race: 'android', key: false,
     role: 'клерк Тайной партии, торгует досье', location: 'corruption-city', services: ['trade', 'info'],
-    talents: ['Доступ к архивам'],
+    talents: ['archive-access'],
     character: 'Тихий, пыльный, продажный по расписанию.',
     speech: 'Бюрократически, номерами дел.',
     gives: 'Досье на NPC и фракции; «Доступ к архивам».',
@@ -458,7 +458,7 @@ const LIST = [
   {
     id: 'gunsmith-kalibr', name: 'Оружейник Калибр', faction: 'warprom', race: 'android', key: false,
     role: 'мастер-оружейник, наставник', location: 'warprom', services: ['train', 'trade'],
-    talents: ['Оружейный тюнинг', 'Бронебойщик'],
+    talents: ['weapon-tuning', 'armor-breaker'],
     character: 'Оружие любит больше идеологии. Идеологию — по уставу.',
     speech: 'Технично, ласково — только об оружии.',
     gives: 'Учит «Оружейному тюнингу» и «Бронебойщику».',
@@ -506,7 +506,7 @@ const LIST = [
     id: 'sekiro', name: 'Секиро', faction: 'tinBrotherhood', race: 'skeleton', key: false,
     role: 'мастер Арены, боец с молотом', roleProposed: true, location: 'tin-arena', services: ['train', 'recruit'],
     recruitable: true, cls: 'zabivnoy', path: 'mech-killer',
-    talents: ['Смертельный ритм', 'Кузнечный удар'],
+    talents: ['death-rhythm', 'smith-strike'],
     character: 'Скелет-ветеран, разбивший больше мехов, чем помнит. Говорит молотом.',
     speech: 'Односложно; молот договаривает.',
     gives: 'Учит «Смертельному ритму» и «Кузнечному удару»; компаньон.',
@@ -518,7 +518,7 @@ const LIST = [
   {
     id: 'monk-tishina', name: 'Монах Тишина', faction: 'tinBrotherhood', race: 'skeleton', key: false,
     role: 'монах-самурай, наставник', location: 'tin-citadel', services: ['train'],
-    talents: ['Контроль дыхания'],
+    talents: ['breath-control'],
     character: 'Не говорит неделями. Когда говорит — жалеешь.',
     speech: 'Редко и метко.',
     gives: 'Учит «Контролю дыхания».',
@@ -530,7 +530,7 @@ const LIST = [
   {
     id: 'smith-okalina', name: 'Кузнец Окалина', faction: 'tinBrotherhood', race: 'human', key: false,
     role: 'кузнец, торгует аналоговым оружием', location: 'tin-arena', services: ['trade', 'train'],
-    talents: ['Ржавая броня'],
+    talents: ['rusty-armor'],
     character: 'Руки в ожогах, характер — тоже.',
     speech: 'Громко, сквозь звон металла.',
     gives: 'Аналоговое оружие и броня; «Ржавая броня».',
@@ -577,7 +577,7 @@ const LIST = [
   {
     id: 'cyber-lovkach', name: 'Кибер-Ловкач', faction: 'pirates', race: 'human', key: true,
     role: 'заместитель, взломщик и киберпреступник', location: 'lagoon-bar', services: ['quest', 'train'],
-    talents: ['Фальшивые коды', 'Невидимка в сети'],
+    talents: ['fake-codes', 'silent-hack'],
     character: 'Ленивый гений. Работает, только когда это смешно.',
     speech: 'Сленгом хакеров, подмигивая.',
     gives: 'Взлом-заказы; учит «Фальшивым кодам».',
@@ -600,7 +600,7 @@ const LIST = [
   {
     id: 'negotiator-whisper', name: 'Переговорщик Шёпот', faction: 'pirates', race: 'mutant-beast', key: false,
     role: 'пиратский переговорщик, наставник', location: 'pirate-fleet', services: ['train'],
-    talents: ['Дипломатия угроз'],
+    talents: ['threat-diplomacy'],
     character: 'Говорит тихо, за спиной у него — кувалда в два роста.',
     speech: 'Еле слышно, вежливо.',
     gives: 'Учит «Дипломатии угроз».',
@@ -649,7 +649,7 @@ const LIST = [
   {
     id: 'sborshchik', name: 'Сборщик', faction: 'scavengers', race: 'human', key: true,
     role: 'заместитель, отвечает за ресурсы', location: 'scavenger-camp', services: ['trade', 'quest'],
-    talents: ['Чутьё на ценное'],
+    talents: ['keen-sense'],
     character: 'Оценщик всего, включая собеседника.',
     speech: 'Прицениваясь: «на сколько ты тянешь».',
     gives: 'Скупка и продажа хлама, заказы на редкие детали.',
@@ -661,7 +661,7 @@ const LIST = [
   {
     id: 'rat-toma', name: 'Крысиная Тома', faction: 'scavengers', race: 'mutant-beast', key: false,
     role: 'наставница выживания на свалках', location: 'king-dumps', services: ['train', 'info'],
-    talents: ['Крысиный король', 'Гнилой нюх', 'Свалка — мой дом'],
+    talents: ['rat-king', 'rot-nose', 'junk-home'],
     character: 'Живёт с крысами и предпочитает их людям.',
     speech: 'Шипяще, с крысиными пословицами.',
     gives: 'Учит «Крысиному королю», «Гнилому нюху».',
@@ -673,7 +673,7 @@ const LIST = [
   {
     id: 'shchup', name: 'Щуп', faction: 'scavengers', race: 'skeleton', key: false,
     role: 'скелет-«металлоискатель» на службе у мусорщиков', location: 'king-dumps', services: ['info'],
-    talents: ['Металлоискатель в голове'],
+    talents: ['metal-sense'],
     character: 'Его не разобрали, потому что он находит железо. Живёт по этой логике.',
     speech: 'Тихо, с расчётом.',
     gives: 'Тайники в хламе, слухи мусорщиков.',
@@ -721,7 +721,7 @@ const LIST = [
   {
     id: 'old-badger', name: 'Старый Барсук', faction: 'mutantsBeast', race: 'mutant-beast', key: false,
     role: 'следопыт, наставник', location: 'beast-lands', services: ['train'],
-    talents: ['Следопыт', 'Звериный инстинкт'],
+    talents: ['tracker', 'beast-instinct'],
     character: 'Старый, ворчливый, нюх лучше любого сканера.',
     speech: 'Медленно, по-лесному.',
     gives: 'Учит «Следопыту» и «Звериному инстинкту».',
@@ -733,7 +733,7 @@ const LIST = [
   {
     id: 'skinner', name: 'Шкурник', faction: 'mutantsBeast', race: 'mutant-beast', key: false,
     role: 'торговец бронёй из шкур', location: 'beast-lands', services: ['trade', 'train'],
-    talents: ['Кожевник'],
+    talents: ['leatherworker'],
     character: 'Шьёт отличную броню и не любит вопросов о материале.',
     speech: 'Сухо, примерками.',
     gives: 'Лёгкая броня; «Кожевник».',
@@ -758,7 +758,7 @@ const LIST = [
   {
     id: 'mutant-shaman', name: 'Шаман', faction: 'mutantsPlant', race: 'mutant-plant', key: true,
     role: 'заместитель Зверя, защищает мутантов своими способностями', roleProposed: true, location: 'green-border', services: ['quest', 'train'],
-    talents: ['Шёпот духов', 'Защита от мутаций'],
+    talents: ['spirit-whisper', 'darkness-resistance'],
     character: 'Медленный, как дерево, и такой же упрямый.',
     speech: 'Неспешно, корнями и листьями.',
     gives: 'Мистические дары; квесты защиты границы.',
@@ -793,7 +793,7 @@ const LIST = [
   {
     id: 'gardener-ship', name: 'Садовник Шип', faction: 'mutantsPlant', race: 'mutant-plant', key: false,
     role: 'алхимик, наставник', location: 'green-border', services: ['train', 'trade'],
-    talents: ['Биолог-мутант', 'Антидот'],
+    talents: ['bio-mutant', 'drug-resistance'],
     character: 'Знает яды лучше лекарств и лекарства лучше людей.',
     speech: 'Педантично, латинскими названиями, которые сам придумал.',
     gives: 'Учит «Антидоту», «Биологу-мутанту».',
@@ -909,7 +909,7 @@ const LIST = [
   {
     id: 'aztun', name: 'Шаман Азтун', faction: 'tekhonki', race: 'tekhonok', key: true,
     role: 'учитель последователей старого бога, лидер техоньков', location: 'ancient-bunker', services: ['info', 'train'],
-    talents: ['Ручная перезагрузка', 'Шёпот Старого бога'],
+    talents: ['manual-reboot', 'anomaly-physicist'],
     character: 'Фанатично спокоен. Освящает гаечные ключи.',
     speech: 'Проповедью, с техническими терминами не к месту.',
     gives: 'Учит «Ручной перезагрузке»; знания о прокси.',
@@ -979,7 +979,7 @@ const LIST = [
   {
     id: 'assimilator-gvozdar', name: 'Ассимилятор Гвоздарь', faction: 'mechanids', race: 'android', key: false,
     role: 'торговец имплантами', location: 'mechanid-works', services: ['trade', 'train'],
-    talents: ['установка: Нейро-ускоритель', 'установка: Эмоциональный фильтр'],
+    talents: ['neuro-accelerator', 'emotion-filter'],
     character: 'Брезгует органикой, но органика платит.',
     speech: 'Канцелярски-хирургически.',
     gives: 'Кибер-импланты (с побочками).',
@@ -1027,7 +1027,7 @@ const LIST = [
   {
     id: 'innkeeper-pelmen', name: 'Трактирщик Пельмень', faction: 'neutralVillages', race: 'human', key: false,
     role: 'трактирщик, собиратель сплетен', location: 'neutral-villages', services: ['trade', 'info'],
-    talents: ['Король улиц'],
+    talents: ['street-king'],
     character: 'Круглый, добрый, всё помнит.',
     speech: 'Радушно, с меню вместо аргументов.',
     gives: 'Отдых, еда, слухи.',
@@ -1039,7 +1039,7 @@ const LIST = [
   {
     id: 'nomad-vetla', name: 'Кочевница Ветла', faction: 'neutralVillages', race: 'human', key: false,
     role: 'кочевница, наставница', location: 'wastes', services: ['train'],
-    talents: ['Язык жестов пустошей', 'Песня пустошей'],
+    talents: ['wasteland-signs', 'wasteland-song'],
     character: 'Молчит словами, говорит руками.',
     speech: 'Жестами, изредка — словом.',
     gives: 'Учит «Языку жестов пустошей».',
@@ -1110,7 +1110,7 @@ const LIST = [
   {
     id: 'forger-lyova', name: 'Пропускник Лёва', faction: 'agrozone', race: 'human', key: false,
     role: 'подделыватель ID-чипов и пропусков', location: 'agrozone', services: ['trade', 'train'],
-    talents: ['Скрытый агент', 'Фальшивые данные'],
+    talents: ['hidden-agent', 'fake-data'],
     character: 'Нервный гений, ненавидит чипы больше всех — и знает о них больше всех.',
     speech: 'Скороговоркой, оглядываясь.',
     gives: 'Поддельные ID; учит «Скрытому агенту».',
@@ -1180,7 +1180,7 @@ const LIST = [
   {
     id: 'chronicler-bukva', name: 'Летописец Буква', faction: 'renegades', race: 'skeleton', key: false,
     role: 'летописец, наставник', location: 'khatab-city', services: ['train', 'info'],
-    talents: ['Легенда о себе'],
+    talents: ['self-legend'],
     character: 'Помнит штурм Военпрома и Куксиуса Первого. Или делает вид.',
     speech: 'Высоким слогом, с поправками «ну, примерно».',
     gives: 'Учит «Легенде о себе»; история Отступников.',
@@ -1228,7 +1228,7 @@ const LIST = [
     id: 'sister-pomekha', name: 'Сестра Помеха', faction: 'cult', race: 'human', key: false,
     role: 'бывшая аколитка, порвала с культом', location: 'lagoon-bar', services: ['recruit', 'info'],
     recruitable: true, cls: 'cybertech', path: 'curses',
-    talents: ['Шёпот Судьи'],
+    talents: ['judge-whisper'],
     character: 'Слышит Судью в помехах и упрямо делает наоборот.',
     speech: 'Тихо, с паузами, будто прислушивается.',
     gives: 'Компаньон-КиберТех (проклятия); знание обрядов.',
@@ -1308,7 +1308,7 @@ const LIST = [
   {
     id: 'mentor-konspekt', name: 'Наставник Конспект', faction: 'predlozhka', race: 'human', key: false,
     role: 'учитель аналитики', location: 'predlozhka-archive', services: ['train'],
-    talents: ['Аналитик', 'Чтение чужих писем'],
+    talents: ['analyst', 'letter-reading'],
     character: 'Объясняет всё трижды и каждый раз по-новому.',
     speech: 'Лекцией, «записывай».',
     gives: 'Учит «Аналитику», «Чтению чужих писем».',
@@ -1352,6 +1352,28 @@ const COMPANION = {
   'zarya':             { likes: ['help-weak', 'free-slaves'], dislikes: ['serve-ai', 'kill-surrendered'], home: 'agrozone' },
   'sister-pomekha':    { likes: ['mercy', 'help-weak'],    dislikes: ['cult-deal', 'cruelty'],         home: 'lagoon-bar' },
 };
+
+// Таланты компаньонов (game-designer, 2026-11-03; ids из talents.js). Первый — боевой (в бою), второй — мировой
+// или второй боевой (в пределах лимита 2). Первый же компаньон учит герою при одобрении ≥ +50 (world.md, п. 4).
+const COMPANION_TALENTS = {
+  'lox': ['cold-blood', 'hidden-agent'],
+  'andrey': ['knee-repair', 'reverse-engineering'],
+  'dymka': ['dirty-fighter', 'hidden-compartment'],
+  'telifon': ['wireless-charge', 'terminal-access'],
+  'sekiro': ['death-rhythm', 'smith-strike'],
+  'private-nedolyot': ['any-gun-shot', 'cold-blood'],
+  'madam-stavka': ['killer-stare', 'black-market'],
+  'zoya-klyk': ['beast-nose', 'beast-reflexes'],
+  'aunt-loza': ['field-surgery', 'nature-symbiosis'],
+  'diss': ['tactician', 'command-voice'],
+  'rzhaven': ['healing-hands', 'anomaly-physicist'],
+  'tik': ['junk-traps', 'gun-alchemist'],
+  'shepherd-timokha': ['pain-threshold', 'tracker'],
+  'yarosh': ['approach-miner', 'freedom-price'],
+  'zarya': ['shield-innocent', 'propaganda-jargon'],
+  'sister-pomekha': ['digital-asceticism', 'judge-whisper'],
+};
+for (const id in COMPANION_TALENTS) if (COMPANION[id]) COMPANION[id].talents = COMPANION_TALENTS[id];
 
 // Tabletop party members appear ONLY in their unique event (GDD, «Ответы человека по миру», п. 2): world/events.js.
 const CAMEO_EVENT = {

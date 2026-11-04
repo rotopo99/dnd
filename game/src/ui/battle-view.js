@@ -343,7 +343,7 @@ function drawTopBar(ctx, S) {
   const roundW = 110;
   let labelW = 0;
   if (cu) {
-    const many = b.units.filter((u) => u.team === 'heroes' && u.kind === 'hero').length > 1;
+    const many = S.partySize > 1;
     const label = cu.id === S.heroId && S.playerTurn ? (many ? `${t('battle.yourTurn')}: ${S.name(cu.id)}` : t('battle.yourTurn')) : cu.team === 'heroes' ? `${t('battle.allyTurn')}: ${S.name(cu.id)}` : `${t('battle.enemyTurn')}: ${S.name(cu.id)}`;
     const s = fit(ctx, label, L.area.w - 2 * roundW - 40, FONT_L);
     ctx.font = FONT_L;

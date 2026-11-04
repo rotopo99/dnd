@@ -5,7 +5,7 @@
 import { RELATIONS } from '../factions.js';
 
 /** Малые фракции вне матрицы (id — как в npcs.js EXTRA_FACTIONS). Репутация есть, распространения нет. */
-export const MINOR_FACTIONS = ['tekhnikumy', 'predlozhka'];
+export const MINOR_FACTIONS = ['technikums', 'predlozhka'];
 
 /** Пороги репутации: value >= min. Порядок — от высшего. */
 export const REP_TIERS = [
@@ -63,7 +63,7 @@ export const RACE_REP = {
 };
 
 /** Итог пролога (герой сорвал теракт на Альфа-Гармонии). Распространяется. */
-export const PROLOGUE_REP = { tekhnikumy: 30, cult: -30, pirates: 5 };
+export const PROLOGUE_REP = { technikums: 30, cult: -30, pirates: 5 };
 
 /**
  * Происхождения. faction/rep — прибавка своей фракции (распространяется по матрице);
@@ -101,7 +101,7 @@ export const ORIGINS = {
   neutralVillages: { id: 'neutralVillages', name: 'Житель Нейтральных селений', faction: 'neutralVillages', rep: 20, races: null,
     talents: ['village-kin', 'elders-word'],
     desc: 'Все — если не агрессивны.' },
-  tekhnikumy: { id: 'tekhnikumy', name: 'Техникумы', faction: 'tekhnikumy', rep: 20, races: null,
+  technikums: { id: 'technikums', name: 'Техникумы', faction: 'technikums', rep: 20, races: null,
     talents: ['no-id', 'smart-prosthesis'],
     desc: 'Технологии без ID-контроля. Свои на Альфа-Гармонии.' },
   mutantsBeast: { id: 'mutantsBeast', name: 'Стая мутантов-Ж', faction: 'mutantsBeast', rep: 20, races: ['mutant-beast'],

@@ -307,6 +307,42 @@ export const ENEMIES = {
     canon: ['lore/history.md'],
   },
 
+  // Временные союзники ивентов партии настолки (world/events.js; канон — characters/party.md). Один бой, не компаньоны.
+  'npc-party-victor': {
+    id: 'npc-party-victor', name: 'Виктор', level: 3, tags: ['organic'],
+    stats: { str: 16, dex: 12, con: 14, int: 10, wil: 12, cha: 10, per: 10 },
+    hp: 34, mrl: 20, enr: 0, kb: 17, speed: 6, castStat: 'str',
+    weapon: { name: 'Тяжёлый молот', dice: '1d10', dmgType: 'blunt', stat: 'str', range: 1, hit: -1, attack: 5 },
+    abilities: [
+      ability({ id: 'victor-taunt', name: 'Железный титан', action: 'bonus', range: 3, roll: 'auto', usesPerBattle: 1,
+        effects: [{ op: 'status', id: 'taunt', turns: 2 }],
+        desc: 'Вызывает врага на себя: провокация на 2 хода.' }),
+      ability({ id: 'victor-stance', name: 'Стойка', action: 'bonus', range: 0, target: 'self', roll: 'auto', usesPerBattle: 1,
+        effects: [{ op: 'status', id: 'fortified', turns: 2 }],
+        desc: 'Сопротивление физическому урону на 2 хода.' }),
+    ],
+    resist: {}, immuneStatus: [], ai: 'melee', xp: 0,
+    desc: 'Бывший солдат из команды Куксиуса, Забивной, Путь Железного Титана (ур. 3 в ивенте). Тяжёлая броня, держит удар.',
+    canon: ['characters/party.md'],
+  },
+  'npc-party-artyom': {
+    id: 'npc-party-artyom', name: 'Артём', level: 3, tags: ['organic'],
+    stats: { str: 14, dex: 16, con: 12, int: 12, wil: 10, cha: 10, per: 14 },
+    hp: 24, mrl: 18, enr: 0, kb: 14, speed: 6, castStat: 'dex',
+    weapon: { name: 'Снайперская винтовка', dice: '1d10', dmgType: 'pierce', stat: 'dex', range: 20, hit: 0, attack: 6 },
+    abilities: [
+      ability({ id: 'artyom-aimed', name: 'Прицельный выстрел', range: 20, roll: 'attack', usesPerBattle: 2,
+        effects: [{ op: 'weapon', extraDice: '1d8', hit: 2 }],
+        desc: 'Выстрел +2 к атаке и +1d8 урона.' }),
+      ability({ id: 'artyom-mark', name: 'Метка охотника', action: 'bonus', range: 20, roll: 'auto', usesPerBattle: 1,
+        effects: [{ op: 'mark', id: 'marked', turns: 3, value: 2 }],
+        desc: '3 хода атаки по цели +2 урона.' }),
+    ],
+    resist: {}, immuneStatus: [], ai: 'ranged', xp: 0,
+    desc: 'Выживальщик и снайпер из команды Куксиуса, Рейнджер, Путь Охотника (ур. 3 в ивенте).',
+    canon: ['characters/party.md'],
+  },
+
   // -------------------------------------------------------------- Призывы
   // Слабее героя, живут defaultTurns ходов (если summon не задаёт turns), уровень 1.
   drone: {
@@ -711,7 +747,7 @@ export const ENCOUNTERS = {
   },
   prologue3: {
     id: 'prologue3', name: 'Альфа-Гармония: аколит', level: 1,
-    enemies: ['acolyte', 'cultist'], allies: ['npc-gans'],
+    enemies: ['acolyte', 'cultist', 'cultist'], allies: ['npc-gans'], // сведено с картой prologue-3 (2026-11-03)
   },
 
   // ------------------------------------------------------------ Мир v1.0 (docs/specs/world.md)
@@ -732,8 +768,10 @@ export const ENCOUNTERS = {
     enemies: ['cringe-jester', 'cringe-jester', 'cringe-warrior', 'cringe-jester'] },
   'w-villages-beacon': { id: 'w-villages-beacon', name: 'Кринж-маяк', level: 2,
     enemies: ['cringe-beacon', 'cringe-jester', 'cringe-warrior', 'cringe-jester', 'cringe-jester'] },
-  'w-villages-hatch': { id: 'w-villages-hatch', name: 'Люк под дачей: гнездо', level: 2,
+  'w-villages-hatch': { id: 'w-villages-hatch', name: 'Люк под дачей: гнездо', level: 2, map: 'hatch-1',
     enemies: ['junk-mech', 'crawler', 'crawler', 'crawler'] },
+  'w-agro-burning-field': { id: 'w-agro-burning-field', name: 'Горящие поля: зачистка', level: 2, map: 'burning-field-1',
+    enemies: ['cleaner', 'cleaner', 'cleaner', 'cleaner', 'cleaner'] },
   'w-villages-terminal': { id: 'w-villages-terminal', name: 'Вышка: ритуальный терминал', level: 2,
     enemies: ['skrilet', 'cultist', 'cultist-gunner', 'cultist', 'cultist-gunner'] },
   'w-agro-cleaners': { id: 'w-agro-cleaners', name: 'Агрозона: патруль Чистильщиков', level: 2,

@@ -275,6 +275,7 @@ export function isKnownRoute(save, r) {
 
 /** Visit a node: mark visited, discover non-hidden neighbours. */
 export function visit(save, id) {
+  if (save.location && save.location !== id) save.prevLocation = save.location;
   save.location = id;
   if (!save.visited.includes(id)) save.visited.push(id);
   if (!save.discovered.includes(id)) save.discovered.push(id);
