@@ -11,7 +11,7 @@ import { openCheck } from '../ui/checks-ui.js';
 import { createBattleScene } from './battle.js';
 import { makeWorldMap } from '../world/arena.js';
 import { buildHero, hasFlagInParty, journal, visit, routesFrom, otherEnd } from '../world/state.js';
-import { LOCATIONS } from '../world/data.js';
+import { LOCATIONS, DEFAULT_RESPAWN, encounterEnemies } from '../world/data.js';
 import { saveGame, deleteSave } from '../save.js';
 
 const SKILLS = ['meditation', 'judge', 'hacking', 'religion'];
@@ -27,7 +27,7 @@ export function nearestOursTerminal(save) {
     if (ours.has(id)) return id;
     for (const r of routesFrom(id)) { const o = otherEnd(r, id); if (!seen.has(o)) { seen.add(o); q.push(o); } }
   }
-  return 'harmony-reactor';
+  return DEFAULT_RESPAWN;
 }
 
 export function startCyberspace(game, { reason, helped }) {
@@ -54,9 +54,7 @@ export function createCyberspaceScene() {
   const dc = (game) => 13 + (game.save.hero.judgeMarks || 0);
 
   function spiritMember(game) {
-    const u = spiritUnit(game);
-    const h = game.save.hero;
-    return { key: 'hero', isHero: true, name: h.name, cls: h.cls, level: h.level, talents: h.talents, stats: u.stats };
+    return { key: 'hero', isHero: true, name: game.save.hero.name, unit: spiritUnit(game), items: game.save.hero.items };
   }
 
   function spiritUnit(game) {
@@ -101,8 +99,8 @@ export function createCyberspaceScene() {
       return;
     }
     // battle with skrilets / scriptlets
-    const n = 2 + (game.save.hero.judgeMarks || 0);
-    const enemies = Array.from({ length: n }, (_, k) => (k % 2 ? 'skrilet' : 'cultist'));
+    const enemies = encounterEnemies('w-cyberspace', 1 + (game.save.hero.judgeMarks || 0));
+    const n = enemies.length;
     const scene = createBattleScene({
       heroes: (g) => [spiritUnit(g)], allies: c.helped ? ['spirit'] : [], enemies,
       map: (seed) => makeWorldMap({ seed, enemies: n, id: 'cyberspace' }), title: t('cyber.title'), race: game.save.hero.race,

@@ -3,7 +3,8 @@
 // Click / Space / Enter — next line (first press finishes the typewriter). Esc — skip the whole dialogue.
 import { t } from '../data/text/index.js';
 import { speaker } from '../data/text/prologue.js';
-import { drawSprite, heroSpriteIds, enemySpriteIds, idleFrame } from '../assets/sprites.js';
+import { drawSprite, heroSpriteIds, enemySpriteIds, idleFrame, drawPortrait } from '../assets/sprites.js';
+import { NPCS } from '../data/npcs.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, wrap, panel, clear } from '../ui/draw.js';
 
@@ -72,7 +73,8 @@ export function createDialogueScene({ title = '', lines, hero = null, portraits 
       ctx.fillRect(0, stageY + 150, W, 2);
       if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
       const portrait = portraits?.[cur.who] || PORTRAITS[cur.who];
-      if (portrait) drawSprite(ctx, portrait, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
+      if (NPCS[cur.who] && !PORTRAITS[cur.who]) drawPortrait(ctx, cur.who, Math.floor(W / 2) + 120, stageY - 48, 6, { flip: true });
+      else if (portrait) drawSprite(ctx, portrait, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
       // window
       const w = Math.min(1100, W - 64);
       const h = 196;

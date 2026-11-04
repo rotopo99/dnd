@@ -3,13 +3,14 @@
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT, talentsForSlot } from '../data/talents.js';
-import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
+import { drawSprite, heroSpriteIds, idleFrame, drawPortrait } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, resLine } from '../ui/draw.js';
+import { C, FONT, FONT_B, LINE, text, textBlock, fit, panel, button, hitButton, clear, resLine } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS } from '../world/reputation.js';
 import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, journal } from '../world/state.js';
-import { QUESTS, GADGETS, ITEMS } from '../world/data.js';
-import { stageOf } from '../world/quests.js';
+import { QUESTS, gadgetFor, ITEMS } from '../world/data.js';
+import { stageOf, currentGoalText } from '../world/quests.js';
+import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
 
@@ -31,11 +32,14 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     const sv = game.save;
     const it = ITEMS[item];
     const u = S.units[key];
-    if (!u || !it?.heal || !(sv.hero.items[item] > 0)) return;
+    const h = it?.use?.heal;
+    if (!u || !h || !(sv.hero.items[item] > 0)) return;
     sv.hero.items[item]--;
     const entry = key === 'hero' ? sv.hero : sv.party.find((p) => p.npc === key);
-    if (it.heal.hp) entry.hp = Math.min(u.maxHp, u.hp + it.heal.hp);
-    if (it.heal.mrl) entry.mrl = Math.min(u.maxMrl, u.mrl + it.heal.mrl);
+    const v = rollDice(Math.random, h.dice) + (h.bonus || 0);
+    if (h.resource === 'mrl') entry.mrl = Math.min(u.maxMrl, u.mrl + v);
+    else entry.hp = Math.min(u.maxHp, u.hp + v);
+    game.toast(`${it.name}: +${v} ${t(`res.${h.resource === 'mrl' ? 'mrl' : 'hp'}`)}`, h.resource === 'mrl' ? 'f' : 'j');
     play('heal');
     saveGame(sv);
     rebuild(game);
@@ -79,7 +83,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
           const full = activeCompanions(sv).length >= MAX_PARTY;
           add(m.p.state === 'active' ? { act: 'wait', label: t('party.toReserve'), w: 120 } : { act: 'join', label: t('party.toActive'), w: 120, disabled: full, reason: t('party.full') });
         }
-        add({ act: 'stim', label: `${ITEMS.stim.name} ${sv.hero.items.stim || 0}`, w: 150, disabled: !(sv.hero.items.stim > 0) });
+        add({ act: 'calmers', label: `${ITEMS.calmers.name} ${sv.hero.items.calmers || 0}`, w: 170, disabled: !(sv.hero.items.calmers > 0) });
         add({ act: 'medkit', label: `${ITEMS.medkit.name} ${sv.hero.items.medkit || 0}`, w: 130, disabled: !(sv.hero.items.medkit > 0) });
       });
       // talents (hero)
@@ -102,7 +106,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     if (b.kind === 'tab') { S.tab = b.id; layout(game); return; }
     if (b.kind === 'back') { game.resume(back); return; }
     if (b.kind === 'm') {
-      if (b.act === 'medkit' || b.act === 'stim') return useItem(game, b.act, b.key);
+      if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.key);
       const p = sv.party.find((x) => x.npc === b.key);
       if (b.act === 'wait') p.state = 'waiting';
       if (b.act === 'join') p.state = 'active';
@@ -131,8 +135,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       if (!u) return;
       const isHero = m.key === 'hero';
       panel(ctx, ox + 24, y, 640, 92, C['1'], isHero ? C.h : C['2']);
-      const ids = isHero ? heroSpriteIds(sv.hero.race, sv.hero.cls) : heroSpriteIds(game.data.RACES[NPCS[m.key].race] ? NPCS[m.key].race : 'human', NPCS[m.key].cls);
-      drawSprite(ctx, ids, ox + 32, y + 12, 4, { frame: idleFrame(S.time * 1000, i * 0.3) });
+      if (isHero) drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls), ox + 32, y + 12, 4, { frame: idleFrame(S.time * 1000, i * 0.3) });
+      else drawPortrait(ctx, m.key, ox + 32, y + 14, 2);
       const name = isHero ? sv.hero.name : NPCS[m.key].name;
       text(ctx, fit(ctx, name, 220, FONT_B), ox + 104, y + 8, isHero ? C.h : C['5'], FONT_B);
       const cls = game.data.CLASSES[u.classId];
@@ -154,7 +158,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       const y = oy + 108 + i * 24;
       text(ctx, fit(ctx, `${tl.name} — ${tl.desc}`, w - 40), x + 32, y, isCombatTalent(tl) ? (sv.hero.activeCombat.includes(id) ? C.a : C['3']) : C['5'], FONT);
     });
-    const g = GADGETS[sv.hero.cls];
+    const g = gadgetFor(sv.hero.cls);
     let y = oy + 108 + sv.hero.talents.length * 24 + 12;
     if (g) {
       text(ctx, `${t('create.gadget')}: ${g.name}`, x, y, C.h, FONT_B);
@@ -207,7 +211,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       text(ctx, fit(ctx, `${q.key ? '★ ' : ''}${q.name} — ${t(`journal.${st.state}`)}`, 560, FONT_B), ox + 24, y, col, FONT_B);
       y += LINE + 2;
       const s = stageOf(sv, id);
-      if (s) y = textBlock(ctx, s.text, ox + 44, y, 540, C['4'], FONT, LINE, 2) + 6;
+      if (s) y = textBlock(ctx, currentGoalText(sv, id), ox + 44, y, 540, C['4'], FONT, LINE, 2) + 6;
     }
     text(ctx, t('journal.events'), ox + 640, oy + 80, C['4'], FONT_B);
     const list = sv.journal.slice(-26).reverse();
@@ -236,7 +240,6 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       else if (S.tab === 'rep') renderRep(game);
       else renderJournal(game);
       for (const b of S.buttons) button(ctx, b, S.hover === b);
-      void FONT_L;
     },
   };
   return self;

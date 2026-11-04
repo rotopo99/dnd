@@ -8,6 +8,16 @@ import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_XL, text, button, hitButton, clear } from '../ui/draw.js';
 import { createCreateScene } from './create.js';
 import { createBattleScene } from './battle.js';
+import { hasSave, loadGame } from '../save.js';
+
+/** Load the save and go to its location (or back into an unfinished Cyberspace episode). */
+export function continueGame(game) {
+  const save = loadGame();
+  if (!save) { game.toast(t('menu.noSave'), 'c'); layout(game); return; }
+  game.save = save;
+  if (save.cyberspace) import('./cyberspace.js').then((m) => game.setScene(m.createCyberspaceScene()));
+  else import('./location.js').then((m) => game.setScene(m.createLocationScene(save.location)));
+}
 
 const pick = (arr) => arr[(Math.random() * arr.length) | 0];
 
@@ -40,11 +50,12 @@ function layout(game) {
   const W = game.width, H = game.height;
   const w = 320, h = 52;
   const x = Math.floor((W - w) / 2);
-  const y = Math.floor(H / 2) + 20;
-  buttons = [
-    { id: 'new', label: t('menu.newGame'), x, y, w, h },
-    { id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: y + h + 16, w, h: 60 },
-  ];
+  const y = Math.floor(H / 2) - 10;
+  buttons = [];
+  let yy = y;
+  if (hasSave()) { buttons.push({ id: 'continue', label: t('menu.continue'), x, y: yy, w, h, selected: true }); yy += h + 16; }
+  buttons.push({ id: 'new', label: t('menu.newGame'), x, y: yy, w, h });
+  buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: yy + h + 16, w, h: 60 });
 }
 
 export const menuScene = {
@@ -67,10 +78,12 @@ export const menuScene = {
     if (h !== hover && h) play('uiHover');
     hover = h;
     let act = m.clicked && h ? h.id : null;
-    if (game.input.wasPressed('Enter') || game.input.wasPressed('Space')) act = 'new';
+    if (game.input.wasPressed('Enter') || game.input.wasPressed('Space')) act = buttons[0].id;
+    if (game.input.wasPressed('KeyN')) act = 'new';
     if (game.input.wasPressed('KeyQ')) act = 'quick';
     if (!act) return;
     play('uiClick');
+    if (act === 'continue') return continueGame(game);
     if (act === 'new') game.setScene(createCreateScene());
     else startQuickBattle(game);
   },

@@ -9,6 +9,7 @@ import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, drawIcon } from '../ui/draw.js';
 import { menuScene } from './menu.js';
 import { startPrologue } from './prologue.js';
+import { createTalentsScene } from './create-talents.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const NAME_MAX = 16;
@@ -63,7 +64,7 @@ export function createCreateScene() {
     D.CLASSES[st.cls].paths.forEach((p, i) => buttons.push({ kind: 'path', id: p.id, label: p.name, font: FONT, sub: t(`role.${p.role || D.CLASSES[st.cls].role}`), x: ox + 488, y: oy + 100 + i * 64, w: 270, h: 56 }));
     buttons.push({ kind: 'name', id: 'name', label: '', x: ox + 488, y: oy + 340, w: 270, h: 40 });
     buttons.push({ kind: 'back', id: 'back', label: t('create.back'), x: ox + 488, y: oy + 652, w: 128, h: 48 });
-    buttons.push({ kind: 'start', id: 'start', label: t('create.start'), x: ox + 630, y: oy + 652, w: 128, h: 48 });
+    buttons.push({ kind: 'start', id: 'start', label: t('create.next'), x: ox + 630, y: oy + 652, w: 128, h: 48 });
     for (const b of buttons) b.selected = (b.kind === 'race' && b.id === st.race) || (b.kind === 'class' && b.id === st.cls) || (b.kind === 'path' && b.id === st.path);
   }
 
@@ -82,8 +83,7 @@ export function createCreateScene() {
 
   function begin(game) {
     const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName') };
-    game.hero = hero;
-    startPrologue(game, hero);
+    game.setScene(createTalentsScene(hero, self, (g, full) => { g.hero = full; startPrologue(g, full); }));
   }
 
   // ---------------------------------------------------------------- render parts
@@ -194,6 +194,7 @@ export function createCreateScene() {
 
   const self = {
     id: 'create',
+    resume(game) { layout(game); },
     enter(game) { fixClass(game); layout(game); },
     resize(game) { layout(game); },
     update(game, dt) {

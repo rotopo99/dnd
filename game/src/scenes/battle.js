@@ -8,7 +8,8 @@
 // Events from the engine are queued and replayed one by one: a 'move' blocks the queue until the
 // walk animation ends, so popups / sounds / log lines appear in order and at the right place.
 import { t } from '../data/text/index.js';
-import { buildCreature } from '../rules/character.js';
+import { buildCreature, buildEnemy } from '../rules/character.js';
+import { gadgetFor } from '../data/gadgets.js';
 import * as combat from '../rules/combat.js';
 import {
   createBattle, getLegalActions, perform, endTurn, isAiTurn, currentUnit, getReachable,
@@ -87,11 +88,14 @@ export function createBattleScene(opts) {
     if (opts.heroes) heroes = typeof opts.heroes === 'function' ? opts.heroes(game) : opts.heroes;
     else {
       const h = opts.hero;
-      heroes = [buildCreature({ race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero', anyStat: h.anyStat || undefined, talents: h.activeCombat })];
+      heroes = [buildCreature({ race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero', anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id })];
     }
     S.queue = [];
+    let enemies = opts.enemies;
+    // ambush (world.md §2): enemies get +5 initiative
+    if (opts.ambush && enemies) enemies = enemies.map((e, i) => { const u = buildEnemy(e, { data: game.data, id: `e${i + 1}` }); u.initBonus += 5; return u; });
     S.b = createBattle({
-      map: typeof opts.map === 'function' ? opts.map(seed) : opts.map, heroes, enemies: opts.enemies, allies: opts.allies, data: game.data, seed,
+      map: typeof opts.map === 'function' ? opts.map(seed) : opts.map, heroes, enemies, allies: opts.allies, data: game.data, seed,
       onEvent: (e) => S.queue.push(e),
     });
     const b = S.b;

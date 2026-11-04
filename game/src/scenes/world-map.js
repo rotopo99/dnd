@@ -6,18 +6,20 @@ import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, fit, panel, button, hitButton, clear } from '../ui/draw.js';
 import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
-import { LOCATIONS, REGIONS, ROUTES, ITEMS, SHOP_STOCK } from '../world/data.js';
-import { repTier, factionName } from '../world/reputation.js';
+import { LOCATIONS, REGIONS, FUTURE_REGIONS, ROUTES, ITEMS, SHOP_STOCK, AMBUSH, encounterName, npcGreeting } from '../world/data.js';
+import { NPCS } from '../data/npcs.js';
+import { repTier, factionName, normFaction } from '../world/reputation.js';
 import {
-  members, visit, routesFrom, otherEnd, isKnownRoute, encounterThreshold, pickEncounter, scaleEnemies, activeCompanions,
-  grant, discover, journal, locFaction, hasFlagInParty,
+  members, visit, routesFrom, otherEnd, isKnownRoute, encounterThreshold, pickEncounter,
+  grant, discover, journal, locFaction, hasFlagInParty, requiresOk,
 } from '../world/state.js';
 import { onArrive } from '../world/quests.js';
 import { startWorldBattle } from './world-battle.js';
+import { runEvent, travelEvents } from './event.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
 
-const KIND_FILL = { city: '2', camp: '6', terminal: 'i', cache: 'k' };
+const KIND_FILL = { hub: 'i', town: '2', camp: '6', wild: 'k', dungeon: '7', terminal: 'o', boss: 'd' };
 const TRAVEL_DAY_S = 0.55;
 
 /** Shortest path by days over known routes. Returns [routes] or null. */
@@ -87,8 +89,11 @@ export function createWorldMapScene() {
     while (tr.day < hop.r.days && tr.t >= (tr.day + 1) * TRAVEL_DAY_S) {
       tr.day++;
       save(game).day++;
+      const ev = travelEvents(save(game), LOCATIONS[hop.to].region)[0];
+      if (ev) { S.paused = true; runEvent(game, ev, (g) => { g.resume(self); S.paused = false; }); return; }
       if (rollEncounter(game, hop)) return;
     }
+    if (!hop.r.days && !tr.checked0) { tr.checked0 = true; if (rollEncounter(game, hop)) return; }
     if (tr.t >= dur) arriveHop(game);
   }
 
@@ -111,33 +116,44 @@ export function createWorldMapScene() {
   function handleEncounter(game, e, reg, resume) {
     const sv = save(game);
     const ms = members(sv, game.data);
+    const card = (title, ls, then) => game.openModal({ title, lines: ls, onCancel: false, options: [{ label: t('battle.continue'), run: then }] });
+    const outcomeOf = (g, r, ok) => {
+      if (!r) return resume();
+      const fin = (g2) => {
+        for (const x of grant(sv, { xp: r.xp, credits: r.credits, rep: r.rep, items: r.items, flag: r.flag, hp: r.hp, mrl: r.mrl }, g2.data)) g2.toast(x.text, x.color);
+        saveGame(sv);
+        card(ok ? t('check.success') : t('check.fail'), [{ text: r.text || '', color: ok ? 'j' : 'c' }], () => resume());
+      };
+      if (r.battle) startWorldBattle(g, { encounter: r.battle, onWin: (g2) => { g2.resume(self); fin(g2); } });
+      else fin(g);
+    };
     if (e.kind === 'battle') {
       const fight = (ambush) => startWorldBattle(game, {
-        title: `${t('map.road')}: ${REGIONS[reg].name}`, enemies: scaleEnemies(e.enemies, activeCompanions(sv).filter((p) => p.hp !== 0).length + 1, sv.hero.level, game.data),
-        faction: e.faction, ambush, hazard: reg === 'agrozone' ? 'fire' : null,
+        encounter: e.encounter, title: `${t('map.road')}: ${encounterName(e.encounter)}`, faction: e.faction, ambush,
         onWin: (g) => { g.resume(self); resume(); },
       });
-      if (hasFlagInParty(sv, game.data, 'no-ambush')) { game.toast(t('map.noAmbush'), 'j'); fight(false); return; }
-      openGroupCheck(game, { title: t('map.ambushCheck'), lines: [{ text: t('map.ambushText') }], skill: 'perception', dc: 12, members: ms,
-        onDone: (g, ok) => { if (!ok) g.toast(t('map.ambush'), 'c'); fight(!ok); } });
+      const go = () => {
+        if (hasFlagInParty(sv, game.data, 'no-ambush')) { game.toast(t('map.noAmbush'), 'j'); fight(false); return; }
+        openGroupCheck(game, { title: t('map.ambushCheck'), lines: [{ text: t('map.ambushText') }], skill: AMBUSH.skill, dc: AMBUSH.dc, members: ms,
+          onDone: (g, ok) => { if (!ok) g.toast(t('map.ambush'), 'c'); fight(!ok); } });
+      };
+      card(t('map.encounterBattle'), [{ text: encounterName(e.encounter), color: 'c' }, ...(e.faction ? [{ text: factionName(e.faction), color: '4' }] : [])], go);
       return;
     }
     if (e.kind === 'event') {
-      openCheck(game, { title: t('map.event'), lines: [{ text: e.text }], skill: e.check.skill, dc: e.check.dc, members: ms, cancel: true,
-        onDone: (g, ok) => {
-          const r = ok ? e.success : e.fail;
-          if (r?.text) g.toast(r.text, ok ? 'j' : 'c');
-          for (const x of grant(sv, { xp: r?.xp, credits: r?.credits, rep: r?.rep }, g.data)) g.toast(x.text, x.color);
-          if (r?.damage) sv.hero.hp = Math.max(1, (sv.hero.hp ?? members(sv, g.data)[0].unit.hp) - r.damage);
-          resume();
-        } });
+      const c = e.check;
+      const opener = c.group ? openGroupCheck : openCheck;
+      opener(game, { title: t('map.event'), lines: [{ text: e.text }], skill: c.skill, skills: c.skills, dc: c.dc, members: ms,
+        onDone: (g, ok) => outcomeOf(g, ok ? e.success : e.fail, ok) });
       return;
     }
     if (e.kind === 'trader') {
+      const stock = e.stock || SHOP_STOCK;
       game.openModal({
-        build: (g) => ({
+        width: 900,
+        build: () => ({
           title: e.friendly ? `${t('map.trader')} (${factionName(e.friendly)})` : t('map.trader'), lines: [{ text: `${t('world.credits')}: ${sv.hero.credits}`, color: 'b' }],
-          options: [...SHOP_STOCK.map((id) => ({ label: `${ITEMS[id].name} — ${ITEMS[id].price}`, sub: ITEMS[id].desc, keep: true, disabled: sv.hero.credits < ITEMS[id].price,
+          options: [...stock.filter((id) => ITEMS[id]).map((id) => ({ label: `${ITEMS[id].name} — ${ITEMS[id].price}`, sub: ITEMS[id].desc, keep: true, disabled: sv.hero.credits < ITEMS[id].price,
             run: () => { sv.hero.credits -= ITEMS[id].price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); } })),
           { label: t('loc.close'), run: () => resume() }],
         }),
@@ -146,15 +162,16 @@ export function createWorldMapScene() {
       return;
     }
     if (e.kind === 'rumor') {
-      const pool = Object.values(LOCATIONS).filter((l) => !sv.discovered.includes(l.id));
+      const pool = Object.values(LOCATIONS).filter((l) => l.region === reg && !sv.discovered.includes(l.id) && !l.requires);
       const l = pool[Math.floor(Math.random() * pool.length)];
       if (l) { discover(sv, l.id); journal(sv, `${t('loc.rumorFound')}: ${l.name}`); }
-      game.openModal({ title: t('map.rumor'), lines: [{ text: l ? `${t('loc.rumorFound')}: ${l.name}` : t('loc.noRumor') }], options: [{ label: t('battle.continue'), run: () => resume() }] });
+      card(t('map.rumor'), [{ text: l ? `${t('loc.rumorFound')}: ${l.name}` : t('loc.noRumor') }], () => resume());
       return;
     }
-    if (e.kind === 'cache') {
-      const out = grant(sv, e.loot, game.data);
-      game.openModal({ title: t('map.cache'), lines: [{ text: t('loc.found') }, ...out.map((x) => ({ text: x.text, color: x.color }))], options: [{ label: t('battle.continue'), run: () => resume() }] });
+    if (e.kind === 'npc') {
+      const n = NPCS[e.npc];
+      const g0 = npcGreeting(n, repTier(sv.rep[normFaction(n.faction)]));
+      card(`${t('map.stranger')}: ${n.name}`, [{ text: n.role || '', color: '4' }, { text: `«${g0.text}»` }], () => resume());
       return;
     }
     resume();
@@ -166,7 +183,7 @@ export function createWorldMapScene() {
     const hop = tr.hops[tr.i];
     visit(sv, hop.to);
     findHidden(game, hop.to);
-    tr.i++; tr.t = 0; tr.day = 0;
+    tr.i++; tr.t = 0; tr.day = 0; tr.checked0 = false;
     for (const x of onArrive(sv, hop.to, game.data)) game.toast(x.text, x.color);
     saveGame(sv);
     if (tr.i >= tr.hops.length) { S.travel = null; enterLocation(game); }
@@ -182,7 +199,7 @@ export function createWorldMapScene() {
       const byFlag = l.hidden.flags?.some((f) => hasFlagInParty(sv, game.data, f));
       let ok = byFlag;
       if (!ok && l.hidden.check) {
-        const best = Math.max(...members(sv, game.data).map((m) => Math.floor(((m.stats.per ?? 10) - 10) / 2)));
+        const best = Math.max(...members(sv, game.data).map((m) => Math.floor(((m.unit.stats.per ?? 10) - 10) / 2)));
         const roll = 1 + Math.floor(Math.random() * 20);
         ok = roll + best >= l.hidden.check.dc;
         log(`${t('map.hiddenCheck')}: d20 = ${roll} ${best >= 0 ? '+' : '−'}${Math.abs(best)} ${t('map.vs')} ${t('battle.dc')} ${l.hidden.check.dc} — ${ok ? t('check.success') : t('check.fail')}`, ok ? 'j' : '4');
@@ -262,7 +279,7 @@ export function createWorldMapScene() {
       // nodes
       for (const id of sv.discovered) {
         const l = LOCATIONS[id];
-        if (!l) continue;
+        if (!l || (l.requires && !requiresOk(sv, l.requires))) continue;
         const x = px(l.pos), y = py(l.pos);
         const visited = sv.visited.includes(id);
         const f = locFaction(id);

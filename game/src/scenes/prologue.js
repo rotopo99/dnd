@@ -7,6 +7,10 @@ import { createDialogueScene, toLines } from './dialogue.js';
 import { createBattleScene } from './battle.js';
 import { menuScene } from './menu.js';
 import { C } from '../ui/draw.js';
+import { newSave, gainXp, journal } from '../world/state.js';
+import { LOCATIONS, START_LOCATION } from '../world/data.js';
+import { saveGame } from '../save.js';
+import { createLocationScene } from './location.js';
 
 /** Collect dialogue lines for keys (race-aware via line()). */
 function lines(race, ...keys) {
@@ -46,6 +50,7 @@ function storyHooks(race) {
 }
 
 export function startPrologue(game, hero) {
+  const flags = {};
   const race = hero.race;
   const H = { race: hero.race, cls: hero.cls };
   const dlg = (title, ls, next) => game.setScene(createDialogueScene({ title, lines: ls, hero: H, onDone: next }));
@@ -60,10 +65,11 @@ export function startPrologue(game, hero) {
     game.setScene(scene);
   };
 
-  const epilogue = () => dlg(t('ep_title'), lines(race, 'ep_main', 'ep_victor', 'ep_seer', 'ep_radio', 'ep_end'), toMenu);
+  const epilogue = () => dlg(t('ep_title'), lines(race, 'ep_main', 'ep_victor', 'ep_seer', 'ep_radio', 'ep_end'), (g) => startWorld(g, hero, flags));
   const after3 = (g, S) => {
     const gans = S.b.units.find((u) => u.enemyId === 'npc-gans');
     const alive = gans && !gans.dead && !gans.down;
+    flags.gansAlive = !!alive;
     dlg(
       t('s3_title'),
       lines(race, 's3_after', alive ? 's3_gans_alive' : 's3_gans_dead', alive ? 's3_lox_alive' : 's3_lox_dead'),
@@ -76,4 +82,16 @@ export function startPrologue(game, hero) {
   const after1 = () => dlg(t('s1_title'), lines(race, 's1_after', 's1_reward'), scene2);
   const scene1 = () => dlg(t('s1_title'), lines(race, 's1_before', 's1_race', 's1_tip'), () => battle(1, after1));
   dlg(t('intro_title'), lines(race, 'intro_radio', 'intro_paper', 'intro_arrival', 'seer_meet', 'seer_race', 'explosion'), scene1);
+}
+
+/** After the epilogue: a new world save (start reputation includes the prologue result), 350 XP → level 2. */
+export function startWorld(game, hero, flags = {}) {
+  const save = newSave(hero);
+  save.flags['prologue-done'] = true;
+  if (flags.gansAlive) save.flags['gans-alive'] = true;
+  game.save = save;
+  for (const x of gainXp(save, 350, game.data)) game.toast(x.text, x.color);
+  journal(save, `${t('world.arrived')}: ${LOCATIONS[START_LOCATION].name}`);
+  saveGame(save);
+  game.setScene(createLocationScene(START_LOCATION));
 }

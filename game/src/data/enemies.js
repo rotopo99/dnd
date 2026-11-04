@@ -798,3 +798,31 @@ export const ENCOUNTERS = {
   'w-cyberspace': { id: 'w-cyberspace', name: 'Киберспейс: сторожа узла', level: 2,
     enemies: ['scriptlet', 'scriptlet', 'materialized-soul'] },
 };
+
+// ------------------------------------------------------------ Масштаб силы боя (balance-tester, мир v1.0)
+// `ENCOUNTERS['w-*'].power` — множитель силы врагов боя (1 = как в ENEMIES). Нужен, чтобы подогнать бой под уровень партии
+// без толпы из 15 слабаков: ЗДР и МРЛ ×p, атака +round(3(p−1)), урон оружия +round(2(p−1)) (через характеристику оружия),
+// КБ +round(2(p−1)), опыт ×p. Производные враги получают id `base^p` и регистрируются в ENEMIES при загрузке модуля.
+export function scaledEnemy(id, p) {
+  if (!p || p === 1) return id;
+  const nid = `${id}^${p}`;
+  if (ENEMIES[nid]) return nid;
+  const e = ENEMIES[id];
+  const d = Math.round(2 * (p - 1)), a = Math.round(3 * (p - 1)), k = Math.round(2 * (p - 1));
+  const def = {
+    ...e, id: nid,
+    hp: Math.round(e.hp * p), mrl: Math.round((e.mrl || 0) * p), kb: e.kb + k, xp: Math.round((e.xp || 0) * p),
+    stats: { ...e.stats },
+  };
+  if (e.weapon) {
+    def.weapon = { ...e.weapon, attack: e.weapon.attack != null ? e.weapon.attack + a : e.weapon.attack };
+    if (def.stats[e.weapon.stat] != null) def.stats[e.weapon.stat] += 2 * d;
+  }
+  ENEMIES[nid] = def;
+  return nid;
+}
+for (const enc of Object.values(ENCOUNTERS)) {
+  if (!enc.power || enc.power === 1) continue;
+  enc.enemies = enc.enemies.map((id) => scaledEnemy(id, enc.power));
+  if (enc.reduce) enc.reduce = enc.reduce.map((id) => scaledEnemy(id, enc.power));
+}
