@@ -114,7 +114,7 @@ export function createTalentsScene(hero, back, onStart) {
     const g = gadgetFor(hero.cls);
     if (g) {
       yy = Math.max(yy, y + 240);
-      text(c, `${t('create.gadget')}: ${g.name}`, x, yy, C.b, FONT_B); yy += 24;
+      yy = textBlock(c, `${t('create.gadget')}: ${g.name}`, x, yy, w, C.b, FONT_B, LINE, 2) + 4;
       yy = textBlock(c, g.desc || '', x, yy, w, C['4'], FONT, LINE, 3);
       for (const a of g.abilities || []) yy = textBlock(c, `${a.name}: ${a.desc}`, x, yy + 4, w, C['5'], FONT, LINE, 4);
     }

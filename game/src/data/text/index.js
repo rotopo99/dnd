@@ -476,6 +476,9 @@ const ru = {
   'battle.retreatSub': 'без добычи',
   'battle.retreated': 'Партия отступила',
   'talent.fallback': 'Награда-талант не подошла герою: вместо неё {n} кредов',
+  'loc.closedHostile': 'Фракция враждебна: закрыто',
+  'loc.onlyTrial': 'Подозрительны: только пробные задания',
+  'loc.questLocked': 'квесты закрыты',
   'create.pickAll': 'Выбери талант в каждом слоте',
 
   // ---------- resources ----------

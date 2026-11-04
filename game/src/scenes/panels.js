@@ -75,7 +75,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       S.list.forEach((m, i) => {
         const y = oy + 76 + i * 96;
         let x = ox + 24 + 640 - 8;
-        const add = (o) => { x -= o.w + 4; b.push({ kind: 'm', member: m.key, x, y: y + 56, h: 30, font: FONT, ...o }); };
+        const add = (o) => { x -= o.w + 4; b.push({ kind: 'm', member: m.key, x, y: y + 60, h: 28, font: FONT, ...o }); };
         if (m.p && m.p.state !== 'cyberspace') {
           const full = activeCompanions(sv).length >= MAX_PARTY;
           add(m.p.state === 'active' ? { act: 'wait', label: t('party.toReserve'), w: 120 } : { act: 'join', label: t('party.toActive'), w: 120, disabled: full, reason: t('party.full') });
@@ -137,12 +137,12 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       const name = isHero ? sv.hero.name : NPCS[m.key].name;
       text(ctx, fit(ctx, name, 220, FONT_B), ox + 104, y + 8, isHero ? C.h : C['5'], FONT_B);
       const cls = game.data.CLASSES[u.classId];
-      text(ctx, fit(ctx, `${game.data.RACES[u.raceId]?.name || ''} · ${cls?.name || ''} · ${t('world.level')} ${u.level}`, 240, '12px monospace'), ox + 104, y + 30, C['4'], '12px monospace');
+      text(ctx, fit(ctx, `${game.data.RACES[u.raceId]?.name || ''} · ${cls?.name || ''} · ${t('world.level')} ${u.level}`, 240, '12px monospace'), ox + 104, y + 28, C['4'], '12px monospace');
       if (m.p) {
         const st = t(`party.state.${m.p.state}`);
         const ap = m.p.approval;
-        text(ctx, `${st} · ${t('party.approval')} ${ap > 0 ? '+' : ''}${ap}`, ox + 104, y + 46, ap <= -50 ? C.c : ap >= 50 ? C.j : C['4'], '12px monospace');
-      } else text(ctx, `${t('world.credits')} ${sv.hero.credits} · ${t('party.marks')} ${sv.hero.judgeMarks || 0}/3`, ox + 104, y + 46, C['4'], '12px monospace');
+        text(ctx, `${st} · ${t('party.approval')} ${ap > 0 ? '+' : ''}${ap}`, ox + 104, y + 44, ap <= -50 ? C.c : ap >= 50 ? C.j : C['4'], '12px monospace');
+      } else text(ctx, `${t('world.credits')} ${sv.hero.credits} · ${t('party.marks')} ${sv.hero.judgeMarks || 0}/3`, ox + 104, y + 44, C['4'], '12px monospace');
       resLine(ctx, ox + 356, y + 8, 296, 'hp', u.hp, u.maxHp, t('res.hp'));
       resLine(ctx, ox + 356, y + 30, 296, 'mrl', u.mrl, u.maxMrl, t('res.mrl'));
     });
@@ -158,7 +158,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     const g = gadgetFor(sv.hero.cls);
     let y = oy + 108 + sv.hero.talents.length * 24 + 12;
     if (g) {
-      text(ctx, `${t('create.gadget')}: ${g.name}`, x, y, C.h, FONT_B);
+      text(ctx, fit(ctx, `${t('create.gadget')}: ${g.name}`, w, FONT_B), x, y, C.h, FONT_B);
       y = textBlock(ctx, g.desc, x, y + 22, w, C['4'], FONT, LINE, 2);
     }
     text(ctx, `${t('party.items')}: ${Object.entries(sv.hero.items).filter(([, n]) => n > 0).map(([k, n]) => `${ITEMS[k]?.name || k} ×${n}`).join(', ') || '—'}`, x, y + 8, C['5'], FONT);
@@ -189,7 +189,19 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       text(ctx, `${v > 0 ? '+' : ''}${v}`, bx + bw + 16, y + 6, C['5'], FONT_B);
       text(ctx, t(`tier.${tier}`), bx + bw + 80, y + 6, tierColor(tier), FONT_B);
     });
-    text(ctx, TIERS.map((x) => t(`tier.${x}`)).join(' · '), ox + 40, oy + BASE_H - 24, C['3']);
+    legend(ctx, ox + 40, oy + BASE_H - 24);
+  }
+
+  /** Tier legend in the tier colours (reputation and journal tabs). */
+  function legend(ctx, x, y) {
+    ctx.font = FONT;
+    for (const tier of TIERS) {
+      const s = t(`tier.${tier}`);
+      ctx.fillStyle = tierColor(tier);
+      ctx.fillRect(x, y + 4, 10, 10);
+      text(ctx, s, x + 14, y, tierColor(tier), FONT);
+      x += 14 + ctx.measureText(s).width + 24;
+    }
   }
 
   function renderJournal(game) {
@@ -212,7 +224,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     }
     text(ctx, t('journal.events'), ox + 640, oy + 80, C['4'], FONT_B);
     const list = sv.journal.slice(-26).reverse();
-    list.forEach((e, i) => text(ctx, fit(ctx, `${t('world.day')} ${e.day}: ${e.text}`, 610), ox + 640, oy + 108 + i * LINE, i === 0 ? C['5'] : C['4']));
+    list.slice(0, 24).forEach((e, i) => text(ctx, fit(ctx, `${t('world.day')} ${e.day}: ${e.text}`, 610), ox + 640, oy + 108 + i * LINE, i === 0 ? C['5'] : C['4']));
+    legend(ctx, ox + 24, oy + BASE_H - 24);
   }
 
   self = {
@@ -221,6 +234,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     enter(game) { rebuild(game); },
     resume(game) { rebuild(game); },
     resize(game) { layout(game); },
+    toastAnchor(game) { return { x: S.ox + 344, y: S.oy + BASE_H - 80, dir: -1 }; },
     update(game, dt) {
       S.time += dt;
       const inp = game.input;

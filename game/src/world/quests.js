@@ -231,11 +231,12 @@ export function onBattleWon(save, encId, locId, data) {
   return out;
 }
 
-/** Item / terminal / doneFlag goals that are satisfied by the world state. */
+/** Goals satisfied by the world state: reach (the party is already on that node), item, terminal, doneFlag. */
 export function autoProgress(save, data) {
   const out = [];
   for (let guard = 0; guard < 8; guard++) {
-    const s = allSlots(save).find((x) => (x.goal.kind === 'item' && (save.hero.items[x.goal.item] || 0) >= (x.goal.n || 1))
+    const s = allSlots(save).find((x) => (x.goal.kind === 'reach' && x.goal.location === save.location)
+      || (x.goal.kind === 'item' && (save.hero.items[x.goal.item] || 0) >= (x.goal.n || 1))
       || (x.goal.kind === 'terminal' && save.terminals[x.goal.terminal] && save.terminals[x.goal.terminal] !== 'ritual'));
     if (!s) break;
     if (s.goal.kind === 'item') save.hero.items[s.goal.item] -= s.goal.n || 1;

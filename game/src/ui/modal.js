@@ -98,16 +98,19 @@ export function updateToasts(game, dt) {
 export function renderToasts(game) {
   const { ctx } = game;
   const ts = game.toasts;
-  const start = Math.max(0, ts.length - 6);
-  for (let i = start, row = 0; i < ts.length; i++, row++) {
+  // anchor: a scene may say where toasts do not cover its headers (battle — under the top bar over the map);
+  // default — bottom centre above the bottom bars, stacking upwards
+  const a = game.scene?.toastAnchor?.(game) || { x: game.width / 2, y: game.height - 132, dir: -1 };
+  for (let i = 0; i < ts.length; i++) {
     const to = ts[i];
+    const label = to.n > 1 ? `${to.text} ×${to.n}` : to.text;
     ctx.font = FONT_B;
-    const w = Math.min(game.width - 40, ctx.measureText(to.text).width + 32);
-    const x = game.width - w - 16;
-    const y = 64 + row * 40;
+    const w = Math.min(game.width - 40, ctx.measureText(label).width + 32);
+    const x = Math.round(a.x - w / 2);
+    const y = a.y + a.dir * (ts.length - 1 - i) * 40;
     ctx.globalAlpha = to.t > 2.6 ? Math.max(0, (3.2 - to.t) / 0.6) : 1;
     panel(ctx, x, y, w, 32, C['0'], C[to.color] || C.h);
-    text(ctx, fit(ctx, to.text, w - 24, FONT_B), x + w / 2, y + 8, C[to.color] || C.h, FONT_B, 'center');
+    text(ctx, fit(ctx, label, w - 24, FONT_B), x + w / 2, y + 8, C[to.color] || C.h, FONT_B, 'center');
     ctx.globalAlpha = 1;
   }
 }

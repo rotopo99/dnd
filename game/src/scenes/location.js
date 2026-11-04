@@ -55,7 +55,9 @@ export function createLocationScene(locId) {
   function afterGate(g) {
     const v = V(g);
     v.gate = true;
+    toastAll(g, autoProgress(save(g), g.data)); // e.g. a 'reach' goal of this very node
     persist(g);
+    layout(g);
     if (!v.enterEvents) {
       v.enterEvents = true;
       const ev = eventsFor(save(g), locId, 'enter')[0];
@@ -137,10 +139,35 @@ export function createLocationScene(locId) {
       && talentAllowed(x, { ...ctx, level: 5 }));
   }
 
+  /**
+   * Quests an NPC offers under the reputation rules (world.md §3): hostile — none; suspicious — only «trial» ones
+   * (side quests sq-* without key); bribe (social check replaced by a bribe) lifts the suspicious limit.
+   */
+  function offeredBy(game, npc) {
+    const sv = save(game);
+    const tier = facTier(game, npcRepFaction(npc));
+    const list = questsOffered(sv, npc.id);
+    if (tier === 'hostile') return [];
+    if (tier === 'suspicious' && !hasFlagInParty(sv, game.data, 'bribe')) return list.filter((q) => isTrialQuest(q));
+    return list;
+  }
+
+  /** Trade under the reputation rules: hostile — closed, except black-market (always) and bribe (pay to trade). */
+  function tradeAccess(game, npc) {
+    const sv = save(game);
+    if (facTier(game, npcRepFaction(npc)) !== 'hostile') return { ok: true };
+    if (hasFlagInParty(sv, game.data, 'black-market')) return { ok: true };
+    if (hasFlagInParty(sv, game.data, 'bribe')) return { ok: true, bribe: WORLD_RULES.bribePerLevel * sv.hero.level };
+    return { ok: false, reason: t('loc.closedHostile') };
+  }
+
   function npcActions(game, npc) {
     const sv = npc.services || [];
     const acts = [{ id: 'talk', label: t('loc.talk') }];
-    if (sv.includes('trade')) acts.push({ id: 'trade', label: t('loc.trade') });
+    if (sv.includes('trade')) {
+      const ta = tradeAccess(game, npc);
+      acts.push({ id: 'trade', label: ta.bribe ? `${t('loc.trade')} ${ta.bribe}` : t('loc.trade'), disabled: !ta.ok || (ta.bribe && save(game).hero.credits < ta.bribe), reason: ta.reason || (ta.bribe ? t('loc.noMoney') : null) });
+    }
     if (sv.includes('train') && trainerTalents(game, npc).length) acts.push({ id: 'train', label: loc.services.includes('implant') ? t('loc.implant') : t('loc.train') });
     if (npc.recruitable) {
       const why = canRecruit(save(game), npc.id);
@@ -153,7 +180,12 @@ export function createLocationScene(locId) {
     const sv = save(game);
     const tier = facTier(game, npcRepFaction(npc));
     if (act === 'talk') return talk(game, npc, tier);
-    if (act === 'trade') return openShopHere(game, npc.name, tier);
+    if (act === 'trade') {
+      const ta = tradeAccess(game, npc);
+      if (!ta.ok) return;
+      if (ta.bribe) { sv.hero.credits -= ta.bribe; game.toast(`${t('check.bribe')}: −${ta.bribe}`, 'b'); }
+      return openShopHere(game, npc.name, tier);
+    }
     if (act === 'train') return openTrain(game, npc);
     if (act === 'recruit') {
       const state = recruit(sv, npc.id);
@@ -179,7 +211,7 @@ export function createLocationScene(locId) {
     };
     const finishTalk = (g) => {
       toastAll(g, onTalk(sv, npc.id, g.data));
-      const offered = questsOffered(sv, npc.id);
+      const offered = offeredBy(g, npc);
       if (offered.length) offerQuest(g, offered[0], npc.id);
       refresh(g);
     };
@@ -250,7 +282,7 @@ export function createLocationScene(locId) {
     }
     if (goal.kind === 'battle') {
       return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}`,
-        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); persist(g2); again(g2); } }) };
+        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } }) };
     }
     if (goal.kind === 'check') {
       const party = ms(game);
@@ -292,6 +324,10 @@ export function createLocationScene(locId) {
     for (const qid of loc.quests || []) {
       const q = QUESTS[qid];
       if (!q || sv.quests[qid] || (q.giver && npcsAt(locId).includes(q.giver)) || !requires(game, q.requires || {})) continue;
+      if (tier === 'hostile' || (tier === 'suspicious' && !isTrialQuest(q) && !hasFlagInParty(sv, game.data, 'bribe'))) {
+        out.push({ label: `${t('loc.questOffer')}: ${q.name}`, sub: tier === 'hostile' ? t('loc.closedHostile') : t('loc.onlyTrial'), disabled: true });
+        continue;
+      }
       out.push({ label: `${t('loc.questOffer')}: ${q.name}`, sub: q.summary, run: (g) => offerQuest(g, q, null) });
     }
     // free battles of the location
@@ -301,7 +337,7 @@ export function createLocationScene(locId) {
       if (bd.once && sv.battlesDone.includes(bd.id)) continue;
       out.push({ label: `${t('loc.fight')}: ${encounterName(bd.encounter)}`, sub: bd.when === 'terminal' ? t('loc.guards') : t('loc.fightSub'),
         run: (g) => startWorldBattle(g, { encounter: bd.encounter, map: bd.map, location: locId, id: bd.id,
-          onWin: (g2) => { toastAll(g2, onBattleWon(sv, bd.encounter, locId, g2.data)); persist(g2); again(g2); } }) });
+          onWin: (g2) => { toastAll(g2, onBattleWon(sv, bd.encounter, locId, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } }) });
     }
     // caches
     for (const c of loc.caches) {
@@ -338,7 +374,7 @@ export function createLocationScene(locId) {
       out.push({ label: t('loc.revive'), sub: cost ? `${cost} ${t('world.credits')}` : t('loc.free'), disabled: sv.hero.credits < cost,
         run: (g) => { sv.hero.credits -= cost; for (const p of cyber) { p.state = activeCompanions(sv).length < MAX_PARTY ? 'active' : 'waiting'; p.hp = null; p.mrl = null; } g.toast(t('loc.revived'), 'j'); refresh(g); } });
     }
-    if (svc.includes('trade') && !npcsAt(locId).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: t('loc.shopSub'), run: (g) => openShopHere(g, loc.name, tier) });
+    if (svc.includes('trade') && !npcsAt(locId).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market') ? t('loc.closedHostile') : t('loc.shopSub'), disabled: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market'), run: (g) => openShopHere(g, loc.name, tier) });
     if (hasFlagInParty(sv, game.data, 'black-market') && ['town', 'hub'].includes(loc.kind)) out.push({ label: t('loc.blackMarket'), sub: t('loc.blackMarketSub'), run: (g) => openShopHere(g, t('loc.blackMarket'), tier, WORLD_RULES.blackMarket) });
     if (svc.includes('rumors')) out.push({ label: t('loc.rumor'), sub: `${WORLD_RULES.rumorPrice} ${t('world.credits')}`, disabled: sv.hero.credits < WORLD_RULES.rumorPrice, run: (g) => { sv.hero.credits -= WORLD_RULES.rumorPrice; rumor(g); refresh(g); } });
     if (hasFlagInParty(sv, game.data, 'gig') && ['town', 'hub'].includes(loc.kind) && !V(game).gig) {
@@ -453,7 +489,8 @@ export function createLocationScene(locId) {
         x -= 92 + 4;
         btns.push({ ...a, kind: 'npc', npc: id, act: a.id, x, y: y + 14, w: 92, h: 34, font: FONT });
       }
-      S.rows.push({ id, y, quest: questsOffered(sv, id).length > 0, tier: sv.rep[normFaction(npcRepFaction(npc))] != null ? repTier(sv.rep[normFaction(npcRepFaction(npc))]) : null });
+      const all = questsOffered(sv, id);
+      S.rows.push({ id, y, quest: offeredBy(game, npc).length > 0, questLocked: all.length > 0 && !offeredBy(game, npc).length, tier: sv.rep[normFaction(npcRepFaction(npc))] != null ? repTier(sv.rep[normFaction(npcRepFaction(npc))]) : null });
     });
     if (pages > 1) {
       btns.push({ kind: 'page', dir: -1, label: '‹', x: ox + 24, y: oy + 120 + PAGE * 66, w: 40, h: 28, disabled: S.page === 0 });
@@ -501,6 +538,8 @@ export function createLocationScene(locId) {
       afterGate(game);
     },
     resume(game) { layout(game); pendingChoice(game); },
+    // toasts over the lower part of the actions column (free space), above the bottom bar
+    toastAnchor() { return { x: S.ox + 648 + 304, y: S.oy + BASE_H - 120, dir: -1 }; },
     resize(game) { layout(game); },
     update(game, dt) {
       S.time += dt;
@@ -522,7 +561,8 @@ export function createLocationScene(locId) {
       const f = locFaction(locId);
       text(ctx, fit(ctx, loc.name, 640, FONT_L), ox + 24, oy + 16, C.h, FONT_L);
       const tier = f ? facTier(game, f) : null;
-      text(ctx, `${reg?.name || ''}${f ? ` · ${factionName(f)}: ${t(`tier.${tier}`)}` : ''}`, ox + 24, oy + 50, f ? tierColor(tier) : C['4'], FONT);
+      const regName = reg?.name && !loc.name.startsWith(reg.name) ? reg.name : '';
+      text(ctx, [regName, f ? `${factionName(f)}: ${t(`tier.${tier}`)}` : ''].filter(Boolean).join(' · '), ox + 24, oy + 50, f ? tierColor(tier) : C['4'], FONT);
       if (!sv.hero.pendingTalents) text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} (${sv.hero.xp} XP)`, ox + BASE_W - 24, oy + 20, C.b, FONT_B, 'right');
       textBlock(ctx, loc.desc || '', ox + 24, oy + 72, BASE_W - 300, C['4'], FONT, LINE, 1);
       text(ctx, t('loc.people'), ox + 24, oy + 100, C['4'], FONT_B);
@@ -532,7 +572,7 @@ export function createLocationScene(locId) {
         drawPortrait(ctx, row.id, ox + 36, row.y + 14, 1);
         const nActs = S.buttons.filter((b) => b.kind === 'npc' && b.npc === row.id).length;
         const tw = 600 - 70 - nActs * 96 - 12;
-        text(ctx, fit(ctx, `${npc.name}${row.quest ? ' !' : ''}`, tw, FONT_B), ox + 86, row.y + 8, row.quest ? C.a : C['5'], FONT_B);
+        text(ctx, fit(ctx, `${npc.name}${row.quest ? ' !' : row.questLocked ? ` · ${t('loc.questLocked')}` : ''}`, tw, FONT_B), ox + 86, row.y + 8, row.quest ? C.a : C['5'], FONT_B);
         text(ctx, fit(ctx, npc.role || '', tw, '12px monospace'), ox + 86, row.y + 34, row.tier ? tierColor(row.tier) : C['4'], '12px monospace');
       });
       if (!S.npcs.length) text(ctx, t('loc.nobody'), ox + 24, oy + 130, C['3']);
@@ -556,5 +596,8 @@ export function createLocationScene(locId) {
   };
   return self;
 }
+
+/** «Trial» quests for suspicious factions: side quests (sq-*) without key (no explicit mark in the data). */
+const isTrialQuest = (q) => !q.key && (q.trial ?? q.id.startsWith('sq-'));
 
 const ORIGIN_FACTIONS = { tinBrotherhood: 1, pirates: 1, neutralVillages: 1, technikums: 1 };

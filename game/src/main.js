@@ -39,7 +39,13 @@ const game = {
   },
   openModal(spec) { this.modals.push(spec); },
   closeModal() { this.modals.pop(); },
-  toast(text, color = 'h') { this.toasts.push({ text, color, t: 0 }); },
+  /** Toast: identical ones are merged («×N»), at most 3 are kept (oldest dropped). */
+  toast(text, color = 'h') {
+    const same = this.toasts.find((x) => x.text === text);
+    if (same) { same.n = (same.n || 1) + 1; same.t = 0; return; }
+    this.toasts.push({ text, color, t: 0, n: 1 });
+    if (this.toasts.length > 3) this.toasts.shift();
+  },
 };
 
 function resize() {

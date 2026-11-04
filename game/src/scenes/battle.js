@@ -533,5 +533,7 @@ export function createBattleScene(opts) {
       }
     },
     render(game) { renderBattle(game, S); },
+    // toasts under the top bar, over the map (not over the side panel or the result / banner text)
+    toastAnchor() { return S.L ? { x: S.L.area.x + S.L.area.w / 2, y: S.L.area.y + 8, dir: 1 } : null; },
   };
 }
