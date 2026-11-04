@@ -26,6 +26,13 @@
 - [ ] Компаньоны не включены в сим мира
 - [ ] Замер вклада каждого таланта и примочки парной заменой
 
+## Долги мира v1.0 (по ревью)
+- [ ] Мировые флаги без эффекта: `hidden-quests`, `stop-fight`, `blackmail`, `camera-off`, `hide-item`, `rumors`, `lore-hint`, `beast-talk`, `spirit-talk`, `mutant-kin` (частично), `hazard-sense`, `ancient-tech`, `judge-eye`, `officialese`, `archives`, `craft-grenade`, `voice-mimic`, `booze-immune`, `faction-legend`, `noble-gesture`, `auto-specialty`, `prophetic-dream`, `telekinesis`, `any-weapon`; проверить `challenge-forgive`, `rep-mult`, `blame-shift`; `map-memory` — бонус Анализа к загадкам
+- [ ] Примочки без мирового эффекта: `mutate-on-rest`, `badge-entry` (частично), `storm-ward`, `judge-code` (частично)
+- [ ] Предметы в бою (граната) — нужна поддержка в движке
+- [ ] Палитра Киберспейса (арт), ночной переход — визуально
+- [ ] Карта мира на 1920×1080 пустовата: раскладка графа на весь экран
+
 ## v2 — мир открытий (`docs/specs/world.md`, `docs/specs/talents.md`)
 - [?] Ответы человека на вопросы GDD 6–12 и вопросы по NPC (`docs/lore/npcs.md`, конец файла)
 - [ ] Таланты в создании персонажа (4 слота) + `buildCreature({talents})`
