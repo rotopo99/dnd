@@ -6,7 +6,7 @@
 
 ## Вход
 - `game/index.html` — canvas на всё окно, фон `#14141c` (цвет `0`), грузит `src/main.js`.
-- `game/src/main.js` — игровой цикл (фиксированный шаг 1/60), объект `game` { ctx, canvas, width, height, input, data, hero, time, scene, setScene }. Canvas = размер окна 1:1 (минимум 1280×720, меньше — даунскейл CSS); на resize зовёт `scene.resize?.(game)`. `window.__game` для плейтестов (`__game.scene.id`, у боя `__game.scene.S`).
+- `game/src/main.js` — игровой цикл (фиксированный шаг 1/60), объект `game` { ctx, canvas, width, height, input, data, hero, save, time, scene, setScene, resume, modals, openModal, closeModal, toasts, toast }; пока открыт модал, сцена не получает `update`. Canvas = размер окна 1:1 (минимум 1280×720, меньше — даунскейл CSS); на resize зовёт `scene.resize?.(game)`. `window.__game` для плейтестов (`__game.scene.id`, у боя `__game.scene.S`).
 
 ## Системы
 - `game/src/input.js` — `createInput(target, canvas)` → { isDown(code), wasPressed(code), typed() (символы за шаг), mouse { x, y, clicked, rightClicked, inside }, endFrame() }. Координаты мыши — в пикселях canvas. Вызывает: `main.js`.
@@ -14,15 +14,32 @@
 ## UI (`game/src/ui/`)
 - `draw.js` — `C` (палитра по ключу), шрифты `FONT/FONT_B/FONT_L/FONT_XL`, `LINE`, `text`, `wrap` (кеш), `textBlock`, `fit`, `panel`, `button`, `hitButton`, `inRect`, `bar` (полоса ресурса по STYLE), `resLine`, `icon`/`drawIcon` (PNG из `game/assets/icons/`), `clear`.
 - `battle-log.js` — `formatEvent(S, e)` → строка лога (сегменты `[text, colour]`), `eventSound(S, e)` → `play(...)`, `teamColor(u)`.
-- `battle-view.js` — `layoutBattle(game, S)` (+ `.buttons(S)`, `.result(game, S)`), `renderBattle(game, S)`: кеш статичного слоя карты (offscreen canvas, огонь анимируется поверх), масштаб клетки ×1..×3 под окно, подсветки, юниты, полоски, попапы, пузыри реплик, панель героя/цели/порядка ходов, лог, баннер, итог.
+- `battle-view.js` — `layoutBattle(game, S)` (+ `.buttons(S)` — при многих способностях две строки, `.result(game, S)`), `renderBattle(game, S)`, `isHiddenFoe(u)`.
+- `modal.js` — модальные окна (стек `game.modals`; спека `{ title, lines, options:[{label, sub, disabled, keep, run}], build?, onCancel? }`, клавиши 1–9/Enter/Esc) и тосты (`game.toast(text, colour)`, справа сверху): `updateModal`, `renderModal`, `updateToasts`, `renderToasts`, `message`.
+- `checks-ui.js` — окна проверок навыков: `openCheck` (выбор навыка → кто бросает → бросок с режимом и модификаторами), `openGroupCheck`, `openChallenge` (N успехов до M провалов), `resultLines`.
+
+## Мир (`game/src/world/`) — логика без DOM
+- `data.js` — единая точка доступа к данным мира: реэкспорт `data/world/*` (`REGIONS`, `LOCATIONS`, `START_LOCATION`, `ROUTES`, `ENCOUNTER_TABLES`, `QUESTS`, `EVENTS`, `ORIGINS`…), `GADGETS/gadgetFor`, `SPECIALIZATIONS`, `NPC_DIALOGUE`, `PARTY_EVENTS_TEXT`; хелперы `npcsAt`, `encounterEnemies(encId, size, {reduce})` (первые `ceil(n×s/4)`), `encounterName/Map`, `npcGreeting/npcTopics`, `storyText/speakerName`, `baseId` (`'cleaner^2.2'` → `'cleaner'`), `SHOP_STOCK`.
+- `reputation.js` — обёртка над `data/world/origins.js`: `applyRep(save, f, Δ)` → список изменений с распространением, `repTier`, `tierAtLeast`, `factionName`, `startingRep`, `FACTION_IDS`, `TIERS`.
+- `checks.js` — проверки навыков поверх `rules/skills.js`: `checkInfo(member, skill, extraAdv)` (режим, владение, бонусы талантов/примочки/предметов), `checkChance`, `rollCheck`, `hasWorldFlag`, `worldFlagValues`, `skillName`.
+- `state.js` — сохранение как состояние мира: `newSave(hero)`, `members`, `buildHero`/`buildCompanion`/`partyUnits` (через `buildCreature({talents, activeCombat, gadget})`), `recruit/canRecruit`, `requiresOk`, `grant(save, Effects)` → тосты, `gainXp` (через `rules/progression.js`), `deed` (одобрение и уход компаньонов), `companionRepCheck`, `restDepartures`, `restParty`, `visit/discover/isKnownRoute/routesFrom`, `locFaction`, `encounterThreshold`, `pickEncounter`, `learnTalent`, `partySize`, `journal`.
+- `quests.js` — интерпретатор схемы `data/world/quests.js`: `questsOffered`, `startQuest`, `slots/slotsAt` (исполнимые цели этапа: choice/battle/check/challenge/pay; `all`-подцели), `completeSlot`, `chooseOption`, `failSlot` (onFail), `onArrive`, `onTalk`, `onBattleWon`, `autoProgress` (item/terminal/doneFlag), `currentGoalText`.
+- `arena.js` — `makeWorldMap({seed, enemies, hazard})` — процедурная карта боя, если у встречи нет своей.
+- `game/src/save.js` — `localStorage['ruslania-save-v1']` в try/catch: `hasSave`, `loadGame`, `saveGame`, `deleteSave`.
 
 ## Сцены (`game/src/scenes/`)
-Контракт сцены: `{ id, enter?(game), update(game, dt), render(game), resize?(game) }`.
-- `menu.js` — `menuScene` (стартовая), `randomHero(data)`, `startQuickBattle(game, hero?)` (случайный герой vs `ENCOUNTERS.standard1` на `makeArena`). Клавиши: Enter — новая игра, Q — быстрый бой.
-- `create.js` — `createCreateScene()`: раса (`playable`), класс (`isAllowed`), путь, имя; превью и итоги через `buildCreature`. Старт → `startPrologue`.
-- `dialogue.js` — `createDialogueScene({ title, lines, hero, onDone })`, `toLines(v)` (строка → реплика рассказчика). Пробел/клик — дальше, Esc — пропустить.
-- `battle.js` — `createBattleScene({ hero, map?, enemies?, allies?, seed?, title, intro?, hint?, winText?, defeatLines?, barks?, onEvent?(S,e), onWin(game,S), onExit(game) })`. События движка идут в очередь и проигрываются по одному (`move` ждёт анимацию). Ход ИИ — по шагам `chooseAction` с паузой ~0.42 с. Состояние `S`: `b`, `disp` (отображаемые позиции/ЗДР/МРЛ), `sel`, `reach`, `buttons`, `log`, `popups`, `bubbles`, `result`.
-- `prologue.js` — `startPrologue(game, hero)`: вступление → сцена 1 → `prologue-1` → … → `prologue-3` (Ганс) → эпилог → меню. Отдых между боями = новый `buildCreature`. Сюжетные реплики в бою (скрилет, аколит на ½ ЗДР, Ганс упал).
+Контракт сцены: `{ id, enter?(game), update(game, dt), render(game), resize?(game), resume?(game) }`. `game.setScene` вызывает `enter`, `game.resume(scene)` возвращает в уже открытую сцену (вызывает `resume`).
+- `menu.js` — `menuScene`, `continueGame(game)` («Продолжить» при наличии сохранения), `randomHero`, `startQuickBattle`.
+- `create.js` — страница 1: раса/класс/путь/имя → «Далее». `create-talents.js` — страница 2: происхождение (`originAllowed`), мировоззрение, 4 слота талантов (`talentsForSlot`, ≤ 2 боевых), примочка класса, «+1 к характеристике» у человека → пролог.
+- `dialogue.js` — `createDialogueScene({ title, lines, hero, portraits, onDone })` (реплика может нести `name`; портреты NPC — `drawPortrait`), `toLines`.
+- `battle.js` — `createBattleScene({ hero | heroes(game), map | map(seed), enemies, allies, ambush, title, intro, hint, winText, defeatLines, barks, race, onEvent, onWin, onLose?, onExit })`. Несколько героев (партия): управляемый юнит меняется по ходу. Засада: враги +5 к инициативе.
+- `prologue.js` — `startPrologue(game, hero)` → эпилог → `startWorld(game, hero, flags)` (новое сохранение, +350 опыта, хаб `START_LOCATION`).
+- `location.js` — `createLocationScene(locId)`: вход по репутации (`entry`), NPC (говорить: приветствие по порогу + расспросы, торговля, наставник/импланты, наём, квесты), действия (цели квестов, бои узла, тайники, терминал, отдых/лечение/возвращение душ, слухи, привал, выступление), полоса партии, тосты, ивенты при входе/отдыхе. `tierColor(tier)`.
+- `world-map.js` — `createWorldMapScene()`: узлы (`drawMapIcon`), пути с днями и опасностью, туман, путь по графу, дни, бросок встречи в логе (`d20 ≤ 3×danger+mod`), засада, встречи (бой/событие/торговец/слух/NPC), поиск скрытых узлов, ивенты в пути.
+- `world-battle.js` — `startWorldBattle(game, { encounter | enemies, allies, map, location, faction, ambush, id, onWin, onLose? })`, `encounterSetup` (финал с учётом терминалов и `finaleMods`; финал только для 3+ бойцов). Запись ЗДР/МРЛ в сохранение, опыт, смерть → Киберспейс.
+- `event.js` — `eventsFor(save, loc, 'enter'|'rest')`, `travelEvents(save, region)`, `runEvent(game, ev, then)` — уникальные ивенты.
+- `cyberspace.js` — `startCyberspace(game, { reason, helped })`, `createCyberspaceScene()`, `nearestOursTerminal`: 3 узла (бой или проверка, СЛ 13 + Отметины), помощь партии, Отметины Судьи, 3 = конец игры.
+- `panels.js` — `createPanelsScene({ tab: 'party'|'rep'|'journal', back, canSwap })`: партия (ресурсы, предметы, резерв/отряд, таланты и их набор, новый талант, «ИИ ведёт компаньонов»), репутация (шкала и пороги), журнал (квесты и события).
 
 ## Движок правил (`game/src/rules/`)
 Чистый JS без DOM и без импорта данных: данные передаются параметром `data`
@@ -51,7 +68,7 @@
 - `game/src/data/skills.js` — `SPECIALIZATIONS[classId] = {spec, related}`, `DC` (world.md, п. 5). Создан программистом по таблице спеки; владелец — game-designer.
 - `game/src/data/factions.js` — `FACTIONS`, `STANCES`, `RELATIONS[a][b]` (кем b является для a), `stance(a,b)`. 14 фракций из канона.
 - `game/assets/icons/*.png` — 256×256: `class_{face,fighter,rogue,tech}`, `race_{human,mutant,skeleton,synth}`, `res_{hp,energy,morale}`.
-- `game/src/data/index.js` — `GAME_DATA` (пакет данных для движка), `PLAYABLE_RACES`, `CLASS_ORDER`, `MAPS` (prologue-1..3).
+- `game/src/data/index.js` — `GAME_DATA` (пакет данных для движка, в т. ч. `TALENTS`, `GADGETS`, `SPECIALIZATIONS`, `SKILLS`), `PLAYABLE_RACES`, `CLASS_ORDER`, `MAPS` (prologue-1..3, hatch-1, burning-field-1).
 - `game/src/data/text/index.js` — `t(key)`, все строки интерфейса (ru): `menu.*`, `create.*`, `battle.*`, `role.*`, `stat.*`, `dmg.*`, `act.*`, `buff.*`, `area.*`; фолбэк на `PROLOGUE`.
 
 ## Инструменты
