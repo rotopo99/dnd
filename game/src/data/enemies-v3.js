@@ -1267,6 +1267,11 @@ export const POWER_V3 = {
   'enc-border-clash': 2.75,
   'enc-beast-pit': {"p":4.45,"hp":0.2,"atk":2,"dmg":4,"kb":1},
   'enc-sea-monster': {"p":4.5,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-lis-vault': 1.75,
+  'v3-boss-lis-9': {"p":1.25,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'v3-wolf-pack': 2,
+  'v3-wolf-hunt': {"p":2.15,"hp":0.2,"atk":2,"dmg":4,"kb":1},
+  'v3-boss-wolf-0': {"p":1.2,"hp":0,"atk":2,"dmg":5,"kb":0},
 };
 for (const encn of Object.values(ENCOUNTERS_V3)) {
   const p = POWER_V3[encn.id];
