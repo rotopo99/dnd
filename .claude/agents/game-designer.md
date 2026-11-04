@@ -1,7 +1,7 @@
 ---
 name: game-designer
 description: Геймдизайнер. Придумывает и описывает механики, правила, прогрессию, баланс; ведёт docs/GDD.md и пишет спеки фич для программиста. Используй перед реализацией любой геймплейной фичи.
-tools: Read, Write, Edit, Glob, Grep
+tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 color: green
 memory: project
