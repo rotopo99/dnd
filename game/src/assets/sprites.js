@@ -20,6 +20,8 @@
 //   idleFrame(timeMs, phase = 0)   -> 0 | 1, ~2 Hz breathing; pass a per-unit phase to desync units
 //   validateSprites()              -> array of error strings (used by tools/sprite-preview.html)
 
+import { NPCS } from '../data/npcs.js';
+
 export const TILE = 16;
 
 // 26 colours. Keys 0-9, a-p. Meaning of each colour — docs/STYLE.md.
@@ -980,6 +982,216 @@ const MARKER_ENEMY = [
   '..555555555555',
 ];
 
+// ===========================================================================
+// v2: world enemies, party NPCs
+// ===========================================================================
+// Replace given rows of a base map: withRows(base, { 4: '....', 5: '....' }).
+const withRows = (base, rows) => base.map((r, i) => (i in rows ? rows[i] : r));
+// Recolour a map: recolor(rows, { 5: '4', 4: '3' }).
+const recolor = (rows, map) => rows.map((r) => [...r].map((ch) => map[ch] ?? ch).join(''));
+
+const V2_MOBS = {
+  rioter: [
+    '', '',
+    '.....6666',
+    '....669999',
+    '....669909',
+    '....6ccccc',
+    '.....999',
+    '....7777777',
+    '....7m77m7c',
+    '....77m777c',
+    '....9666669',
+    '.....33.33',
+    '.....33.33',
+    '.....33.33',
+    '.....66.666',
+  ],
+  cleaner: [
+    '', '',
+    '.....5555',
+    '....555555',
+    '....55cccc',
+    '....544444',
+    '.....333',
+    '....4555554',
+    '....4545454',
+    '....3454543',
+    '....5333335',
+    '.....54.45',
+    '.....44.44',
+    '.....54.45',
+    '.....33.333',
+  ],
+  rebel: [
+    '',
+    '.....7777',
+    '....877778',
+    '....799999',
+    '....799909',
+    '....799999',
+    '.....mmmm',
+    '....mmmmmmm',
+    '....mm6mmmm',
+    '....mmm6mmm',
+    '....9666669',
+    '.....ll.ll',
+    '.....ll.ll',
+    '.....66.66',
+    '.....66.666',
+  ],
+  pirate: [
+    '', '',
+    '.....cccc',
+    '....ccc999',
+    '...cc99909',
+    '.....99966',
+    '......666',
+    '....5555555',
+    '....ggggggg',
+    '....5555555',
+    '....9111119',
+    '.....11.11',
+    '.....11.11',
+    '.....66.66',
+    '.....66.666',
+  ],
+  'materialized-soul': [
+    '',
+    '.....hhhh',
+    '....hhhhhh',
+    '....hh0h0h',
+    '....hhhhhh',
+    '.....hhoh',
+    '...hhhhhhhh',
+    '..hhhhohhhhh',
+    '..h.hhhohh.h',
+    '....hhhhhh',
+    '....hfhhfh',
+    '.....hhhf',
+    '......hf',
+    '.......f',
+  ],
+  scriptlet: [
+    '', '',
+    '...hh......hh',
+    '..h..........h',
+    '..h....55....h',
+    '.h....5005....h',
+    '..h...5005...h',
+    '..h....55....h',
+    '...hh......hh',
+    '......f..f',
+    '.....f....f',
+  ],
+  'npc-party-victor': [
+    '', '',
+    '.....mmmm',
+    '....mmmmmm',
+    '....mm9909',
+    '....m95555',
+    '.....5554',
+    '...43mm5mm34',
+    '....3m6mmm3',
+    '....mmm6mmm',
+    '....9666669',
+    '.....77.77',
+    '.....77.77',
+    '.....66.66',
+    '.....66.666',
+  ],
+  'npc-party-artyom': [
+    '', '',
+    '.....lkll',
+    '....lllkll',
+    '....kl9909',
+    '....llklkl',
+    '.....lkll',
+    '...6lklllkl',
+    '...6llklkll',
+    '...6klllkll',
+    '....1666661',
+    '.....lk.kl',
+    '.....kl.lk',
+    '.....ll.ll',
+    '.....66.666',
+  ],
+};
+V2_MOBS['cleaner-captain'] = withRows(V2_MOBS.cleaner, { 1: '......cc', 7: '....c55555c', 8: '....c54545c' });
+V2_MOBS['cleaner-5'] = withRows(recolor(V2_MOBS.cleaner, { 5: '3', 4: '2', 3: '1' }), { 4: '....3ccccc', 7: '....c33333c', 9: '....1c3c3c1' });
+V2_MOBS['rebel-veteran'] = withRows(V2_MOBS.rebel, { 1: '.....3333b', 2: '....33333b', 3: '....399999', 7: '....lllllll', 8: '....l6l6l6l', 9: '....lllllll' });
+V2_MOBS['rebel-gunner'] = withRows(V2_MOBS.rebel, { 1: '', 2: '.....6666', 3: '....669999', 5: '....6mmmmm' });
+V2_MOBS['cultist-3'] = withRows(MOBS.cultist, { 3: '....ooo444', 4: '....oo4c4c', 5: '....ooo444', 7: '....ooo3ooo', 8: '....oo434oo' });
+V2_MOBS['cringe-warrior'] = withRows(RACES.cringegon, { 7: '....3ooooo3', 8: '...33o333o33', 9: '....no333on', 10: '....n22222n' });
+V2_MOBS['scavenger-hunter'] = withRows(MOBS.scavenger, { 2: '.....mmmm', 3: '....mmmmmm', 4: '....mm2a2a', 5: '....mm2221', 7: '....m887887' });
+V2_MOBS['scavenger-gunner'] = withRows(MOBS.scavenger, { 7: '....8778778', 8: '....m7mmm7m' });
+V2_MOBS['pirate-gunner'] = withRows(V2_MOBS.pirate, { 1: '.....1111', 2: '...a111111a', 3: '....169999', 4: '....699909' });
+V2_MOBS['pirate-hacker'] = withRows(V2_MOBS.pirate, { 4: '...cc9hhhh', 8: '....ghgggg', 9: '....5555h55' });
+
+const V2_LAYERS = {
+  'shock-rifle': ['', '', '', '', '', '', '', '', '..............h', '........44444hh', '.......33.3', '..........3'],
+  'shock-cleaver': ['', '', '', '', '.............h', '............h5', '............h5', '............h5', '............h5', '............h5', '...........1', '...........1'],
+  pitchfork: ['.........5.5.5', '.........5.5.5', '.........44444', '...........8', '...........8', '...........8', '...........8', '...........8', '...........8', '...........8', '...........8', '...........8', '...........8', '...........8'],
+  'sawed-off': ['', '', '', '', '', '', '', '', '', '.........883333', '.........8'],
+  'shock-baton': ['', '', '', '', '', '', '...............5', '..............h', '.............h', '............3', '...........1', '..........1'],
+  'cringe-club': ['', '', '', '', '............5', '...........nnn', '..........5nnn5', '...........nnn', '............6', '...........6', '...........6'],
+  nailgun: ['', '', '', '', '', '', '', '', '...........aaa', '..........aa334', '..........2'],
+  harpoon: ['', '', '', '', '', '', '', '..............5', '.........3344445', '.........32...5'],
+  saber: ['', '', '', '', '..............5', '..............5', '.............5', '.............5', '............5', '...........a', '..........a8'],
+  carbine: ['', '', '', '', '', '', '', '', '', '........88333344', '.........2'],
+  'energy-pistol': ['', '', '', '', '', '', '', '', '...........33', '...........3hh', '...........2'],
+  'heavy-hammer': ['', '..........34443', '..........33333', '..........32223', '............6', '............6', '............6', '...........6', '...........6', '...........6', '...........6'],
+  sniper: ['', '', '', '', '', '', '', '', '..........111', '.......l33333334', '.........2'],
+};
+
+// Final boss, 16x24: black robes with purple trim, metal mask, cable halo, terminal-staff.
+const CYBER_PRIEST = [
+  '.....hhhhh',
+  '....h11111h.222',
+  '....1144441.2h2',
+  '....114h4h1.2h2',
+  '....1145o41.222',
+  '....1144441..3',
+  '.....11411...3',
+  '...o1111111o.3',
+  '...1o11h11o1.3',
+  '...11hhhhh11.3',
+  '...111h0h111.3',
+  '...1o1hhh1o193',
+  '..91o11h11o1.3',
+  '...1o11111o1.3',
+  '...1o11111o1.3',
+  '..11o11111o113',
+  '..11o11111o113',
+  '..11o11111o113',
+  '.111o11111o1113',
+  '.111o11111o1113',
+  '.111o11111o1113',
+  '.o1o1o1o1o1o1o3',
+  '...66....66',
+  '',
+];
+
+// Cringe beacon (object): antenna tower that pulses pink.
+const BEACON_A = [
+  '', '',
+  '.......n',
+  '......n5n',
+  '.......n',
+  '.......3',
+  '......343',
+  '.......3',
+  '......3.3',
+  '......343',
+  '.....3...3',
+  '.....34443',
+  '....3.....3',
+  '...222222222',
+  '...2n2n2n2n2',
+  '...222222222',
+];
+const BEACON_B = withRows(BEACON_A, { 0: '...n.......n', 1: '....n.....n', 2: '..n....n....n', 3: '..n...n5n...n', 4: '...n...n...n', 14: '...2a2a2a2a2' });
+
 export const SPRITES = {};
 for (const [id, rows] of Object.entries(RACES)) SPRITES[`race-${id}`] = unit(rows);
 for (const [id, rows] of Object.entries(CLASSES)) SPRITES[`class-${id}`] = layer(rows);
@@ -996,6 +1208,13 @@ SPRITES['layer-cult-rifle'] = layer(CULT_RIFLE);
 SPRITES['layer-pipe'] = layer(PIPE);
 SPRITES['mob-junk-mech'] = unit(JUNK_MECH, { h: 20, bob: 6 });
 SPRITES['mob-acolyte'] = unit(ACOLYTE, { h: 24, bob: 3 });
+
+for (const [id, rows] of Object.entries(V2_MOBS)) SPRITES[`mob-${id}`] = unit(rows);
+for (const [id, rows] of Object.entries(V2_LAYERS)) SPRITES[`layer-${id}`] = layer(rows);
+SPRITES['mob-materialized-soul'].bob = 0;
+SPRITES['mob-scriptlet'].bob = 0;
+SPRITES['mob-cyber-priest'] = unit(CYBER_PRIEST, { h: 24, bob: 3 });
+SPRITES['mob-cringe-beacon'] = { w: 16, h: 16, frames: [BEACON_A, BEACON_B], outline: true, bob: null };
 
 SPRITES['tile-floor'] = tile(FLOOR_A);
 SPRITES['tile-floor-rust'] = tile(FLOOR_RUST);
@@ -1015,7 +1234,10 @@ SPRITES['ui-marker-enemy'] = { w: 16, h: 16, frames: [MARKER_ENEMY], outline: tr
 export const RACE_IDS = Object.keys(RACES);
 export const CLASS_IDS = Object.keys(CLASSES);
 export const ENEMY_IDS = ['cultist', 'cultist-gunner', 'skrilet', 'acolyte', 'scavenger', 'junk-mech', 'crawler', 'cringe-jester'];
-export const NPC_IDS = ['npc-gans'];
+export const NPC_IDS = ['npc-gans', 'npc-party-victor', 'npc-party-artyom'];
+export const WORLD_ENEMY_IDS = ['rioter', 'cleaner', 'cleaner-captain', 'cleaner-5', 'rebel', 'rebel-gunner', 'rebel-veteran',
+  'cultist-3', 'materialized-soul', 'scriptlet', 'cyber-priest', 'cringe-beacon', 'cringe-warrior', 'scavenger-gunner',
+  'scavenger-hunter', 'pirate', 'pirate-gunner', 'pirate-hacker'];
 export const SUMMON_IDS = ['drone', 'turret', 'beast-wolf', 'cyber-demon', 'gang-thug', 'biomass', 'spirit', 'hologram'];
 
 // ---------------------------------------------------------------------------
@@ -1030,10 +1252,30 @@ export function heroSpriteIds(raceId, classId) {
 export function enemySpriteIds(enemyId) {
   const extra = { skrilet: ['race-skrilet', 'layer-skrilet-blades'], cultist: ['mob-cultist', 'layer-sickle'],
     'cultist-gunner': ['mob-cultist-gunner', 'layer-cult-rifle'], scavenger: ['mob-scavenger', 'layer-pipe'],
-    'npc-gans': ['mob-npc-gans', 'class-ranger'] };
+    'npc-gans': ['mob-npc-gans', 'class-ranger'],
+    rioter: ['mob-rioter', 'layer-pipe'],
+    cleaner: ['mob-cleaner', 'layer-shock-rifle'],
+    'cleaner-captain': ['mob-cleaner-captain', 'layer-shock-cleaver'],
+    'cleaner-5': ['mob-cleaner-5', 'layer-shock-rifle'],
+    rebel: ['mob-rebel', 'layer-pitchfork'],
+    'rebel-gunner': ['mob-rebel-gunner', 'layer-sawed-off'],
+    'rebel-veteran': ['mob-rebel-veteran', 'class-ranger'],
+    'cultist-3': ['mob-cultist-3', 'layer-shock-baton'],
+    'cringe-warrior': ['mob-cringe-warrior', 'layer-cringe-club'],
+    'scavenger-gunner': ['mob-scavenger-gunner', 'layer-nailgun'],
+    'scavenger-hunter': ['mob-scavenger-hunter', 'layer-harpoon'],
+    pirate: ['mob-pirate', 'layer-saber'],
+    'pirate-gunner': ['mob-pirate-gunner', 'layer-carbine'],
+    'pirate-hacker': ['mob-pirate-hacker', 'layer-energy-pistol'],
+    'npc-party-victor': ['mob-npc-party-victor', 'layer-heavy-hammer'],
+    'npc-party-artyom': ['mob-npc-party-artyom', 'layer-sniper'] };
   if (extra[enemyId]) return extra[enemyId];
   const id = `mob-${enemyId}`;
-  return SPRITES[id] ? [id] : ['mob-cultist'];
+  if (SPRITES[id]) return [id];
+  // Level variants ('cultist-5', 'junk-mech-5') reuse the base look.
+  const base = String(enemyId).replace(/-\d+$/, '');
+  if (base !== enemyId) return enemySpriteIds(base);
+  return ['mob-cultist'];
 }
 
 const hash2 = (x, y) => {
@@ -1153,32 +1395,419 @@ function build(id, frame, flip, tint, mono, outline) {
   return { canvas, w, h };
 }
 
-export function drawSprite(ctx, id, x, y, scale = 3, opts = {}) {
-  const { frame = 0, flip = false, tint = null, mono = null, alpha = 1 } = opts;
-  const defs = layersOf(id);
-  const frames = spriteFrames(id);
-  const f = ((frame % frames) + frames) % frames;
-  const outline = defs[0].outline;
+function getEntry(id, f, flip, tint, mono) {
   const key = `${Array.isArray(id) ? id.join('+') : id}|${f}|${flip ? 1 : 0}|${tint ?? ''}|${mono ?? ''}`;
   let entry = cache.get(key);
   if (!entry) {
-    entry = build(id, f, flip, tint, mono, outline);
+    entry = build(id, f, flip, tint, mono, layersOf(id)[0].outline);
     cache.set(key, entry);
   }
-  const { canvas, w, h } = entry;
-  const dx = x + (Math.floor((TILE - w) / 2) - 1) * scale;
-  const dy = y + (TILE - h - 1) * scale;
+  return entry;
+}
+
+// Top-left blit: the canvas has a 1 px padding for the outline.
+function blit(ctx, entry, x, y, scale, alpha) {
   const prevSmooth = ctx.imageSmoothingEnabled;
   const prevAlpha = ctx.globalAlpha;
   ctx.imageSmoothingEnabled = false;
   ctx.globalAlpha = prevAlpha * alpha;
-  ctx.drawImage(canvas, dx, dy, canvas.width * scale, canvas.height * scale);
+  ctx.drawImage(entry.canvas, x - scale, y - scale, entry.canvas.width * scale, entry.canvas.height * scale);
   ctx.globalAlpha = prevAlpha;
   ctx.imageSmoothingEnabled = prevSmooth;
 }
 
+export function drawSprite(ctx, id, x, y, scale = 3, opts = {}) {
+  const { frame = 0, flip = false, tint = null, mono = null, alpha = 1 } = opts;
+  const frames = spriteFrames(id);
+  const f = ((frame % frames) + frames) % frames;
+  const entry = getEntry(id, f, flip, tint, mono);
+  const dx = x + Math.floor((TILE - entry.w) / 2) * scale;
+  const dy = y + (TILE - entry.h) * scale;
+  blit(ctx, entry, dx, dy, scale, alpha);
+}
+
 export function drawTeamMarker(ctx, team, x, y, scale = 3) {
   drawSprite(ctx, team === 'enemy' ? 'ui-marker-enemy' : 'ui-marker', x, y, scale, { mono: TEAM_COLORS[team] ?? team });
+}
+
+// ===========================================================================
+// v2: portraits 32x32 (dialogue) — generated from race + faction + per-NPC traits
+// ===========================================================================
+// Portraits are built once into ordinary string maps (SPRITES['portrait-<id>']) by a tiny raster
+// helper, so they obey the same palette rules as hand-drawn sprites.
+
+const P = 32;
+class Raster {
+  constructor(w, h) { this.w = w; this.h = h; this.g = Array.from({ length: h }, () => new Array(w).fill('.')); }
+  px(x, y, c) { if (!c) return; x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.g[y][x] = c; }
+  rect(x, y, w, h, c) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.px(x + i, y + j, c); }
+  // filled ellipse; pred(x, y) can clip (e.g. only the top half)
+  ell(cx, cy, rx, ry, c, pred) {
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+      for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+        const dx = (x + 0.5 - cx) / rx; const dy = (y + 0.5 - cy) / ry;
+        if (dx * dx + dy * dy <= 1 && (!pred || pred(x, y))) this.px(x, y, c);
+      }
+    }
+  }
+  line(x0, y0, x1, y1, c) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1;
+    for (let i = 0; i <= n; i++) this.px(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, c);
+  }
+  // recolour pixels of colour `from` inside a box
+  swap(x, y, w, h, from, to) { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (this.g[j]?.[i] === from) this.g[j][i] = to; }
+  rounded(c) { // icon-style rounded tile
+    this.rect(0, 0, this.w, this.h, c);
+    const r = this.w >= 32 ? [3, 1, 1] : [2, 1];
+    r.forEach((n, y) => { for (let x = 0; x < n; x++) { this.px(x, y, '.'); this.px(this.w - 1 - x, y, '.'); this.px(x, this.h - 1 - y, '.'); this.px(this.w - 1 - x, this.h - 1 - y, '.'); } });
+  }
+  rows() { return this.g.map((r) => r.join('')); }
+}
+
+// Faction look: background tile, clothing, clothing accent, default headgear.
+const FACTION_LOOK = {
+  technikums: { bg: 'i', cloth: 'l', accent: 'h', hat: 'goggles' },
+  aiParty: { bg: 'd', cloth: '2', accent: 'c', hat: 'officer' },
+  warprom: { bg: '2', cloth: 'l', accent: 'k', hat: 'helmet' },
+  tinBrotherhood: { bg: 'g', cloth: '3', accent: '4', hat: 'kabuto' },
+  pirates: { bg: 'g', cloth: '1', accent: 'a', hat: 'bandana' },
+  scavengers: { bg: '6', cloth: '7', accent: '8', hat: 'respirator' },
+  renegades: { bg: 'k', cloth: 'm', accent: 'c', hat: 'scarf' },
+  mechanids: { bg: 'i', cloth: '3', accent: 'h', hat: 'antenna' },
+  cringegons: { bg: 'o', cloth: 'o', accent: 'n', hat: null },
+  tekhonki: { bg: '6', cloth: '7', accent: 'a', hat: null },
+  neutralVillages: { bg: 'k', cloth: 'm', accent: '8', hat: 'ushanka' },
+  agrozone: { bg: 'k', cloth: 'l', accent: 'j', hat: 'headset' },
+  mutantsPlant: { bg: 'k', cloth: 'k', accent: 'j', hat: null },
+  mutantsBeast: { bg: 'd', cloth: '6', accent: '8', hat: null },
+  cult: { bg: 'o', cloth: 'o', accent: 'h', hat: 'hood' },
+  predlozhka: { bg: 'g', cloth: 'g', accent: 'h', hat: 'hood' },
+  none: { bg: '2', cloth: '3', accent: '4', hat: null },
+};
+
+// Per-NPC traits. Anything missing is derived from race/faction/hash.
+// hair: short|long|bald|mohawk|topknot · eyes: shades|goggles|patch|glow|empty|glasses · extras: chain|scar|earpiece|tie|beard-long
+const NPC_LOOK = {
+  'victor-sundown': { hat: 'guardcap', mustache: '6', hair: 'short', hairColor: '6' },
+  nikola: { hat: 'goggles', beard: '7', hairColor: '7' },
+  gans: { hat: 'helmet', camo: true, hairColor: '6' },
+  sera: { fem: true, hair: 'long', hairColor: '8', hat: 'goggles' },
+  paracetamol: { hat: 'medband', cloth: '5' },
+  amanda: { fem: true, hair: 'long', hairColor: '1', hat: 'headset' },
+  aynura: { fem: true, hair: 'long', hairColor: 'h', hat: null },
+  seer: { hair: 'long', hairColor: '4', beard: '4', extras: ['beard-long'], hat: 'hood', cloth: 'm', eyes: 'glow' },
+  lox: { hair: 'short', hairColor: '1', cloth: '1', extras: ['tie', 'earpiece', 'scar'], hat: null, bg: 'd' },
+  alik: { hair: 'short', hairColor: '1', mustache: '1', extras: ['chain'], eyes: 'shades', cloth: 'g' },
+  andrey: { hair: 'short', hairColor: '7', beard: '6', hat: 'goggles' },
+  dymka: { hat: 'hood', cloth: '1' },
+  telifon: { hat: 'headset' },
+  'putin-mark-2': { screen: 'c', hat: 'officer' },
+  'general-ai': { screen: 'c', hat: 'helmet' },
+  'private-nedolyot': { hat: 'helmet', hairColor: '8' },
+  khan: { hat: 'kabuto', beard: '1', mustache: '1' },
+  ken: { hair: 'topknot', hairColor: '1', hat: 'headband' },
+  sekiro: { hat: 'kabuto' },
+  burevestnik: { hat: 'tricorn', beard: '1', eyes: 'patch' },
+  'cyber-lovkach': { hair: 'mohawk', hairColor: 'h', eyes: 'shades', hat: null },
+  'madam-stavka': { fem: true, hair: 'long', hairColor: '1', extras: ['chain'], hat: null, cloth: 'o' },
+  'glava-musora': { hat: 'junkcrown', beard: '7', hairColor: '7' },
+  sborshchik: { hat: 'respirator', eyes: 'goggles' },
+  zver: { extras: ['scar'], big: true },
+  'zoya-klyk': { fem: true, fur: '8' },
+  'mutant-shaman': { flower: 'n', extras: ['beard-long'] },
+  'aunt-loza': { fem: true, flower: 'a' },
+  'cringe-chief': { hat: 'crown' },
+  'cringe-jester': { hat: 'jester' },
+  'great-collector': { hood: 'o', hoodEyes: 'n', threeEyes: true },
+  diss: { hat: 'cap', extras: ['chain'] },
+  'old-god': { screen: 'a' },
+  ankort: { eyes: 'goggles-h' },
+  aztun: { antennas: 3, beard: '5' },
+  rzhaven: { cloth: '8' },
+  tik: { hat: 'antenna', visor: 'j' },
+  'shepherd-timokha': { hat: 'ushanka', beard: 'm', hairColor: 'm' },
+  zarya: { fem: true, hair: 'short', hairColor: '8', cloth: '5', extras: ['scar'], hat: null },
+  marta: { fem: true, hair: 'long', hairColor: '7', hat: 'scarf', scarf: 'c' },
+  'kuksius-first': { hat: 'scarf', scarf: '7' },
+  yarosh: { hat: 'scarf', scarf: 'l', hood: 'l', hoodEyes: null },
+  judge: { deity: true },
+  'cyber-priest': { hood: '1', mask: true },
+  'sister-pomekha': { fem: true, hair: 'short', hairColor: '5', eyes: 'glow', extras: ['scar'], hat: null, cloth: 'o' },
+  'predlozhka-1': { hood: 'g', screenFace: true },
+  'keeper-of-history': { hat: 'hood', beard: '5', extras: ['beard-long'], eyes: 'glasses', hairColor: '5' },
+  vazgen: { hair: 'bald', beard: '1', hat: 'goggles' },
+};
+
+const strHash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+
+function drawEyes(r, style, y = 14) {
+  switch (style) {
+    case 'shades': r.rect(11, y - 1, 10, 3, '1'); r.px(12, y - 1, '4'); r.px(18, y - 1, '4'); break;
+    case 'goggles': case 'goggles-h': {
+      const c = style === 'goggles-h' ? 'h' : 'a';
+      r.rect(10, y - 1, 12, 3, '1'); r.rect(11, y - 1, 4, 2, c); r.rect(17, y - 1, 4, 2, c); break;
+    }
+    case 'patch': r.rect(12, y - 1, 3, 3, '1'); r.line(10, y - 4, 22, y + 1, '1'); r.px(18, y, '5'); r.px(19, y, '0'); break;
+    case 'glow': r.rect(12, y, 2, 1, 'h'); r.rect(18, y, 2, 1, 'h'); break;
+    case 'empty': r.rect(12, y, 2, 1, '5'); r.rect(18, y, 2, 1, '5'); break;
+    case 'glasses': r.rect(11, y - 1, 4, 3, '4'); r.rect(17, y - 1, 4, 3, '4'); r.px(12, y, '0'); r.px(19, y, '0'); r.rect(15, y, 2, 1, '4'); break;
+    default: r.px(12, y, '5'); r.px(13, y, '0'); r.px(18, y, '0'); r.px(19, y, '5');
+  }
+}
+
+function drawHeadgear(r, hat, look) {
+  const top = (y) => (x, yy) => yy <= y;
+  switch (hat) {
+    case 'helmet': r.ell(16, 10, 7.5, 5.5, look.camo ? 'l' : 'l', top(10)); r.rect(8, 10, 16, 1, 'k');
+      if (look.camo) { r.px(12, 7, 'k'); r.px(18, 6, 'm'); r.px(20, 9, 'k'); r.px(14, 9, 'm'); } break;
+    case 'guardcap': r.ell(16, 9, 7, 3.5, 'l', top(9)); r.rect(9, 9, 14, 2, 'k'); r.rect(15, 8, 2, 1, 'a'); r.rect(11, 11, 10, 1, '1'); break;
+    case 'officer': r.ell(16, 8, 7.5, 3.5, 'd', top(8)); r.rect(9, 8, 15, 2, '1'); r.rect(15, 7, 2, 2, '4'); r.rect(11, 10, 10, 1, '0'); break;
+    case 'kabuto': r.ell(16, 10, 8, 6, '3', top(10)); r.rect(8, 10, 2, 6, '3'); r.rect(22, 10, 2, 6, '3'); r.rect(9, 10, 14, 1, '4');
+      r.line(12, 5, 9, 1, 'a'); r.line(20, 5, 23, 1, 'a'); break;
+    case 'bandana': r.ell(16, 10, 7, 4.5, 'c', top(10)); r.px(23, 11, 'c'); r.px(24, 12, 'c'); r.px(24, 13, 'c'); r.px(13, 8, '5'); r.px(18, 7, '5'); break;
+    case 'tricorn': r.ell(16, 8, 6, 3.5, '1', top(8)); r.rect(7, 8, 18, 2, '1'); r.rect(7, 8, 18, 1, 'a'); r.px(6, 7, '1'); r.px(25, 7, '1'); break;
+    case 'ushanka': r.ell(16, 9, 8, 5, '7', top(10)); r.rect(8, 8, 16, 2, '8'); r.rect(7, 10, 3, 8, '7'); r.rect(22, 10, 3, 8, '7'); break;
+    case 'goggles': r.rect(9, 9, 14, 2, '1'); r.rect(11, 8, 4, 3, look.accent ?? 'h'); r.rect(17, 8, 4, 3, look.accent ?? 'h'); break;
+    case 'headset': r.ell(16, 9, 8, 6, '2', (x, y) => y <= 6); r.rect(8, 11, 2, 5, '2'); r.rect(22, 11, 2, 5, '2'); r.rect(7, 12, 2, 3, '3');
+      r.line(23, 16, 20, 19, '2'); r.px(19, 19, 'h'); break;
+    case 'respirator': r.rect(11, 17, 10, 5, '2'); r.ell(16, 19.5, 2.5, 2.5, '3'); r.px(16, 19, '1'); r.px(10, 16, '1'); r.px(21, 16, '1'); break;
+    case 'scarf': r.rect(10, 17, 12, 5, look.scarf ?? 'm'); r.rect(10, 17, 12, 1, '6'); break;
+    case 'antenna': r.line(21, 7, 24, 1, '4'); r.px(24, 1, look.visor ?? 'h'); break;
+    case 'medband': r.rect(9, 9, 14, 2, 'c'); r.rect(15, 8, 2, 4, '5'); r.rect(14, 9, 4, 2, '5'); break;
+    case 'headband': r.rect(9, 10, 14, 1, 'c'); r.px(23, 11, 'c'); r.px(24, 12, 'c'); break;
+    case 'junkcrown': r.rect(10, 6, 12, 3, 'a'); [10, 13, 16, 19, 21].forEach((x, i) => r.rect(x, 3 + (i % 2), 1, 3, i % 2 ? '3' : 'a')); r.px(15, 7, 'c'); break;
+    case 'crown': r.rect(10, 4, 12, 2, 'a'); [10, 13, 16, 19, 21].forEach((x) => r.rect(x, 2, 1, 2, 'a')); r.px(16, 4, 'b'); break;
+    case 'jester': r.line(10, 6, 5, 2, 'n'); r.line(22, 6, 27, 2, 'o'); r.line(16, 4, 16, 0, 'n'); r.px(5, 2, 'b'); r.px(27, 2, 'b'); r.px(16, 0, 'b'); break;
+    case 'cap': r.ell(16, 8, 7, 3.5, '1', top(8)); r.rect(9, 8, 14, 2, '1'); r.rect(5, 9, 5, 1, '1'); break;
+    default: break;
+  }
+}
+
+function hairBack(r, style, c) {
+  if (style === 'long') { r.rect(8, 10, 3, 14, c); r.rect(21, 10, 3, 14, c); }
+}
+function hairTop(r, style, c) {
+  switch (style) {
+    case 'bald': r.px(13, 8, '5'); break;
+    case 'mohawk': r.rect(15, 3, 3, 8, c); break;
+    case 'topknot': r.ell(16, 9, 6.5, 3.5, c, (x, y) => y <= 9); r.ell(16, 4.5, 2, 2, c); break;
+    default: r.ell(16, 9.5, 7, 4.5, c, (x, y) => y <= 10); r.px(9, 11, c); r.px(22, 11, c);
+  }
+}
+
+function headHuman(r, L) {
+  const skin = '9';
+  hairBack(r, L.hair, L.hairColor);
+  r.ell(16, 14.5, 6, 7.5, skin);
+  r.rect(21, 12, 1, 8, '8'); r.px(9, 14, '8'); r.px(22, 14, '8'); // shade + ears
+  hairTop(r, L.hair, L.hairColor);
+  r.rect(11, 12, 3, 1, L.hair === 'bald' ? '8' : '6'); r.rect(18, 12, 3, 1, L.hair === 'bald' ? '8' : '6');
+  drawEyes(r, L.eyes);
+  r.px(16, 16, '8'); r.px(16, 17, '8');
+  if (L.beard) { r.ell(16, 19, 6, 4, L.beard, (x, y) => y >= 17); if (L.extras.includes('beard-long')) r.ell(16, 23, 4, 4, L.beard); r.rect(15, 19, 3, 1, '6'); }
+  else r.rect(15, 19, 3, 1, L.fem ? 'c' : '7');
+  if (L.mustache) r.rect(13, 18, 7, 1, L.mustache);
+  if (L.extras.includes('scar')) r.line(19, 11, 21, 17, 'p');
+}
+function headSkeleton(r, L) {
+  r.ell(16, 13.5, 6.5, 7, '5');
+  r.rect(21, 11, 1, 7, '4');
+  r.rect(11, 12, 4, 3, '0'); r.rect(18, 12, 4, 3, '0');
+  r.px(12, 13, 'h'); r.px(19, 13, 'h');
+  r.rect(15, 16, 2, 2, '0');
+  r.rect(12, 19, 9, 3, '4');
+  for (let x = 12; x <= 20; x++) r.px(x, 19, x % 2 ? '5' : '0');
+  r.rect(13, 22, 7, 2, '3');
+}
+function headAndroid(r, L) {
+  hairBack(r, L.hair, L.hairColor);
+  r.ell(16, 14.5, 6, 7.5, '4');
+  r.rect(20, 10, 2, 11, '3');
+  if (L.hair && L.hair !== 'bald' && L.hairColor) hairTop(r, L.hair, L.hairColor); else r.rect(10, 9, 13, 1, '3');
+  r.rect(10, 12, 13, 4, '1'); r.rect(11, 13, 11, 2, L.visor ?? 'h');
+  r.rect(13, 19, 7, 1, '2'); r.rect(13, 20, 7, 1, '3');
+}
+function headBeast(r, L) {
+  const fur = L.fur ?? '7';
+  r.ell(16, 15, L.big ? 8 : 7, 7.5, fur);
+  r.line(10, 9, 8, 3, fur); r.line(11, 9, 9, 4, fur); r.px(9, 5, '8');
+  r.line(22, 9, 24, 3, fur); r.line(21, 9, 23, 4, fur); r.px(23, 5, '8');
+  r.rect(8, 13, 2, 7, '6'); r.rect(23, 13, 2, 7, '6');
+  r.ell(16, 19, 4.5, 3, '8');
+  r.rect(15, 16, 3, 2, '0');
+  r.px(12, 13, 'a'); r.px(13, 13, '0'); r.px(19, 13, '0'); r.px(20, 13, 'a');
+  r.rect(14, 21, 5, 1, '0'); r.px(14, 22, '5'); r.px(18, 22, '5');
+  if (L.fem) { r.rect(22, 16, 2, 8, '8'); }
+  if (L.extras.includes('scar')) r.line(11, 10, 14, 17, 'p');
+}
+function headPlant(r, L) {
+  r.ell(16, 14.5, 6.5, 7.5, 'j');
+  r.rect(21, 11, 1, 9, 'k');
+  r.ell(11, 7, 3, 2, 'k'); r.ell(16, 5.5, 2.5, 3, 'j'); r.ell(21, 7, 3, 2, 'k'); r.px(16, 4, 'k');
+  const fc = L.flower ?? 'a';
+  r.ell(21, 5, 2, 2, fc); r.px(21, 5, 'b');
+  if (L.fem) { r.ell(11, 6, 1.5, 1.5, fc); r.px(11, 6, 'b'); r.rect(8, 11, 2, 11, 'k'); r.rect(22, 11, 2, 11, 'k'); }
+  r.rect(12, 13, 2, 2, '0'); r.rect(18, 13, 2, 2, '0'); r.px(12, 13, '5'); r.px(18, 13, '5');
+  r.rect(14, 19, 4, 1, 'k');
+  if (L.extras.includes('beard-long')) { r.line(13, 21, 12, 25, 'k'); r.line(16, 22, 16, 26, 'k'); r.line(19, 21, 20, 25, 'k'); }
+}
+function headTekhonok(r, L) {
+  r.ell(16, 14, 8, 9, '7');
+  r.px(11, 8, '8'); r.px(20, 9, '8'); r.px(10, 17, '8'); r.px(22, 15, '8');
+  r.ell(16, 15, 5, 5.5, '9');
+  r.rect(11, 17, 11, 5, '6'); r.px(13, 19, '8'); r.px(18, 20, '8');
+  drawEyes(r, L.eyes ?? 'goggles');
+  const n = L.antennas ?? 1;
+  [[22, 6, 24, 0], [10, 6, 8, 1], [16, 5, 16, 0]].slice(0, n).forEach(([a, b, c, d]) => { r.line(a, b, c, d, '4'); r.px(c, d, 'a'); });
+  if (L.beard) r.rect(12, 21, 9, 3, L.beard);
+}
+function headCringegon(r, L) {
+  r.line(12, 7, 9, 2, 'o'); r.line(20, 7, 23, 2, 'o'); r.px(9, 1, 'n'); r.px(23, 1, 'n');
+  r.ell(16, 13.5, 8, 8, 'n');
+  r.rect(22, 9, 1, 9, 'o');
+  r.ell(12.5, 14, 2.5, 3, '0'); r.ell(19.5, 14, 2.5, 3, '0'); r.px(12, 12, '5'); r.px(19, 12, '5');
+  r.rect(15, 19, 3, 1, 'o');
+}
+function headSkrilet(r) {
+  r.rect(15, 3, 2, 4, '2');
+  r.ell(16, 14.5, 6.5, 7.5, '2');
+  r.rect(20, 10, 2, 11, '1');
+  r.rect(10, 12, 13, 3, 'c'); r.rect(10, 12, 13, 1, 'd');
+  r.rect(13, 19, 7, 2, '1');
+}
+function headScreen(r, c) { // bodiless AI: monitor face
+  const bgc = c === 'a' ? '6' : 'd';
+  r.rect(8, 5, 17, 16, '2'); r.rect(8, 5, 17, 1, '3'); r.rect(9, 6, 15, 14, bgc);
+  for (let y = 7; y < 20; y += 2) r.rect(9, y, 15, 1, '1');
+  if (c === 'a') { r.ell(16, 12.5, 4, 4, 'a'); r.ell(16, 12.5, 2, 2, bgc); r.px(16, 12, 'b'); r.rect(12, 17, 9, 1, 'a'); }
+  else { r.rect(11, 10, 4, 3, c); r.rect(18, 10, 4, 3, c); r.rect(12, 16, 9, 1, c); }
+  r.rect(14, 21, 5, 3, '3');
+}
+function headHood(r, L) {
+  r.ell(16, 14, 8.5, 10, L.hood);
+  r.ell(16, 16, 5, 6, '0');
+  if (L.mask) { r.ell(16, 15.5, 4.5, 5.5, '4'); r.rect(13, 14, 2, 1, 'h'); r.rect(18, 14, 2, 1, 'h'); r.line(17, 11, 19, 19, 'o'); r.rect(14, 19, 5, 1, '3'); }
+  else if (L.screenFace) { r.rect(12, 12, 9, 7, 'i'); r.rect(13, 13, 7, 1, 'h'); r.rect(13, 15, 5, 1, 'h'); r.rect(13, 17, 6, 1, 'h'); }
+  else if (L.hoodEyes) { r.px(13, 15, L.hoodEyes); r.px(19, 15, L.hoodEyes); if (L.threeEyes) r.px(16, 12, L.hoodEyes); }
+  else { drawEyes(r, L.eyes, 15); }
+}
+function judge(r) {
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; r.line(16 + Math.cos(a) * 11, 15 + Math.sin(a) * 11, 16 + Math.cos(a) * 14, 15 + Math.sin(a) * 14, 'h'); }
+  r.ell(16, 15, 10, 6, 'h'); r.ell(16, 15, 9, 5, '0'); r.ell(16, 15, 4, 4, 'h'); r.ell(16, 15, 2.5, 2.5, 'o'); r.px(16, 15, '0'); r.px(15, 14, '5');
+  [10, 13, 16, 19, 22].forEach((x, i) => r.rect(x, 4 - (i % 2), 1, 4 + (i % 2), 'h'));
+}
+
+const RACE_HEADS = { human: headHuman, skeleton: headSkeleton, android: headAndroid, 'mutant-beast': headBeast, 'mutant-plant': headPlant, tekhonok: headTekhonok, cringegon: headCringegon, skrilet: headSkrilet };
+
+export function portraitLook(npc) {
+  const id = typeof npc === 'string' ? npc : npc.id;
+  const base = typeof npc === 'string' ? NPCS[npc] ?? { id } : npc;
+  const fl = FACTION_LOOK[base.faction] ?? FACTION_LOOK.none;
+  const o = NPC_LOOK[id] ?? {};
+  const h = strHash(id);
+  const race = base.race ?? 'human';
+  const humanoid = ['human', 'android', 'skeleton'].includes(race);
+  const fem = o.fem ?? false;
+  return {
+    id, race, faction: base.faction ?? 'none',
+    bg: o.bg ?? fl.bg, cloth: o.cloth ?? fl.cloth, accent: fl.accent,
+    hat: 'hat' in o ? o.hat : humanoid ? fl.hat : null,
+    hair: o.hair ?? (race !== 'human' && !o.hairColor ? 'bald' : fem ? 'long' : ['short', 'short', 'bald', 'long'][h % 4]),
+    hairColor: o.hairColor ?? (race === 'human' ? ['6', '7', '8', '1', '4', 'm'][(h >>> 3) % 6] : null),
+    beard: o.beard ?? (!fem && race === 'human' && (h >>> 7) % 3 === 0 ? ['6', '1', '4'][(h >>> 9) % 3] : null),
+    mustache: o.mustache ?? null,
+    eyes: o.eyes ?? null,
+    extras: o.extras ?? [],
+    ...o,
+    fem, extras: o.extras ?? [],
+  };
+}
+
+export function buildPortrait(npc) {
+  const L = portraitLook(npc);
+  const r = new Raster(P, P);
+  r.rounded(L.bg);
+  if (L.deity) { judge(r); return r.rows(); }
+  // shoulders
+  r.ell(16, 32, 13, 7.5, L.cloth);
+  if (L.camo) { [[8, 28], [12, 26], [20, 27], [24, 29], [15, 30], [18, 25]].forEach(([x, y], i) => r.rect(x, y, 2, 1, i % 2 ? 'k' : 'm')); }
+  r.rect(13, 21, 6, 4, L.race === 'human' ? '8' : L.race === 'skeleton' ? '3' : L.race === 'mutant-plant' ? 'k' : L.race === 'cringegon' ? 'o' : '2');
+  r.ell(16, 26, 5, 2, L.accent, (x, y) => y >= 25);
+  if (L.extras.includes('tie')) { r.rect(14, 24, 4, 2, '5'); r.rect(15, 25, 2, 6, 'c'); }
+  if (L.extras.includes('chain')) { r.line(11, 25, 16, 29, 'a'); r.line(21, 25, 16, 29, 'a'); r.px(16, 30, 'b'); }
+  if (L.hat === 'hood' || L.hood) r.ell(16, 14, 9, 10.5, L.hood ?? L.cloth); // hood back
+  const head = RACE_HEADS[L.race];
+  if (L.screen || L.race === 'ai') headScreen(r, L.screen ?? 'c');
+  else if (L.hood && (L.mask || L.screenFace || L.hoodEyes !== undefined || !head)) headHood(r, L);
+  else if (head) head(r, L);
+  else headHood(r, { ...L, hood: L.cloth, hoodEyes: L.accent });
+  if (L.hat === 'hood') { r.ell(16, 8.5, 8, 4, L.cloth, (x, y) => y <= 9); }
+  if (L.hat && L.hat !== 'hood') drawHeadgear(r, L.hat, L);
+  if (L.extras.includes('earpiece')) { r.px(9, 15, 'h'); r.line(9, 16, 11, 19, '1'); }
+  return r.rows();
+}
+
+export function portraitSpriteId(npc) {
+  const id = typeof npc === 'string' ? npc : npc.id;
+  const sid = `portrait-${id}`;
+  if (!SPRITES[sid]) SPRITES[sid] = { w: P, h: P, frames: [buildPortrait(npc)], outline: false, bob: null };
+  return sid;
+}
+
+// npc: id from npcs.js (NPCS) or any object { id, race, faction } — unknown NPCs still get a portrait.
+export function drawPortrait(ctx, npc, x, y, scale = 3, opts = {}) {
+  blit(ctx, getEntry(portraitSpriteId(npc), 0, !!opts.flip, null, null), x, y, scale, opts.alpha ?? 1);
+}
+
+// ===========================================================================
+// v2: world-map icons 16x16 — flat light symbol on a dark rounded tile (same as game/assets/icons)
+// ===========================================================================
+function icon(bg, fg, draw) {
+  const r = new Raster(16, 16);
+  if (bg) r.rounded(bg);
+  draw(r, fg);
+  return r.rows();
+}
+const MAP_ICONS = {
+  // node kinds (locations.js `kind`)
+  hub: icon('i', 'h', (r, c) => { r.rect(3, 11, 10, 2, c); r.ell(8, 9, 4, 4, c, (x, y) => y <= 9); r.rect(7, 3, 2, 3, c); r.px(6, 3, c); r.px(9, 3, c); r.rect(5, 13, 1, 1, c); r.rect(10, 13, 1, 1, c); r.rect(7, 8, 2, 2, 'i'); }),
+  town: icon('2', '4', (r, c) => { r.rect(3, 7, 10, 6, c); [3, 6, 9, 12].forEach((x) => r.rect(x, 5, 1, 2, c)); r.rect(3, 4, 2, 3, c); r.rect(11, 4, 2, 3, c); r.rect(7, 9, 2, 4, '2'); }),
+  camp: icon('6', 'e', (r, c) => { r.line(3, 13, 12, 10, '8'); r.line(3, 10, 12, 13, '8'); r.ell(8, 8, 3, 4.5, c); r.ell(8, 9, 1.5, 2.5, 'b'); }),
+  wild: icon('k', 'j', (r, c) => { r.rect(7, 6, 2, 8, '6'); r.line(8, 8, 4, 4, '6'); r.line(8, 7, 12, 3, '6'); r.line(3, 13, 12, 13, c); [3, 5, 10, 12].forEach((x) => r.rect(x, 11, 1, 2, c)); }),
+  dungeon: icon('1', '4', (r, c) => { r.ell(8, 7, 5.5, 4.5, c, (x, y) => y <= 7); r.rect(3, 7, 11, 7, c); r.ell(8, 7.5, 4, 3.5, '0', (x, y) => y <= 7); r.rect(4, 7, 8, 7, '0'); [[5, 9, 6], [6, 11, 4], [7, 13, 2]].forEach(([x, y, w]) => r.rect(x, y, w, 1, '3')); }),
+  boss: icon('d', '5', (r, c) => { r.ell(8, 7, 4.5, 4.5, c); r.rect(5, 10, 6, 3, c); r.rect(5, 6, 2, 2, 'd'); r.rect(9, 6, 2, 2, 'd'); r.px(8, 9, 'd'); r.px(6, 12, 'd'); r.px(8, 12, 'd'); r.px(10, 12, 'd'); }),
+  // terminals of Cyberspace: state ritual | dead | ours
+  'terminal-ritual': icon('o', 'h', (r, c) => { r.rect(3, 3, 10, 8, c); r.rect(4, 4, 8, 6, '0'); r.ell(8, 7, 2.5, 1.5, 'c'); r.px(8, 7, '0'); r.rect(7, 11, 2, 2, c); r.rect(5, 13, 6, 1, c); }),
+  'terminal-dead': icon('2', '3', (r, c) => { r.rect(3, 3, 10, 8, c); r.rect(4, 4, 8, 6, '1'); r.line(5, 4, 8, 7, '3'); r.line(8, 7, 7, 9, '3'); r.line(8, 7, 11, 6, '3'); r.rect(7, 11, 2, 2, c); r.rect(5, 13, 6, 1, c); }),
+  'terminal-ours': icon('i', 'h', (r, c) => { r.rect(3, 3, 10, 8, c); r.rect(4, 4, 8, 6, '0'); r.line(5, 7, 7, 9, 'j'); r.line(7, 9, 10, 5, 'j'); r.rect(7, 11, 2, 2, c); r.rect(5, 13, 6, 1, c); }),
+  beacon: icon('1', 'n', (r, c) => { r.line(8, 6, 5, 13, '4'); r.line(8, 6, 11, 13, '4'); r.rect(6, 10, 5, 1, '4'); r.ell(8, 4.5, 1.5, 1.5, c); r.line(4, 2, 3, 5, c); r.line(12, 2, 13, 5, c); }),
+  trader: icon('6', 'a', (r, c) => { r.ell(8, 9.5, 4.5, 4, c); r.rect(6, 3, 4, 3, c); r.rect(7, 5, 2, 1, '6'); r.rect(7, 8, 2, 4, '6'); r.rect(6, 8, 4, 1, '6'); r.rect(6, 11, 4, 1, '6'); }),
+  danger: icon('d', 'b', (r, c) => { for (let y = 3; y <= 12; y++) { const w = Math.floor((y - 3) * 0.6); r.rect(8 - w - 1, y, (w + 1) * 2, 1, c); } r.rect(7, 6, 2, 4, 'd'); r.rect(7, 11, 2, 1, 'd'); }),
+  fog: icon('1', '3', (r, c) => { r.ell(6, 9, 3.5, 3, c); r.ell(10, 8, 4, 3.5, c); r.rect(3, 10, 11, 2, c); r.rect(7, 5, 3, 1, '4'); r.px(10, 6, '4'); r.rect(8, 7, 2, 1, '4'); r.px(8, 8, '4'); r.px(8, 10, '4'); }),
+  // regions
+  'region-harmony': icon('g', 'h', (r, c) => { r.ell(8, 11, 6, 2.5, c, (x, y) => y >= 10); r.rect(2, 10, 12, 1, c); r.rect(6, 4, 4, 6, c); r.rect(7, 2, 2, 2, c); r.px(7, 6, 'g'); r.px(8, 8, 'g'); r.line(5, 13, 4, 14, '4'); r.line(11, 13, 12, 14, '4'); }),
+  'region-villages': icon('k', 'a', (r, c) => { r.line(3, 8, 8, 3, c); r.line(8, 3, 13, 8, c); r.line(4, 8, 8, 4, c); r.line(8, 4, 12, 8, c); r.rect(4, 8, 8, 5, '8'); r.rect(7, 10, 2, 3, '6'); r.rect(5, 9, 1, 1, 'b'); }),
+  'region-agrozone': icon('6', 'b', (r, c) => { r.rect(7, 4, 2, 10, 'j'); [4, 6, 8, 10].forEach((y) => { r.rect(5, y, 2, 2, c); r.rect(9, y, 2, 2, c); }); r.rect(7, 2, 2, 2, c); }),
+  'region-corruption': icon('1', 'n', (r, c) => { r.rect(2, 7, 3, 7, 'o'); r.rect(5, 3, 3, 11, c); r.rect(8, 5, 3, 9, 'o'); r.rect(11, 8, 3, 6, c); [[6, 5], [6, 8], [9, 7], [12, 10], [3, 9]].forEach(([x, y]) => r.px(x, y, 'a')); }),
+  region: icon('2', '4', (r, c) => { r.rect(4, 3, 1, 11, c); r.rect(5, 3, 7, 5, c); r.rect(6, 4, 2, 1, '2'); }),
+  // party marker: cyan pin with dark outline, no tile
+  party: (() => { const r = new Raster(16, 16); r.ell(8, 6, 4.5, 4.5, 'h'); for (let y = 9; y <= 14; y++) { const w = Math.max(0, Math.floor((14 - y) * 0.7)); r.rect(8 - w, y, w * 2 || 1, 1, 'h'); } r.ell(8, 6, 2, 2, '5'); return r.rows(); })(),
+};
+const MAP_ALIASES = { burg: 'town', terminal: 'terminal-ritual', ritual: 'terminal-ritual', dead: 'terminal-dead', ours: 'terminal-ours',
+  merchant: 'trader', unknown: 'fog', harmony: 'region-harmony', villages: 'region-villages', agrozone: 'region-agrozone', corruption: 'region-corruption' };
+
+for (const [id, rows] of Object.entries(MAP_ICONS)) SPRITES[`map-${id}`] = { w: 16, h: 16, frames: [rows], outline: id === 'party', bob: null };
+export const MAP_ICON_IDS = Object.keys(MAP_ICONS);
+
+// id: node kind ('hub' | 'town'/'burg' | 'camp' | 'wild' | 'dungeon' | 'boss'), terminal state
+// ('terminal-ritual' | 'terminal-dead' | 'terminal-ours', or just 'ritual' | 'dead' | 'ours'), 'beacon', 'trader', 'danger',
+// 'fog', 'party', region ('region-harmony' | 'region-villages' | 'region-agrozone' | 'region-corruption' | regions.js id).
+// Unknown region ids get the generic flag 'region'. x, y — top-left, size 16*scale.
+export function drawMapIcon(ctx, id, x, y, scale = 3, opts = {}) {
+  let key = String(id).replace(/^map-/, '');
+  key = MAP_ALIASES[key] ?? key;
+  if (!MAP_ICONS[key]) key = key.startsWith('region-') ? 'region' : 'fog';
+  blit(ctx, getEntry(`map-${key}`, 0, false, null, opts.mono ?? null), x, y, scale, opts.alpha ?? 1);
 }
 
 export function validateSprites() {

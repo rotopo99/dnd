@@ -14,9 +14,11 @@
   <canvas id="c"></canvas>
   <script type="module">
     import {
-      SPRITES, PALETTE, PALETTE_KEYS, RACE_IDS, CLASS_IDS, ENEMY_IDS, SUMMON_IDS, NPC_IDS, TILE,
+      SPRITES, PALETTE, PALETTE_KEYS, RACE_IDS, CLASS_IDS, ENEMY_IDS, SUMMON_IDS, NPC_IDS, WORLD_ENEMY_IDS, MAP_ICON_IDS, TILE,
+      drawPortrait, drawMapIcon,
       drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, validateSprites,
     } from '../game/src/assets/sprites.js';
+    import { NPCS, recruitables } from '../game/src/data/npcs.js';
 
     const S = 3;
     const CELL = TILE * S;            // 48
@@ -27,7 +29,7 @@
 
     const canvas = document.getElementById('c');
     canvas.width = 1240;
-    canvas.height = 1900;
+    canvas.height = 3200;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#14141c';
@@ -133,6 +135,36 @@
     mobRow(ENEMY_IDS, 'Enemies (frame 0 / 1)');
     mobRow(SUMMON_IDS, 'Summons (frame 0 / 1)');
     mobRow(NPC_IDS, 'NPC allies (frame 0 / 1)');
+    // v2 world enemies, 7 per row
+    for (let i = 0; i < WORLD_ENEMY_IDS.length; i += 7) mobRow(WORLD_ENEMY_IDS.slice(i, i + 7), i ? 'World enemies (cont.)' : 'World enemies v2 (frame 0 / 1)');
+
+    // Portraits: key NPCs + companions (+ lox), x2 = 64 px
+    title('Portraits 32x32 at x2: key NPCs + companions');
+    const pcs = Object.values(NPCS).filter((n) => n.key || n.recruitable);
+    const PW = 64 + 16;
+    pcs.forEach((n, i) => {
+      const col = i % 15, row = Math.floor(i / 15);
+      const x = 8 + col * PW, yy = y + row * (64 + 26);
+      drawPortrait(ctx, n.id, x, yy, 2);
+      label(n.id.slice(0, 11), x, yy + 66);
+    });
+    y += Math.ceil(pcs.length / 15) * (64 + 26) + 6;
+    title('Portraits: generated for ordinary NPCs (first 15 non-key) + x3');
+    Object.values(NPCS).filter((n) => !n.key && !n.recruitable).slice(0, 15).forEach((n, i) => {
+      const x = 8 + i * PW; drawPortrait(ctx, n.id, x, y, 2); label(n.id.slice(0, 11), x, y + 66);
+    });
+    y += 64 + 26;
+    ['lox', 'gans', 'judge', 'cyber-priest', 'zver', 'aunt-loza', 'old-god'].forEach((id, i) => drawPortrait(ctx, id, 8 + i * 104, y, 3));
+    y += 96 + 12;
+
+    // Map icons
+    title('Map icons 16x16 at x3');
+    MAP_ICON_IDS.forEach((id, i) => {
+      const x = 8 + i * (CELL + 20);
+      drawMapIcon(ctx, id, x, y, S);
+      label(id.replace('region-', 'r-').replace('terminal-', 't-'), x, y + CELL + 3);
+    });
+    y += CELL + PAD + 16;
 
     // Team markers / tint / flash
     title('Team markers, tint (outline) and mono (hit flash)');
