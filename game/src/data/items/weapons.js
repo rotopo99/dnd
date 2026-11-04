@@ -24,9 +24,12 @@ const ability = (o) => ({
 });
 
 // Типы оружия канона (core-rules.md, правило 2). Владение — по типу, 4 ступени.
+// Ключи = `type` движка (game/src/rules/equipment.js WEAPON_TYPES). В данных ниже поле `wtype` — то же, в нашей записи;
+// построитель w() переводит его в `type` через TYPE_KEY.
+const TYPE_KEY = { saber: 'sabre', twohanded: 'twoHanded', assault: 'auto', throwing: 'throw' };
 export const WEAPON_TYPES = {
   // ближний бой
-  saber: { name: 'Сабли', group: 'melee' },
+  sabre: { name: 'Сабли', group: 'melee' },
   polearm: { name: 'Древковое', group: 'melee' },
   fist: { name: 'Кулачное', group: 'melee' },
   knife: { name: 'Ножи', group: 'melee' },
@@ -35,17 +38,17 @@ export const WEAPON_TYPES = {
   hammer: { name: 'Молоты', group: 'melee' },
   katana: { name: 'Катаны', group: 'melee' },
   bastard: { name: 'Полуторное', group: 'melee' },
-  twohanded: { name: 'Двуручное', group: 'melee' },
+  twoHanded: { name: 'Двуручное', group: 'melee' },
   // дальний бой
   pistol: { name: 'Пистолеты', group: 'ranged' },
   smg: { name: 'ПП', group: 'ranged' },
   rifle: { name: 'Винтовки', group: 'ranged' },
-  assault: { name: 'Автоматы', group: 'ranged' },
+  auto: { name: 'Автоматы', group: 'ranged' },
   mg: { name: 'Пулемёты', group: 'ranged' },
   launcher: { name: 'Гранатомёты', group: 'ranged' },
   crossbow: { name: 'Арбалеты', group: 'ranged' },
   bow: { name: 'Луки', group: 'ranged' },
-  throwing: { name: 'Метание', group: 'ranged' },
+  throw: { name: 'Метание', group: 'ranged' },
   bolter: { name: 'Болтерное', group: 'ranged' },
   // особое (канон: «плазменное, лазерное, мельта, энерго и т. п.»; остальное — вне канона, не противоречит)
   plasma: { name: 'Плазменное', group: 'special' },
