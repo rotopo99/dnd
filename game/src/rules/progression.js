@@ -78,6 +78,8 @@ export function rebuildHero(hero, { level, data, talents, activeCombat, gadget, 
     race: spec.race, cls: spec.cls, path: spec.path, stats: spec.stats, anyStat: spec.anyStat || undefined,
     level: level ?? hero.level ?? 1, data, name: spec.name || undefined, id: spec.id || undefined,
     talents: talents ?? spec.talents ?? [], activeCombat: activeCombat ?? spec.activeCombat ?? undefined, gadget: gadget ?? spec.gadget ?? undefined,
+    equipment: spec.equipment || undefined, proficiencies: spec.proficiencies || undefined, skills: spec.skills || undefined,
+    phobia: spec.phobia || undefined, multiclass: spec.multiclass || undefined, inventory: hero.inventory || spec.inventory || undefined,
   });
   if (keepDamage && hero.maxHp != null) {
     next.hp = Math.max(1, next.maxHp - Math.max(0, hero.maxHp - hero.hp));

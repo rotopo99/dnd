@@ -2,6 +2,11 @@
 // Pure data in, plain objects out. Data is injected (never imported) so the same code
 // runs in the browser and in Node balance sims.
 
+import {
+  collectItems, applyEquipment, defaultProficiencies, mergeProficiencies, weaponTierFor, armorTierFor,
+  armorKb, DMG_TYPE_TIER_DMG, LIGHT_MASTERY_BONUS_ACTIONS,
+} from './equipment.js';
+
 export const STATS = ['str', 'dex', 'con', 'int', 'wil', 'cha', 'per'];
 export const ARMOR_DEX_CAP = { cloth: 99, light: 99, medium: 2, heavy: 0 };
 /** Weapon proficiency tiers (canon): 1 no skill -> disadvantage, 2 +0, 3 +1, 4 +2. */
@@ -33,6 +38,8 @@ export function normalizeData(d = {}) {
     combatTalentLimit: d.combatTalentLimit || d.COMBAT_TALENT_LIMIT || defaultCombatTalentLimit,
     specializations: d.specializations || d.SPECIALIZATIONS || null,
     skills: d.skills || d.SKILLS || null,
+    items: collectItems(d),
+    multiclass: d.multiclass || d.MULTICLASS || [],
   };
 }
 
@@ -197,7 +204,31 @@ function worldEffects(world) {
   return { worldFlags, skillMods };
 }
 
-export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroes', data, id, name, anyStat, weaponTier, talents = [], activeCombat, gadget } = {}) {
+/** Multiclass (canon extra/multiclass.md, engine proposal): from level 3, second class abilities up to level − 2. */
+export const MULTICLASS_MIN_LEVEL = 3;
+export const multiclassLevel = (level) => Math.max(1, level - 2);
+
+/** Abilities granted by a multiclass choice: second class (level − 2, own path or common) + data.MULTICLASS pool. */
+export function multiclassAbilities(D, mainCls, mc, level) {
+  if (!mc) return [];
+  const cls2 = typeof mc.cls === 'string' ? D.classes[mc.cls] : mc.cls;
+  if (!cls2) throw new Error(`buildCreature: unknown multiclass "${mc.cls}"`);
+  if (level < MULTICLASS_MIN_LEVEL) throw new Error(`buildCreature: multiclass needs level ${MULTICLASS_MIN_LEVEL}`);
+  if (cls2.id === mainCls.id) throw new Error('buildCreature: multiclass must be a different class');
+  const lv2 = multiclassLevel(level);
+  const out = (cls2.abilities || []).filter((a) => !a.todo && (a.level || 1) <= lv2 && (!a.path || a.path === mc.path))
+    .map((a) => ({ ...a, multiclass: cls2.id, castStat: a.castStat || cls2.castStat || null }));
+  for (const combo of D.multiclass || []) {
+    const [A, B] = combo.pair || [];
+    const ok = A && B && ((A.includes(mainCls.id) && B.includes(cls2.id)) || (B.includes(mainCls.id) && A.includes(cls2.id)));
+    if (!ok || (combo.level && combo.level > level)) continue;
+    for (const a of combo.abilities || []) if (!a.todo) out.push({ ...a, multiclass: combo.id });
+  }
+  return out;
+}
+
+export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroes', data, id, name, anyStat, weaponTier, talents = [], activeCombat, gadget,
+  equipment, proficiencies, skills, phobia, multiclass, inventory } = {}) {
   const D = data ? normalizeData(data) : null;
   if (typeof race === 'string') race = D?.races[race];
   if (typeof cls === 'string') cls = D?.classes[cls];
@@ -206,12 +237,16 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   if (!path) path = cls.paths && cls.paths.length ? cls.paths[0].id : null;
   if (!isAllowed(race, cls)) throw new Error(`buildCreature: race "${race.id}" is not allowed for class "${cls.id}"`);
   const pathDef = (cls.paths || []).find((p) => p.id === path) || {};
-  const weaponDef = pathDef.weapon || cls.weapon;
-  const armorDef = pathDef.armor || cls.armor;
   const role = pathDef.role || cls.role;
+  const ND = D || normalizeData({});
+  const EQ = applyEquipment(ND.items, equipment, pathDef.weapon || cls.weapon, pathDef.armor || cls.armor);
+  const weaponDef = EQ.weapon;
+  const armorDef = EQ.armor;
+  const prof = mergeProficiencies(defaultProficiencies(cls, pathDef), proficiencies);
 
   const TL = talents.length || gadget ? resolveTalents(D || normalizeData({}), { talents, activeCombat, gadget, level }) : null;
-  const passives = [...(race.passives || []), ...(cls.passives || []), ...(TL ? TL.passives : [])].filter((p) => passiveApplies(p, level, path));
+  const passives = [...(race.passives || []), ...(cls.passives || []), ...(TL ? TL.passives : []), ...((EQ.offhand && EQ.offhand.passives) || [])]
+    .filter((p) => passiveApplies(p, level, path));
   const P = collectPassives(passives);
 
   const base = { ...(stats || pathDef.recommended || cls.recommended || {}) };
@@ -249,21 +284,33 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.mrl = u.maxMrl;
   u.enr = u.maxEnr;
 
-  const armor = armorDef || { type: 'cloth', kb: 0 };
+  const armor = armorDef;
   u.armorType = armor.type || 'cloth';
   u.armorKb = armor.kb || 0;
-  u.kbBonus = P.kb;
-  u.kb = 10 + u.armorKb + Math.min(mod(st.dex), ARMOR_DEX_CAP[u.armorType] ?? 99) + P.kb;
+  u.armorTier = armorTierFor(prof, armor);
+  const offKb = (EQ.offhand && EQ.offhand.kb) || 0;
+  u.kbBonus = P.kb + offKb;
+  u.kb = armorKb(armor, st.dex, u.armorTier) + P.kb + offKb;
+  u.armorPenalty = u.armorTier <= 1; // no skill: disadvantage on attack rolls and stealth
+  u.extraBonusActions = u.armorType === 'light' && u.armorTier >= 4 ? LIGHT_MASTERY_BONUS_ACTIONS : 0;
+  u.stealthDis = u.armorPenalty || (!!armor.stealthDis && !(u.armorType === 'medium' && u.armorTier >= 4));
+  u.noise = (armor.noise || 0) + (weaponDef.noise || 0) + (race.noise || 0);
 
   u.speed = (race.speed ?? 6) + P.speed;
   u.initBonus = P.init;
-  u.weapon = weaponDef ? { ...weaponDef } : { name: 'Кулак', dice: '1d2', dmgType: 'blunt', stat: 'str', range: 1, hit: 0 };
-  u.weaponTier = weaponTier || START_WEAPON_TIER;
+  u.weapon = { ...weaponDef };
+  u.weaponTier = weaponTier || weaponTierFor(prof, weaponDef);
+  u.proficiencies = prof;
+  u.dmgTypeBonus = {};
+  for (const [t, tier] of Object.entries(prof.dmgTypes)) if (DMG_TYPE_TIER_DMG[tier]) u.dmgTypeBonus[t] = DMG_TYPE_TIER_DMG[tier];
+  u.equipment = { weapon: weaponDef.id || null, armor: armor.id || null, offhand: EQ.offhand ? EQ.offhand.id : null, mods: EQ.mods };
   u.castStat = cls.castStat || null;
   u.saves = [...(cls.saves || [])];
-  u.resist = mergeResist(mergeResist({}, race.resist), P.resist);
+  u.resist = mergeResist(mergeResist(mergeResist({}, race.resist), P.resist), armor.resist);
   u.immuneStatus = [...(race.immuneStatus || []), ...P.immuneStatus];
   u.abilities = [...(race.abilities || []), ...(cls.abilities || []), ...(TL ? TL.abilities : [])].filter((a) => abilityAvailable(a, level, path));
+  for (const a of multiclassAbilities(ND, cls, multiclass, level)) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
+  u.multiclass = multiclass ? { cls: typeof multiclass.cls === 'string' ? multiclass.cls : multiclass.cls.id, path: multiclass.path || null } : null;
   u.passives = passives;
   u.hitBonus = P.hit;
   u.dmgBonus = P.dmg;
@@ -281,9 +328,14 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   const W = worldEffects(TL ? TL.world : []);
   u.worldFlags = W.worldFlags; // not applied by the engine: world systems read them
   u.skillMods = W.skillMods;
+  u.skillPicks = skills ? { base: [...(skills.base || [])], extra: [...(skills.extra || [])] } : null;
+  u.phobias = phobia ? (Array.isArray(phobia) ? phobia : [phobia]).map((p) => ({ ...p })) : [];
+  u.inventory = { ...(inventory || {}) };
   // everything needed to rebuild the hero on another level (progression.js)
   u.build = { race: race.id, cls: cls.id, path, stats: { ...base }, anyStat: anyStat || null, talents: [...talents],
-    activeCombat: activeCombat ? [...activeCombat] : null, gadget: gadget || null, name: name || null, id: u.id };
+    activeCombat: activeCombat ? [...activeCombat] : null, gadget: gadget || null, name: name || null, id: u.id,
+    equipment: equipment || null, proficiencies: proficiencies || null, skills: skills || null, phobia: phobia || null,
+    multiclass: multiclass || null, inventory: inventory || null };
   return u;
 }
 
