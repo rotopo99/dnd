@@ -163,6 +163,7 @@ export function createCyberspaceScene() {
 
   self = {
     id: 'cyberspace',
+    get S() { return { buttons }; },
     enter(game) { time = 0; layout(game); },
     resume(game) { layout(game); },
     resize(game) { layout(game); },

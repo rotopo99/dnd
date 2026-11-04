@@ -13,6 +13,9 @@ import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINAL
 import { MAPS } from '../data/index.js';
 import { saveGame } from '../save.js';
 
+const FINALE_ENCOUNTER = 'w-cc-finale';
+const FINALE_MIN_PARTY = 3; // heroes + finaleMods allies (balance rule)
+
 /** Enemies (+allies) of an encounter id for the current party; the finale is reduced by closed terminals. */
 export function encounterSetup(save, encId) {
   let reduce = 0;
@@ -33,6 +36,12 @@ export function startWorldBattle(game, o) {
   const data = game.data;
   const setup = o.encounter ? encounterSetup(save, o.encounter) : { enemies: o.enemies, allies: [] };
   const allies = [...setup.allies, ...(o.allies || [])];
+  if (o.encounter === FINALE_ENCOUNTER && partySize(save) + allies.length < FINALE_MIN_PARTY) {
+    game.openModal({ title: t('world.finaleLockedTitle'), border: 'a', titleColor: 'a',
+      lines: [{ text: t('world.finaleLocked').replace('{n}', partySize(save) + allies.length).replace('{min}', FINALE_MIN_PARTY) }],
+      options: [{ label: t('battle.ok'), run: () => {} }] });
+    return;
+  }
   const loc = LOCATIONS[o.location || save.location];
   const mapId = (o.encounter && encounterMap(o.encounter)) || o.map || loc?.battleMap || null;
   const fixed = mapId && MAPS[mapId];

@@ -19,6 +19,7 @@ function lines(race, ...keys) {
   return out;
 }
 
+const baseOf = (u) => String(u?.enemyId || '').split('^')[0];
 const BARKS = { cultist: 'bark_cultist', 'cultist-gunner': 'bark_gunner', skrilet: 'bark_skrilet', acolyte: 'bark_acolyte', 'npc-gans': 'bark_gans' };
 
 /** Story hooks during battle 2 and 3 (skrilet reveal, acolyte at half HP, Gans down). */
@@ -32,20 +33,20 @@ function storyHooks(race) {
       S.storyBubble(u, key);
       if (log) for (const l of toLines(line(key, race))) S.pushLog([[l.text, C['4']]]);
     };
-    if (e.type === 'statusEnd' && e.id === 'invisible' && T?.enemyId === 'skrilet' && !S.flags.reveal) {
+    if (e.type === 'statusEnd' && e.id === 'invisible' && baseOf(T) === 'skrilet' && !S.flags.reveal) {
       S.flags.reveal = true;
       for (const l of toLines(line('s2_skrilet_reveal', race))) S.pushLog([[l.text, C['4']]]);
     }
-    if (e.type === 'attack' && A?.enemyId === 'skrilet' && !S.flags.reveal) {
+    if (e.type === 'attack' && baseOf(A) === 'skrilet' && !S.flags.reveal) {
       S.flags.reveal = true;
       for (const l of toLines(line('s2_skrilet_reveal', race))) S.pushLog([[l.text, C['4']]]);
     }
-    if (e.type === 'damage' && T?.enemyId === 'acolyte' && !S.flags.half && T.hp > 0 && T.hp <= T.maxHp / 2) {
+    if (e.type === 'damage' && baseOf(T) === 'acolyte' && !S.flags.half && T.hp > 0 && T.hp <= T.maxHp / 2) {
       S.flags.half = true;
       say(T, 'acolyte_half', true);
     }
-    if (e.type === 'down' && T?.enemyId === 'npc-gans') say(T, 'gans_down', true);
-    if (e.type === 'attack' && A?.enemyId === 'acolyte' && T?.enemyId === 'npc-gans' && Math.random() < 0.5) say(A, 'bark_acolyte_gans');
+    if (e.type === 'down' && baseOf(T) === 'npc-gans') say(T, 'gans_down', true);
+    if (e.type === 'attack' && baseOf(A) === 'acolyte' && baseOf(T) === 'npc-gans' && Math.random() < 0.5) say(A, 'bark_acolyte_gans');
   };
 }
 
@@ -67,7 +68,7 @@ export function startPrologue(game, hero) {
 
   const epilogue = () => dlg(t('ep_title'), lines(race, 'ep_main', 'ep_victor', 'ep_seer', 'ep_radio', 'ep_end'), (g) => startWorld(g, hero, flags));
   const after3 = (g, S) => {
-    const gans = S.b.units.find((u) => u.enemyId === 'npc-gans');
+    const gans = S.b.units.find((u) => baseOf(u) === 'npc-gans');
     const alive = gans && !gans.dead && !gans.down;
     flags.gansAlive = !!alive;
     dlg(

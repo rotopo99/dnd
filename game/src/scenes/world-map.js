@@ -2,7 +2,7 @@
 // a day counter and encounter rolls (d20 ≤ 3 × danger + mod, shown in the map log), ambush check, encounters
 // (battle / event check / trader / rumor / cache), hidden nodes found by Perception on arrival.
 import { t } from '../data/text/index.js';
-import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
+import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, fit, panel, button, hitButton, clear } from '../ui/draw.js';
 import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
@@ -19,7 +19,6 @@ import { runEvent, travelEvents } from './event.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
 
-const KIND_FILL = { hub: 'i', town: '2', camp: '6', wild: 'k', dungeon: '7', terminal: 'o', boss: 'd' };
 const TRAVEL_DAY_S = 0.55;
 
 /** Shortest path by days over known routes. Returns [routes] or null. */
@@ -50,9 +49,9 @@ export function createWorldMapScene() {
 
   function layout(game) {
     const W = game.width, H = game.height;
-    S.area = { x: 40, y: 64, w: W - 80, h: H - 64 - 150 };
+    S.area = { x: 60, y: 96, w: W - 120, h: H - 96 - 170 };
     S.sx = S.area.w / 1000;
-    S.sy = S.area.h / 620;
+    S.sy = S.area.h / 700;
     S.buttons = [
       { id: 'enter', label: t('map.enter'), key: 'Enter' },
       { id: 'party', label: t('panel.party'), key: 'P' },
@@ -69,6 +68,7 @@ export function createWorldMapScene() {
     S.log.push({ text: segText, color });
     if (S.log.length > 5) S.log.shift();
   }
+  const bindLog = (game) => { S.log = game.mapLog || (game.mapLog = []); };
 
   // ---------------------------------------------------------------- travel
   function startTravel(game, to) {
@@ -220,7 +220,8 @@ export function createWorldMapScene() {
 
   self = {
     id: 'worldmap',
-    enter(game) { layout(game); },
+    S,
+    enter(game) { bindLog(game); layout(game); },
     resume(game) { layout(game); },
     resize(game) { layout(game); },
     update(game, dt) {
@@ -234,7 +235,7 @@ export function createWorldMapScene() {
       if (!S.hover && m.inside) {
         for (const id of sv.discovered) {
           const l = LOCATIONS[id];
-          if (l && Math.hypot(px(l.pos) - m.x, py(l.pos) - m.y) < 16) { S.hoverNode = id; break; }
+          if (l && Math.hypot(px(l.pos) - m.x, py(l.pos) - m.y) < 20) { S.hoverNode = id; break; }
         }
       }
       if (m.clicked) {
@@ -258,7 +259,9 @@ export function createWorldMapScene() {
         const locs = Object.values(LOCATIONS).filter((l) => l.region === reg.id && sv.discovered.includes(l.id));
         if (!locs.length) continue;
         const cx = locs.reduce((s, l) => s + l.pos.x, 0) / locs.length, top = Math.min(...locs.map((l) => l.pos.y));
-        text(ctx, reg.name, px({ x: cx }), py({ y: top }) - 40, C['3'], FONT_B, 'center');
+        ctx.font = FONT_B;
+        drawMapIcon(ctx, `region-${reg.id}`, px({ x: cx }) - 8 - ctx.measureText(reg.name).width / 2 - 14, py({ y: top }) - 50, 1);
+        text(ctx, reg.name, px({ x: cx }), py({ y: top }) - 48, C['3'], FONT_B, 'center');
       }
       // routes
       ctx.lineWidth = 2;
@@ -276,24 +279,34 @@ export function createWorldMapScene() {
         }
       }
       ctx.setLineDash([]);
-      // nodes
-      for (const id of sv.discovered) {
+      // nodes (current location first so its label wins)
+      const labels = S.labels || (S.labels = []);
+      labels.length = 0;
+      for (const d of sv.discovered) { const l = LOCATIONS[d]; if (l) labels.push({ x: px(l.pos) - 19, y: py(l.pos) - 19, w: 38, h: 38 }); }
+      for (const id of [sv.location, ...sv.discovered.filter((d) => d !== sv.location)]) {
         const l = LOCATIONS[id];
         if (!l || (l.requires && !requiresOk(sv, l.requires))) continue;
         const x = px(l.pos), y = py(l.pos);
         const visited = sv.visited.includes(id);
         const f = locFaction(id);
         const frame = f && sv.rep[f] != null ? tierColor(repTier(sv.rep[f])) : C['4'];
-        ctx.fillStyle = visited ? C[KIND_FILL[l.kind] || '2'] : C['1'];
-        ctx.fillRect(x - 10, y - 10, 20, 20);
+        const st = l.terminal ? sv.terminals[l.terminal.id] : null;
+        const iconId = !visited ? 'fog' : st ? `terminal-${st}` : id.startsWith('beacon') ? 'beacon' : id.startsWith('burg') ? 'burg' : l.kind;
         ctx.strokeStyle = S.hoverNode === id ? C['5'] : frame;
         ctx.lineWidth = 2;
-        ctx.strokeRect(x - 10, y - 10, 20, 20);
-        if (l.terminal) {
-          const st = sv.terminals[l.terminal.id];
-          text(ctx, st === 'ours' ? '◎' : st === 'dead' ? '×' : '◉', x, y - 8, st === 'ours' ? C.h : st === 'dead' ? C['3'] : C.n, FONT_B, 'center');
-        } else if (!visited) text(ctx, '?', x, y - 8, C['4'], FONT_B, 'center');
-        text(ctx, fit(ctx, l.name, 150, '12px monospace'), x, y + 13, visited ? C['5'] : C['3'], '12px monospace', 'center');
+        ctx.strokeRect(x - 18, y - 18, 36, 36);
+        drawMapIcon(ctx, iconId, x - 16, y - 16, 2);
+        if (st && !visited) drawMapIcon(ctx, `terminal-${st}`, x - 8, y - 8, 1);
+        // labels: greedy placement, skipped when they would overlap (the hover card shows the name anyway)
+        ctx.font = '12px monospace';
+        const name = fit(ctx, l.name, 150, '12px monospace');
+        const lw = ctx.measureText(name).width;
+        const rect = { x: x - lw / 2 - 2, y: y + 20, w: lw + 4, h: 14 };
+        const force = id === sv.location || id === S.hoverNode;
+        if (force || !labels.some((r) => r.x < rect.x + rect.w && rect.x < r.x + r.w && r.y < rect.y + rect.h && rect.y < r.y + r.h)) {
+          labels.push(rect);
+          text(ctx, name, x, y + 21, visited ? C['5'] : C['3'], '12px monospace', 'center');
+        }
       }
       // hero marker (or travelling dot)
       let hp = LOCATIONS[sv.location].pos;
@@ -303,8 +316,8 @@ export function createWorldMapScene() {
         const k = Math.min(1, S.travel.t / Math.max(0.25, hop.r.days * TRAVEL_DAY_S));
         hp = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
       }
-      drawSprite(ctx, 'ui-marker', px(hp) - 16, py(hp) - 34, 2, { mono: 'h' });
-      drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls), px(hp) - 16, py(hp) - 34, 2, { frame: idleFrame(S.time * 1000) });
+      drawMapIcon(ctx, 'party', px(hp) - 8, py(hp) - 44, 1);
+      drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls), px(hp) - 16, py(hp) - 50, 2, { frame: idleFrame(S.time * 1000) });
       // hover card
       if (S.hoverNode) {
         const l = LOCATIONS[S.hoverNode];

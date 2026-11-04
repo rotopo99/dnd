@@ -380,7 +380,8 @@ export function createBattleScene(opts) {
       case 'summon': if (T) { const d = addDisp(T); d.x = e.x; d.y = e.y; } break;
       case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? C.j : C.a); break;
       case 'turnStart': {
-        if (A && A.team === 'enemies' && opts.barks && opts.barks[A.enemyId] && Math.random() < 0.35) storyBubble(A, opts.barks[A.enemyId]);
+        const bk = A && opts.barks ? opts.barks[String(A.enemyId || '').split('^')[0]] : null;
+        if (A && A.team === 'enemies' && bk && Math.random() < 0.35) storyBubble(A, bk);
         break;
       }
       default: break;

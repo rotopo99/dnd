@@ -239,6 +239,8 @@ const ru = {
   'world.arrived': 'Партия на месте',
   'world.encounterRoll': 'Бросок встречи',
   'world.companionCyber': '{name}: душа в Киберспейсе',
+  'world.finaleLockedTitle': 'Рано на штурм',
+  'world.finaleLocked': 'Главный узел не взять малым отрядом: нужно 3 бойца и больше (сейчас {n} из {min}). Набери компаньонов или союзников (погашенные маяки, исход в Агрозоне).',
   'world.ambushHint': 'Засада! Враги начинают с +5 к инициативе.',
   'tier.hostile': 'Враждебны',
   'tier.suspicious': 'Подозрительны',

@@ -58,13 +58,20 @@ layoutBattle.buttons = (S) => {
   let aw = nAb ? Math.min(180, Math.floor(free / nAb)) : 0;
   const bottom = L.H - 8;
   if (nAb && aw < 110) {
-    // many abilities: two rows (abilities on top, base actions below), the log gets shorter
-    const h = 44;
-    aw = Math.min(180, Math.floor((L.bar.w - gap * (nAb - 1)) / nAb));
-    let xa = L.bar.x, xf = L.bar.x;
+    // many abilities: two rows — abilities on top (min 120 px each), overflow abilities after the base actions below
+    const h = 48;
+    const per1 = Math.max(1, Math.min(nAb, Math.floor((L.bar.w + gap) / (120 + gap))));
+    const w1 = Math.min(180, Math.floor((L.bar.w - gap * (per1 - 1)) / per1));
+    let fx = L.bar.x;
+    for (const b of S.buttons) if (FIXED[b.id]) { Object.assign(b, { x: fx, y: L.bar.y + h + gap, w: FIXED[b.id], h }); fx += FIXED[b.id] + gap; }
+    const rest = nAb - per1;
+    const w2 = rest ? Math.min(180, Math.floor((L.bar.x + L.bar.w - fx - gap * (rest - 1)) / rest)) : 0;
+    let k = 0, xa = L.bar.x;
     for (const b of S.buttons) {
-      if (FIXED[b.id]) { Object.assign(b, { x: xf, y: L.bar.y + h + gap, w: FIXED[b.id] + 20, h }); xf += FIXED[b.id] + 20 + gap; }
-      else { Object.assign(b, { x: xa, y: L.bar.y, w: aw, h }); xa += aw + gap; }
+      if (FIXED[b.id]) continue;
+      if (k < per1) { Object.assign(b, { x: xa, y: L.bar.y, w: w1, h }); xa += w1 + gap; }
+      else { Object.assign(b, { x: fx, y: L.bar.y + h + gap, w: w2, h }); fx += w2 + gap; }
+      k++;
     }
     const top = L.bar.y + 2 * h + gap + 8;
     L.log = { x: L.bar.x, y: top, w: L.bar.w, h: bottom - top };
@@ -286,7 +293,8 @@ function drawUnits(ctx, S, preview, tms) {
     // overhead bars
     const bw = L.cell - 6, bh = Math.max(2, L.s + 1);
     const bx = px + 3;
-    const by = py - (u.enemyId === 'acolyte' ? 8 : u.enemyId === 'junk-mech' ? 4 : 0) * L.s - bh * 2 - 4;
+    const base = String(u.enemyId || '').split('^')[0];
+    const by = py - (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s - bh * 2 - 4;
     bar(ctx, bx, by, bw, bh, d.hp, u.maxHp, 'hp');
     if (u.maxMrl > 0) bar(ctx, bx, by + bh + 1, bw, bh, d.mrl, u.maxMrl, 'mrl');
     // status pips
@@ -370,7 +378,12 @@ function drawActionBar(ctx, S) {
     const col = btn.disabled ? C['3'] : C['5'];
     const lines = wrap(ctx, btn.label, btn.w - 12, AB_FONT);
     const cx = btn.x + btn.w / 2;
-    if (btn.h < 50) text(ctx, fit(ctx, btn.label, btn.w - 20, AB_FONT), cx, btn.y + 9, col, AB_FONT, 'center');
+    if (btn.h < 56) {
+      const sm = 'bold 12px monospace';
+      const l2 = wrap(ctx, btn.label, btn.w - 20, sm);
+      if (l2.length === 1) text(ctx, l2[0], cx, btn.y + 10, col, sm, 'center');
+      else { text(ctx, fit(ctx, l2[0], btn.w - 20, sm), cx, btn.y + 4, col, sm, 'center'); text(ctx, fit(ctx, l2.slice(1).join(' '), btn.w - 20, sm), cx, btn.y + 17, col, sm, 'center'); }
+    }
     else if (lines.length === 1) text(ctx, lines[0], cx, btn.y + 18, col, AB_FONT, 'center');
     else {
       text(ctx, fit(ctx, lines[0], btn.w - 12, AB_FONT), cx, btn.y + 12, col, AB_FONT, 'center');

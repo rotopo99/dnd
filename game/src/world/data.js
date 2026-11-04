@@ -20,6 +20,9 @@ export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';
 export { NPC_DIALOGUE, PARTY_EVENTS_TEXT };
 
+/** Base enemy id: balance variants look like 'cleaner^2.2'. */
+export const baseId = (id) => String(id || '').split('^')[0];
+
 /** Default trade stock: every priced, non-key item. */
 export const SHOP_STOCK = Object.values(ITEMS).filter((i) => i.price > 0 && !i.key && !i.contraband && !i.passives).map((i) => i.id);
 
@@ -36,7 +39,8 @@ export function encounterEnemies(encId, size, { reduce = 0 } = {}) {
   let list = [...enc.enemies];
   if (reduce && enc.reduce) {
     for (const id of enc.reduce.slice(0, reduce)) {
-      const i = list.lastIndexOf(id);
+      let i = -1;
+      for (let k = list.length - 1; k > 0; k--) if (baseId(list[k]) === baseId(id)) { i = k; break; }
       if (i > 0) list.splice(i, 1);
     }
   }

@@ -102,8 +102,8 @@ export function renderToasts(game) {
     const to = ts[i];
     ctx.font = FONT_B;
     const w = Math.min(game.width - 40, ctx.measureText(to.text).width + 32);
-    const x = Math.floor((game.width - w) / 2);
-    const y = 56 + row * 40;
+    const x = game.width - w - 16;
+    const y = 64 + row * 40;
     ctx.globalAlpha = to.t > 2.6 ? Math.max(0, (3.2 - to.t) / 0.6) : 1;
     panel(ctx, x, y, w, 32, C['0'], C[to.color] || C.h);
     text(ctx, fit(ctx, to.text, w - 24, FONT_B), x + w / 2, y + 8, C[to.color] || C.h, FONT_B, 'center');

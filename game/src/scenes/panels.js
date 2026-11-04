@@ -78,7 +78,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       S.list.forEach((m, i) => {
         const y = oy + 76 + i * 96;
         let x = ox + 24 + 640 - 8;
-        const add = (o) => { x -= o.w + 4; b.push({ kind: 'm', key: m.key, x, y: y + 58, h: 30, font: FONT, ...o }); };
+        const add = (o) => { x -= o.w + 4; b.push({ kind: 'm', member: m.key, x, y: y + 56, h: 30, font: FONT, ...o }); };
         if (m.p && m.p.state !== 'cyberspace') {
           const full = activeCompanions(sv).length >= MAX_PARTY;
           add(m.p.state === 'active' ? { act: 'wait', label: t('party.toReserve'), w: 120 } : { act: 'join', label: t('party.toActive'), w: 120, disabled: full, reason: t('party.full') });
@@ -106,8 +106,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     if (b.kind === 'tab') { S.tab = b.id; layout(game); return; }
     if (b.kind === 'back') { game.resume(back); return; }
     if (b.kind === 'm') {
-      if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.key);
-      const p = sv.party.find((x) => x.npc === b.key);
+      if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
+      const p = sv.party.find((x) => x.npc === b.member);
       if (b.act === 'wait') p.state = 'waiting';
       if (b.act === 'join') p.state = 'active';
     }
@@ -146,8 +146,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
         const ap = m.p.approval;
         text(ctx, `${st} · ${t('party.approval')} ${ap > 0 ? '+' : ''}${ap}`, ox + 104, y + 46, ap <= -50 ? C.c : ap >= 50 ? C.j : C['4'], '12px monospace');
       } else text(ctx, `${t('world.credits')} ${sv.hero.credits} · ${t('party.marks')} ${sv.hero.judgeMarks || 0}/3`, ox + 104, y + 46, C['4'], '12px monospace');
-      resLine(ctx, ox + 356, y + 6, 296, 'hp', u.hp, u.maxHp, t('res.hp'));
-      resLine(ctx, ox + 356, y + 26, 296, 'mrl', u.mrl, u.maxMrl, t('res.mrl'));
+      resLine(ctx, ox + 356, y + 8, 296, 'hp', u.hp, u.maxHp, t('res.hp'));
+      resLine(ctx, ox + 356, y + 30, 296, 'mrl', u.mrl, u.maxMrl, t('res.mrl'));
     });
     // hero talents & gadget
     const x = ox + 690, w = BASE_W - 714;
@@ -175,7 +175,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     // thresholds header
     for (const v of [-50, -15, 15, 50]) text(ctx, String(v), bx + ((v + 100) / 200) * bw, oy + 70, C['3'], '12px monospace', 'center');
     FACTION_IDS.forEach((f, i) => {
-      const y = oy + 90 + i * 38;
+      const y = oy + 88 + i * 35;
       const v = sv.rep[f] || 0;
       const tier = repTier(v);
       text(ctx, factionName(f), ox + 40, y + 6, C['5'], FONT_B);
@@ -192,7 +192,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       text(ctx, `${v > 0 ? '+' : ''}${v}`, bx + bw + 16, y + 6, C['5'], FONT_B);
       text(ctx, t(`tier.${tier}`), bx + bw + 80, y + 6, tierColor(tier), FONT_B);
     });
-    text(ctx, TIERS.map((x) => t(`tier.${x}`)).join(' · '), ox + 40, oy + BASE_H - 40, C['3']);
+    text(ctx, TIERS.map((x) => t(`tier.${x}`)).join(' · '), ox + 40, oy + BASE_H - 24, C['3']);
   }
 
   function renderJournal(game) {
@@ -220,6 +220,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
 
   self = {
     id: 'panels',
+    S,
     enter(game) { rebuild(game); },
     resume(game) { rebuild(game); },
     resize(game) { layout(game); },

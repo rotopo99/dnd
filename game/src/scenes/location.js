@@ -467,6 +467,7 @@ export function createLocationScene(locId) {
 
   self = {
     id: 'location', locId,
+    S,
     enter(game) {
       S.time = 0;
       layout(game);
@@ -505,7 +506,7 @@ export function createLocationScene(locId) {
       S.rows.forEach((row) => {
         const npc = NPCS[row.id];
         panel(ctx, ox + 24, row.y, 600, 60, C['1'], C['2']);
-        drawPortrait(ctx, row.id, ox + 32, row.y + 4, 1.5 > 1 ? 1 : 1);
+        drawPortrait(ctx, row.id, ox + 36, row.y + 14, 1);
         const nActs = S.buttons.filter((b) => b.kind === 'npc' && b.npc === row.id).length;
         const tw = 600 - 70 - nActs * 96 - 12;
         text(ctx, fit(ctx, `${npc.name}${row.quest ? ' !' : ''}`, tw, FONT_B), ox + 86, row.y + 8, row.quest ? C.a : C['5'], FONT_B);
