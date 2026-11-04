@@ -3,6 +3,7 @@
 import { t } from '../data/text/index.js';
 import { play } from '../audio/sfx.js';
 import { ITEMS } from '../world/data.js';
+import { itemStats, soonNote } from '../ui/items-ui.js';
 import { members } from '../world/state.js';
 import { worldFlagValues } from '../world/checks.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
@@ -28,7 +29,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
       const buy = stock.filter((id) => ITEMS[id]).map((id) => {
         const it = ITEMS[id];
         const price = Math.max(1, Math.round(it.price * pr.buy));
-        return { label: `${t('shop.buy')}: ${it.name} — ${price}`, sub: `${it.desc} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price,
+        return { label: `${t('shop.buy')}: ${it.name} — ${price}`, sub: `${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price,
           run: () => { sv.hero.credits -= price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); saveGame(sv); } };
       });
       const sell = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && ITEMS[id]?.price > 0 && !ITEMS[id].key).map(([id, n]) => {

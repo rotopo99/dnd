@@ -12,7 +12,7 @@ import { WORLD_RULES as R } from '../data/world/rules.js';
 import { repTier, factionName, tierAtLeast } from '../world/reputation.js';
 import {
   members, visit, routesFrom, otherEnd, isKnownRoute, encounterThreshold, pickEncounter, partyFlagSet, openHidden,
-  journal, locFaction, requiresOk,
+  journal, locFaction, requiresOk, stigmaRep,
 } from '../world/state.js';
 import { onArrive } from '../world/quests.js';
 import { runEvent, travelEvents } from './event.js';
@@ -90,6 +90,8 @@ function iconOf(l, sv, visited, pflags) {
 }
 
 export function createWorldMapScene() {
+  /** Reputation as the faction sees the party (gear stigma, v3.1). */
+  const repOf = (sv, f) => Math.max(-100, Math.min(100, (sv.rep[f] ?? 0) + (S.stigma?.[f] || 0)));
   const S = { time: 0, hover: null, hoverNode: null, travel: null, log: [], buttons: [], cam: null, drag: null };
   let self;
   const save = (game) => game.save;
@@ -148,6 +150,7 @@ export function createWorldMapScene() {
     }
     S.logW = W - 32;
     S.pflags = partyFlagSet(game.save, game.data);
+    S.stigma = stigmaRep(game.save, game.data);
     S.hoverRoute = null;
     // which district rings are shown: around the current node (or its parent)
     const sv = game.save;
@@ -411,7 +414,7 @@ export function createWorldMapScene() {
       if (x < -20 || y < S.area.y - 20 || x > S.area.x + S.area.w + 20 || y > S.area.y + S.area.h + 20) continue;
       const visited = sv.visited.includes(id);
       const f = locFaction(id);
-      const frame = f && sv.rep[f] != null ? tierColor(repTier(sv.rep[f])) : C['4'];
+      const frame = f && sv.rep[f] != null ? tierColor(repTier(repOf(sv, f))) : C['4'];
       ctx.fillStyle = 'rgba(16,16,24,0.85)';
       ctx.fillRect(x - half - 2, y - half - 2, half * 2 + 4, half * 2 + 4);
       ctx.strokeStyle = S.hoverNode === id ? C['5'] : frame;
@@ -473,7 +476,7 @@ export function createWorldMapScene() {
       { text: l.name, color: C.h, font: FONT_B },
       { text: `${reg?.name || ''}${l.tier ? ` · ${TIER_NAMES[l.tier]}${l.pop ? ` (${l.pop})` : ''}` : ''}`, color: C['4'] },
       ...(reg ? [{ text: `${t('map.danger')}: ${'■'.repeat(l.danger ?? reg.danger) || '—'} · ${t('world.level')} ${reg.levels.join('–')}`, color: C.c }] : []),
-      ...(f ? [{ text: `${factionName(f)}: ${t(`tier.${repTier(sv.rep[f])}`)}`, color: tierColor(repTier(sv.rep[f])) }] : []),
+      ...(f ? [{ text: `${factionName(f)}: ${t(`tier.${repTier(repOf(sv, f))}`)}${S.stigma[f] ? ` (${t('map.stigma')} ${S.stigma[f]})` : ''}`, color: tierColor(repTier(repOf(sv, f))) }] : []),
       { text: hops ? `${t('map.way')}: ${days} ${t('map.days')}, ${hops.length} ${t('map.hops')}, ${t('map.rolls')} ${rolls}${fare ? ` · ${t('map.fare')} ${fare}` : ''}` : t('map.noRoute'), color: hops ? (fare > sv.hero.credits ? C.c : C['5']) : C.c },
       ...(l.terminal && (sv.visited.includes(id) || S.pflags.has('terminal-scan')) ? [{ text: `${t('map.terminal')}: ${t(`term.${sv.terminals[l.terminal.id]}`)}`, color: C.n }] : []),
       ...(S.pflags.has('scout-node') && l.battles?.length ? [{ text: `${t('map.scout')}: ${l.battles.filter((b) => !(b.once && sv.battlesDone.includes(b.id))).map((b) => encounterName(b.encounter)).join(', ') || '—'}`, color: C.c }] : []),

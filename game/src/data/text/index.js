@@ -502,6 +502,7 @@ const ru = {
   // ---------- v3: map ----------
   'map.center': 'К партии',
   'map.zoom': 'Масштаб',
+  'map.stigma': 'клеймо снаряжения',
   'map.panHint': 'колесо, перетаскивание, WASD',
   'map.fare': 'Плата за лодку',
   'map.noFare': 'Не хватает на лодку',
@@ -570,6 +571,9 @@ const ru = {
   'gear.noSlot': 'У этого предмета нет такого слота',
   'gear.noFit': 'Мод не подходит к этому предмету',
   // ---------- v3: battle items ----------
+  'world.withdrawal': 'Ломка', 'battle.throw': 'Метнуть', 'battle.throwSub': 'оружие упадёт',
+  'battle.throws': 'метает', 'battle.pickUp': 'подбирает оружие', 'battle.zone': 'Зона', 'battle.overheat': 'перегрев',
+  'battle.withdrawalSoon': 'после боя будет ломка',
   'battle.burst': 'Очередь', 'battle.burstHits': 'попаданий', 'battle.usesItem': 'применяет',
   'battle.trapPlaced': 'ставит ловушку', 'battle.trapTriggered': 'попадает в ловушку', 'battle.phobia': 'фобия',
   'battle.items': 'Предметы', 'battle.itemsTitle': 'Предметы на поясе', 'battle.noItems': 'Пояс пуст',

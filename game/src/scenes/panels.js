@@ -13,7 +13,7 @@ import { stageOf, currentGoalText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
-import { layoutGear, renderGear, clickGear } from './panel-gear.js';
+import { layoutGear, renderGear, renderGearHover, clickGear } from './panel-gear.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'gear', 'rep', 'journal'];
@@ -231,12 +231,6 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     legend(ctx, ox + 24, oy + BASE_H - 24);
   }
 
-  /** Backpack rows: name + stats; drawn before the hover comparison card. */
-  function renderGearButtons(game) {
-    for (const b of S.buttons) if (b.gear) button(game.ctx, b, S.hover === b);
-    renderGear(game, S, true);
-  }
-
   self = {
     id: 'panels',
     S,
@@ -259,11 +253,11 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
       const { ctx, width: W, height: H } = game;
       clear(ctx, W, H);
       if (S.tab === 'party') renderParty(game);
-      else if (S.tab === 'gear') { /* drawn after buttons: renderGearButtons */ }
+      else if (S.tab === 'gear') renderGear(game, S);
       else if (S.tab === 'rep') renderRep(game);
       else renderJournal(game);
-      for (const b of S.buttons) if (!b.gear) button(ctx, b, S.hover === b);
-      if (S.tab === 'gear') renderGearButtons(game);
+      for (const b of S.buttons) button(ctx, b, S.hover === b);
+      if (S.tab === 'gear') renderGearHover(game, S);
     },
   };
   return self;

@@ -101,7 +101,7 @@ export function layoutGear(game, S, b) {
   list.slice(S.gearPage * PAGE, S.gearPage * PAGE + PAGE).forEach((g, i) => {
     const it = ITEMS[g.id];
     const prob = modProblem(sv, g.id);
-    b.push({ kind: 'equip', id: g.id, label: `${it.name}${g.n > 1 ? ` ×${g.n}` : ''}`, sub: itemStats(it), font: FONT_B, x: ox + 680, y: oy + 100 + i * 46, w: 576, h: 42, disabled: !!prob, reason: prob, gear: true });
+    b.push({ kind: 'equip', id: g.id, label: `${it.name}${g.n > 1 ? ` ×${g.n}` : ''}`, sub: itemStats(it), font: FONT_B, x: ox + 680, y: oy + 100 + i * 46, w: 576, h: 42, disabled: !!prob, reason: prob});
   });
   if (list.length > PAGE) {
     b.push({ kind: 'gearPage', id: -1, label: '◀', x: ox + 1140, y: oy + 64, w: 54, h: 28, disabled: S.gearPage === 0 });
@@ -160,8 +160,11 @@ export function renderGear(game, S) {
   // backpack + comparison
   text(ctx, t('gear.backpack'), ox + 680, oy + 64, C['4'], FONT_B);
   if (!backpackGear(sv).length) text(ctx, t('gear.empty'), ox + 680, oy + 100, C['3'], FONT);
-  const h = S.hover;
-  if (h?.kind === 'equip') compare(game, S, h);
+}
+
+/** Comparison card over the buttons (call after they are drawn). */
+export function renderGearHover(game, S) {
+  if (S.hover?.kind === 'equip') compare(game, S, S.hover);
 }
 
 /** Hover card: what changes if the item is put on. */

@@ -9,6 +9,7 @@ import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
 import { RELATIONS } from '../data/factions.js';
 import { isBattleItem } from '../rules/combat.js';
+import { clearWithdrawal } from '../rules/aftermath.js';
 import {
   LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
   PLAY_DATA as GAME_DATA, resolveLocation, starterKit,
@@ -115,6 +116,7 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
   restore(u, h.hp, h.mrl);
   u.look = h.look || null;
+  if (h.withdrawal) u.withdrawal = { ...h.withdrawal };
   return u;
 }
 
@@ -361,6 +363,7 @@ export function restDepartures(save) {
 /** Rest: frac 1 — full ЗДР/МРЛ; 0.5 — field camp. Companions in Cyberspace are skipped. */
 export function restParty(save, data = GAME_DATA, frac = 1) {
   const h = save.hero;
+  if (frac >= 1 && h.withdrawal) clearWithdrawal(h); // v3.1: a full rest ends opiate withdrawal
   if (frac >= 1) {
     h.hp = null; h.mrl = null;
     for (const p of save.party) if (p.state !== 'cyberspace' && p.state !== 'left') { p.hp = null; p.mrl = null; }
@@ -467,6 +470,20 @@ export function pickEncounter(save, regionId, rng = Math.random) {
   if (e.kind === 'battle' && e.faction && tierAtLeast(repTier(save.rep[e.faction]), 'friendly')) return { kind: 'trader', friendly: e.faction, stock: null };
   return e;
 }
+
+/**
+ * Gear stigma (v3.1 worldFlags id 'stigma' from the hero's weapon / armour, e.g. Корона из кубков: scavengers −20):
+ * { faction: delta } added to how that faction sees the party (effectiveRep), the stored rep is untouched.
+ */
+export function stigmaRep(save, data = GAME_DATA) {
+  const out = {};
+  for (const w of buildHero(save, data).worldFlags || []) {
+    if (w.id !== 'stigma') continue;
+    for (const f of w.factions || []) { const k = normFaction(f); out[k] = (out[k] || 0) + (w.value || 0); }
+  }
+  return out;
+}
+export const effectiveRep = (save, f, data = GAME_DATA) => Math.max(-100, Math.min(100, (save.rep[normFaction(f)] ?? 0) + (stigmaRep(save, data)[normFaction(f)] || 0)));
 
 export const hasFlagInParty = (save, data, flag) => hasWorldFlag(members(save, data), flag);
 export const partySize = (save) => 1 + activeCompanions(save).filter((p) => p.hp !== 0).length;

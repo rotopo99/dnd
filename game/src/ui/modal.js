@@ -14,7 +14,7 @@ function specOf(game, m) {
   return m.build ? { ...m, ...m.build(game) } : m;
 }
 
-function layout(game, spec) {
+function layout(game, spec, m = {}) {
   const W = game.width, H = game.height;
   const w = Math.min(spec.width || 720, W - 64);
   const textW = w - 48;
@@ -24,9 +24,21 @@ function layout(game, spec) {
     for (const s of wrap(game.ctx, obj.text, textW, obj.font || FONT)) lines.push({ text: s, color: obj.color, font: obj.font });
     if (obj.gap) lines.push({ text: '' });
   }
-  const opts = spec.options || [];
-  const cols = opts.length > 6 ? 2 : 1;
-  const rows = Math.ceil(opts.length / cols);
+  const all = spec.options || [];
+  const cols = all.length > 6 ? 2 : 1;
+  // long lists (v3 shops): pages of options with ◀ ▶ (the last option — usually «Закрыть» — stays on every page)
+  const fitRows = Math.max(2, Math.floor((H - 200 - 3 * LINE) / (OPT_H + GAP)));
+  let opts = all.map((o, i) => ({ ...o, idx: i }));
+  let nav = null;
+  if (Math.ceil(all.length / cols) > fitRows) {
+    const per = (fitRows - 1) * cols - 1;
+    const body = opts.slice(0, -1), tail = opts.at(-1);
+    const pages = Math.ceil(body.length / per);
+    m._page = Math.max(0, Math.min(pages - 1, m._page || 0));
+    opts = [...body.slice(m._page * per, m._page * per + per), tail];
+    nav = { page: m._page, pages };
+  }
+  const rows = Math.ceil(opts.length / cols) + (nav ? 1 : 0);
   const maxLines = Math.floor((H - 160 - rows * (OPT_H + GAP)) / LINE);
   const shown = lines.slice(0, Math.max(3, maxLines));
   const h = 72 + shown.length * LINE + 16 + rows * (OPT_H + GAP);
@@ -34,15 +46,21 @@ function layout(game, spec) {
   const ow = cols === 2 ? Math.floor((w - 48 - GAP) / 2) : w - 48;
   const buttons = opts.map((o, i) => ({
     ...o, label: o.label, x: x + 24 + (i % cols) * (ow + GAP), y: y + 72 + shown.length * LINE + 16 + Math.floor(i / cols) * (OPT_H + GAP),
-    w: ow, h: OPT_H, key: i < 9 ? String(i + 1) : '', font: FONT_B, idx: i,
+    w: ow, h: OPT_H, key: i < 9 ? String(i + 1) : '', font: FONT_B,
   }));
+  if (nav) {
+    const ny = y + 72 + shown.length * LINE + 16 + (rows - 1) * (OPT_H + GAP);
+    buttons.push({ label: '◀', nav: -1, x: x + 24, y: ny, w: 90, h: OPT_H, font: FONT_B, key: '', disabled: nav.page === 0 });
+    buttons.push({ label: `${nav.page + 1} / ${nav.pages}`, nav: 0, x: x + 122, y: ny, w: 120, h: OPT_H, font: FONT_B, key: '', disabled: true });
+    buttons.push({ label: '▶', nav: 1, x: x + 250, y: ny, w: 90, h: OPT_H, font: FONT_B, key: '', disabled: nav.page >= nav.pages - 1 });
+  }
   return { x, y, w, h, lines: shown, buttons };
 }
 
 export function updateModal(game) {
   const m = game.modals[game.modals.length - 1];
   const spec = specOf(game, m);
-  const L = layout(game, spec);
+  const L = layout(game, spec, m);
   m._layout = L;
   m._spec = spec; // render reuses it (one build per frame)
   const inp = game.input;
@@ -51,11 +69,11 @@ export function updateModal(game) {
   let pick = null;
   if (inp.mouse.clicked && hb && !hb.disabled) pick = hb;
   for (let i = 1; i <= 9 && !pick; i++) if (inp.wasPressed(`Digit${i}`) || inp.wasPressed(`Numpad${i}`)) {
-    const b = L.buttons[i - 1];
+    const b = L.buttons.filter((x) => !x.nav)[i - 1];
     if (b && !b.disabled) pick = b;
   }
   if (!pick && (inp.wasPressed('Enter') || inp.wasPressed('Space'))) {
-    const en = L.buttons.filter((b) => !b.disabled);
+    const en = L.buttons.filter((b) => !b.disabled && !b.nav);
     if (en.length === 1) pick = en[0];
   }
   if (!pick && inp.wasPressed('Escape') && spec.onCancel !== false) {
@@ -66,6 +84,7 @@ export function updateModal(game) {
   }
   if (!pick) return;
   play('uiClick');
+  if (pick.nav) { m._page = (m._page || 0) + pick.nav; return; }
   const opt = spec.options[pick.idx];
   if (!opt.keep) game.modals.splice(game.modals.indexOf(m), 1);
   opt.run?.(game);
@@ -77,7 +96,7 @@ export function renderModal(game) {
   ctx.fillRect(0, 0, game.width, game.height);
   const m = game.modals[game.modals.length - 1];
   const spec = m._spec || specOf(game, m);
-  const L = m._layout || layout(game, spec);
+  const L = m._layout || layout(game, spec, m);
   panel(ctx, L.x, L.y, L.w, L.h, C['1'], spec.border ? C[spec.border] : C.h);
   text(ctx, fit(ctx, spec.title || '', L.w - 48, FONT_L), L.x + 24, L.y + 22, spec.titleColor ? C[spec.titleColor] : C.h, FONT_L);
   L.lines.forEach((l, i) => text(ctx, l.text, L.x + 24, L.y + 72 + i * LINE, l.color ? (C[l.color] || l.color) : C['5'], l.font || FONT));

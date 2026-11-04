@@ -16,7 +16,7 @@ import {
 import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputation.js';
 import {
   members, activeCompanions, buildHero, canRecruit, recruit, grant, restParty, restDepartures, journal, tf,
-  locFaction, regionOf, hasFlagInParty, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
+  locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
 } from '../world/state.js';
 import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc } from '../world/quests.js';
 import { startWorldBattle } from './world-battle.js';
@@ -43,7 +43,8 @@ export function createLocationScene(rawId) {
   const save = (game) => game.save;
   const toastAll = (game, list) => { for (const x of list) game.toast(x.text, x.color); };
   const persist = (game) => saveGame(game.save);
-  const facTier = (game, f) => (f ? repTier(game.save.rep[normFaction(f)]) : 'neutral');
+  // v3.1: gear stigma shifts how the faction sees the party (effectiveRep)
+  const facTier = (game, f) => (f ? repTier(effectiveRep(game.save, f, game.data)) : 'neutral');
   const back = (game) => { game.resume(self); refresh(game); };
   const refresh = (game) => { toastAll(game, autoProgress(save(game), game.data)); persist(game); layout(game); };
   const ms = (game) => members(save(game), game.data);

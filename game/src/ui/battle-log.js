@@ -120,6 +120,11 @@ export function formatEvent(S, e) {
     case 'useItem': return [a(A), g(` ${t('battle.usesItem')} `), [`«${itemName(e.item)}»`, C.h]];
     case 'trapPlaced': return [a(A), g(': '), [`${t('battle.trapPlaced')} «${itemName(e.item)}»`, C.a]];
     case 'trapTriggered': return [a(T), g(': '), [`${t('battle.trapTriggered')} «${itemName(e.item)}»`, C.c]];
+    case 'throw': return [a(A), g(` ${t('battle.throws')} `), [`«${itemName(e.item)}»`, C.h], g(' → '), a(T)];
+    case 'pickUp': return [a(A), g(`: ${t('battle.pickUp')}`)];
+    case 'zone': return [g(`${t('battle.zone')}: ${e.kind || ''}`)];
+    case 'overheat': return [a(A), g(': '), [t('battle.overheat'), C.c]];
+    case 'withdrawalPending': return [a(T), g(': '), [t('battle.withdrawalSoon'), C.f]];
     case 'phobia': return [a(T), g(': '), [`${t('battle.phobia')} (${t(`phobia.${e.trigger}`)})`, C.n]];
     case 'outOfRange': return [a(A), g(`: ${t('battle.outOfRangeEv')}`)];
     case 'victory': return [w(e.winner === 'heroes' ? t('battle.victory') : t('battle.defeat'))];

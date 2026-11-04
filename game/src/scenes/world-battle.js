@@ -3,6 +3,7 @@
 // dead companion → Cyberspace state; dead hero / lost battle → Cyberspace episode (scenes/cyberspace.js).
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
+import { applyWithdrawal } from '../rules/aftermath.js';
 import { t } from '../data/text/index.js';
 import { battleXp } from '../rules/progression.js';
 import { createBattleScene } from './battle.js';
@@ -102,6 +103,10 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     for (const [id, n0] of Object.entries(hu.build?.inventory || {})) {
       const used = n0 - (hu.inventory?.[id] || 0);
       if (used > 0) save.hero.items[id] = Math.max(0, (save.hero.items[id] || 0) - used);
+    }    // v3.1: opiates used in battle → withdrawal (−МРЛ now, debuff until a full rest)
+    if (!hu.dead) {
+      const w = applyWithdrawal(save.hero, hu, Math.random);
+      if (w?.loss) out.push({ text: `${t('world.withdrawal')}: −${w.loss} ${t('res.mrl')}`, color: 'f' });
     }
   }
   for (const p of activeCompanions(save)) {

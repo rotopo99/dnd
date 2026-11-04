@@ -156,6 +156,27 @@ export function renderBattle(game, S) {
   for (let i = 0; i < S.fireTiles.length; i += 2) {
     drawSprite(ctx, 'obj-fire', L.mapX + S.fireTiles[i] * L.cell, L.mapY + S.fireTiles[i + 1] * L.cell, L.s, { frame: idleFrame(tms * 0.8, i * 0.13) });
   }
+  // v3.1: zones (smoke) — soft clouds over their cells
+  for (const z of b.zones || []) {
+    const R = z.size || 1, c = L.cell;
+    for (let y = z.y - R; y <= z.y + R; y++) for (let x = z.x - R; x <= z.x + R; x++) {
+      if (x < 0 || y < 0 || x >= b.grid.w || y >= b.grid.h) continue;
+      const px = L.mapX + (x + 0.5) * c, py = L.mapY + (y + 0.5) * c;
+      const ph = tms / 900 + x * 0.7 + y * 1.3;
+      ctx.fillStyle = z.kind === 'smoke' ? 'rgba(180,186,200,0.32)' : 'rgba(120,200,140,0.25)';
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        ctx.arc(px + Math.cos(ph + k * 2.1) * c * 0.18, py + Math.sin(ph + k * 2.1) * c * 0.14, c * 0.36, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  // v3.1: dropped (thrown) weapons
+  for (const d of b.drops || []) {
+    const c = L.cell, px = L.mapX + d.x * c, py = L.mapY + d.y * c;
+    ctx.strokeStyle = C['5']; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px + c * 0.2, py + c * 0.8); ctx.lineTo(px + c * 0.8, py + c * 0.2); ctx.stroke();
+  }
   // v3: own traps (enemy traps stay hidden)
   for (const tr of b.traps || []) {
     if (tr.team !== 'heroes') continue;
