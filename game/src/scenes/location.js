@@ -18,7 +18,7 @@ import {
   members, activeCompanions, buildHero, canRecruit, recruit, grant, restParty, restDepartures, journal, tf,
   locFaction, regionOf, hasFlagInParty, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
 } from '../world/state.js';
-import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions } from '../world/quests.js';
+import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc } from '../world/quests.js';
 import { startWorldBattle } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { eventsFor, runEvent } from './event.js';
@@ -289,13 +289,13 @@ export function createLocationScene(rawId) {
     }
     if (goal.kind === 'check') {
       const party = ms(game);
-      return { label: `${t('loc.solve')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goal.dc}`,
-        run: (g) => (goal.group ? openGroupCheck : openCheck)(g, { title: q.name, skills: goal.skills, dc: goal.dc, members: party, cancel: !goal.group, memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`,
+      return { label: `${t('loc.solve')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goalDc(sv, goal)}`,
+        run: (g) => (goal.group ? openGroupCheck : openCheck)(g, { title: q.name, skills: goal.skills, dc: goalDc(sv, goal), members: party, cancel: !goal.group, memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`,
           onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
     if (goal.kind === 'challenge') {
-      return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${goal.successes}/${goal.failures} · ${t('battle.dc')} ${goal.dc}`,
-        run: (g) => openChallenge(g, { title: q.name, skills: goal.skills, dc: goal.dc, successes: goal.successes, failures: goal.failures, members: ms(g),
+      return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.successes}/${goal.failures} · ${t('battle.dc')} ${goalDc(sv, goal)}`,
+        run: (g) => openChallenge(g, { title: q.name, skills: goal.skills, dc: goalDc(sv, goal), successes: goal.successes, failures: goal.failures, members: ms(g),
           forgiveFirst: hasFlagInParty(sv, g.data, 'challenge-forgive'), onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
     if (goal.kind === 'pay') {
@@ -326,7 +326,7 @@ export function createLocationScene(rawId) {
     // quests given by the location (giver not standing here)
     for (const qid of loc.quests || []) {
       const q = QUESTS[qid];
-      if (!q || sv.quests[qid] || (q.giver && npcsAt(locId).includes(q.giver)) || !requires(game, q.requires || {})) continue;
+      if (!q || sv.quests[qid] || (q.giver && npcsAt(locId, sv).includes(q.giver)) || !requires(game, q.requires || {})) continue;
       if (tier === 'hostile' || (tier === 'suspicious' && !isTrialQuest(q) && !hasFlagInParty(sv, game.data, 'bribe'))) {
         out.push({ label: `${t('loc.questOffer')}: ${q.name}`, sub: tier === 'hostile' ? t('loc.closedHostile') : t('loc.onlyTrial'), disabled: true });
         continue;
@@ -377,7 +377,7 @@ export function createLocationScene(rawId) {
       out.push({ label: t('loc.revive'), sub: cost ? `${cost} ${t('world.credits')}` : t('loc.free'), disabled: sv.hero.credits < cost,
         run: (g) => { sv.hero.credits -= cost; for (const p of cyber) { p.state = activeCompanions(sv).length < MAX_PARTY ? 'active' : 'waiting'; p.hp = null; p.mrl = null; } g.toast(t('loc.revived'), 'j'); refresh(g); } });
     }
-    if (svc.includes('trade') && !npcsAt(locId).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market') ? t('loc.closedHostile') : t('loc.shopSub'), disabled: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market'), run: (g) => openShopHere(g, loc.name, tier) });
+    if (svc.includes('trade') && !npcsAt(locId, sv).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market') ? t('loc.closedHostile') : t('loc.shopSub'), disabled: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market'), run: (g) => openShopHere(g, loc.name, tier) });
     if (hasFlagInParty(sv, game.data, 'black-market') && ['town', 'hub'].includes(loc.kind)) out.push({ label: t('loc.blackMarket'), sub: t('loc.blackMarketSub'), run: (g) => openShopHere(g, t('loc.blackMarket'), tier, WORLD_RULES.blackMarket) });
     if (svc.includes('rumors')) out.push({ label: t('loc.rumor'), sub: `${WORLD_RULES.rumorPrice} ${t('world.credits')}`, disabled: sv.hero.credits < WORLD_RULES.rumorPrice, run: (g) => { sv.hero.credits -= WORLD_RULES.rumorPrice; rumor(g); refresh(g); } });
     if (hasFlagInParty(sv, game.data, 'gig') && ['town', 'hub'].includes(loc.kind) && !V(game).gig) {
@@ -477,7 +477,7 @@ export function createLocationScene(rawId) {
     const ox = Math.max(0, Math.floor((game.width - BASE_W) / 2)), oy = Math.max(0, Math.floor((game.height - BASE_H) / 2));
     S.ox = ox; S.oy = oy;
     const btns = [];
-    const ids = npcsAt(locId);
+    const ids = npcsAt(locId, sv);
     S.npcs = ids;
     S.rows = [];
     const pages = Math.max(1, Math.ceil(ids.length / PAGE));

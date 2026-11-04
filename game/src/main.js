@@ -1,7 +1,7 @@
 import { createInput } from './input.js';
 import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture } from './audio/sfx.js';
-import { GAME_DATA } from './data/index.js';
+import { PLAY_DATA as GAME_DATA } from './world/data.js';
 import { setSaveErrorHandler } from './save.js';
 import { t } from './data/text/index.js';
 import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';

@@ -59,6 +59,22 @@ export function slots(save, qid) {
   return out;
 }
 
+/**
+ * How many subgoals of an 'all' goal finish the stage: min, or pick (v3: the player picks at most N, the rest are lost;
+ * pickWith { flag, pick } raises N when the flag is set), else all of them.
+ */
+export function allNeed(save, g) {
+  if (g.min) return g.min;
+  if (g.pick) return Math.min(g.goals.length, g.pickWith && save.flags[g.pickWith.flag] ? g.pickWith.pick : g.pick);
+  return g.goals.length;
+}
+
+/** DC of a check / challenge goal: v3 easeBy — every set flag from the list lowers the DC by 1. */
+export function goalDc(save, goal) {
+  const ease = (goal.easeBy || []).filter((f) => save.flags[f]).length;
+  return (goal.dc || 0) - ease;
+}
+
 const subDone = (save, st, sg, i) => st.subs[i] === true || st.subs[i] === 'failed' || (sg.doneFlag && save.flags[sg.doneFlag]);
 const slotKey = (slot) => `${slot.stage.id}:${slot.sub ?? '-'}:${slot.option?.id ?? '-'}`;
 const choiceKey = (slot) => `${slot.stage.id}:${slot.sub ?? '-'}`;
@@ -137,7 +153,7 @@ export function completeSlot(save, slot, data) {
     st.subs[slot.sub] = true;
     const g = slot.stage.goal;
     const done = g.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
-    if (done >= (g.min || g.goals.length)) {
+    if (done >= allNeed(save, g)) {
       out.push(...applyEffects(save, slot.stage.effects, data, q.key));
       out.push(...toStage(save, slot.qid, slot.stage.next, data));
     }
@@ -191,7 +207,7 @@ export function failSlot(save, slot, data) {
       st.subs[slot.sub] = 'failed';
       const g = slot.stage.goal;
       const out = [{ text: t('q.goalFailed'), color: 'c' }];
-      if (g.goals.filter((sg, i) => subDone(save, st, sg, i)).length >= (g.min || g.goals.length)) out.push(...toStage(save, slot.qid, slot.stage.next, data));
+      if (g.goals.filter((sg, i) => subDone(save, st, sg, i)).length >= allNeed(save, g)) out.push(...toStage(save, slot.qid, slot.stage.next, data));
       return out;
     }
     return finish(save, slot.qid, 'failed', data);

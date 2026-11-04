@@ -3,7 +3,7 @@
 // Items with world { check, bonus } come in through the hero's merged gadget (state.js gadgetWithItems).
 import { SKILLS } from '../data/talents.js';
 import { mod } from '../rules/character.js';
-import { skillTier, skillCheck, SKILL_STATS } from '../rules/skills.js';
+import { skillTier, skillCheck, SKILL_STATS, SKILL_BASE_BONUS, SKILL_EXTRA_BONUS } from '../rules/skills.js';
 import { GAME_DATA } from '../data/index.js';
 import { SPECIALIZATIONS } from './data.js';
 
@@ -21,7 +21,11 @@ export function checkInfo(member, skill, extraAdv) {
     if (s.adv) notes.push({ text: s.name || s.id, adv: true });
     if (s.bonus) { bonus += s.bonus; notes.push({ text: s.name || s.id, bonus: s.bonus }); }
   }
-  let adv = kind === 'spec', dis = kind === 'other';
+  // v3 flexible creation: 2 base skills +2, 2 extra +1 (engine skillCheck adds the same)
+  const picks = u.skillPicks;
+  if (picks?.base.includes(skill)) { bonus += SKILL_BASE_BONUS; notes.push({ text: 'base', bonus: SKILL_BASE_BONUS }); }
+  else if (picks?.extra.includes(skill)) { bonus += SKILL_EXTRA_BONUS; notes.push({ text: 'extra', bonus: SKILL_EXTRA_BONUS }); }
+  let adv = kind === 'spec', dis = kind === 'other' || (skill === 'stealth' && !!u.stealthDis);
   if (extraAdv) { notes.push({ text: extraAdv, adv: true }); adv = true; }
   const mode = adv && dis ? 'normal' : adv ? 'adv' : dis ? 'dis' : 'normal';
   const prof = kind !== 'other' ? u.prof || 2 : 0;

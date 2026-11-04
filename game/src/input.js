@@ -4,7 +4,7 @@ export function createInput(target, canvas) {
   const down = new Set();
   const pressed = new Set();
   const typed = [];
-  const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false };
+  const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false, down: false, released: false, wheel: 0 };
   const pending = [];
   const hoverPos = { x: -1, y: -1, inside: false };
   const applyClick = (c) => {
@@ -41,6 +41,10 @@ export function createInput(target, canvas) {
       else applyClick(c);
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // held button (drag / pan) and wheel (zoom): read by scenes that need them, cleared per step
+    canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) mouse.down = true; });
+    window.addEventListener('pointerup', (e) => { if (e.button === 0 && mouse.down) { mouse.down = false; mouse.released = true; } });
+    canvas.addEventListener('wheel', (e) => { mouse.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
   }
   return {
     mouse,
@@ -53,6 +57,8 @@ export function createInput(target, canvas) {
       typed.length = 0;
       mouse.clicked = false;
       mouse.rightClicked = false;
+      mouse.released = false;
+      mouse.wheel = 0;
       if (pending.length) applyClick(pending.shift());
       else Object.assign(mouse, hoverPos);
     },
