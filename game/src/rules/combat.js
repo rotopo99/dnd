@@ -828,18 +828,28 @@ function attackMode(b, att, tgt, melee, isWeapon, fx, fy) {
   const adv = !!modFlag(b, att, 'attackAdv') || !!modFlag(b, att, 'firstAttackAdv') || !!modFlag(b, tgt, 'attackedAdv')
     || (melee && !!modFlag(b, tgt, 'attackedAdvMelee')) || tgt.down;
   const dis = !!modFlag(b, att, 'attackDisadv') || !!modFlag(b, tgt, 'attackedDisadv')
-    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy));
+    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy)) || !!att.armorPenalty;
   return { adv, dis };
 }
 
 /** Attack roll d20 + bonus >= KB. Triggers selfAttacked reactions. Returns { hit, crit, extraDice }. */
-function attackRoll(b, att, tgt, bonus, melee, isWeapon) {
-  triggerReactions(b, 'selfAttacked', tgt, att);
+/** v3: armour piercing of the attacker's weapon — ignores up to weapon.ap of the target's armour KB. */
+function apReduction(att, tgt, isWeapon) {
+  const ap = isWeapon && att.weapon ? att.weapon.ap || 0 : 0;
+  return ap > 0 ? Math.min(ap, tgt.armorKb || 0) : 0;
+}
+
+/**
+ * Attack roll d20 + bonus >= KB (+ kbPenalty for later burst shots). Triggers selfAttacked reactions (unless
+ * opts.noReact). Returns { hit, crit, extraDice }.
+ */
+function attackRoll(b, att, tgt, bonus, melee, isWeapon, opts) {
+  if (!(opts && opts.noReact)) triggerReactions(b, 'selfAttacked', tgt, att);
   if (!isAlive(tgt) || !isStanding(att)) return { hit: false, crit: false, extraDice: 0 };
   const extraDice = isWeapon ? statusMod(b, att, 'extraWeaponDice') : 0;
   const r = d20(b.rng, attackMode(b, att, tgt, melee, isWeapon));
   const total = r.natural + bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att);
-  const kb = getKb(b, tgt, att, !melee);
+  const kb = getKb(b, tgt, att, !melee) - apReduction(att, tgt, isWeapon) + ((opts && opts.kbPenalty) || 0);
   let crit = r.natural >= Math.min(20, att.critRange || 20);
   const hit = r.natural !== 1 && (crit || total >= kb);
   if (hit && tgt.down) crit = true;
@@ -859,7 +869,8 @@ function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType) 
   const w = att.weapon;
   const melee = weaponRange(att) <= 1;
   const critDice = crit && w.dmgType !== 'proxy';
-  let amt = rollDice(b.rng, w.dice, critDice) + mod(effStat(b, att, w.stat || 'str')) + attackDmgBonus(b, att, tgt, melee ? 'melee' : 'ranged');
+  let amt = rollDice(b.rng, w.dice, critDice) + mod(effStat(b, att, w.stat || 'str')) + attackDmgBonus(b, att, tgt, melee ? 'melee' : 'ranged')
+    + (w.dmg || 0) + dmgTypeTier(att, w.dmgType);
   if (extraWeaponDice > 0) {
     const die = firstDie(w.dice);
     for (let i = 0; die && i < extraWeaponDice; i++) amt += rollDice(b.rng, die, critDice);
@@ -869,6 +880,23 @@ function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType) 
     const type = extraType || w.dmgType;
     const c = crit && type !== 'proxy';
     dealDamage(b, att, tgt, rollDice(b.rng, extraDice, c), type, { crit: c });
+  }
+  if (w.onHit && w.onHit.length && isAlive(tgt)) weaponOnHit(b, att, tgt, w);
+}
+
+/** «Тип урона» tier bonus (equipment.js DMG_TYPE_TIER_DMG). */
+function dmgTypeTier(u, dmgType) {
+  return (u.dmgTypeBonus && dmgType && u.dmgTypeBonus[dmgType]) || 0;
+}
+
+/** v3 weapon properties on a hit: ops (status with chance / save vs 8 + prof + mod(weapon stat)). */
+function weaponOnHit(b, att, tgt, w) {
+  const dc = 8 + att.prof + mod(effStat(b, att, w.stat || 'str'));
+  for (const op of w.onHit) {
+    if (!isAlive(tgt)) break;
+    if (op.chance != null && b.rng() >= op.chance) continue;
+    if (op.save && rollSave(b, tgt, op.save, dc, att, 'onHit:' + (w.id || w.name))) continue;
+    applyOp(b, att, tgt, op, { dc });
   }
 }
 
@@ -1692,7 +1720,7 @@ export function perform(b, action) {
 export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy = att.y) {
   const m = attackMode(b, att, tgt, melee, isWeapon, fx, fy);
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
-  let kb = getKb(b, tgt, null, false);
+  let kb = getKb(b, tgt, null, false) - apReduction(att, tgt, isWeapon);
   if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += COVER_KB;
   const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit');
   const critRange = Math.min(20, att.critRange || 20);
