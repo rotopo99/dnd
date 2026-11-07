@@ -6,7 +6,8 @@
 //              (status ops may carry chance 0..1 and save: 'con' — DC 8 + prof + mod(weapon stat));
 //              rof > 1 enables «Очередь» (rof shots, shot i needs KB + recoil × i).
 //   armor:   { id, name, slot: 'armor', type: 'cloth'|'light'|'medium'|'heavy'|'mech', kb, dexCap?, stealthDis?, resist?, noise? }
-//   offhand: { id, name, slot: 'offhand', kb?, passives? }  (shields; an off-hand weapon gives no extra attack in v3)
+//   offhand: { id, name, slot: 'offhand', kb?, passives?, speed?, noise?, req?, offAction? }  (v7: offAction → ability, offhandAbility)
+//   pack:    { id, name, slot: 'pack', grid: [w, h], quick? }  (backpack slot: world inventory; only `quick` matters here)
 //   mod:     { id, name, slot: 'mod', target: 'weapon'|'armor', hit?, dmg?, ap?, rof?, recoil?, range?, noise?, onHit?, kb?, resist? }
 //   consumable / grenade / trap: see combat.js useItem (ability-like: action, range, target, area, roll, save, effects, trap).
 //
@@ -56,6 +57,8 @@ export const REACH_RANGE = 2;
 export const THROWN_DEFAULT_RANGE = 4;
 /** Mech armour needs this armour tier, else the no-skill penalty (spec items.md: «ступень 3 и выше, иначе помеха»). */
 export const MECH_MIN_TIER = 3;
+/** v7: armour / shield with an unmet stat requirement — speed −2 (and disadvantage on attacks, combat.js reqPenalty). */
+export const REQ_SPEED_PENALTY = 2;
 /** Props hoisted from weapon.props onto the weapon. */
 export const WEAPON_PROP_KEYS = ['reach', 'thrown', 'arc', 'area', 'charges', 'enr', 'overheat', 'extra', 'stigma'];
 
@@ -72,7 +75,7 @@ export function collectItems(d = {}) {
     const list = Array.isArray(src) ? src : Object.values(src);
     for (const it of list) if (it && it.id) out[it.id] = it;
   };
-  for (const k of ['ITEMS', 'items', 'WEAPONS', 'weapons', 'ARMOR', 'armor', 'OFFHAND', 'offhand', 'MODS', 'mods',
+  for (const k of ['ITEMS', 'items', 'WEAPONS', 'weapons', 'ARMOR', 'armor', 'OFFHAND', 'offhand', 'MODS', 'mods', 'PACKS', 'packs',
     'CONSUMABLES', 'consumables', 'GRENADES', 'grenades', 'TRAPS', 'traps']) add(d[k]);
   return out;
 }
@@ -136,40 +139,88 @@ export const armorTierFor = (prof, armor) => prof.armor[(armor && armor.type) ||
 export const dmgTypeBonus = (prof, dmgType) => DMG_TYPE_TIER_DMG[prof.dmgTypes[dmgType] || 0] || 0;
 
 /**
- * Apply equipment over class defaults. Returns { weapon, armor, offhand, mods } (plain copies).
+ * Apply equipment over class defaults. Returns { weapon, armor, offhand, mods, gear } (plain copies).
  * Throws on unknown items, wrong slots and two-handed weapon + off-hand.
+ *
+ * v7 (docs/specs/inventory-mods.md): equipment.inst = { weapon: { q, mods: [ids] }, armor: { q, mods }, offhand: { q } } —
+ * quality of the worn piece (quality table: data QUALITY → hit / dmg on weapons, kb on armour and shields) and mods
+ * installed on that piece; the old flat `equipment.mods` (by mod.target) still works. equipment.pack — backpack id
+ * (not a combat item; only its `quick` counts). Mod fields read here (flat on the mod record):
+ *   weapon: hit, dmg, ap, rof, recoil, range, noise, onHit, extra, enr (sum ≥ 0), surfaceOnHit {kind, size, turns, on}, ignoreSmoke
+ *   armour: kb, noise, resist, stealthDis: false, immuneStatus, immuneSurface, thorns, speed, quick
+ * `gear` sums for the creature: { speed, noise, quick, immuneStatus, immuneSurface, thorns, req: [items with req] }.
  */
-export function applyEquipment(items, equipment, classWeapon, classArmor) {
+export function applyEquipment(items, equipment, classWeapon, classArmor, quality = null) {
   const eq = equipment || {};
+  const inst = eq.inst || {};
   const wItem = resolveItem(items, eq.weapon, 'weapon');
   const aItem = resolveItem(items, eq.armor, 'armor');
   const off = resolveItem(items, eq.offhand, 'offhand');
-  const mods = (eq.mods || []).map((m) => resolveItem(items, m, 'mod'));
+  const pack = eq.pack ? resolveItem(items, eq.pack, 'pack') : null;
+  const instMods = (k) => (inst[k] && Array.isArray(inst[k].mods) ? inst[k].mods : []).map((m) => resolveItem(items, m, 'mod'));
+  const legacy = (eq.mods || []).map((m) => resolveItem(items, m, 'mod'));
+  const wMods = [...legacy.filter((m) => (m.target || 'weapon') === 'weapon'), ...(wItem ? instMods('weapon') : [])];
+  const aMods = [...legacy.filter((m) => (m.target || 'weapon') !== 'weapon'), ...(aItem ? instMods('armor') : [])];
+  const mods = [...wMods, ...aMods];
   const weapon = { ...(wItem || classWeapon || UNARMED) };
   const armor = { ...(aItem || classArmor || { type: 'cloth', kb: 0 }) };
   if (weapon.twoHanded && off) throw new Error(`equipment: two-handed "${weapon.id || weapon.name}" leaves no hand for "${off.id}"`);
+  const Q = (k) => (quality && inst[k]?.q && quality[inst[k].q]) || null;
+  const wq = wItem && Q('weapon'), aq = aItem && Q('armor'), oq = off && Q('offhand');
+  if (wq) { if (wq.hit) weapon.hit = (weapon.hit || 0) + wq.hit; if (wq.dmg) weapon.dmg = (weapon.dmg || 0) + wq.dmg; weapon.quality = inst.weapon.q; }
+  if (aq) { if (aq.kb) armor.kb = Math.max(0, (armor.kb || 0) + aq.kb); armor.quality = inst.armor.q; }
+  const offhand = off ? { ...off } : null;
+  if (offhand && oq && oq.kb && offhand.kb) offhand.kb = Math.max(0, offhand.kb + oq.kb);
   weapon.onHit = [...(weapon.onHit || [])];
   armor.resist = { ...(armor.resist || {}) };
-  for (const m of mods) {
-    if ((m.target || 'weapon') === 'weapon') {
-      for (const k of ['hit', 'dmg', 'ap', 'rof', 'recoil', 'range', 'noise']) if (m[k]) weapon[k] = (weapon[k] || 0) + m[k];
-      if (m.onHit) weapon.onHit.push(...m.onHit);
-    } else {
-      if (m.kb) armor.kb = (armor.kb || 0) + m.kb;
-      if (m.noise) armor.noise = (armor.noise || 0) + m.noise;
-      if (m.resist) Object.assign(armor.resist, m.resist);
-      if (m.stealthDis === false) armor.stealthDis = false;
-    }
+  const gear = { speed: (aItem ? armor.speed || 0 : 0) + (offhand?.speed || 0), noise: offhand?.noise || 0, quick: pack?.quick || 0,
+    immuneStatus: [], immuneSurface: [], thorns: [], req: [wItem, aItem, off].filter((it) => it && it.req && Object.keys(it.req).length) };
+  for (const m of wMods) {
+    for (const k of ['hit', 'dmg', 'ap', 'rof', 'recoil', 'range', 'noise']) if (m[k]) weapon[k] = (weapon[k] || 0) + m[k];
+    if (m.onHit) weapon.onHit.push(...m.onHit);
+    if (m.surfaceOnHit) weapon.surfaceOnHit = [...(weapon.surfaceOnHit || []), m.surfaceOnHit];
+    if (m.ignoreSmoke) weapon.ignoreSmoke = true;
+  }
+  for (const m of aMods) {
+    if (m.kb) armor.kb = (armor.kb || 0) + m.kb;
+    if (m.noise) armor.noise = (armor.noise || 0) + m.noise;
+    if (m.resist) Object.assign(armor.resist, m.resist);
+    if (m.stealthDis === false) armor.stealthDis = false;
   }
   for (const m of mods) {
-    if ((m.target || 'weapon') !== 'weapon') continue;
+    if (m.immuneStatus) gear.immuneStatus.push(...m.immuneStatus);
+    if (m.immuneSurface) gear.immuneSurface.push(...m.immuneSurface);
+    if (m.thorns) gear.thorns.push(m.thorns);
+    if (m.speed) gear.speed += m.speed;
+    if (m.quick) gear.quick += m.quick;
+    if (m.req) gear.req.push(m);
+  }
+  for (const m of wMods) {
     if (m.extra) weapon.extra = [...toList(weapon.extra ?? weapon.props?.extra), ...toList(m.extra)];
-    if (m.enr) weapon.enr = (weapon.enr ?? weapon.props?.enr ?? 0) + m.enr;
+    if (m.enr) weapon.enr = Math.max(0, (weapon.enr ?? weapon.props?.enr ?? 0) + m.enr);
   }
   if (weapon.recoil && weapon.recoil < 0) weapon.recoil = 0;
   normalizeWeapon(weapon);
   normalizeArmor(armor);
-  return { weapon, armor, offhand: off ? { ...off } : null, mods: mods.map((m) => m.id) };
+  return { weapon, armor, offhand, mods: mods.map((m) => m.id), gear };
+}
+
+/** Unmet stat requirements of an item for final stats: [stat ids]. */
+export const unmetStats = (it, stats) => Object.entries(it?.req || {}).filter(([k, v]) => typeof v === 'number' && (stats?.[k] ?? 10) < v).map(([k]) => k);
+
+/**
+ * v7 off-hand action (offhand.js offAction: { name, action, range, dice?, dmgType?, effects?, usesPerBattle? }) as an
+ * ability: dice → attack roll (ЛВК) + damage; else the effects automatically. null — the item has none.
+ */
+export function offhandAbility(off) {
+  const o = off && off.offAction;
+  if (!o) return null;
+  const effects = o.dice ? [{ op: 'damage', dice: o.dice, dmgType: o.dmgType || 'pierce' }] : (o.effects || []);
+  return {
+    id: `off:${off.id}`, name: o.name || off.name, level: 1, path: null, cost: 0, action: o.action || 'bonus', trigger: null,
+    range: o.range ?? 1, target: o.target || 'enemy', area: null, roll: o.dice ? 'attack' : (o.roll || 'auto'), save: o.save || null,
+    onSave: 'none', usesPerBattle: o.usesPerBattle ?? null, effects, castStat: 'dex', desc: off.desc || '', canon: null, offhand: off.id,
+  };
 }
 
 /** KB from armour (canon: 10 + armour KB + mod ЛВК, capped by armour type / dexCap). */

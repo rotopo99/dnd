@@ -83,6 +83,7 @@ layoutBattle.buttons = (S) => {
     }
     const top = L.bar.y + 2 * h + gap + 8;
     L.log = { x: L.bar.x, y: top, w: L.bar.w, h: bottom - top };
+    layoutQuick(S);
     return;
   }
   let x = L.bar.x;
@@ -93,7 +94,22 @@ layoutBattle.buttons = (S) => {
   }
   const top = L.bar.y + L.bar.h + 8;
   L.log = { x: L.bar.x, y: top, w: L.bar.w, h: bottom - top };
+  layoutQuick(S);
 };
+
+/** v7 quick slots (1–6) + «Порыться»: right part of the log row; the log gets narrower. */
+function layoutQuick(S) {
+  const list = S.quickBtns || [];
+  if (!list.length) return;
+  const L = S.L;
+  const slots = list.filter((b) => b.id !== 'rummage');
+  const w = slots.length * 50 + 4;
+  const x0 = L.log.x + L.log.w - Math.max(w, 160);
+  L.log = { ...L.log, w: Math.max(200, x0 - L.log.x - 8) };
+  slots.forEach((b, i) => Object.assign(b, { x: x0 + i * 50, y: L.log.y, w: 46, h: 44 }));
+  const r = list.find((b) => b.id === 'rummage');
+  if (r) Object.assign(r, { x: x0, y: L.log.y + 48, w: Math.max(150, w - 4), h: Math.min(40, Math.max(24, L.log.h - 48)) });
+}
 
 layoutBattle.result = (game, S) => {
   const W = game.width, H = game.height;
@@ -227,6 +243,7 @@ export function renderBattle(game, S) {
   drawPin(ctx, S);
   drawTopBar(ctx, S);
   drawActionBar(ctx, S);
+  drawQuickBar(ctx, S);
   drawLog(ctx, S);
   drawPanel(ctx, S, preview);
   if (S.message) {
@@ -488,6 +505,25 @@ function drawActionBar(ctx, S) {
     text(ctx, fit(ctx, btn.sub, btn.w - 8, '12px monospace'), cx, btn.y + btn.h - 15, btn.disabled ? C['3'] : btn.a.cost ? C.b : C['4'], '12px monospace', 'center');
     if (btn.key) text(ctx, btn.key, btn.x + 4, btn.y + 2, btn.disabled ? C['3'] : C.a, '12px monospace');
     if (btn.a.action === 'bonus') text(ctx, t('battle.bonusTag'), btn.x + btn.w - 4, btn.y + 2, btn.disabled ? C['3'] : C.j, '12px monospace', 'right');
+  }
+}
+
+/** v7 quick slots (keys 1–6) + «Порыться в рюкзаке» over the map's bottom-left corner. */
+function drawQuickBar(ctx, S) {
+  const list = S.quickBtns || [];
+  if (!list.length) return;
+  const items = S.b.data.items;
+  for (const btn of list) {
+    if (btn.id === 'rummage') { button(ctx, btn, S.hover.button === btn); continue; }
+    const hover = S.hover.button === btn;
+    panel(ctx, btn.x, btn.y, btn.w, btn.h, btn.selected ? C.i : hover && !btn.disabled ? C['3'] : C['1'], btn.selected ? C.h : btn.quick ? C['4'] : C['2']);
+    text(ctx, btn.key, btn.x + 3, btn.y + 1, btn.disabled ? C['3'] : C.a, '12px monospace');
+    if (!btn.quick) continue;
+    const it = items[btn.quick];
+    const short = fit(ctx, it.name, btn.w - 6, 'bold 11px monospace');
+    text(ctx, short, btn.x + btn.w / 2, btn.y + 15, btn.disabled ? C['3'] : C['5'], 'bold 11px monospace', 'center');
+    text(ctx, `×${btn.n}`, btn.x + btn.w - 3, btn.y + btn.h - 14, C.b, '12px monospace', 'right');
+    hotspot(btn.x, btn.y, btn.w, btn.h, () => itemTip(it, { have: btn.n }));
   }
 }
 

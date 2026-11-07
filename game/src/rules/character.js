@@ -5,6 +5,7 @@
 import {
   collectItems, applyEquipment, defaultProficiencies, mergeProficiencies, weaponTierFor, armorTierFor,
   armorKb, DMG_TYPE_TIER_DMG, LIGHT_MASTERY_BONUS_ACTIONS, MECH_MIN_TIER, enrichWeapon, normalizeArmor, stigmaFlags,
+  unmetStats, offhandAbility, REQ_SPEED_PENALTY,
 } from './equipment.js';
 
 export const STATS = ['str', 'dex', 'con', 'int', 'wil', 'cha', 'per'];
@@ -48,6 +49,7 @@ export function normalizeData(d = {}) {
     surfaces: d.surfaces || d.SURFACES || null,
     surfaceRules: d.surfaceRules || d.SURFACE_RULES || null,
     combat: d.combat || d.COMBAT || null,
+    quality: d.quality || d.QUALITY || null,
   };
 }
 
@@ -336,7 +338,7 @@ export function applyUpgrades(abilities, upgrades, level, path) {
 }
 
 export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroes', data, id, name, anyStat, weaponTier, talents = [], activeCombat, gadget,
-  equipment, proficiencies, skills, phobia, multiclass, inventory, asi } = {}) {
+  equipment, proficiencies, skills, phobia, multiclass, inventory, backpack, quickSlots, asi } = {}) {
   const D = data ? normalizeData(data) : null;
   if (typeof race === 'string') race = D?.races[race];
   if (typeof cls === 'string') cls = D?.classes[cls];
@@ -347,7 +349,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   const pathDef = (cls.paths || []).find((p) => p.id === path) || {};
   const role = pathDef.role || cls.role;
   const ND = D || normalizeData({});
-  const EQ = applyEquipment(ND.items, equipment, pathDef.weapon || cls.weapon, pathDef.armor || cls.armor);
+  const EQ = applyEquipment(ND.items, equipment, pathDef.weapon || cls.weapon, pathDef.armor || cls.armor, ND.quality);
   const weaponDef = EQ.weapon;
   const armorDef = EQ.armor;
   const prof = mergeProficiencies(defaultProficiencies(cls, pathDef), proficiencies);
@@ -412,9 +414,12 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.mechShield = armor.mechShield || 0;
   u.extraBonusActions = u.armorType === 'light' && u.armorTier >= 4 ? LIGHT_MASTERY_BONUS_ACTIONS : 0;
   u.stealthDis = u.armorPenalty || (!!armor.stealthDis && !(u.armorType === 'medium' && u.armorTier >= 4));
-  u.noise = (armor.noise || 0) + (weaponDef.noise || 0) + (race.noise || 0);
+  u.noise = (armor.noise || 0) + (weaponDef.noise || 0) + (race.noise || 0) + EQ.gear.noise;
 
-  u.speed = (race.speed ?? 6) + P.speed;
+  // v7: item speed (armour, shield, mods); unmet stat requirement — disadvantage on attacks, armour/shield also speed −2
+  const unmet = EQ.gear.req.filter((it) => unmetStats(it, st).length);
+  u.reqPenalty = unmet.map((it) => it.id);
+  u.speed = Math.max(1, (race.speed ?? 6) + P.speed + EQ.gear.speed - (unmet.some((it) => it.slot === 'armor' || it.slot === 'offhand') ? REQ_SPEED_PENALTY : 0));
   u.initBonus = P.init;
   u.weapon = { ...weaponDef };
   u.weaponTier = weaponTier || weaponTierFor(prof, weaponDef);
@@ -422,13 +427,17 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.dmgTypeBonus = {};
   for (const [t, tier] of Object.entries(prof.dmgTypes)) if (DMG_TYPE_TIER_DMG[tier]) u.dmgTypeBonus[t] = DMG_TYPE_TIER_DMG[tier];
   u.equipment = { weapon: weaponDef.id || null, armor: armor.id || null, offhand: EQ.offhand ? EQ.offhand.id : null, mods: EQ.mods };
+  u.offhand = EQ.offhand ? { id: EQ.offhand.id, name: EQ.offhand.name, kb: EQ.offhand.kb || 0, kind: EQ.offhand.kind || null } : null;
   u.castStat = cls.castStat || null;
   u.saves = [...(cls.saves || [])];
   u.resist = mergeResist(mergeResist(mergeResist({}, race.resist), P.resist), armor.resist);
-  u.immuneStatus = [...(race.immuneStatus || []), ...P.immuneStatus];
+  u.immuneStatus = [...new Set([...(race.immuneStatus || []), ...P.immuneStatus, ...EQ.gear.immuneStatus])];
+  u.immuneSurface = [...new Set(EQ.gear.immuneSurface)];
   u.abilities = applyUpgrades([...(race.abilities || []), ...(cls.abilities || []), ...(TL ? TL.abilities : [])].filter((a) => abilityAvailable(a, level, path)),
     [...(cls.upgrades || []), ...(pathDef.upgrades || [])], level, path);
   for (const a of [...(weaponDef.grants || []), ...(armorDef.grants || [])]) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
+  const offA = offhandAbility(EQ.offhand);
+  if (offA && !u.abilities.some((x) => x.id === offA.id)) u.abilities.push(offA);
   for (const a of multiclassAbilities(ND, cls, multiclass, level)) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
   u.multiclass = multiclass ? { cls: typeof multiclass.cls === 'string' ? multiclass.cls : multiclass.cls.id, path: multiclass.path || null } : null;
   u.passives = passives;
@@ -441,7 +450,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.overcast = cls.overcast || null;
   u.soulless = !!race.soulless;
   u.condBonuses = P.cond;
-  u.thorns = P.thorns;
+  u.thorns = [...P.thorns, ...EQ.gear.thorns];
   u.talents = ownTalents;
   u.asi = asiApplied.filter((e) => e && (e.level || 0) <= level).map((e) => ({ ...e }));
   u.asiOverflow = AS.overflow;
@@ -454,11 +463,15 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.skillPicks = skills ? { base: [...(skills.base || [])], extra: [...(skills.extra || [])] } : null;
   u.phobias = phobia ? (Array.isArray(phobia) ? phobia : [phobia]).map((p) => ({ ...p })) : [];
   u.inventory = { ...(inventory || {}) };
+  // v7: battle items left in the backpack («Порыться в рюкзаке» moves one into a quick slot) and the quick slot count
+  u.backpack = { ...(backpack || {}) };
+  u.quickSlots = quickSlots ?? null;
+  u.quickBonus = EQ.gear.quick;
   // everything needed to rebuild the hero on another level (progression.js)
   u.build = { race: race.id, cls: cls.id, path, stats: { ...base }, anyStat: anyStat || null, talents: [...talents],
     activeCombat: activeCombat ? [...activeCombat] : null, gadget: gadget || null, name: name || null, id: u.id,
     equipment: equipment || null, proficiencies: proficiencies || null, skills: skills || null, phobia: phobia || null,
-    multiclass: multiclass || null, inventory: inventory || null, asi: asi === 'auto' ? 'auto' : asiList.map((e) => ({ ...e })) };
+    multiclass: multiclass || null, inventory: inventory || null, backpack: backpack || null, asi: asi === 'auto' ? 'auto' : asiList.map((e) => ({ ...e })) };
   return u;
 }
 

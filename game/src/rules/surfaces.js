@@ -475,6 +475,7 @@ function applyKind(b, u, s, mode) {
   const R = rules(b);
   const e = def.enter || {};
   if (s.kind === 'proxy' && u.tags.includes('proxy')) return; // native element
+  if (u.immuneSurface && u.immuneSurface.includes(s.kind)) return; // v7 mods (immuneSurface): no damage, no statuses
   const L = s.level || battleLevel(b);
   const tier = tierFor(b, L);
   const dc = surfaceDc(b, L);
@@ -624,6 +625,7 @@ export function surfaceEnterPreview(b, u, x, y) {
     const s = c[layer];
     if (!s) continue;
     if (s.kind === 'proxy' && u.tags.includes('proxy')) continue;
+    if (u.immuneSurface && u.immuneSurface.includes(s.kind)) continue;
     out.kinds.push(s.kind);
     const e = surfaceDefs(b)[s.kind]?.enter || {};
     const tier = tierFor(b, s.level || battleLevel(b));
@@ -649,7 +651,7 @@ export function surfaceHarm(b, u, x, y) {
     const s = c[layer];
     if (!s) continue;
     const def = defs[s.kind];
-    if (!def) continue;
+    if (!def || (u.immuneSurface && u.immuneSurface.includes(s.kind))) continue;
     let v = s.hazard ? (R.hazardAi ?? 6) : def.ai || 0;
     switch (s.kind) {
       case 'fire': if (hasStatus(u, 'burn')) v = 1; break;

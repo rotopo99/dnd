@@ -20,6 +20,7 @@ import { saveGame } from '../save.js';
 import { C } from '../ui/draw.js';
 import { vendorStock, vendorSellRate } from '../world/vendors.js';
 import { QUALITY } from '../data/items/mods.js';
+import { syncItems, addInst, makeInst, instValue, bagKeys, contOf, holderOf, mutate, isGear } from '../world/inventory.js';
 
 const T = SKILL_RULES.trade;
 const shopKey = (sv, key) => `shop:${key}:${sv.day}`;
@@ -56,6 +57,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
     return;
   }
   const reopen = (g) => openShop(g, { title, stock, tier, faction, key, vendor, onClose });
+  syncItems(sv); // v7: the shop buys / sells instances (quality, mods) from the party's backpacks
   game.openModal({
     width: 980,
     onCancel: (g) => onClose?.(g),
@@ -76,7 +78,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
             if (ok) reopen(g2); else onClose?.(g2);
           } }) });
       const hero = ms[0]?.unit;
-      const tipOf = (id, price) => () => itemTip(ITEMS[id], { u: hero, price, have: sv.hero.items[id] || 0, equipped: ITEMS[sv.hero.equipment?.[ITEMS[id].slot]] });
+      const tipOf = (id, price, q, mods) => () => itemTip(ITEMS[id], { u: hero, price, have: sv.hero.items[id] || 0, equipped: ITEMS[sv.hero.equipment?.[ITEMS[id].slot]], q, mods });
       const vs = vendor ? vendorStock(vendor, sv.day, tier) : null;
       const rows = vs ? vs.rows : stock.filter((id) => ITEMS[id]).map((id) => ({ id, q: 'working', kind: 'stock', mult: 1 }));
       const MARK = { sig: ['shop.sig', C.b], edition: ['shop.edition', C.b], rare: ['shop.rare', C.a] };
@@ -86,20 +88,53 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
         const q = appraise && it.slot === 'weapon' && it.tier ? ` · ${t('shop.quality')} ${it.tier}` : '';
         const qn = r.q !== 'working' ? ` (${QUALITY[r.q]?.name || r.q})` : '';
         const mk = MARK[r.kind];
-        if (r.locked) return { label: `${it.name}${qn}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${t(`tier.${r.locked}`)}: ${t('shop.needRep')}`, disabled: true, detail: tipOf(id, price) };
+        if (r.locked) return { label: `${it.name}${qn}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${t(`tier.${r.locked}`)}: ${t('shop.needRep')}`, disabled: true, detail: tipOf(id, price, r.q) };
         return { label: `${t('shop.buy')}: ${it.name}${qn} — ${price}${q}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`,
-          subColor: mk ? mk[1] : undefined, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price),
-          run: () => { sv.hero.credits -= price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); saveGame(sv); } };
+          subColor: mk ? mk[1] : undefined, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price, r.q),
+          run: (g) => {
+            // v7: an instance of the shelf quality → hero's backpack, then companions; no room — no sale
+            const left = mutate(sv, () => addInst(sv, makeInst(id, r.q), 1, { overflow: null }));
+            if (left) { g.toast(t('inv.noRoom'), 'c'); return; }
+            sv.hero.credits -= price; play('buff'); saveGame(sv);
+          } };
       });
       const sellRate = (it) => {
         if (!vs || pr.junk) return pr.sell;
         const r = vendorSellRate(vendor, it);
         return r == null ? null : r * pr.sellMul;
       };
-      const sell = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && ITEMS[id]?.price > 0 && !ITEMS[id].key && sellRate(ITEMS[id]) != null).map(([id, n]) => {
-        const price = Math.max(1, Math.floor(ITEMS[id].price * sellRate(ITEMS[id])));
-        return { label: `${t('shop.sell')}: ${ITEMS[id].name} ×${n} — ${price}`, keep: true, detail: tipOf(id, price),
-          run: () => { sv.hero.items[id]--; sv.hero.credits += price; play('uiClick'); saveGame(sv); } };
+      // v7: sell instances from the party's backpacks (grouped by item + quality + mods); price by quality and mods
+      const groups = new Map();
+      for (const k of bagKeys(sv)) {
+        if (!holderOf(sv, k)) continue;
+        for (const e of contOf(sv, { c: 'bag', key: k }).grid) {
+          const it = ITEMS[e.item];
+          if (!it || !(it.price > 0) || it.key || sellRate(it) == null) continue;
+          const gk = `${e.item}|${e.q}|${(e.mods || []).join(',')}`;
+          const gr = groups.get(gk) || { id: e.item, q: e.q, mods: e.mods || [], n: 0 };
+          gr.n += e.n || 1;
+          groups.set(gk, gr);
+        }
+      }
+      const sell = [...groups.values()].map((gr) => {
+        const it = ITEMS[gr.id];
+        const price = Math.max(1, Math.floor(instValue(gr) * sellRate(it)));
+        const qn = isGear(it) && gr.q !== 'working' && QUALITY[gr.q] ? ` (${QUALITY[gr.q].name})` : '';
+        return { label: `${t('shop.sell')}: ${it.name}${qn}${gr.mods.length ? ` +${gr.mods.length}` : ''} ×${gr.n} — ${price}`, keep: true, detail: tipOf(gr.id, price, gr.q, gr.mods),
+          run: () => {
+            const sold = mutate(sv, () => {
+              for (const k of bagKeys(sv)) {
+                const g = contOf(sv, { c: 'bag', key: k }).grid;
+                const i = g.findIndex((e) => e.item === gr.id && e.q === gr.q && (e.mods || []).join(',') === gr.mods.join(','));
+                if (i < 0) continue;
+                g[i].n = (g[i].n || 1) - 1;
+                if (g[i].n <= 0) g.splice(i, 1);
+                return true;
+              }
+              return false;
+            });
+            if (sold) { sv.hero.credits += price; play('uiClick'); saveGame(sv); }
+          } };
       });
       const info = [`${t('world.credits')}: ${sv.hero.credits}`];
       if (pr.buy !== 1) info.push(`${t('loc.prices')} ×${pr.buy.toFixed(2)}`);

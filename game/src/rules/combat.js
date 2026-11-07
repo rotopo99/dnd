@@ -417,6 +417,7 @@ function initUnit(u) {
   c.summonTurns = null; c.summoner = null; c.nadlom = false; c.initiative = 0;
   c.overcastsUsed = 0; c.broken = false;
   c.inventory = { ...(u.inventory || {}) };
+  c.backpack = { ...(u.backpack || {}) }; // v7: battle items in the backpack («Порыться» → quick slot)
   c.weaponCharges = u.weapon && u.weapon.charges != null ? u.weapon.charges : null;
   c.weaponShots = 0; c.weaponLock = 0; c.weaponHot = false; c.turnPenalty = null; c.withdrawalPending = [];
   c.deathFired = false;
@@ -1126,9 +1127,9 @@ function attackMode(b, att, tgt, melee, isWeapon, fx = att.x, fy = att.y) {
     || (melee && !!modFlag(b, tgt, 'attackedAdvMelee')) || tgt.down
     || (att.kind !== 'hero' && hasStatus(tgt, 'scent') && att.tags.includes('beast') && tgt.hp <= tgt.maxHp * 0.5);
   const dis = !!modFlag(b, att, 'attackDisadv') || !!modFlag(b, tgt, 'attackedDisadv')
-    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy)) || !!att.armorPenalty
+    || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy)) || !!att.armorPenalty || !!(att.reqPenalty && att.reqPenalty.length)
     || (!melee && !!modFlag(b, att, 'rangedDisadv'))
-    || (!melee && (b.zones.length > 0 || b.surfaces.size > 0) && smokeBetween(b, fx, fy, tgt.x, tgt.y));
+    || (!melee && !(isWeapon && att.weapon?.ignoreSmoke) && (b.zones.length > 0 || b.surfaces.size > 0) && smokeBetween(b, fx, fy, tgt.x, tgt.y));
   return { adv, dis };
 }
 
@@ -1187,6 +1188,16 @@ function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType, 
   }
   weaponExtra(b, att, tgt, w, crit, false);
   if (((w.onHit && w.onHit.length) || (crit && w.onCrit)) && isAlive(tgt)) weaponOnHit(b, att, tgt, w, crit);
+  if (w.surfaceOnHit) weaponSurface(b, att, tgt, w, crit);
+}
+
+/** v7 mods: surfaceOnHit [{ kind, size, turns, on: 'hit' | 'crit' }] — a surface under the target (size 1 — its tile). */
+function weaponSurface(b, att, tgt, w, crit) {
+  if (!surfacesOn(b) || tgt.x < 0) return;
+  for (const so of w.surfaceOnHit) {
+    if (!so || !so.kind || (so.on === 'crit' && !crit)) continue;
+    createSurface(b, so.kind, radiusTiles(b, tgt.x, tgt.y, Math.max(0, (so.size || 1) - 1)), att.id, { turns: so.turns });
+  }
 }
 
 /** v3.1 extra damage on a hit: [{ dice, dmgType, only?, cond? }] (half — area weapon save). */
@@ -2133,6 +2144,36 @@ function useItem(b, u, it, spec) {
   }
 }
 
+/**
+ * v7 «Порыться в рюкзаке» (docs/specs/inventory-mods.md §2): a full action — one stack of `id` from u.backpack goes to a
+ * quick slot (u.inventory); no free slot (u.quickSlots distinct items) → `swap` (an id in the quick slots) goes back.
+ * Returns null if allowed, else a reason.
+ */
+export function rummageOk(b, u, id, swap) {
+  const it = b.data.items[id];
+  if (!it || !(u.backpack?.[id] > 0)) return 'noItem';
+  const t = b.turn;
+  if (!t || t.unitId !== u.id) return 'turn';
+  if (t.actions <= 0) return 'action';
+  const used = Object.keys(u.inventory).filter((k) => u.inventory[k] > 0);
+  if (u.quickSlots != null && !used.includes(id) && used.length >= u.quickSlots && !(swap && u.inventory[swap] > 0)) return 'noSlot';
+  return null;
+}
+
+function rummage(b, u, id, swap) {
+  const it = b.data.items[id];
+  const used = Object.keys(u.inventory).filter((k) => u.inventory[k] > 0);
+  if (u.quickSlots != null && !used.includes(id) && used.length >= u.quickSlots && swap) {
+    u.backpack[swap] = (u.backpack[swap] || 0) + u.inventory[swap];
+    delete u.inventory[swap];
+  }
+  const n = Math.min(u.backpack[id], Math.max(1, it.stack || 1));
+  u.backpack[id] -= n;
+  if (u.backpack[id] <= 0) delete u.backpack[id];
+  u.inventory[id] = (u.inventory[id] || 0) + n;
+  emit(b, { type: 'rummage', actor: u.id, item: id, n, swap: swap || null });
+}
+
 /** null if u can use item id now, else a reason. */
 export function itemUsable(b, u, id) {
   const it = b.data.items[id];
@@ -2576,6 +2617,13 @@ export function perform(b, action) {
       burstAttack(b, u, tgt);
       selfDamage(b, u);
       checkVictory(b);
+      break;
+    }
+    case 'rummage': {
+      const why = rummageOk(b, u, action.item, action.swap);
+      if (why) return fail(b, start, why);
+      t.actions--;
+      rummage(b, u, action.item, action.swap);
       break;
     }
     case 'useItem': {

@@ -1,10 +1,12 @@
 // World state helpers over the save object (world.md §8): new game, party members, creatures for battle,
 // experience and levels, rewards (Effects), deeds/approval, discovery, travel and encounters.
-import { buildCreature, isAllowed, mod } from '../rules/character.js';
+import { buildCreature, isAllowed, mod, asiLevelsFor, mainStatOf, ASI_STAT_MAX } from '../rules/character.js';
 import { t } from '../data/text/index.js';
 import { talentAllowed } from '../data/talents.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
-import { gainXp as engineGainXp, levelForXp } from '../rules/progression.js';
+import { gainXp as engineGainXp, levelForXp, xpForLevel, MAX_LEVEL } from '../rules/progression.js';
+import { COMPANIONS, COMPANION_RULES as CR } from '../data/companions.js';
+import { queueBark } from './barks.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
 import { RELATIONS } from '../data/factions.js';
@@ -18,6 +20,7 @@ import { EXODUS } from '../data/world/exodus.js';
 import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast, meetFaction, startMet } from './reputation.js';
 import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
+import { normalizeInventory, battleKit, bagOf, eqInst } from './inventory.js';
 
 export const MAX_PARTY = 3; // companions besides the hero
 export { levelForXp };
@@ -45,6 +48,7 @@ export function newSave(hero) {
   };
   for (const l of Object.values(LOCATIONS)) if (l.terminal) save.terminals[l.terminal.id] = l.terminal.state;
   visit(save, START_LOCATION);
+  normalizeInventory(save); // v7: hero.items → backpack grid + quick slots (world/inventory.js)
   return save;
 }
 
@@ -109,12 +113,13 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined,
     stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined,
     asi: Array.isArray(h.asi) && h.asi.length ? h.asi : undefined };
-  const gear = { equipment: h.equipment || undefined, inventory: battleInventory(h.items) };
+  // v7: battle items — quick slots (unit.inventory) and the rest of the bag (unit.backpack, «Порыться»)
+  const gear = { equipment: h.equipment || undefined, ...(h.bag ? battleKit(h) : { inventory: battleInventory(h.items) }) };
   let u;
   try {
     u = buildCreature({ ...spec, ...gear, talents, activeCombat, gadget: G.gadget });
   } catch {
-    try { u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget, race: h.race, inventory: gear.inventory }); } catch { u = buildCreature({ ...spec, data, race: h.race }); }
+    try { u = buildCreature({ ...spec, talents, activeCombat, gadget: G.gadget, race: h.race, inventory: gear.inventory, backpack: gear.backpack, quickSlots: gear.quickSlots }); } catch { u = buildCreature({ ...spec, data, race: h.race }); }
   }
   const marks = h.judgeMarks || 0;
   if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
@@ -129,16 +134,21 @@ export function buildCompanion(save, p, data = GAME_DATA) {
   if (!n) return null;
   const race = data.RACES[n.race] ? n.race : 'human';
   const cls = data.CLASSES[n.cls] ? n.cls : 'zabivnoy';
-  const path = data.CLASSES[cls].paths.some((x) => x.id === n.path) ? n.path : undefined;
+  // companions-scenes.md: own path after the personal quest (p.path), own level (p.level; old saves — the hero's), own ASI (p.asi)
+  const want = p.path || n.path;
+  const path = data.CLASSES[cls].paths.some((x) => x.id === want) ? want : data.CLASSES[cls].paths.some((x) => x.id === n.path) ? n.path : undefined;
+  const level = Math.max(1, Math.min(MAX_LEVEL, p.level || save.hero.level));
+  const asi = Array.isArray(p.asi) ? p.asi : 'auto';
   const talents = safeTalents(p.talents);
   const equipment = p.equipment || companionKit(n, data) || undefined;
+  const kit = battleKit(p);
   let u;
   try {
     if (!isAllowed(race, data.CLASSES[cls])) throw new Error('race');
     // companions: ASI automatically by the class main stat (levels-20.md)
-    u = buildCreature({ race, cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment, talents, asi: 'auto', activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(save.hero.level)) });
+    u = buildCreature({ race, cls, path, level, name: n.name, data, id: `c-${n.id}`, equipment, ...kit, talents, asi, activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(level)) });
   } catch {
-    try { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment, asi: 'auto' }); } catch { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}` }); }
+    try { u = buildCreature({ race: 'human', cls, path, level, name: n.name, data, id: `c-${n.id}`, equipment, asi }); } catch { u = buildCreature({ race: 'human', cls, path, level, name: n.name, data, id: `c-${n.id}` }); }
   }
   restore(u, p.hp, p.mrl);
   if (save.settings.aiCompanions) u.control = 'ai';
@@ -220,8 +230,10 @@ export function recruit(save, npcId) {
   const n = NPCS[npcId];
   const old = save.party.find((p) => p.npc === npcId);
   const state = activeCompanions(save).length < MAX_PARTY ? 'active' : 'waiting';
-  if (old) Object.assign(old, { state, approval: Math.max(old.approval, -40) });
-  else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: 0, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false, equipment: companionKit(n) });
+  // companions-scenes.md: a returning companion starts cold (returnLoyalty), a new one — at loyalty.start; own XP from the hero's level
+  if (old) Object.assign(old, { state, approval: old.state === 'left' ? CR.loyalty.returnLoyalty : Math.max(old.approval, CR.loyalty.returnLoyalty), warned: false, waitDay: save.day });
+  else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: COMPANIONS[npcId]?.loyalty?.start || 0, level: save.hero.level, xp: xpForLevel(save.hero.level), waitDay: save.day, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false, equipment: companionKit(n), bag: null });
+  bagOf(save.party.find((p) => p.npc === npcId));
   save.npcs[npcId] = { ...(save.npcs[npcId] || {}), met: true, recruited: true };
   journal(save, tf('fx.joined', { name: n.name }));
   return state;
@@ -253,6 +265,11 @@ export function requiresOk(save, req, data = GAME_DATA) {
   if (req.visitedRegions && !req.visitedRegions.every((r) => (save.visited || []).some((id) => LOCATIONS[id]?.region === r))) return false;
   if (req.flags && !req.flags.every((f) => save.flags[f])) return false;
   if (req.any && !req.any.some((r) => requiresOk(save, r, data))) return false;
+  // companions-scenes.md: { loyalty: { npc, min } } — the companion is in the party (not left) with approval ≥ min
+  if (req.loyalty) {
+    const p = save.party.find((x) => x.npc === req.loyalty.npc && x.state !== 'left');
+    if (!p || (p.approval || 0) < req.loyalty.min) return false;
+  }
   if (req.not && requiresOk(save, req.not, data)) return false;
   return true;
 }
@@ -337,22 +354,17 @@ export function repToasts(changes) {
 export function gainXp(save, xp, data = GAME_DATA) {
   const out = [];
   if (!xp) return out;
+  for (const p of save.party) ensureCompanionXp(save, p);
   const r = engineGainXp(save.hero, xp, data);
   save.hero.xp = r.xp;
   out.push({ text: tf('fx.xp', { n: xp }), color: 'h' });
   if (r.leveledUp) {
     // keepDamage (rules/progression.js rebuildHero): new max − damage taken, at least 1
-    const before = [buildHero(save, data), ...activeCompanions(save).map((p) => [p, buildCompanion(save, p, data)])];
+    // companions level on their own XP (shareXp below)
+    const h0 = buildHero(save, data);
     save.hero.level = r.level;
-    const keep = (entry, oldU, newU) => {
-      if (!oldU || !newU) return;
-      entry.hp = Math.max(1, newU.maxHp - Math.max(0, oldU.maxHp - oldU.hp));
-      entry.mrl = Math.max(1, newU.maxMrl - Math.max(0, oldU.maxMrl - oldU.mrl));
-    };
-    const h0 = before[0];
     save.hero.hp = null; save.hero.mrl = null;
-    keep(save.hero, h0, buildHero(save, data));
-    for (const [p, oldU] of before.slice(1)) { const hp = p.hp, mrl = p.mrl; p.hp = null; p.mrl = null; const nu = buildCompanion(save, p, data); p.hp = hp; p.mrl = mrl; keep(p, oldU, nu); }
+    keepDamage(save.hero, h0, buildHero(save, data));
     save.hero.pendingTalents = (save.hero.pendingTalents || 0) + r.talentPicks;
     // levels-20.md: ASI choices wait for the player; levelNews — levels not yet shown in the level-up window
     save.hero.pendingAsi = [...(save.hero.pendingAsi || []), ...r.asiLevels];
@@ -360,8 +372,117 @@ export function gainXp(save, xp, data = GAME_DATA) {
     out.push({ text: tf('fx.level', { n: r.level }), color: 'a' });
     journal(save, tf('fx.level', { n: r.level }));
   }
+  out.push(...shareXp(save, xp, data));
   return out;
 }
+
+// keepDamage (rules/progression.js rebuildHero): new max − damage taken, at least 1
+function keepDamage(entry, oldU, newU) {
+  if (!oldU || !newU) return;
+  entry.hp = Math.max(1, newU.maxHp - Math.max(0, oldU.maxHp - oldU.hp));
+  entry.mrl = Math.max(1, newU.maxMrl - Math.max(0, oldU.maxMrl - oldU.mrl));
+}
+
+/** companions-scenes.md: old saves / new entries — own XP and level from the hero's current level. */
+export function ensureCompanionXp(save, p) {
+  if (!p) return p;
+  if (!Number.isFinite(p.level) || p.level < 1) p.level = Math.max(1, Math.min(MAX_LEVEL, save.hero.level || 1));
+  if (!Number.isFinite(p.xp)) p.xp = xpForLevel(p.level);
+  return p;
+}
+
+/** XP share of a companion: active ×activeShare, waiting / in Cyberspace ×waitingShare, left 0; behind the hero ×catchUpMul. */
+export function companionXpShare(save, p) {
+  const X = CR.xp;
+  if (!p || p.state === 'left') return X.leftShare;
+  const base = p.state === 'active' ? X.activeShare : X.waitingShare;
+  return base * ((p.level || 1) < save.hero.level ? X.catchUpMul : 1);
+}
+
+/** Give companions their share of a hero reward; level ≤ hero level + levelCapOverHero. → toasts. */
+export function shareXp(save, xp, data = GAME_DATA) {
+  const out = [];
+  const cap = Math.min(MAX_LEVEL, save.hero.level + CR.xp.levelCapOverHero);
+  for (const p of save.party) {
+    ensureCompanionXp(save, p);
+    const gain = Math.round(xp * companionXpShare(save, p));
+    if (gain <= 0) continue;
+    const maxXp = cap >= MAX_LEVEL ? Infinity : xpForLevel(cap + 1) - 1;
+    p.xp = Math.max(p.xp, Math.min(p.xp + gain, maxXp));
+    const lv = Math.min(cap, levelForXp(p.xp));
+    if (lv > p.level) out.push(...companionLevelUp(save, p, lv, data));
+  }
+  return out;
+}
+
+/** Auto ASI entry for a companion level: +2 to the main stat, overflow to CON / DEX / WIL (as rules autoAsi). */
+function autoAsiEntry(u, cls, pathId, level) {
+  const pathDef = (cls.paths || []).find((x) => x.id === pathId) || {};
+  const main = mainStatOf(cls, pathDef);
+  const stats = {};
+  let left = 2;
+  for (const k of [main, 'con', 'dex', 'wil']) {
+    const n = Math.min(left, Math.max(0, ASI_STAT_MAX - ((u.stats?.[k] ?? 10) + (stats[k] || 0))));
+    if (n > 0) { stats[k] = (stats[k] || 0) + n; left -= n; }
+    if (!left) break;
+  }
+  return { level, stats, auto: true };
+}
+
+/** Rebuild a companion after a change and keep the damage taken. */
+function rebuildKeep(save, p, before, data) {
+  const hp = p.hp, mrl = p.mrl;
+  p.hp = null; p.mrl = null;
+  const after = buildCompanion(save, p, data);
+  p.hp = hp; p.mrl = mrl;
+  if (hp === 0) return; // down / in Cyberspace stays so
+  if (hp != null || mrl != null) keepDamage(p, before, after);
+}
+
+/**
+ * A companion reaches level `to`: HP/MRL keep the damage, p.levelNews (level-up windows, scenes/levelup.js);
+ * ASI levels — the player picks (p.pendingAsi) if loyalty ≥ trustsChoicesAt, else the companion picks itself (line in p.asiNotes).
+ */
+export function companionLevelUp(save, p, to, data = GAME_DATA) {
+  const n = NPCS[p.npc];
+  const cls = data.CLASSES[n?.cls];
+  if (!cls) { p.level = to; return []; }
+  const before = buildCompanion(save, p, data);
+  if (!Array.isArray(p.asi)) p.asi = (before?.asi || []).map(({ level, stats, talent }) => (talent ? { level, talent } : { level, stats: { ...stats } }));
+  const from = p.level;
+  p.level = to;
+  const asiLv = asiLevelsFor(cls);
+  const trusts = (p.approval || 0) >= CR.loyalty.trustsChoicesAt;
+  for (let L = from + 1; L <= to; L++) {
+    p.levelNews = [...(p.levelNews || []), L];
+    if (!asiLv.includes(L) || p.asi.some((e) => e.level === L)) continue;
+    if (trusts) { p.pendingAsi = [...(p.pendingAsi || []), L]; continue; }
+    const u = buildCompanion(save, { ...p, hp: null, mrl: null, level: L }, data);
+    const e = autoAsiEntry(u, cls, p.path || n.path, L);
+    p.asi.push(e);
+    const what = Object.entries(e.stats).map(([k, v]) => `${t(`stat.${k}`)} +${v}`).join(', ');
+    p.asiNotes = [...(p.asiNotes || []), tf('comp.autoAsi', { name: n.name, what })];
+  }
+  rebuildKeep(save, p, before, data);
+  if (p.state === 'active') queueBark('levelUp', p.npc);
+  return [{ text: tf('comp.levelTitle', { name: n.name, n: to }), color: 'a' }];
+}
+
+/** Companion ASI choice (loyalty ≥ trustsChoicesAt): { stats } | { talent }. Keeps the damage. → toasts. */
+export function chooseCompanionAsi(save, npcId, level, choice, data = GAME_DATA) {
+  const p = save.party.find((x) => x.npc === npcId);
+  const i = (p?.pendingAsi || []).indexOf(level);
+  if (i < 0) return [];
+  const before = buildCompanion(save, p, data);
+  p.pendingAsi.splice(i, 1);
+  p.asi = [...(p.asi || []).filter((e) => e.level !== level), choice.talent ? { level, talent: choice.talent } : { level, stats: { ...choice.stats } }];
+  if (choice.talent && !p.talents.includes(choice.talent)) p.talents.push(choice.talent);
+  rebuildKeep(save, p, before, data);
+  const name = NPCS[npcId]?.name || npcId;
+  const what = choice.talent ? (TALENTS[choice.talent]?.name || choice.talent) : Object.entries(choice.stats).map(([k, v]) => `${t(`stat.${k}`)} +${v}`).join(', ');
+  return [{ text: `${name}: ${what}`, color: 'a' }];
+}
+
 
 /**
  * Apply the hero's ASI choice for a pending level: { stats: { str: 2 } | { str: 1, dex: 1 } } or { talent: id }.
@@ -395,12 +516,13 @@ export function deed(save, tag, key) {
     const dislikes = n.companion?.dislikes || n.dislikes || [];
     const A = R.approval;
     const step = key ? A.keyDeed : A.deed;
-    const d = likes.includes(tag) ? step : dislikes.includes(tag) ? -step : 0;
+    // companions-scenes.md: personal deed weights (COMPANIONS[id].loyalty.deeds) add to the shared likes/dislikes
+    const d = (likes.includes(tag) ? step : dislikes.includes(tag) ? -step : 0) + (COMPANIONS[p.npc]?.loyalty?.deeds?.[tag] || 0);
     if (!d) continue;
-    p.approval = Math.max(A.min, Math.min(A.max, p.approval + d));
     out.push({ text: tf(d > 0 ? 'fx.approves' : 'fx.disapproves', { name: n.name, n: `${d > 0 ? '+' : ''}${d}` }), color: d > 0 ? 'j' : 'c' });
-    if (p.approval <= A.leave) out.push(leave(save, p, 'approval'));
-    else if (p.approval <= A.warn && !p.warned) { p.warned = true; out.push({ text: tf('fx.warn', { name: n.name }), color: 'a' }); }
+    if (p.state === 'active') queueBark(d > 0 ? 'likeDeed' : 'dislikeDeed', p.npc);
+    out.push(...adjustApproval(save, p, d, { quiet: true }));
+    if (p.state === 'left') continue;
     const teaches = n.companion?.teaches || (n.companion?.talents || [])[0];
     if (p.approval >= A.teach && !p.taught && teaches && TALENTS[teaches]) {
       p.taught = true;
@@ -410,11 +532,32 @@ export function deed(save, tag, key) {
   return out;
 }
 
+/**
+ * Change a companion's approval (loyalty) by d: clamp, warning at warn, departure at leave. quiet — no «лояльность ±N» toast.
+ * → toasts. Used by deeds and by world/companions.js events (quests, battles, rests, waiting).
+ */
+export function adjustApproval(save, p, d, { quiet = false } = {}) {
+  const out = [];
+  if (!p || p.state === 'left' || !d) return out;
+  const A = R.approval;
+  const n = NPCS[p.npc];
+  p.approval = Math.max(A.min, Math.min(A.max, (p.approval || 0) + d));
+  if (!quiet) out.push({ text: tf('comp.loyaltyDelta', { name: n.name, n: `${d > 0 ? '+' : ''}${d}` }), color: d > 0 ? 'j' : 'c' });
+  if (p.approval <= A.leave) out.push(...leave(save, p, 'approval'));
+  else if (p.approval <= A.warn && !p.warned) { p.warned = true; out.push({ text: tf('fx.warn', { name: n.name }), color: 'a' }); }
+  return out;
+}
+
 function leave(save, p, why) {
   const n = NPCS[p.npc];
   p.state = 'left';
   journal(save, tf(why === 'approval' ? 'fx.leftApproval' : 'fx.leftFaction', { name: n.name }));
-  return { text: tf('fx.leaves', { name: n.name }), color: 'c' };
+  // companions-scenes.md: the leave line (COMPANIONS[id].leave.line); the companion is back at its own node (npcHome)
+  const line = COMPANIONS[p.npc]?.leave?.line;
+  if (line) journal(save, tf('comp.leaveLine', { name: n.name, line }));
+  const out = [{ text: tf('fx.leaves', { name: n.name }), color: 'c' }];
+  if (line) out.push({ text: tf('comp.leaveLine', { name: n.name, line }), color: '5' });
+  return out;
 }
 
 /** Hero became an ally of an enemy of the companion's faction → ultimatum, the next such step → leaves. */
@@ -426,7 +569,7 @@ export function companionRepCheck(save) {
     if (!f || !RELATIONS[f]) continue;
     const enemyAllies = Object.keys(RELATIONS[f]).filter((g) => RELATIONS[f][g] === 'enemy' && repTier(save.rep[g]) === 'ally').length;
     if (enemyAllies > (p.enemyAllies || 0)) {
-      if (p.ultimatum) out.push(leave(save, p, 'faction'));
+      if (p.ultimatum) out.push(...leave(save, p, 'faction'));
       else { p.ultimatum = true; out.push({ text: tf('fx.ultimatum', { name: NPCS[p.npc].name }), color: 'a' }); }
     }
     p.enemyAllies = enemyAllies;
@@ -440,7 +583,7 @@ export function restDepartures(save) {
   for (const p of save.party) {
     if (p.state === 'left') continue;
     const f = normFaction(NPCS[p.npc]?.faction);
-    if (f && save.rep[f] != null && save.rep[f] <= -50) out.push(leave(save, p, 'faction'));
+    if (f && save.rep[f] != null && save.rep[f] <= -50) out.push(...leave(save, p, 'faction'));
   }
   return out;
 }

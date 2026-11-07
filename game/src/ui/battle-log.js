@@ -119,6 +119,7 @@ export function formatEvent(S, e) {
     // v3: burst fire, items, traps, phobias
     case 'burst': return [a(A), g(': '), [`${t('battle.burst')} ×${e.shots}${e.recoil ? ` (${t('item.recoil')} ${e.recoil})` : ''}`, C.a], g(' → '), a(T)];
     case 'burstEnd': return [a(A), g(': '), [`${t('battle.burstHits')} ${e.hits}/${e.shots}`, e.hits ? C['5'] : C['4']]];
+    case 'rummage': return [a(A), g(` ${t('inv.rummageLog')} `), [`«${itemName(e.item)}»`, C.h], g(e.n > 1 ? ` ×${e.n}` : '')];
     case 'useItem': return [a(A), g(` ${t('battle.usesItem')} `), [`«${itemName(e.item)}»`, C.h]];
     case 'trapPlaced': return [a(A), g(': '), [`${t('battle.trapPlaced')} «${itemName(e.item)}»`, C.a]];
     case 'trapTriggered': return [a(T), g(': '), [`${t('battle.trapTriggered')} «${itemName(e.item)}»`, C.c]];

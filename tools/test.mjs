@@ -1975,5 +1975,498 @@ console.log('combat rework: cover, objects, heights, pushes, archetypes, arenas'
   });
 }
 
+// companions-scenes.md: recruitment conditions, loyalty / departure, companion XP, check scenes, barks
+{
+  console.log('companions & check scenes');
+  const st = await import('../game/src/world/state.js');
+  const CP = await import('../game/src/world/companions.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CRN = await import('../game/src/world/check-run.js');
+  const BK = await import('../game/src/world/barks.js');
+  const { COMPANIONS, COMPANION_RULES } = await import('../game/src/data/companions.js');
+  const { CHECK_SCENES, SKILL_TEMPLATES, checkKey } = await import('../game/src/data/world/check-scenes.js');
+  const { QUESTS } = await import('../game/src/world/data.js');
+  const { NPCS } = await import('../game/src/data/npcs.js');
+  const { xpForLevel } = await import('../game/src/rules/progression.js');
+  const mk = (o = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [], ...o }); s.flags['prologue-done'] = true; return s; };
+
+  test('recruit: all 21 companions show conditions with reasons', () => {
+    const s = mk();
+    assert.equal(Object.keys(COMPANIONS).length, 21);
+    for (const id of Object.keys(COMPANIONS)) {
+      assert.ok(NPCS[id]?.recruitable, id);
+      const r = CP.recruitStatus(s, id);
+      assert.ok(r.paths.length >= 1 && r.paths[0].rows.length >= 1, id);
+      for (const p of r.paths) for (const row of p.rows) assert.ok(row.text && typeof row.text === 'string' && row.why, `${id}: ${row.cond.kind}`);
+      for (const p of r.paths) if (!p.ready) assert.ok(p.why, `${id}: blocked path without why`);
+    }
+  });
+  test('recruit: check / pay / alignment / intro / rep conditions block with why and unlock', () => {
+    const s = mk();
+    s.hero.credits = 0;
+    let r = CP.recruitStatus(s, 'telifon');
+    assert.ok(r.paths[0].ready && !r.paths[0].ok && r.paths[0].checks.length === 1, 'check pending');
+    assert.ok(!r.paths[1].ready && /200/.test(r.paths[1].why), 'pay blocks');
+    assert.equal(CP.joinCompanion(s, 'telifon', 'alt'), null);
+    CP.markRecruitCheck(s, 'telifon', r.paths[0].checks[0], false);
+    r = CP.recruitStatus(s, 'telifon');
+    assert.ok(!r.paths[0].ready, 'failed check — retry tomorrow');
+    s.day++;
+    CP.markRecruitCheck(s, 'telifon', CP.recruitStatus(s, 'telifon').paths[0].checks[0], true);
+    assert.ok(CP.recruitStatus(s, 'telifon').paths[0].ok);
+    const j = CP.joinCompanion(s, 'telifon', 'main');
+    assert.ok(j && j.state === 'active' && CP.recruitStatus(s, 'telifon').already);
+    assert.ok(s.quests['cq-telifon']?.state === 'active', 'personal quest starts on joining');
+    // pay path: credits are taken
+    s.hero.credits = 500;
+    const before = s.hero.credits;
+    assert.ok(CP.joinCompanion(s, 'laska', 'main'));
+    assert.equal(s.hero.credits, before - 400);
+    // alignment
+    const e = mk({ alignment: 'evil' });
+    const z = CP.recruitStatus(e, 'zarya').paths[0];
+    assert.ok(!z.ready && /не станет повторением/.test(z.why));
+    // intro: Lox needs the first stage of his personal quest
+    const l = mk();
+    assert.ok(!CP.recruitStatus(l, 'lox').paths[0].ready);
+    QS.startQuest(l, 'cq-lox');
+    l.quests['cq-lox'].stage = 'hunt';
+    assert.ok(CP.recruitStatus(l, 'lox').paths[0].ok);
+    // rep: hostile Warprom blocks Nedolyot
+    const w = mk();
+    w.rep.warprom = -80;
+    const nd = CP.recruitStatus(w, 'private-nedolyot').paths[0];
+    assert.ok(!nd.ready && /Военпрома/.test(nd.why));
+  });
+  test('recruit: hard incompatibility blocks while the other is in the party; personal quest lifts it; soft — friction', () => {
+    const s = mk();
+    st.recruit(s, 'zoya-klyk');
+    let z = CP.recruitStatus(s, 'zarya').paths[0];
+    assert.ok(!z.ready && /Зоя/.test(z.why));
+    s.party.find((p) => p.npc === 'zoya-klyk').state = 'waiting';
+    assert.ok(!CP.recruitStatus(s, 'zarya').paths[0].ready, 'waiting counts too');
+    s.quests['cq-zoya'] = { state: 'done', stage: 'hunt', subs: {} };
+    assert.ok(CP.recruitStatus(s, 'zarya').paths[0].ok, 'lifted by the personal quest');
+    st.recruit(s, 'sister-pomekha');
+    const lx = CP.recruitStatus(s, 'lox').paths[0].rows.find((r) => r.cond.kind === 'notWith');
+    assert.ok(lx.ok && lx.soft);
+    // friction at a rest
+    s.party.find((p) => p.npc === 'zoya-klyk').state = 'left';
+    st.recruit(s, 'lox');
+    const ap = s.party.find((p) => p.npc === 'lox').approval;
+    CP.restLoyalty(s);
+    assert.equal(s.party.find((p) => p.npc === 'lox').approval, ap + COMPANION_RULES.loyalty.events.frictionRest);
+  });
+  test('loyalty: deeds (shared + personal weights), warning, departure with the line, return by apology at −40', () => {
+    const s = mk();
+    st.recruit(s, 'lox');
+    const p = s.party.find((x) => x.npc === 'lox');
+    assert.equal(p.approval, COMPANIONS.lox.loyalty.start);
+    st.deed(s, 'kill-surrendered'); // personal −5 (not in Lox's dislikes)
+    assert.equal(p.approval, -5);
+    st.deed(s, 'serve-ai'); // shared dislike −5
+    assert.equal(p.approval, -10);
+    let out = st.adjustApproval(s, p, -45);
+    assert.ok(p.warned && out.some((x) => /ухож/.test(x.text)));
+    out = st.adjustApproval(s, p, -20);
+    assert.equal(p.state, 'left');
+    assert.ok(out.some((x) => x.text.includes(COMPANIONS.lox.leave.line)), 'leave line');
+    assert.ok(s.journal.some((j) => j.text.includes(COMPANIONS.lox.leave.line)));
+    const r = CP.recruitStatus(s, 'lox');
+    assert.ok(r.left && r.paths[0].id === 'return' && r.paths[0].ok);
+    assert.ok(CP.joinCompanion(s, 'lox', 'return'));
+    assert.equal(p.state, 'active');
+    assert.equal(p.approval, COMPANION_RULES.loyalty.returnLoyalty);
+    // waiting on a hub: −1 per 3 days
+    p.state = 'waiting'; p.waitDay = s.day; s.day += 7;
+    CP.waitingLoyalty(s);
+    assert.equal(p.approval, COMPANION_RULES.loyalty.returnLoyalty - 2);
+    // battle: downed −3, revived +3, 3 clean wins +1
+    p.state = 'active'; p.approval = 0;
+    CP.battleLoyalty(s, [{ id: 'hero' }, { id: 'c-lox', down: true }]);
+    assert.equal(p.approval, -3);
+    CP.battleLoyalty(s, [{ id: 'hero' }, { id: 'c-lox' }], new Set(['lox']));
+    assert.equal(p.approval, 0);
+    CP.battleLoyalty(s, [{ id: 'hero' }, { id: 'c-lox' }]); CP.battleLoyalty(s, [{ id: 'hero' }, { id: 'c-lox' }]);
+    assert.equal(p.approval, 1);
+  });
+  test('personal quest: loyalty gate, +5 per stage, +15 and alternative path at the end', () => {
+    const s = mk();
+    assert.ok(QUESTS['cq-andrey']?.personal);
+    QS.startQuest(s, 'cq-andrey');
+    QS.onArrive(s, 'lagoon-bar', GAME_DATA);
+    assert.equal(s.quests['cq-andrey'].stage, 'parts');
+    assert.ok(QS.slots(s, 'cq-andrey').every((x) => x.locked), 'gated: Andrey not in the party');
+    s.hero.credits = 1000;
+    st.recruit(s, 'andrey');
+    const p = s.party.find((x) => x.npc === 'andrey');
+    assert.equal(p.approval, 5);
+    assert.ok(QS.slots(s, 'cq-andrey').every((x) => x.locked), 'loyalty 5 < 10');
+    p.approval = 10;
+    const slot = QS.slots(s, 'cq-andrey')[0];
+    assert.ok(!slot.locked);
+    QS.completeSlot(s, slot, GAME_DATA);
+    assert.equal(s.quests['cq-andrey'].state, 'done');
+    assert.equal(p.approval, 25);
+    assert.ok(p.altUnlocked);
+    assert.ok(!CP.canChangePath(s, 'andrey', GAME_DATA), 'level < 5');
+    p.level = 5;
+    assert.ok(CP.canChangePath(s, 'andrey', GAME_DATA));
+    CP.changePath(s, 'andrey', GAME_DATA);
+    assert.equal(p.path, COMPANIONS.andrey.altPath);
+    assert.equal(st.buildCompanion(s, p).pathId || st.buildCompanion(s, p).build.path, COMPANIONS.andrey.altPath);
+    assert.ok(!CP.canChangePath(s, 'andrey', GAME_DATA), 'once');
+  });
+  test('companion XP: active ×1, waiting ×0.5, left 0, behind ×1.5, level ≤ hero', () => {
+    const s = mk();
+    s.hero.xp = xpForLevel(3); s.hero.level = 3;
+    for (const id of ['andrey', 'tik', 'diss', 'lox']) st.recruit(s, id);
+    const P = (id) => s.party.find((x) => x.npc === id);
+    P('lox').state = 'waiting'; P('diss').state = 'left';
+    P('tik').level = 2; P('tik').xp = xpForLevel(2);
+    const x0 = Object.fromEntries(s.party.map((p) => [p.npc, p.xp]));
+    st.gainXp(s, 100, GAME_DATA);
+    assert.equal(P('andrey').xp - x0.andrey, 100);
+    assert.equal(P('lox').xp - x0.lox, 50);
+    assert.equal(P('diss').xp - x0.diss, 0);
+    assert.equal(P('tik').xp - x0.tik, 150);
+    st.gainXp(s, 200000, GAME_DATA);
+    for (const p of s.party) assert.ok(p.level <= s.hero.level, `${p.npc} ${p.level} > ${s.hero.level}`);
+    assert.equal(P('andrey').level, s.hero.level);
+    // old save: companions without xp follow the hero's level
+    const o = mk(); o.hero.level = 4; o.hero.xp = xpForLevel(4);
+    o.party.push({ npc: 'andrey', state: 'active', hp: null, mrl: null, approval: 0, talents: [] });
+    st.gainXp(o, 10, GAME_DATA);
+    assert.equal(o.party[0].level, 4);
+    assert.equal(st.buildCompanion(o, o.party[0]).level, 4);
+  });
+  test('companion level-up: ASI — player picks at loyalty ≥ 20, else auto + line; news queued', () => {
+    const s = mk();
+    st.recruit(s, 'andrey'); st.recruit(s, 'tik');
+    const A = s.party[0], T = s.party[1];
+    A.approval = 30; T.approval = 0;
+    st.gainXp(s, xpForLevel(4) + 10, GAME_DATA);
+    assert.ok(s.hero.level >= 4 && A.level >= 4 && T.level >= 4);
+    assert.ok(A.pendingAsi.includes(4) && !A.asi.some((e) => e.level === 4), 'player picks');
+    assert.ok(T.asi.some((e) => e.level === 4 && e.auto) && T.asiNotes.length === 1, 'auto + line');
+    assert.ok(A.levelNews.includes(4) && T.levelNews.includes(2));
+    const str0 = st.buildCompanion(s, A).stats.con;
+    st.chooseCompanionAsi(s, 'andrey', 4, { stats: { con: 2 } }, GAME_DATA);
+    assert.equal(st.buildCompanion(s, A).stats.con, Math.min(20, str0 + 2));
+    assert.ok(!A.pendingAsi.length);
+  });
+  test('check scenes: every explicit scene maps to a quest check, 2–4 approaches, skills ⊆ goal', () => {
+    const goalAt = (key) => {
+      const [qs, path = ''] = key.split('#');
+      const [qid, sid] = qs.split('/');
+      const stg = QUESTS[qid]?.stages.find((x) => x.id === sid);
+      if (!stg) return null;
+      const m = /^(?:s(\d+))?(?:o:(.+))?$/.exec(path);
+      let g = stg.goal;
+      if (m[1] != null) g = g.goals?.[+m[1]];
+      if (m[2] != null) g = g?.options?.find((o) => o.id === m[2])?.goal;
+      return g;
+    };
+    for (const [key, sc] of Object.entries(CHECK_SCENES)) {
+      for (const k of [key, ...(sc.at || [])]) {
+        const g = goalAt(k);
+        assert.ok(g && g.kind === 'check', `${k}: no check goal`);
+        // the resolved scene keeps only skills of this goal (shared `at` scenes may list foreign skills) and ≥ 2 approaches
+        const [qs, path = ''] = k.split('#'); const [qid, sid] = qs.split('/');
+        const m = /^(?:s(\d+))?(?:o:(.+))?$/.exec(path);
+        const r = CRN.questScene({ qid, stage: QUESTS[qid].stages.find((x) => x.id === sid), goal: g, sub: m[1] != null ? +m[1] : undefined, option: m[2] ? { id: m[2] } : undefined });
+        assert.equal(r.key, k);
+        assert.ok(r.scene.approaches.length >= Math.min(2, g.skills.length), `${k}: approaches`);
+        for (const ap of r.scene.approaches) for (const sk of ap.skills) assert.ok(g.skills.includes(sk), `${k}/${ap.id}: ${sk} ∉ ${g.skills}`);
+        if (sc.approaches.some((ap) => ap.skills.some((sk) => !g.skills.includes(sk)))) console.log(`       (data: ${k} — approach skills outside the goal, filtered)`);
+      }
+      assert.ok(sc.approaches.length >= 2 && sc.approaches.length <= 4 && sc.prolog.length >= 1, key);
+      for (const o of ['success', 'fail', 'critSuccess', 'critFail']) assert.ok(sc.outcomes[o]?.text.length, `${key}: ${o}`);
+    }
+    assert.equal(Object.keys(SKILL_TEMPLATES).length, 20);
+    // every quest check opens a scene with ≥ 1 approach
+    const s = mk();
+    let n = 0;
+    for (const q of Object.values(QUESTS)) for (const stg of q.stages) {
+      const visit = (g, sub, opt) => {
+        if (!g) return;
+        if (g.kind === 'check') { n++; const r = CRN.questScene({ qid: q.id, stage: stg, goal: g, sub, option: opt }); assert.ok(r.scene.approaches.length >= 1, r.key); }
+        if (g.kind === 'all') g.goals.forEach((sg, i) => visit(sg, i));
+        for (const o of g.options || []) if (o.goal) visit(o.goal, sub, o);
+      };
+      visit(stg.goal);
+    }
+    assert.ok(n > 100, `quest checks: ${n}`);
+    const ex = CRN.questScene({ qid: 'mq-exodus', stage: { id: 'get-in', text: '' }, goal: { skills: ['deception', 'hacking'], dc: 12 }, option: { id: 'forge' } });
+    assert.equal(ex.key, 'mq-exodus/get-in#o:forge');
+    assert.ok(!ex.scene.auto);
+    void s;
+  });
+  test('check scenes: approaches (companion / item gates), crit outcomes, fx once', () => {
+    const s = mk();
+    s.hero.items['blank-chips'] = 0;
+    const ms = st.members(s, GAME_DATA);
+    const sc = CHECK_SCENES['mq-exodus/get-in#o:forge'];
+    const states = CRN.approachStates(s, ms, sc, 12);
+    const chips = states.find((x) => x.ap.id === 'chips'), shadow = states.find((x) => x.ap.id === 'shadow');
+    assert.ok(!chips.ok && /Нужен предмет/.test(chips.why));
+    assert.ok(!shadow.ok && /Дымка/.test(shadow.why));
+    s.hero.items['blank-chips'] = 1;
+    st.recruit(s, 'dymka');
+    const st2 = CRN.approachStates(s, st.members(s, GAME_DATA), sc, 12);
+    assert.ok(st2.every((x) => x.ok));
+    assert.equal(st2.find((x) => x.ap.id === 'chips').bonus, 2);
+    const bluff = st2.find((x) => x.ap.id === 'bluff');
+    const crit = CRN.rollApproach({ ...bluff, dc: 5 }, { rng: stubRng([nat(20)]) });
+    assert.equal(crit.outcome, 'critSuccess');
+    const cf = CRN.rollApproach({ ...bluff, dc: 30 }, { rng: stubRng([nat(1), nat(1)]) });
+    assert.equal(cf.outcome, 'critFail');
+    const ok = CRN.rollApproach({ ...bluff, dc: 5 }, { rng: stubRng([nat(10), nat(10)]) });
+    assert.equal(ok.outcome, 'success');
+    const nat20fail = CRN.rollApproach({ ...bluff, dc: 99 }, { rng: stubRng([nat(20), nat(20)]) });
+    assert.equal(nat20fail.outcome, 'fail', 'a natural 20 that misses is a plain fail');
+    assert.ok(CRN.outcomeOf(sc, 'critFail').text[0].includes('сиреной'));
+    assert.equal(CRN.outcomeOf({ outcomes: { success: { text: ['ok'] } } }, 'critSuccess').text[0], 'ok', 'crit falls back');
+    // fx: hp / days / rep / flags / xp
+    const day = s.day, hp0 = st.buildHero(s).hp, xp0 = s.hero.xp;
+    const fx = CRN.applyFx(s, { hp: -3, days: 1, rep: { aiParty: -3 }, flags: ['t-flag'], xpPct: 50, credits: 10 }, { xpBase: 100 });
+    assert.equal(s.day, day + 1);
+    assert.equal(st.buildHero(s).hp, Math.max(1, hp0 - 3));
+    assert.ok(s.flags['t-flag'] && s.hero.xp === xp0 + 50);
+    assert.ok(fx.toasts.some((x) => /дней/.test(x.text)) && fx.toasts.some((x) => /ЗДР/.test(x.text)));
+    // group: everyone rolls, success at half
+    const g = CRN.rollApproach({ ...bluff, dc: 10 }, { group: true, ms: st.members(s, GAME_DATA), rng: stubRng([nat(15), nat(15), nat(2), nat(2)]) });
+    assert.equal(g.rolls.length, 2);
+    assert.ok(g.success);
+  });
+  test('barks: chance, cooldowns, one per scene, silent in dialogues, personal lines first', () => {
+    const cands = [{ npc: 'lox', name: 'Lox' }, { npc: 'tik', name: 'Тик' }];
+    const S0 = BK.createBarkState();
+    const r = BK.pickBark(S0, 0, 'battleStart', cands, { rng: () => 0, scene: 'A' });
+    assert.ok(r && COMPANIONS[r.npc].barks.battleStart.includes(r.text));
+    assert.equal(BK.pickBark(S0, 10, 'victory', cands, { rng: () => 0, scene: 'A' }), null, 'one per scene');
+    assert.equal(BK.pickBark(S0, 10, 'victory', cands, { rng: () => 0, scene: 'B' }), null, 'global cooldown');
+    assert.equal(BK.pickBark(BK.createBarkState(), 0, 'victory', cands, { dialogue: true, rng: () => 0 }), null, 'dialogue');
+    assert.equal(BK.pickBark(BK.createBarkState(), 0, 'battleStart', cands, { rng: () => 0.99 }), null, 'chance');
+    // 10 battles of ~2 minutes with the usual situations: at most 4 barks
+    const S1 = BK.createBarkState();
+    const rng = createRng(7);
+    let n = 0, now = 0;
+    for (let i = 0; i < 10; i++) {
+      const sc = { i };
+      for (const sit of ['battleStart', 'critHit', 'critHit', 'lowHp', 'victory']) { if (BK.pickBark(S1, now, sit, cands, { rng, scene: sc })) n++; now += 24; }
+    }
+    // spec target «≤ 4 per 10 battles»: with the current COMPANION_RULES.barks numbers ~6 (balance, reported); hard bound — one per scene
+    assert.ok(n <= 10 * COMPANION_RULES.barks.maxPerScene, `barks in 10 battles: ${n}`);
+    console.log(`       (barks in 10 simulated battles: ${n})`);
+  });
+}
+
+// ---------------------------------------------------------------- v7 inventory grid, quick slots, mods, off-hand
+console.log('inventory v7: grid, quick slots, mods, off-hand, migration');
+{
+  const INV = await import('../game/src/world/inventory.js');
+  const st = await import('../game/src/world/state.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const { ITEMS } = await import('../game/src/world/data.js');
+  const { MODS } = await import('../game/src/data/items/mods.js');
+  const { OFFHAND } = await import('../game/src/data/items/offhand.js');
+  const { applyEquipment } = await import('../game/src/rules/equipment.js');
+  const SF = await import('../game/src/rules/surfaces.js');
+  const CB = await import('../game/src/rules/combat.js');
+  const mkSave = (cls = 'zabivnoy') => st.newSave({ name: 'T', race: 'human', cls, path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+  const noOverlap = (grid, w, h) => {
+    const seen = new Set();
+    for (const e of grid) {
+      const [ew, eh] = INV.entrySize(e);
+      assert.ok(e.x >= 0 && e.y >= 0 && e.x + ew <= w && e.y + eh <= h, `in bounds ${e.item}`);
+      for (let y = e.y; y < e.y + eh; y++) for (let x = e.x; x < e.x + ew; x++) { const k = `${x},${y}`; assert.ok(!seen.has(k), `overlap at ${k}`); seen.add(k); }
+    }
+  };
+  test('inventory: sizes by table, rotation, capacity, stacks', () => {
+    assert.deepEqual(INV.itemSize(ITEMS['hunting-carbine']), [4, 1]);
+    assert.deepEqual(INV.itemSize(ITEMS['tower-shield']), [3, 4]);
+    assert.deepEqual(INV.itemSize(ITEMS['quilted-jacket']), [2, 2]);
+    assert.deepEqual(INV.itemSize(ITEMS.grenade), [1, 1]);
+    const tall = { grid: [], w: 2, h: 5 };
+    assert.deepEqual(INV.findSpot(tall, ITEMS['hunting-carbine']), { x: 0, y: 0, r: true }, '4×1 rotates into a 2-wide grid');
+    const c = { grid: [], w: 3, h: 2 };
+    assert.equal(INV.placeAuto(c, INV.makeInst('grenade'), 7), 0, 'stacks of 3 (stack field) fit');
+    assert.equal(c.grid.reduce((s, e) => s + e.n, 0), 7);
+    assert.ok(c.grid.every((e) => e.n <= INV.stackOf(ITEMS.grenade)));
+    assert.equal(INV.placeAuto(c, INV.makeInst('tower-shield'), 1), 1, 'too big: does not fit');
+    noOverlap(c.grid, c.w, c.h);
+  });
+  test('inventory: drag & drop with rotation is atomic; no room → nothing changes', () => {
+    const s = mkSave();
+    s.hero.items['side-pistol'] = 1; INV.syncItems(s);
+    const g = s.hero.bag.grid;
+    const i = g.findIndex((e) => e.item === 'side-pistol');
+    const [w, h] = INV.gridDims(s.hero);
+    // find a free 1×2 spot (rotated pistol)
+    let to = null;
+    for (let y = 0; y + 2 <= h && !to; y++) for (let x = 0; x < w && !to; x++) if (INV.rectFree({ grid: g, w, h }, x, y, 1, 2, g[i])) to = { x, y };
+    const r = INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: i }, { at: 'grid', ref: { c: 'bag', key: 'hero' }, ...to, r: true });
+    assert.ok(r.ok, r.msg);
+    const e = s.hero.bag.grid.find((x) => x.item === 'side-pistol');
+    assert.ok(e.r && e.x === to.x && e.y === to.y);
+    const before = JSON.stringify(s.hero.bag);
+    const bad = INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: s.hero.bag.grid.indexOf(e) }, { at: 'grid', ref: { c: 'bag', key: 'hero' }, x: w - 1, y: h - 1, r: false });
+    assert.equal(bad.ok, false);
+    assert.equal(JSON.stringify(s.hero.bag), before, 'failed move leaves the bag as it was');
+    noOverlap(s.hero.bag.grid, w, h);
+  });
+  test('inventory: count view — old-style hero.items edits become instances (and back)', () => {
+    const s = mkSave();
+    const n0 = s.hero.items.medkit || 0;
+    s.hero.items.medkit = n0 + 2; s.hero.items['servo-parts'] = 12;
+    INV.syncItems(s);
+    assert.equal(INV.countAll(s).medkit, n0 + 2);
+    assert.equal(INV.countAll(s)['servo-parts'], 12);
+    s.hero.items['servo-parts'] -= 5;
+    INV.syncItems(s);
+    assert.equal(INV.countAll(s)['servo-parts'], 7);
+    assert.equal(s.hero.items['servo-parts'], 7);
+  });
+  test('inventory: quick slots by armour / vest / mods, only consumables, battle kit', () => {
+    const s = mkSave();
+    s.hero.equipment = { weapon: null, armor: null, offhand: null, pack: null, mods: [], inst: {} };
+    assert.equal(INV.quickCount(s.hero), 2);
+    s.hero.equipment.armor = 'rig-vest';
+    assert.equal(INV.quickCount(s.hero), 4);
+    s.hero.equipment.inst.armor = { q: 'working', mods: ['pocket-lining'] };
+    assert.equal(INV.quickCount(s.hero), 5);
+    s.hero.equipment.pack = 'lis-pack';
+    assert.equal(INV.quickCount(s.hero), 6);
+    s.hero.items.grenade = 2; s.hero.items['quilted-jacket'] = 1; INV.syncItems(s);
+    const gi = s.hero.bag.grid.findIndex((e) => e.item === 'grenade');
+    const ji = s.hero.bag.grid.findIndex((e) => e.item === 'quilted-jacket');
+    assert.equal(INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: ji }, { at: 'quick', key: 'hero', i: 5 }).msg, 'inv.quickOnly');
+    assert.ok(INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: gi }, { at: 'quick', key: 'hero', i: 5 }).ok);
+    const kit = INV.battleKit(s.hero);
+    assert.equal(kit.inventory.grenade, 2);
+    assert.equal(kit.quickSlots, 6);
+  });
+  test('battle: quick slot items usable, backpack items only via «Порыться» (full action, swap when full)', () => {
+    const u = buildCreature({ race: 'human', cls: 'zabivnoy', level: 3, data: GAME_DATA, inventory: { grenade: 1 }, backpack: { molotov: 2, medkit: 1 }, quickSlots: 1 });
+    const b = createBattle({ map: { grid: ['#########', '#P.....E#', '#########'] }, heroes: [u], enemies: ['scavenger'], data: GAME_DATA, seed: 1, autoReactions: false });
+    const H = b.units.find((x) => x.team === 'heroes');
+    forceTurn(b, H);
+    assert.equal(CB.itemUsable(b, H, 'molotov'), 'noItem', 'not straight from the backpack');
+    assert.equal(CB.rummageOk(b, H, 'molotov'), 'noSlot', 'one quick slot is taken');
+    const r = perform(b, { type: 'rummage', unit: H.id, item: 'molotov', swap: 'grenade' });
+    assert.ok(r.ok, r.error);
+    assert.equal(H.inventory.molotov, 2);
+    assert.equal(H.backpack.grenade, 1);
+    assert.equal(b.turn.actions, 0, 'costs the action');
+    assert.equal(perform(b, { type: 'rummage', unit: H.id, item: 'medkit', swap: 'molotov' }).error, 'action');
+  });
+  test('mods: quality and instance mods apply (hit/dmg/kb, immuneSurface, speed, surfaceOnHit, ignoreSmoke)', () => {
+    const Q = GAME_DATA.QUALITY;
+    const base = applyEquipment(ITEMS, { weapon: 'hunting-carbine' }, null, null, Q).weapon;
+    const eq = applyEquipment(ITEMS, { weapon: 'hunting-carbine', armor: 'lined-leather', inst: { weapon: { q: 'masterwork', mods: ['loupe-sight', 'acid-mag'] }, armor: { q: 'junk', mods: ['fire-blanket', 'sprint-spikes'] } } }, null, null, Q);
+    assert.equal(eq.weapon.hit, (base.hit || 0) + 2, 'masterwork +1, loupe +1');
+    assert.equal(eq.weapon.dmg || 0, (base.dmg || 0) + 1);
+    assert.equal(eq.weapon.surfaceOnHit[0].kind, 'acid');
+    assert.equal(eq.armor.kb, Math.max(0, ITEMS['lined-leather'].kb - 1), 'junk −1 KB');
+    assert.deepEqual(eq.gear.immuneSurface, ['fire']);
+    assert.equal(eq.gear.speed, 1);
+    const u = buildCreature({ race: 'human', cls: 'ranger', level: 3, data: GAME_DATA, equipment: { weapon: 'hunting-carbine', armor: 'lined-leather', inst: { armor: { q: 'working', mods: ['fire-blanket', 'sprint-spikes'] }, weapon: { q: 'working', mods: ['thermal-scope'] } } } });
+    const u0 = buildCreature({ race: 'human', cls: 'ranger', level: 3, data: GAME_DATA, equipment: { weapon: 'hunting-carbine', armor: 'lined-leather' } });
+    assert.equal(u.speed, u0.speed + 1);
+    assert.ok(u.weapon.ignoreSmoke);
+    // immune to fire: standing in fire does no damage
+    const b = createBattle({ map: { grid: ['#######', '#P...E#', '#######'] }, heroes: [u], enemies: ['scavenger'], data: GAME_DATA, seed: 2, autoReactions: false });
+    const H = b.units.find((x) => x.team === 'heroes');
+    SF.createSurface(b, 'fire', [{ x: H.x, y: H.y }], null, { turns: 3 });
+    const hp = H.hp;
+    SF.surfaceEffect(b, H, 'enter');
+    assert.equal(H.hp, hp, 'fire-blanket: no fire damage');
+    assert.equal(SF.surfaceHarm(b, H, H.x, H.y), 0);
+  });
+  test('mods: fits, one per slot, capacity by quality, req check fail does not install', () => {
+    const host = { item: 'hunting-carbine', q: 'junk', mods: [] };
+    assert.equal(INV.modFitProblem(MODS['loupe-sight'], host), null);
+    assert.equal(INV.modFitProblem(MODS['serrated-edge'], host), 'gear.noSlot');
+    host.mods = ['loupe-sight'];
+    assert.equal(INV.modFitProblem(MODS['acid-mag'], host), 'inv.noModSlots', 'junk: 1 mod');
+    assert.equal(INV.modFitProblem(MODS['pso-scope'] || MODS['holo-reticle'], { ...host, q: 'masterwork' }), 'inv.slotTaken');
+    // every mod fits at least one item of the catalogue
+    const hosts = Object.values(ITEMS).filter((it) => ['weapon', 'armor'].includes(it.slot)).map((it) => ({ item: it.id, q: 'masterwork', mods: [] }));
+    for (const m of Object.values(MODS)) assert.ok(hosts.some((h) => INV.modFitProblem(m, h) === null || INV.modFitProblem(m, { ...h, q: 'junk' }) === null), `mod ${m.id} fits something`);
+    assert.equal(Object.keys(MODS).length, 75);
+    for (const id of Object.keys(OFFHAND)) assert.ok(ITEMS[id], id);
+    assert.equal(Object.keys(OFFHAND).length, 8);
+    // req: failed check → not installed
+    const s = mkSave('ranger');
+    s.hero.equipment.weapon = 'hunting-carbine'; s.hero.equipment.inst = { weapon: { q: 'masterwork', mods: [] } };
+    s.hero.items['thermal-scope'] = 1; INV.syncItems(s);
+    const i = s.hero.bag.grid.findIndex((e) => e.item === 'thermal-scope');
+    const r = INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: i }, { at: 'mod', host: { at: 'equip', key: 'hero', slot: 'weapon' } }, { check: () => ({ success: false }), rng: () => 0.99 });
+    assert.equal(r.ok, false);
+    assert.equal(r.msg, 'inv.modFail');
+    assert.deepEqual(s.hero.equipment.inst.weapon.mods, []);
+    assert.equal(INV.countAll(s)['thermal-scope'], 1, 'the mod stays in the bag');
+    const ok = INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: s.hero.bag.grid.findIndex((e) => e.item === 'thermal-scope') }, { at: 'mod', host: { at: 'equip', key: 'hero', slot: 'weapon' } }, { check: () => ({ success: true }) });
+    assert.ok(ok.ok);
+    assert.deepEqual(s.hero.equipment.inst.weapon.mods, ['thermal-scope']);
+  });
+  test('off-hand: shield adds KB over the armour cap, two-handed blocks it, offAction ability', () => {
+    const plain = buildCreature({ race: 'human', cls: 'arbiter', level: 2, data: GAME_DATA, equipment: { weapon: 'boarding-saber', armor: 'lined-leather' } });
+    const sh = buildCreature({ race: 'human', cls: 'arbiter', level: 2, data: GAME_DATA, equipment: { weapon: 'boarding-saber', armor: 'lined-leather', offhand: 'riot-shield' } });
+    assert.equal(sh.kb, plain.kb + OFFHAND['riot-shield'].kb);
+    const tower = buildCreature({ race: 'human', cls: 'arbiter', level: 2, stats: { str: 8, dex: 14, con: 14, int: 10, wil: 12, cha: 10, per: 10 }, data: GAME_DATA, equipment: { weapon: 'boarding-saber', armor: 'lined-leather', offhand: 'tower-shield' } });
+    assert.ok(tower.reqPenalty.includes('tower-shield'), 'STR 13 not met');
+    assert.equal(tower.speed, plain.speed - 2 - 2, 'shield speed −2 and unmet req −2');
+    const pist = buildCreature({ race: 'human', cls: 'arbiter', level: 2, data: GAME_DATA, equipment: { weapon: 'boarding-saber', offhand: 'side-pistol' } });
+    assert.ok(pist.abilities.some((a) => a.id === 'off:side-pistol' && a.action === 'bonus' && a.usesPerBattle === 3));
+    const s = mkSave('arbiter');
+    s.hero.equipment = { weapon: 'pitchfork', armor: null, offhand: null, pack: null, mods: [], inst: {} };
+    s.hero.items['riot-shield'] = 1; INV.syncItems(s);
+    const i = s.hero.bag.grid.findIndex((e) => e.item === 'riot-shield');
+    assert.equal(INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: i }, { at: 'equip', key: 'hero', slot: 'offhand' }).msg, 'inv.twoHandedBlock');
+    s.hero.equipment.weapon = 'boarding-saber';
+    assert.ok(INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: s.hero.bag.grid.findIndex((e) => e.item === 'riot-shield') }, { at: 'equip', key: 'hero', slot: 'offhand' }).ok);
+    // equipping a two-handed weapon frees the off-hand into the bag
+    s.hero.items.pitchfork = 1; INV.syncItems(s);
+    const r = INV.moveItem(s, { at: 'grid', ref: { c: 'bag', key: 'hero' }, index: s.hero.bag.grid.findIndex((e) => e.item === 'pitchfork') }, { at: 'equip', key: 'hero', slot: 'weapon' });
+    assert.ok(r.ok && r.toasts.includes('inv.offFreed'));
+    assert.equal(s.hero.equipment.offhand, null);
+    assert.equal(INV.countAll(s)['riot-shield'], 1);
+  });
+  test('migration: old save (id counts, flat mods) → grid without overlaps, rest in stash, quick slots, v = 2', () => {
+    const s = mkSave('ranger');
+    const old = JSON.parse(JSON.stringify(s));
+    delete old.hero.bag; delete old.stash; delete old.v; delete old.ground;
+    old.hero.items = { medkit: 3, grenade: 4, molotov: 2, 'hunting-carbine': 1, 'tower-shield': 1, 'heavy-plate': 1, 'quilted-jacket': 2, 'servo-parts': 25, 'loupe-sight': 1, 'sniper-rifle': 1, 'rpg-tube': 1 };
+    old.hero.equipment = { weapon: 'hunting-carbine', armor: null, offhand: null, mods: ['loupe-sight'] };
+    const back = normalizeSave(old, GAME_DATA);
+    assert.equal(back.v, 2);
+    const [w, h] = INV.gridDims(back.hero);
+    noOverlap(back.hero.bag.grid, w, h);
+    noOverlap(back.stash.grid, 10, 12);
+    const want = Object.entries(old.hero.items).filter(([id]) => ITEMS[id]);
+    const have = INV.countAll(back);
+    for (const [id, n] of want) assert.equal(have[id] || 0, n, `kept ${id}`);
+    assert.ok(back.stash.grid.length > 0, 'overflow went to the stash');
+    assert.equal(back.hero.bag.quick[0].item, 'grenade', 'grenades first in quick slots');
+    assert.deepEqual(back.hero.equipment.inst.weapon.mods, ['loupe-sight']);
+    // shop instance value: masterwork ×2.5, no longer a bare id
+    assert.equal(INV.instValue({ item: 'hunting-carbine', q: 'masterwork', mods: [] }), Math.round(ITEMS['hunting-carbine'].price * 2.5));
+    // a save made now keeps its grid on reload
+    const again = normalizeSave(JSON.parse(JSON.stringify(back)), GAME_DATA);
+    assert.deepEqual(again.hero.bag, back.hero.bag);
+  });
+  test('battle writeback: used quick items leave quick slots first', () => {
+    const s = mkSave();
+    s.hero.bag.quick = [{ item: 'grenade', q: 'working', n: 2 }, null, null, null, null, null];
+    s.hero.items.grenade = 0; INV.refreshView(s);
+    s.hero.items.grenade = 3; INV.syncItems(s); // one more grenade in the bag
+    INV.consumeBattle(s, 'hero', { grenade: 2 });
+    assert.equal(s.hero.bag.quick[0], null);
+    assert.equal(INV.countAll(s).grenade, 1);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

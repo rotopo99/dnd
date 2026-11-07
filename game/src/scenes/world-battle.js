@@ -16,6 +16,7 @@ import { applyRep, meetFaction } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
 import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
+import { syncItems, consumeBattle, addInst, makeInst, canStash, contOf, placeAuto, qualityName } from '../world/inventory.js';
 import { itemTip, itemStats } from '../ui/items-ui.js';
 import { C } from '../ui/draw.js';
 import { saveGame } from '../save.js';
@@ -23,6 +24,8 @@ import { WORLD_RULES as R } from '../data/world/rules.js';
 import { tf } from '../world/state.js';
 import { incarnate, exodusZeroFinale } from '../world/exodus.js';
 import { markSeen, markKills, markTerm } from '../world/codex.js';
+import { battleLoyalty } from '../world/companions.js';
+import { queueBark } from '../world/barks.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -55,6 +58,7 @@ export function startWorldBattle(game, o) {
       options: [{ label: t('battle.ok'), run: () => {} }] });
     return;
   }
+  syncItems(save); // v7: quick slots / backpack must reflect old-style hero.items edits before units are built
   // a fight introduces the factions involved (reputation screen stops hiding them)
   if (o.faction) meetFaction(save, o.faction);
   for (const e of setup.enemies || []) { const id = typeof e === 'string' ? e : e?.id; if (ENEMIES[String(id).split('^')[0]]?.faction) meetFaction(save, ENEMIES[String(id).split('^')[0]].faction); }
@@ -75,9 +79,13 @@ export function startWorldBattle(game, o) {
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)
-    onEvent: (S, e) => { if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind); },
+    onEvent: (S, e) => {
+      if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind);
+      companionEvent(S, e); // companions-scenes.md: barks and revives
+    },
     race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
     onWin: (g, S) => {
+      queueBark('victory');
       for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
       openLoot(g, battleLoot(g, S), () => afterBattle(g, S, o));
     },
@@ -153,19 +161,31 @@ export function openLoot(game, loot, then) {
   const take = () => {
     const h = game.save.hero;
     h.credits += loot.credits;
-    for (const { id, n } of loot.items) h.items[id] = (h.items[id] || 0) + n;
+    // v7: instances with quality → hero bag → companions → stash (hub) → «На земле» (gear screen; dropped only by hand)
+    syncItems(game.save);
+    let stashed = 0, ground = 0, lost = 0;
+    for (const { id, n, q } of loot.items) {
+      if (!ITEMS[id]) continue;
+      let left = addInst(game.save, makeInst(id, q), n, { overflow: null });
+      if (left && canStash(game.save)) { const l2 = placeAuto(contOf(game.save, { c: 'stash' }), makeInst(id, q), left); stashed += left - l2; left = l2; }
+      if (left) { const l2 = placeAuto(contOf(game.save, { c: 'ground' }), makeInst(id, q), left); ground += left - l2; lost += l2; }
+    }
+    syncItems(game.save);
     if (loot.credits) game.toast(tf('fx.credits', { n: `+${loot.credits}` }), 'b');
     if (loot.items.length) game.toast(tf('loot.got', { n: loot.items.reduce((s, x) => s + x.n, 0) }), 'j');
+    if (stashed) game.toast(tf('inv.lootStash', { n: stashed }), 'a');
+    if (ground) game.toast(tf('inv.lootGround', { n: ground }), 'c');
+    if (lost) game.toast(tf('inv.lootLost', { n: lost }), 'c');
     then();
   };
   const QC = { junk: 'n', working: 'h', masterwork: 'b', relic: 'f' };
   const lines = [];
   if (loot.credits) lines.push({ text: tf('fx.credits', { n: `+${loot.credits}` }), color: 'b' });
-  const label = ({ id, n }) => `${ITEMS[id]?.name || id}${n > 1 ? ` ×${n}` : ''}`;
+  const label = ({ id, n, q }) => `${ITEMS[id]?.name || id}${q && q !== 'working' ? ` (${qualityName(q)})` : ''}${n > 1 ? ` ×${n}` : ''}`;
   // items — info rows: the full card of the hovered one in the details panel (ui/modal.js `detail`, `inert`)
   const hero = game.save.hero;
-  const rows = loot.items.filter((x) => ITEMS[x.id]).map((x) => ({ label: label(x), inert: true, sub: itemStats(ITEMS[x.id]), subColor: C[QC[ITEMS[x.id].quality]],
-    detail: () => itemTip(ITEMS[x.id], { have: hero.items[x.id] || 0, equipped: ITEMS[hero.equipment?.[ITEMS[x.id].slot]] }) }));
+  const rows = loot.items.filter((x) => ITEMS[x.id]).map((x) => ({ label: label(x), inert: true, sub: itemStats(ITEMS[x.id]), subColor: C[QC[x.q || ITEMS[x.id].quality]],
+    detail: () => itemTip(ITEMS[x.id], { have: hero.items[x.id] || 0, equipped: ITEMS[hero.equipment?.[ITEMS[x.id].slot]], q: x.q }) }));
   game.openModal({ title: t('loot.title'), lines, onCancel: take, width: 640, // Esc also takes everything (the modal is already closed)
     options: [...rows, { label: t('loot.takeAll'), run: take }] });
 }
@@ -176,6 +196,25 @@ function afterBattle(game, S, o) {
   saveGame(save);
   o.onWin(game); // quest progress etc.
   if (hero && hero.dead) import('./cyberspace.js').then((m) => m.startCyberspace(game, { reason: 'hero', helped: true }));
+}
+
+/** { id: n } spent in battle: (quick + backpack at start) − (at the end). */
+function usedItems(u) {
+  const out = {};
+  const start = {}, end = {};
+  for (const src of [u.build?.inventory, u.build?.backpack]) for (const [id, n] of Object.entries(src || {})) start[id] = (start[id] || 0) + n;
+  for (const src of [u.inventory, u.backpack]) for (const [id, n] of Object.entries(src || {})) end[id] = (end[id] || 0) + n;
+  for (const [id, n] of Object.entries(start)) if (n - (end[id] || 0) > 0) out[id] = n - (end[id] || 0);
+  return out;
+}
+
+/** Battle events for companions: barks (battle start, crit, ally down) and revives by the hero (loyalty). */
+function companionEvent(S, e) {
+  const isComp = (id) => typeof id === 'string' && id.startsWith('c-');
+  if (e.type === 'battleStart') queueBark('battleStart');
+  else if (e.type === 'attack' && e.crit && (e.actor === 'hero' || isComp(e.actor))) queueBark('critHit');
+  else if (e.type === 'down' && (e.target === 'hero' || isComp(e.target))) queueBark('allyDown');
+  else if (e.type === 'stabilize' && e.actor === 'hero' && isComp(e.target)) (S.revived = S.revived || new Set()).add(e.target.slice(2));
 }
 
 /** Copy results into the save. Returns toasts. */
@@ -192,11 +231,8 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
   const hu = b.byId.hero;
   if (hu) {
     const r = after(hu); save.hero.hp = r.hp; save.hero.mrl = r.mrl;
-    // v3: items used in battle leave the backpack (unit.inventory is the battle copy)
-    for (const [id, n0] of Object.entries(hu.build?.inventory || {})) {
-      const used = n0 - (hu.inventory?.[id] || 0);
-      if (used > 0) save.hero.items[id] = Math.max(0, (save.hero.items[id] || 0) - used);
-    }    // v3.1: opiates used in battle → withdrawal (−МРЛ now, debuff until a full rest)
+    // v3/v7: items used in battle leave the quick slots / bag (unit.inventory + unit.backpack are battle copies)
+    consumeBattle(save, 'hero', usedItems(hu));    // v3.1: opiates used in battle → withdrawal (−МРЛ now, debuff until a full rest)
     if (!hu.dead) {
       const w = applyWithdrawal(save.hero, hu, Math.random);
       if (w?.loss) out.push({ text: `${t('world.withdrawal')}: −${w.loss} ${t('res.mrl')}`, color: 'f' });
@@ -214,10 +250,12 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     }
     const r = after(u);
     p.hp = r.hp; p.mrl = r.mrl;
+    consumeBattle(save, p.npc, usedItems(u));
   }
   // Cyberspace is decided right here (synchronously): a reload before the next scene still sends the hero there
   if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
   if (won) {
+    out.push(...battleLoyalty(save, b.units, S.revived)); // companions-scenes.md: downed / raised / clean wins
     out.push(...gainXp(save, battleXp(b, game.data), game.data));
     const killed = b.units.filter((u) => u.team === 'enemies' && u.kind !== 'summon' && (u.dead || u.removed)).length;
     if (o.faction && killed) out.push(...repToasts(applyRep(save, o.faction, Math.max(R.killRep.maxPerBattle, R.killRep.perKill * killed))));

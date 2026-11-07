@@ -62,10 +62,10 @@ export const COMPANION_RULES = {
   },
   // Реплики-реакции: редко и по поводу.
   barks: {
-    globalCooldownSec: 75, perCompanionCooldownSec: 150, perSituationCooldownSec: 240,
+    globalCooldownSec: 150, perCompanionCooldownSec: 300, perSituationCooldownSec: 480,
     maxPerScene: 1, durationSec: 3.5, ignoreInDialogue: true,
     chance: { // базовый шанс при наступлении ситуации; личные likes/dislikes и крит-ситуации — выше
-      battleStart: 0.20, critHit: 0.30, lowHp: 0.40, allyDown: 0.60, victory: 0.25, levelUp: 1.0, rareLoot: 0.40,
+      battleStart: 0.12, critHit: 0.18, lowHp: 0.40, allyDown: 0.60, victory: 0.15, levelUp: 1.0, rareLoot: 0.40,
       campRest: 0.30, newRegion: 0.20, likeDeed: 0.70, dislikeDeed: 0.85, checkSuccess: 0.25, checkFail: 0.35,
       enemyOfFaction: 0.50, lowMrl: 0.35, questStageDone: 0.40,
     },

@@ -8,6 +8,7 @@ import { setSaveErrorHandler } from './save.js';
 import { t } from './data/text/index.js';
 import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
 import { renderTips, clearTips } from './ui/tooltip.js';
+import { updateBarks, renderBark } from './ui/bark.js';
 
 // Minimal logical size: the UI is laid out for >= 1280x720. Bigger windows get a bigger canvas
 // at 1:1 pixels (pixel-perfect); smaller ones are downscaled by CSS as a fallback.
@@ -101,6 +102,7 @@ function frame(now) {
     game.time += STEP;
     try {
       updateToasts(game, STEP);
+      updateBarks(game, STEP); // companion barks (companions-scenes.md)
       if (game.modals.length) updateModal(game, STEP);
       else game.scene.update(game, STEP);
     } finally {
@@ -109,6 +111,7 @@ function frame(now) {
   }
   game.scene.render(game);
   if (game.modals.length) { clearTips(); renderModal(game); } // scene tooltips are stale under a modal
+  renderBark(game);
   renderTips(game);
   renderToasts(game);
 }

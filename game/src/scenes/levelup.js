@@ -6,7 +6,9 @@ import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, talentsForSlot } from '../data/talents.js';
 import { STATS, ASI_STAT_MAX } from '../rules/character.js';
 import { levelGains } from '../rules/progression.js';
-import { buildHero, chooseAsi, learnTalent, activeCompanions, tf } from '../world/state.js';
+import { buildHero, buildCompanion, chooseAsi, chooseCompanionAsi, learnTalent, tf } from '../world/state.js';
+import { COMPANION_RULES as CR } from '../data/companions.js';
+import { hashSeed, createRng } from '../rules/rng.js';
 import { saveGame } from '../save.js';
 
 const statName = (k) => t(`stat.${k}`);
@@ -66,15 +68,6 @@ export function openLevelUp(game, onDone) {
     }
     h.levelNews = all.filter((l) => !levels.includes(l));
     saveGame(sv);
-    const comp = [];
-    for (const p of activeCompanions(sv)) {
-      const n = NPCS[p.npc];
-      const c = n && game.data.CLASSES[n.cls];
-      if (!c) continue;
-      const names = levels.flatMap((lv) => levelGains(c, n.path, lv).abilities.map((a) => a.name));
-      if (names.length) comp.push(`${n.name}: ${names.join(', ')}`);
-    }
-    if (comp.length) lines.push({ text: `${t('lvl.companions')} (${t('lvl.asiAuto')}): ${comp.join('; ')}`, color: '4' });
     if (h.pendingTalents > 0) lines.push({ text: t('lvl.talentLine'), color: 'a' });
     game.openModal({
       title: tf('lvl.title', { n: levels[levels.length - 1] }), width: 980, lines,
@@ -84,16 +77,56 @@ export function openLevelUp(game, onDone) {
     return true;
   }
   const pend = h.pendingAsi || [];
-  if (pend.length) { openAsi(game, Math.min(...pend), (g) => { if (!openLevelUp(g, onDone)) onDone?.(g); }); return true; }
+  const next = (g) => { if (!openLevelUp(g, onDone)) onDone?.(g); };
+  if (pend.length) { openAsi(game, Math.min(...pend), next); return true; }
+  // companions-scenes.md: the queue of companion level-ups — news window per companion, then their ASI choices
+  for (const p of sv.party) {
+    if (p.state === 'left') continue;
+    const n = NPCS[p.npc];
+    const cls = n && game.data.CLASSES[n.cls];
+    if (!cls) continue;
+    if ((p.levelNews || []).length) {
+      const lvls = [...p.levelNews].sort((a, b) => a - b);
+      const lines = [];
+      for (const lv of lvls) {
+        const gl = gainLines(cls, p.path || n.path, lv).filter((x) => x.text !== t('lvl.asi'));
+        lines.push(...(lvls.length > 1 ? [{ text: tf('lvl.level', { n: lv }), color: '5' }] : []), ...(gl.length ? gl : [{ text: t('lvl.nothing'), color: '4' }]));
+      }
+      for (const note of p.asiNotes || []) lines.push({ text: note, color: 'b' });
+      if ((p.asiNotes || []).length) lines.push({ text: tf('comp.autoAsiWhy', { n: CR.loyalty.trustsChoicesAt }), color: '4' });
+      p.levelNews = []; p.asiNotes = [];
+      saveGame(sv);
+      game.openModal({ title: tf('comp.levelTitle', { name: n.name, n: lvls[lvls.length - 1] }), width: 980, lines: lines.slice(0, MAX_LINES + 4),
+        options: [{ label: t('lvl.ok'), run: next }], onCancel: next });
+      return true;
+    }
+    if ((p.pendingAsi || []).length) { openAsi(game, Math.min(...p.pendingAsi), next, next, { npc: p.npc }); return true; }
+  }
   return false;
 }
 
-/** ASI choice for a pending level. Esc — later (stays pending). */
-export function openAsi(game, level, onDone, onCancel = onDone) {
+/** Companion talent offers for an ASI level: COMPANION_RULES.levelup.talentOffers random ones + the favourite (talents[1]). */
+export function companionTalentOffers(sv, p, u, level) {
+  const n = NPCS[p.npc];
+  const ctx = { race: n.race, cls: n.cls, stats: u.stats, level: u.level, weaponRange: u.weapon?.range || 1, tags: u.tags };
+  const own = new Set([...(p.talents || []), ...(u.talents || []).map((x) => x.id || x)]);
+  const seen = new Set();
+  const pool = ['race', 'job', 'stat'].flatMap((slot) => talentsForSlot(slot, ctx)).filter((x) => !own.has(x.id) && !seen.has(x.id) && seen.add(x.id));
+  const rng = createRng(hashSeed(`${p.npc}:${level}`));
+  const pick = [];
+  while (pick.length < CR.levelup.talentOffers && pool.length) pick.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  const fav = n.companion?.talents?.[1];
+  if (fav && TALENTS[fav] && !own.has(fav) && !pick.some((x) => x.id === fav)) pick.push({ ...TALENTS[fav], id: fav, fav: true });
+  return pick;
+}
+
+/** ASI choice for a pending level. Esc — later (stays pending). opts.npc — a companion's choice (companions-scenes.md). */
+export function openAsi(game, level, onDone, onCancel = onDone, opts = {}) {
   const sv = game.save;
-  const u = buildHero(sv, game.data);
+  const p = opts.npc ? sv.party.find((x) => x.npc === opts.npc) : null;
+  const u = p ? buildCompanion(sv, p, game.data) : buildHero(sv, game.data);
   const apply = (g, choice) => {
-    for (const m of chooseAsi(sv, level, choice, g.data)) g.toast(m.text, m.color);
+    for (const m of (p ? chooseCompanionAsi(sv, p.npc, level, choice, g.data) : chooseAsi(sv, level, choice, g.data))) g.toast(m.text, m.color);
     saveGame(sv);
     onDone?.(g);
   };
@@ -101,9 +134,14 @@ export function openAsi(game, level, onDone, onCancel = onDone) {
     const capped = u.stats[k] + n > ASI_STAT_MAX;
     return { label: `${statName(k)} ${u.stats[k]} → ${Math.min(ASI_STAT_MAX, u.stats[k] + n)}`, disabled: capped, reason: t('lvl.capped'), run };
   };
-  const back = (g) => openAsi(g, level, onDone, onCancel);
+  const back = (g) => openAsi(g, level, onDone, onCancel, opts);
+  const talentOpt = p
+    ? { label: t('lvl.talent'), run: (g) => g.openModal({ title: t('lvl.talent'), width: 980, onCancel: back,
+      options: companionTalentOffers(sv, p, u, level).map((x) => ({ label: `${x.name}${x.fav ? ` · ${t('comp.talentFav')}` : ''}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`,
+        sub: x.desc, detail: talentTip(x.id), run: (g2) => apply(g2, { talent: x.id }) })) }) }
+    : { label: t('lvl.talent'), run: (g) => openTalentPick(g, (g2, id) => apply(g2, { talent: id }), back) };
   game.openModal({
-    title: tf('lvl.asiTitle', { n: level }), width: 820,
+    title: p ? tf('comp.asiTitle', { name: NPCS[p.npc].name, n: level }) : tf('lvl.asiTitle', { n: level }), width: 820,
     lines: [{ text: t('lvl.asiText'), color: '4' }],
     options: [
       { label: t('lvl.plus2'), run: (g) => g.openModal({ title: t('lvl.plus2'), options: STATS.map((k) => statOpt(k, 2, (g2) => apply(g2, { stats: { [k]: 2 } }))), onCancel: back }) },
@@ -114,7 +152,7 @@ export function openAsi(game, level, onDone, onCancel = onDone) {
           options: STATS.filter((k2) => k2 !== k).map((k2) => statOpt(k2, 1, (g3) => apply(g3, { stats: { [k]: 1, [k2]: 1 } }))),
         }))),
       }) },
-      { label: t('lvl.talent'), run: (g) => openTalentPick(g, (g2, id) => apply(g2, { talent: id }), back) },
+      talentOpt,
       { label: t('lvl.later'), run: (g) => onCancel?.(g) },
     ],
     onCancel: (g) => onCancel?.(g),

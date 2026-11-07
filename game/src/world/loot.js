@@ -2,8 +2,8 @@
 // `loot` table (credits [min, max] + `rolls` weighted draws) and each piece of its `gear` drops with GEAR_DROP by
 // the item's quality; bosses add BOSS_RELICS. World flags: `battle-loot` — one extra draw from a beaten enemy's
 // table, `scrap-loot` — one extra draw from a mechanical one's (no table → credits by WORLD_RULES.loot).
-// Pure: no save access; the caller puts the result into the backpack. Table `quality` weights are not used —
-// the backpack stores items by id, an item's quality is fixed in its record.
+// Pure: no save access; the caller puts the result into the backpack. v7: weapons / armour / shields drawn from a
+// table get a quality by the table's `quality` weights (items {id, n, q}); relics stay relic.
 import { LOOT_TABLES, GEAR_DROP, BOSS_RELICS } from '../data/items/loot.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { rollDice } from '../rules/dice.js';
@@ -24,7 +24,7 @@ function draw(rng, table) {
  * @param data      {ENEMIES, ITEMS, LOOT_TABLES?, GEAR_DROP?, BOSS_RELICS?}
  * @param rng       () => [0, 1)
  * @param opts      {flags: Set|Array of world flag ids, owned?: Set of unique item ids already owned}
- * @returns {credits, items: [{id, n}]}
+ * @returns {credits, items: [{id, n, q?}]}
  */
 export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } = {}) {
   const tables = data.LOOT_TABLES || LOOT_TABLES;
@@ -34,11 +34,23 @@ export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } 
   const fl = flags instanceof Set ? flags : new Set(flags);
   const bag = new Map();
   let credits = 0;
-  const add = (id, n = 1) => {
+  const add = (id, n = 1, q = null) => {
     const it = items[id];
     if (!it) return;
-    if (it.unique) { if (owned.has(id) || bag.has(id)) return; n = 1; }
-    bag.set(id, (bag.get(id) || 0) + n);
+    if (it.unique) { if (owned.has(id) || [...bag.values()].some((x) => x.id === id)) return; n = 1; q = null; }
+    const key = `${id}|${q || ''}`;
+    const cur = bag.get(key) || { id, n: 0, ...(q ? { q } : {}) };
+    cur.n += n;
+    bag.set(key, cur);
+  };
+  const qualityOf = (tb, id) => {
+    const it = items[id];
+    if (!tb.quality || !it || !['weapon', 'armor', 'offhand'].includes(it.slot) || it.quality === 'relic') return null;
+    const w = Object.entries(tb.quality).filter(([, v]) => v > 0);
+    const total = w.reduce((s, [, v]) => s + v, 0);
+    let r = rng() * total;
+    for (const [q, v] of w) { r -= v; if (r < 0) return q; }
+    return w.at(-1)?.[0] || null;
   };
   const beaten = (defeated || [])
     .map((u) => (typeof u === 'string' ? { enemyId: u } : u))
@@ -49,7 +61,7 @@ export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } 
     const tb = def.loot && tables[def.loot];
     if (tb) {
       if (tb.credits) credits += int(rng, tb.credits[0], tb.credits[1]);
-      for (let i = 0; i < (tb.rolls || 1); i++) { const e = draw(rng, tb); if (e) add(e.item, e.n || 1); }
+      for (let i = 0; i < (tb.rolls || 1); i++) { const e = draw(rng, tb); if (e) add(e.item, e.n || 1, qualityOf(tb, e.item)); }
     }
     const g = def.gear || {};
     for (const id of [g.weapon, g.armor, ...(g.items || [])]) {
@@ -69,5 +81,5 @@ export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } 
   const isMech = (x) => x.tags.includes('mechanical');
   if (fl.has('scrap-loot') && beaten.some(isMech)) extra(isMech);
 
-  return { credits, items: [...bag].map(([id, n]) => ({ id, n })) };
+  return { credits, items: [...bag.values()] };
 }

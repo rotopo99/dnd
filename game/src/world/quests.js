@@ -25,6 +25,7 @@ import { WORLD_RULES as R } from '../data/world/rules.js';
 import { questXp } from '../rules/progression.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { exodusActive, exodusLeft, exodusExtend } from './exodus.js';
+import { personalStage, personalQuestDone } from './companions.js';
 
 export const questDef = (id) => QUESTS[id];
 const stageDef = (q, id) => q.stages.find((s) => s.id === id);
@@ -78,6 +79,7 @@ function reward(save, qid, data) {
   const ext = (q.rewards?.exodus || q.exodus)?.ext;
   if (ext) out.push(...exodusExtend(save, qid, ext));
   if (r.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), r.talentChoice];
+  if (q.personal) out.push(...personalQuestDone(save, q)); // companions-scenes.md: +loyalty, alternative path
   return out;
 }
 
@@ -256,7 +258,7 @@ function toStage(save, qid, next, data) {
   st.stage = next; st.opt = null; st.subs = {};
   track(st, next);
   journal(save, tf('q.stage', { name: q.name, text: stageDef(q, next).text }));
-  return [];
+  return q.personal ? personalStage(save, q) : [];
 }
 
 function applyEffects(save, eff, data, key) {

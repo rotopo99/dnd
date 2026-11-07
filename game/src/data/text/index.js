@@ -1,5 +1,7 @@
 import { PROLOGUE } from './prologue.js';
 import { SKILLS } from '../talents.js';
+import { INVENTORY_TEXT } from './inventory.js';
+import { COMPANION_TEXT } from './companions.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -758,5 +760,7 @@ const ru = {
 // Fallback to story texts (prologue keys) so map `intro` keys resolve via t().
 // Note: dialogue keys return arrays of { who, text }.
 for (const [id, sk] of Object.entries(SKILLS)) ru[`skill.${id}`] = sk.name;
+Object.assign(ru, INVENTORY_TEXT); // v7 inventory strings (override older gear/battle item keys)
+Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

@@ -8,14 +8,14 @@ import { heroBuild, wounds } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, LINE, text, textBlock, fit, wrap, panel, button, hitButton, clear } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS, isMet } from '../world/reputation.js';
-import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, learnTalent, members } from '../world/state.js';
+import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, learnTalent, members, tf } from '../world/state.js';
 import { QUESTS, gadgetFor, ITEMS, SKILL_RULES } from '../world/data.js';
 import { autoCheck } from '../world/skill-uses.js';
 import { stageOf, currentGoalText, turninText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
-import { layoutGear, renderGear, renderGearHover, clickGear, itemChips } from './panel-gear.js';
+import { layoutGear, renderGear, renderGearHover, clickGear, itemChips, updateGear, gearBusy } from './panel-gear.js';
 import { createScroll, updateScroll, beginClip, endClip, drawScrollbar, SCROLLBAR_W } from '../ui/scroll.js';
 import { hotspot } from '../ui/tooltip.js';
 import { resLineTip, xpLine, talentTip, abilityTip, resTip, termText } from '../ui/tips.js';
@@ -24,6 +24,8 @@ import { STATS, mod } from '../rules/character.js';
 import { weaponTypeName, armorTypeName, tierName } from '../ui/items-ui.js';
 import { openTalentPick, openAsi, openSheet } from './levelup.js';
 import { layoutCodex, clickCodex, updateCodex, renderCodex } from './panel-codex.js';
+import { loyaltyBand, canChangePath, changePath } from '../world/companions.js';
+import { COMPANIONS } from '../data/companions.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex'];
@@ -94,6 +96,12 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         add({ act: 'medkit', label: `${ITEMS.medkit.name} ${sv.hero.items.medkit || 0}`, w: 116, disabled: !(sv.hero.items.medkit > 0) });
         if (!m.p || m.p.state !== 'cyberspace') add({ act: 'gear', label: t('panel.gear'), w: 120 });
         add({ act: 'sheet', label: t('lvl.sheet'), w: 70 });
+        // companions-scenes.md: path change after the personal quest (once, from level 5)
+        if (m.p && canChangePath(sv, m.key, game.data)) {
+          const alt = COMPANIONS[m.key].altPath;
+          const name = game.data.CLASSES[NPCS[m.key].cls]?.paths.find((x) => x.id === alt)?.name || alt;
+          b.push({ kind: 'm', member: m.key, act: 'path', label: tf('comp.changePath', { path: name }), x: ox + 356, y: y + 4, w: 296, h: 22, font: '12px monospace', selected: true });
+        }
       });
       // talents (hero)
       const tl = sv.hero.talents.map((id) => TALENTS[id]).filter(Boolean);
@@ -128,9 +136,10 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'm') {
       if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
       if (b.act === 'gear') { S.tab = 'gear'; S.gearKey = b.member; layout(game); return; }
-      if (b.act === 'sheet') return openSheet(game, S.units[b.member], b.member === 'hero' ? sv.hero.name : NPCS[b.member].name, b.member === 'hero' ? sv.hero.xp : null);
+      if (b.act === 'sheet') return openSheet(game, S.units[b.member], b.member === 'hero' ? sv.hero.name : NPCS[b.member].name, b.member === 'hero' ? sv.hero.xp : sv.party.find((x) => x.npc === b.member)?.xp ?? null);
+      if (b.act === 'path') { for (const x of changePath(sv, b.member, game.data)) game.toast(x.text, x.color); saveGame(sv); rebuild(game); return; }
       const p = sv.party.find((x) => x.npc === b.member);
-      if (b.act === 'wait') p.state = 'waiting';
+      if (b.act === 'wait') { p.state = 'waiting'; p.waitDay = sv.day; }
       if (b.act === 'join') p.state = 'active';
     }
     if (b.kind === 'talent') {
@@ -170,11 +179,17 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       if (m.p) {
         const st = t(`party.state.${m.p.state}`);
         const ap = m.p.approval;
-        text(ctx, `${st} · ${t('party.approval')} ${ap > 0 ? '+' : ''}${ap}`, ox + 104, y + 44, ap <= -50 ? C.c : ap >= 50 ? C.j : C['4'], '12px monospace');
+        // companions-scenes.md: loyalty band (COMPANION_RULES.loyalty.bands) + bar −100…100
+        text(ctx, fit(ctx, `${st} · ${t('comp.loyalty')}: ${loyaltyBand(ap).name} ${ap > 0 ? '+' : ''}${ap}`, 240, '12px monospace'), ox + 104, y + 44, ap <= -50 ? C.c : ap >= 50 ? C.j : C['4'], '12px monospace');
+        panel(ctx, ox + 104, y + 62, 120, 6, C['0'], C['2']);
+        ctx.fillStyle = ap < 0 ? C.c : C.j;
+        const mid = ox + 164, wv = Math.round(Math.abs(ap) / 100 * 60);
+        ctx.fillRect(ap < 0 ? mid - wv : mid, y + 63, wv, 4);
       } else text(ctx, `${t('world.credits')} ${sv.hero.credits} · ${t('party.marks')} ${sv.hero.judgeMarks || 0}/3`, ox + 104, y + 44, C['4'], '12px monospace');
       resLineTip(ctx, ox + 356, y + 8, 296, 'hp', u.hp, u.maxHp, t('res.hp'));
       resLineTip(ctx, ox + 356, y + 30, 296, 'mrl', u.mrl, u.maxMrl, t('res.mrl'));
       if (isHero) xpLine(ctx, ox + 356, y + 47, 296, sv.hero.xp, sv.hero.level, { small: true, h: 6 });
+      else if (Number.isFinite(m.p?.xp)) xpLine(ctx, ox + 356, y + 47, 296, m.p.xp, m.p.level || u.level, { small: true, h: 6 });
     });
     // hero talents & gadget
     const x = ox + 690, w = BASE_W - 714;
@@ -430,11 +445,14 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         used = updateScroll(S.jq, jqView(), rowsH(rows) + 8, inp.mouse) || updateScroll(S.je, jeView(), rowsH(ev) + 8, inp.mouse);
       } else if (S.tab === 'codex') {
         used = updateCodex(game, S);
+      } else if (S.tab === 'gear') {
+        used = updateGear(game, S, rebuild);
       } else if (S.tab === 'stats') {
         const u = S.units[S.statKey] || S.units.hero;
         if (u) used = updateScroll(S.sc, scView(), rowsH(statsRight(game, u)) + 8, inp.mouse);
       }
       if (inp.mouse.clicked && S.hover && !used) click(game, S.hover);
+      if (S.tab === 'gear' && (gearBusy(S) || used) && (inp.wasPressed('Escape') || inp.wasPressed('KeyR'))) return; // carrying an item
       if (inp.wasPressed('Escape')) { play('uiClick'); game.resume(back); }
       else if (inp.wasPressed('KeyP')) { S.tab = 'party'; layout(game); }
       else if (inp.wasPressed('KeyG')) { S.tab = 'gear'; layout(game); }
@@ -452,7 +470,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else if (S.tab === 'rep') renderRep(game);
       else if (S.tab === 'codex') renderCodex(game, S);
       else renderJournal(game);
-      for (const b of S.buttons) button(ctx, b, S.hover === b);
+      for (const b of S.buttons) if (!b.hidden) button(ctx, b, S.hover === b);
       if (S.tab === 'gear') renderGearHover(game, S);
     },
   };

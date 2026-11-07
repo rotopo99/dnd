@@ -42,6 +42,10 @@ import { hasWorldFlag } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { FIELD_CAMP } from '../world/data.js';
 import { openLevelUp } from './levelup.js';
+import { openCheckScene } from './check-scene.js';
+import { questScene, stageXp } from '../world/check-run.js';
+import { openRecruit } from '../ui/recruit-ui.js';
+import { recruitStatus, restLoyalty, waitingLoyalty } from '../world/companions.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
@@ -202,8 +206,9 @@ export function createLocationScene(rawId) {
     if (sv.includes('train') && trainerTalents(game, npc).length) acts.push({ id: 'train', label: loc.services.includes('implant') ? t('loc.implant') : t('loc.train') });
     if (!sv.includes('trade') && sv.includes('train') && VENDORS[npc.id]?.mentor) acts.push({ id: 'trade', label: t('shop.mentorBuy') }); // vendors-bestiary.md: mentor shop
     if (npc.recruitable) {
-      const why = canRecruit(save(game), npc.id, game.data);
-      if (why !== 'already') acts.push({ id: 'recruit', label: t('loc.recruit'), disabled: !!why, reason: why ? t(`loc.recruit.${why}`) : null });
+      // companions-scenes.md: the button opens the recruitment dialogue with conditions; reasons are shown there
+      const rs = recruitStatus(save(game), npc.id);
+      if (!rs.already) acts.push({ id: 'recruit', label: rs.left ? t('comp.apologize') : t('loc.recruit'), reason: rs.paths.some((x) => x.ready) ? null : rs.paths[0]?.why || null });
     } else if (sv.includes('recruit')) {
       // N2: mercenaries — paid hire (hero CHA 14+, «friendly»), price lowered by CHA
       const h = hireInfo(save(game), npc.id, hireTier(game, npc), game.data);
@@ -223,11 +228,7 @@ export function createLocationScene(rawId) {
       return openShopHere(game, npc.name, tier, null, npc);
     }
     if (act === 'train') return openTrain(game, npc);
-    if (act === 'recruit') {
-      const state = recruit(sv, npc.id);
-      game.toast(`${npc.name}: ${t(state === 'active' ? 'loc.joined' : 'loc.waiting')}`, 'j');
-      return refresh(game);
-    }
+    if (act === 'recruit') return openRecruit(game, npc, (g) => refresh(g));
     if (act === 'hire') {
       const h = hireInfo(sv, npc.id, hireTier(game, npc), game.data);
       if (h.why) return;
@@ -338,9 +339,10 @@ export function createLocationScene(rawId) {
         run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } }) };
     }
     if (goal.kind === 'check') {
-      const party = ms(game);
       return { label: `${t('loc.solve')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goalDc(sv, goal)}`,
-        run: (g) => (goal.group ? openGroupCheck : openCheck)(g, { title: q.name, skills: goal.skills, dc: goalDc(sv, goal), members: party, cancel: !goal.group, memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`,
+        // companions-scenes.md part 2: every quest check is a check scene (explicit by key or autoScene); group — everyone rolls
+        run: (g) => openCheckScene(g, { title: q.name, scene: questScene(s).scene, dc: goalDc(sv, goal), members: ms(g), group: !!goal.group, cancel: true,
+          memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`, xpBase: stageXp(s.qid), stageText: s.stage.text,
           onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
     if (goal.kind === 'challenge') {
@@ -462,6 +464,8 @@ export function createLocationScene(rawId) {
     // third-exodus.md: a rest costs a day of the Exodus timer
     const ex = passDays(sv, EXODUS.restDays);
     toastAll(game, ex.out);
+    toastAll(game, waitingLoyalty(sv)); // companions-scenes.md: waiting on a hub costs loyalty
+    toastAll(game, restLoyalty(sv)); // soft-incompatible pairs at the fire
     if (ex.zero) { persist(game); startExodusZero(game); return; }
     if (field && has('rest-mrl') && !has('rest-heal')) { sv.hero.mrl = null; for (const p of activeCompanions(sv)) p.mrl = null; }
     if (has('free-medkit') || has('herb-medkit') || has('multitool')) sv.hero.items.medkit = (sv.hero.items.medkit || 0) + 1;
@@ -740,6 +744,7 @@ export function createLocationScene(rawId) {
       // third-exodus.md: the zero — the Judge incarnates, the party is pulled to the Main node
       const ex = exodusSync(save(game));
       toastAll(game, ex.out);
+      toastAll(game, waitingLoyalty(save(game)));
       if (ex.zero && !save(game).cyberspace) { startExodusZero(game); return; }
       const v = V(game);
       if (!v.gate && gateCheck(game)) return;

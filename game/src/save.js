@@ -10,6 +10,7 @@ import { WORLD_RULES as R } from './data/world/rules.js';
 import { MAX_LEVEL } from './rules/progression.js';
 import { EXODUS } from './data/world/exodus.js';
 import { normCodex } from './world/codex.js';
+import { normalizeInventory, syncItems } from './world/inventory.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -129,6 +130,9 @@ export function normalizeSave(s, data) {
   out.exodus = s.exodus && typeof s.exodus === 'object'
     ? { start: Math.max(1, num(ex.start, out.day)), ext: Math.max(0, Math.min(EXODUS.extCap, num(ex.ext))), mark: Math.max(0, Math.min(EXODUS.marks.length, Math.floor(num(ex.mark)))) }
     : out.flags[EXODUS.startFlag] ? { start: out.day, ext: 0, mark: 0 } : null;
+  // v7 (inventory-mods.md §5): backpack grids, quick slots, stash; old saves (v < 2) — auto-layout of hero.items
+  out.v = s.v;
+  normalizeInventory(out);
   return out;
 }
 
@@ -139,7 +143,8 @@ function normEquipment(e, cls, path) {
     const k = starterKit(cls, path);
     return k ? { weapon: k.weapon, armor: k.armor, offhand: null, mods: [] } : null;
   }
-  return { weapon: ok(e.weapon, 'weapon'), armor: ok(e.armor, 'armor'), offhand: ok(e.offhand, 'offhand'), mods: uniq(arr(e.mods).filter((m) => ok(m, 'mod'))) };
+  return { weapon: ok(e.weapon, 'weapon'), armor: ok(e.armor, 'armor'), offhand: ok(e.offhand, 'offhand'), pack: ok(e.pack, 'pack'),
+    mods: uniq(arr(e.mods).filter((m) => ok(m, 'mod'))), inst: obj(e.inst) };
 }
 
 /** Returns the normalised save of a slot (default — autosave) or null (missing / corrupted / other version). */
@@ -163,6 +168,7 @@ export function saveToSlot(save, slot) {
   if (!save) return false;
   try {
     if (save.battlesDone) save.battlesDone = uniq(save.battlesDone);
+    if (save.hero?.bag) syncItems(save); // v7: old-style edits of hero.items → backpack instances
     save.savedAt = Date.now();
     globalThis.localStorage?.setItem(slotKey(slot), JSON.stringify(save));
     return true;

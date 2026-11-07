@@ -33,6 +33,10 @@ import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
 import { SKILL_RULES } from '../data/world/skill-rules.js';
 
+/** v7: quick slots on 1–6, abilities on letters (inventory-mods.md §2). */
+const QUICK_KEYS = 6;
+const ABILITY_KEYS = ['Q', 'W', 'E', 'R', 'Y', 'U', 'O', 'P'];
+
 // combat rework §5: pace of AI turns from data (PACE); F — ×2, Enter — skip to the player's turn
 const AI_STEP = PACE.aiStep; // s between AI actions
 const AI_TURN_GAP = PACE.turnGap; // s before an AI unit starts acting
@@ -227,7 +231,7 @@ export function createBattleScene(opts) {
       if (a.usesPerBattle) parts.push(`${a.usesPerBattle - (hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
       btns.push({
         id: `ab:${a.id}`, a, label: a.name, sub: parts.join(' · '), subColor: a.cost ? C.b : undefined,
-        key: n <= 9 ? String(n) : '', disabled: !!why, reason: why === 'bonus' ? t('battle.noBonus') : reasonOf(why),
+        key: ABILITY_KEYS[n - 1] || '', disabled: !!why, reason: why === 'bonus' ? t('battle.noBonus') : reasonOf(why),
         selected: S.sel?.kind === 'ability' && S.sel.a.id === a.id,
       });
     }
@@ -263,6 +267,7 @@ export function createBattleScene(opts) {
     if (opts.onRetreat) btns.push({ id: 'retreat', label: t('battle.retreat'), sub: t('battle.retreatSub'), disabled: !S.playerTurn });
     btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: t('battle.endTurnKey'), disabled: !S.playerTurn, reason: S.playerTurn ? null : t('battle.notTurn') });
     S.buttons = btns;
+    buildQuick(hero); // positioned by layoutBattle.buttons (right of the log)
     layoutBattle.buttons(S);
     // target cells for the current selection
     S.targetCells = null;
@@ -285,6 +290,60 @@ export function createBattleScene(opts) {
       S.intents = {};
       for (const u of b.units) if (u.team === 'enemies' && isStanding(u) && !isHiddenFoe(u)) S.intents[u.id] = intentOf(b, u);
     }
+  }
+
+  /** v7 (inventory-mods.md §2): quick slots 1–6 over the map's bottom-left corner + «Порыться в рюкзаке». */
+  function buildQuick(hero) {
+    const b = S.b;
+    const items = b.data.items;
+    const qItems = Object.keys(hero.inventory || {}).filter((id) => hero.inventory[id] > 0 && combat.isBattleItem(items[id]));
+    const qn = Math.min(QUICK_KEYS, hero.quickSlots ?? Math.max(2, qItems.length));
+    const out = [];
+    for (let i = 0; i < qn; i++) {
+      const id = qItems[i] || null;
+      const it = id && items[id];
+      const why = !S.playerTurn ? 'turn' : id ? combat.itemUsable(b, hero, id) : null;
+      const none = id && !why && !(S.specs[`item:${id}`] || []).length;
+      out.push({ id: `q:${i}`, quick: id, n: id ? hero.inventory[id] : 0, label: it ? it.name : '', key: String(i + 1),
+        w: 46, h: 44, disabled: !id || !!why || none, reason: !id ? t('inv.quickEmpty') : why ? t(REASONS[why] || 'battle.notAllowedHere') : none ? t('battle.noTargets') : null,
+        selected: !!id && S.sel?.item === id });
+    }
+    const bp = Object.entries(hero.backpack || {}).filter(([id, n]) => n > 0 && items[id]);
+    if (bp.length) {
+      const r = !S.playerTurn ? 'turn' : b.turn.actions <= 0 ? 'action' : null;
+      out.push({ id: 'rummage', label: t('inv.rummageBtn'), sub: t('act.action'), w: 150, h: 40, font: 'bold 14px monospace', disabled: !!r, reason: r ? t(REASONS[r] || 'battle.notAllowedHere') : null });
+    }
+    S.quickBtns = out;
+  }
+
+  /** Use the item of a quick slot: untargeted — at once, else target like an ability (grenades: area preview). */
+  function useQuick(id) {
+    const b = S.b;
+    const it = b.data.items[id];
+    const specs = S.specs[`item:${id}`] || [];
+    if (S.sel?.item === id) { S.sel = null; return; }
+    if (specs.length === 1 && !specs[0].target && !specs[0].tile) doAction({ type: 'useItem', item: id });
+    else S.sel = { kind: 'ability', a: combat.itemAbility(it), item: id };
+  }
+
+  /** «Порыться в рюкзаке»: a full action — one item from the backpack into a quick slot (no free slot — swap). */
+  function openRummage() {
+    const game = S.game;
+    const b = S.b;
+    const hero = b.byId[S.heroId];
+    const items = b.data.items;
+    const used = Object.keys(hero.inventory).filter((k) => hero.inventory[k] > 0);
+    const full = hero.quickSlots != null && used.length >= hero.quickSlots;
+    const bp = Object.entries(hero.backpack || {}).filter(([id, n]) => n > 0 && items[id]);
+    game.openModal({
+      title: t('inv.rummageTitle'), width: 720, lines: [{ text: t('inv.rummageHint'), color: '4' }],
+      options: [...bp.map(([id, n]) => ({ label: `${items[id].name} ×${n}`, sub: items[id].desc || '',
+        run: (g) => {
+          if (!full || used.includes(id)) { doAction({ type: 'rummage', item: id }); return; }
+          g.openModal({ title: t('inv.rummageSwap'), lines: [],
+            options: [...used.map((sw) => ({ label: `${items[sw].name} ×${hero.inventory[sw]}`, run: () => doAction({ type: 'rummage', item: id, swap: sw }) })), { label: t('loc.close'), run: () => {} }] });
+        } })), { label: t('loc.close'), run: () => {} }],
+    });
   }
 
   // ---------------------------------------------------------------- previews for the UI
@@ -380,12 +439,14 @@ export function createBattleScene(opts) {
       case 'throw': S.sel = S.sel?.throw ? null : { kind: 'attack', throw: true }; break;
       case 'burst': S.sel = S.sel?.burst ? null : { kind: 'attack', burst: true }; break;
       case 'items': openItems(); return;
+      case 'rummage': openRummage(); return;
       case 'trick': openTricks(); return;
       case 'dash': doAction({ type: 'dash' }); break;
       case 'disengage': doAction({ type: 'disengage' }); break;
       case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
       case 'retreat': opts.onRetreat(game, S); return;
       default: {
+        if (btn.quick) { useQuick(btn.quick); break; }
         if (btn.endStatus) { doAction({ type: 'endStatus', status: btn.endStatus }); break; }
         const a = btn.a;
         if (S.sel?.kind === 'ability' && S.sel.a.id === a.id) { S.sel = null; break; }
@@ -724,7 +785,7 @@ export function createBattleScene(opts) {
       const cx = Math.floor((m.x - L.mapX) / L.cell), cy = Math.floor((m.y - L.mapY) / L.cell);
       if (cx >= 0 && cy >= 0 && cx < S.b.grid.w && cy < S.b.grid.h) S.hover.cell = { x: cx, y: cy };
     }
-    S.hover.button = hitButton(S.buttons, m);
+    S.hover.button = hitButton(S.buttons, m) || hitButton(S.quickBtns || [], m);
     // battle log: wheel + slider, sticks to the newest line while scrolled to the end
     const logUsed = updateScroll(S.logScroll, L.log, S.log.length * LINE + 8, m, { step: LINE * 3, follow: true });
     if (logUsed) return;
@@ -745,9 +806,11 @@ export function createBattleScene(opts) {
       if (S.hover.button) selectButton(S.hover.button);
       else if (S.hover.cell) clickCell(S.hover.cell.x, S.hover.cell.y);
     }
-    for (let i = 1; i <= 9; i++) {
-      if (inp.wasPressed(`Digit${i}`) || inp.wasPressed(`Numpad${i}`)) selectButton(S.buttons.find((x) => x.key === String(i)));
+    // v7: 1–6 — quick slots; abilities — Q W E R Y U O P
+    for (let i = 1; i <= QUICK_KEYS; i++) {
+      if (inp.wasPressed(`Digit${i}`) || inp.wasPressed(`Numpad${i}`)) selectButton((S.quickBtns || []).find((x) => x.key === String(i)));
     }
+    for (const k of ABILITY_KEYS) if (inp.wasPressed(`Key${k}`)) selectButton(S.buttons.find((x) => x.key === k));
     if (inp.wasPressed('KeyA')) selectButton(S.buttons[0]);
     if (inp.wasPressed('KeyT')) selectButton(S.buttons.find((x) => x.id === 'throw'));
     if (inp.wasPressed('KeyB')) selectButton(S.buttons.find((x) => x.id === 'burst'));
