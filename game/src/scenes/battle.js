@@ -14,7 +14,7 @@ import * as combat from '../rules/combat.js';
 import {
   createBattle, getLegalActions, perform, endTurn, isAiTurn, currentUnit, getReachable,
   abilityUsable, abilityRange, abilityTargets, attackOdds, saveFailChance, weaponAttackBonus,
-  spellAttackBonus, getDc, weaponRange, isStanding,
+  spellAttackBonus, getDc, weaponRange, isStanding, weaponDamageBonus, damageMultiplier,
 } from '../rules/combat.js';
 import { chebyshev, lineOfSight, walkLine, T_WALL } from '../rules/grid.js';
 import { chooseAction } from '../rules/ai.js';
@@ -24,7 +24,8 @@ import { createScroll, updateScroll } from '../ui/scroll.js';
 import { ITEMS } from '../data/index.js';
 import { PACE } from '../data/combat.js';
 import { intentOf } from '../rules/archetypes.js';
-import { objectAt } from '../rules/terrain.js';
+import { coverBonus, terrainHit } from '../rules/terrain.js';
+import { parseDice } from '../rules/dice.js';
 import { createPin, pinUnit, updatePin } from '../ui/unit-pin.js';
 import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
@@ -287,6 +288,24 @@ export function createBattleScene(opts) {
   }
 
   // ---------------------------------------------------------------- previews for the UI
+  /** combat rework §5 card: weapon damage range (crit max), cover KB, height and flank modifiers. */
+  function terrainOdds(b, u, tgt, melee, isWeapon) {
+    const out = { cover: 0, coverLevel: 0, elev: 0, flank: 0, dmg: null };
+    const arc = isWeapon && !melee && u.weapon?.arc;
+    if (!arc) { const cv = coverBonus(b, u.x, u.y, tgt.x, tgt.y, melee); out.cover = cv.kb; out.coverLevel = cv.level; }
+    const th = terrainHit(b, u, tgt, melee);
+    out.elev = th.elev; out.flank = th.flank;
+    if (isWeapon && u.weapon) {
+      const p = parseDice(u.weapon.dice);
+      const lo = p.terms.reduce((s2, x) => s2 + x.n * x.sign, 0) + p.bonus, hi = p.terms.reduce((s2, x) => s2 + x.n * x.sides * x.sign, 0) + p.bonus;
+      const bonus = weaponDamageBonus(b, u, tgt);
+      const { mult } = damageMultiplier(b, tgt, u.weapon.dmgType);
+      const f = (v) => Math.max(0, Math.floor(v * mult));
+      out.dmg = [f(lo + bonus), f(hi + bonus), f(2 * hi - p.bonus + bonus)];
+    }
+    return out;
+  }
+
   /** Hit / save chance of the current selection (or base attack) against a unit. */
   S.odds = (tgt, sel = S.sel) => {
     const b = S.b;
@@ -295,7 +314,7 @@ export function createBattleScene(opts) {
     if (!sel || sel.kind === 'attack') {
       const melee = meleeAttack(b, u, { type: 'attack', unit: u.id, target: tgt.id });
       const o = attackOdds(b, u, tgt, weaponAttackBonus(b, u), melee, true);
-      return { kind: 'hit', chance: o.chance, crit: o.critChance, mode: o.mode };
+      return { kind: 'hit', chance: o.chance, crit: o.critChance, mode: o.mode, ...terrainOdds(b, u, tgt, melee, true) };
     }
     const a = sel.a;
     if (a.roll === 'attack') {
@@ -304,7 +323,7 @@ export function createBattleScene(opts) {
       const o = wop
         ? attackOdds(b, u, tgt, weaponAttackBonus(b, u) + (wop.hit || 0), melee, true)
         : attackOdds(b, u, tgt, spellAttackBonus(b, u, a), melee, false);
-      return { kind: 'hit', chance: o.chance, crit: o.critChance, mode: o.mode };
+      return { kind: 'hit', chance: o.chance, crit: o.critChance, mode: o.mode, ...terrainOdds(b, u, tgt, melee, !!wop) };
     }
     if (a.roll === 'save' && a.save) return { kind: 'save', chance: saveFailChance(b, tgt, a.save, getDc(b, u, a)), dc: getDc(b, u, a), stat: a.save };
     return null;
