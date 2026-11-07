@@ -756,8 +756,8 @@ test('stabilize revive: raises a dead ally (not soulless) on its tile; plain sta
   };
   let { b, H, F } = mk();
   F.deathSavesLeft = 0;
-  dealDamage(b, F, null, 999, 'slash');
-  if (!F.dead) dealDamage(b, F, null, 999, 'slash');
+  dealDamage(b, H, F, 999, 'slash');
+  if (!F.dead) dealDamage(b, H, F, 999, 'slash');
   assert.ok(F.dead, 'ally is dead');
   b.turn.unitId = H.id; b.turn.actions = 1; b.order.splice(b.order.indexOf(H.id), 1); b.order.splice(b.turnIndex, 0, H.id);
   assert.ok(!getLegalActions(b, H.id).some((x) => x.ability === 'lift' && x.target === 'F'), 'plain stabilize cannot target the dead');
@@ -768,7 +768,7 @@ test('stabilize revive: raises a dead ally (not soulless) on its tile; plain sta
   assert.ok(F.x >= 0 && b.occ[F.y * b.grid.w + F.x] > 0, 'back on the grid');
   ({ b, H, F } = mk());
   F.soulless = true; F.deathSavesLeft = 0;
-  dealDamage(b, F, null, 999, 'slash'); if (!F.dead) dealDamage(b, F, null, 999, 'slash');
+  dealDamage(b, H, F, 999, 'slash'); if (!F.dead) dealDamage(b, H, F, 999, 'slash');
   assert.ok(!getLegalActions(b, H.id).some((x) => x.ability === 'raise' && x.target === 'F'), 'soulless cannot be raised');
 });
 test('XP scale above level 5: enemy and quest fallbacks follow the XP a level needs', () => {
