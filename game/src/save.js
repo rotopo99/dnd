@@ -5,6 +5,7 @@ import { NPCS } from './data/npcs.js';
 import { LOCATIONS, START_LOCATION, START_DISCOVERED, QUESTS, ITEMS, resolveLocation, starterKit } from './world/data.js';
 import { FACTION_IDS } from './world/reputation.js';
 import { WORLD_RULES as R } from './data/world/rules.js';
+import { MAX_LEVEL } from './rules/progression.js';
 
 export const SAVE_KEY = 'ruslania-save-v1';
 export const SAVE_VERSION = 1;
@@ -37,12 +38,15 @@ export function normalizeSave(s, data) {
   const talents = uniq(arr(h.talents).filter((id) => TALENTS[id]));
   out.hero = {
     ...h, name: String(h.name || '').slice(0, 24) || '—',
-    level: Math.min(5, Math.max(1, num(h.level, 1))), xp: Math.max(0, num(h.xp)),
+    level: Math.min(MAX_LEVEL, Math.max(1, num(h.level, 1))), xp: Math.max(0, num(h.xp)),
     talents, activeCombat: uniq(arr(h.activeCombat).filter((id) => talents.includes(id))),
     hp: h.hp == null ? null : Math.max(0, num(h.hp)), mrl: h.mrl == null ? null : Math.max(0, num(h.mrl)),
     judgeMarks: Math.max(0, Math.min(R.cyberspace.maxMarks, num(h.judgeMarks))), credits: Math.max(0, num(h.credits, R.start.credits)),
     items: Object.fromEntries(Object.entries(obj(h.items)).filter(([k]) => ITEMS[k]).map(([k, v]) => [k, Math.max(0, num(v))])),
     pendingTalents: Math.max(0, num(h.pendingTalents)), uniqueTalent: !!h.uniqueTalent,
+    // levels-20.md: ASI choices, levels waiting for a choice, levels not yet shown in the level-up window
+    asi: arr(h.asi).filter((e) => e && Number.isInteger(e.level) && (e.talent ? TALENTS[e.talent] : e.stats && typeof e.stats === 'object')),
+    pendingAsi: uniq(arr(h.pendingAsi).filter((l) => Number.isInteger(l))), levelNews: uniq(arr(h.levelNews).filter((l) => Number.isInteger(l))),
     equipment: normEquipment(h.equipment, h.cls, h.path),
   };
   out.party = arr(s.party).filter((p) => p && NPCS[p.npc]).map((p) => ({

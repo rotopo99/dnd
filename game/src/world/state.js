@@ -33,7 +33,8 @@ export function newSave(hero) {
   const save = {
     version: 1, seed: (Math.random() * 1e9) | 0, day: 1,
     hero: { ...hero, level: 1, xp: 0, activeCombat: combat.slice(0, COMBAT_TALENT_LIMIT(1)), gadget: gadget ? gadget.id : null,
-      hp: null, mrl: null, judgeMarks: 0, credits: R.start.credits, items, equipment, uniqueTalent: false, pendingTalents: 0 },
+      hp: null, mrl: null, judgeMarks: 0, credits: R.start.credits, items, equipment, uniqueTalent: false, pendingTalents: 0,
+      asi: [], pendingAsi: [], levelNews: [] },
     party: [],
     location: START_LOCATION, prevLocation: null,
     discovered: [...START_DISCOVERED], visited: [],
@@ -105,7 +106,8 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const talents = safeTalents(h.talents);
   const activeCombat = safeTalents(h.activeCombat).filter((id) => talents.includes(id)).slice(0, COMBAT_TALENT_LIMIT(h.level));
   const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined,
-    stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined };
+    stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined,
+    asi: Array.isArray(h.asi) && h.asi.length ? h.asi : undefined };
   const gear = { equipment: h.equipment || undefined, inventory: battleInventory(h.items) };
   let u;
   try {
@@ -132,9 +134,10 @@ export function buildCompanion(save, p, data = GAME_DATA) {
   let u;
   try {
     if (!isAllowed(race, data.CLASSES[cls])) throw new Error('race');
-    u = buildCreature({ race, cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment, talents, activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(save.hero.level)) });
+    // companions: ASI automatically by the class main stat (levels-20.md)
+    u = buildCreature({ race, cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment, talents, asi: 'auto', activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(save.hero.level)) });
   } catch {
-    try { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment }); } catch { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}` }); }
+    try { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment, asi: 'auto' }); } catch { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}` }); }
   }
   restore(u, p.hp, p.mrl);
   if (save.settings.aiCompanions) u.control = 'ai';
@@ -334,9 +337,33 @@ export function gainXp(save, xp, data = GAME_DATA) {
     keep(save.hero, h0, buildHero(save, data));
     for (const [p, oldU] of before.slice(1)) { const hp = p.hp, mrl = p.mrl; p.hp = null; p.mrl = null; const nu = buildCompanion(save, p, data); p.hp = hp; p.mrl = mrl; keep(p, oldU, nu); }
     save.hero.pendingTalents = (save.hero.pendingTalents || 0) + r.talentPicks;
+    // levels-20.md: ASI choices wait for the player; levelNews — levels not yet shown in the level-up window
+    save.hero.pendingAsi = [...(save.hero.pendingAsi || []), ...r.asiLevels];
+    save.hero.levelNews = [...(save.hero.levelNews || []), ...r.levels];
     out.push({ text: tf('fx.level', { n: r.level }), color: 'a' });
     journal(save, tf('fx.level', { n: r.level }));
   }
+  return out;
+}
+
+/**
+ * Apply the hero's ASI choice for a pending level: { stats: { str: 2 } | { str: 1, dex: 1 } } or { talent: id }.
+ * Returns toasts. HP/MRL keep the damage taken (like a level-up).
+ */
+export function chooseAsi(save, level, choice, data = GAME_DATA) {
+  const h = save.hero;
+  const pend = h.pendingAsi || [];
+  const i = pend.indexOf(level);
+  if (i < 0) return [];
+  const before = buildHero(save, data);
+  pend.splice(i, 1);
+  h.asi = [...(h.asi || []).filter((e) => e.level !== level), choice.talent ? { level, talent: choice.talent } : { level, stats: { ...choice.stats } }];
+  const out = [];
+  if (choice.talent) out.push(...learnTalent(save, choice.talent, data, { force: true }));
+  const after = buildHero(save, data);
+  h.hp = Math.max(1, after.maxHp - Math.max(0, before.maxHp - before.hp));
+  h.mrl = Math.max(1, after.maxMrl - Math.max(0, before.maxMrl - before.mrl));
+  if (choice.stats) out.push({ text: `${t('lvl.asi')}: ${Object.entries(choice.stats).map(([k, v]) => `${t(`stat.${k}`)} +${v}`).join(', ')}`, color: 'a' });
   return out;
 }
 
