@@ -4,14 +4,15 @@
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
-import { LOCATIONS, SHOP_STOCK, AMBUSH, encounterName, npcGreeting } from '../world/data.js';
+import { LOCATIONS, SHOP_STOCK, AMBUSH, encounterName, npcGreeting, LORE_RUMORS } from '../world/data.js';
 import { repTier, factionName, normFaction } from '../world/reputation.js';
 import { members, grant, journal, hasFlagInParty, openHidden } from '../world/state.js';
-import { startWorldBattle } from './world-battle.js';
+import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { openShop } from './shop.js';
 import { saveGame } from '../save.js';
 
 const save = (game) => game.save;
+const pickRumor = (list) => (list.length ? list[Math.floor(Math.random() * list.length)] : null);
 
 export function runEncounter(game, e, reg, back, resume) {
   const sv = save(game);
@@ -28,8 +29,10 @@ export function runEncounter(game, e, reg, back, resume) {
     else fin(g);
   };
   if (e.kind === 'battle') {
-    const fight = (ambush) => startWorldBattle(game, {
+    // N3: without an ambush the party may talk instead of fighting (people and robots only)
+    const fight = (ambush) => (ambush ? startWorldBattle : startSkirmish)(game, {
       encounter: e.encounter, title: `${t('map.road')}: ${encounterName(e.encounter)}`, faction: e.faction, ambush,
+      danger: e.danger ?? LOCATIONS[sv.location]?.danger ?? 0,
       onWin: (g) => { g.resume(back); resume(); },
     });
     const go = () => {
@@ -56,7 +59,10 @@ export function runEncounter(game, e, reg, back, resume) {
     const pool = Object.values(LOCATIONS).filter((l) => l.region === reg && !sv.discovered.includes(l.id) && !l.requires);
     const l = pool[Math.floor(Math.random() * pool.length)];
     if (l) { openHidden(sv, l.id); journal(sv, `${t('loc.rumorFound')}: ${l.name}`); saveGame(sv); }
-    card(t('map.rumor'), [{ text: l ? `${t('loc.rumorFound')}: ${l.name}` : t('loc.noRumor') }], () => resume());
+    // v4: plus a story rumor (locations-lore.js) — preferably about the revealed place or this region
+    const lore = (l && LORE_RUMORS.find((r) => r.loc === l.id)) || pickRumor(LORE_RUMORS.filter((r) => LOCATIONS[r.loc]?.region === reg)) || pickRumor(LORE_RUMORS);
+    if (lore) journal(sv, `${t('map.rumor')}: ${lore.text}`);
+    card(t('map.rumor'), [{ text: l ? `${t('loc.rumorFound')}: ${l.name}` : t('loc.noRumor') }, ...(lore ? [{ text: `«${lore.text}»`, color: 'a' }] : [])], () => resume());
     return;
   }
   if (e.kind === 'npc') {

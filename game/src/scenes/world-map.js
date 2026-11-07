@@ -5,8 +5,8 @@
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, fit, panel, button, hitButton, clear } from '../ui/draw.js';
-import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, MAP_SPACE, MAP_NODES, FARE, TIER_NAMES, encounterName, resolveLocation } from '../world/data.js';
+import { C, FONT, FONT_B, FONT_L, LINE, text, fit, wrap, panel, button, hitButton, clear } from '../ui/draw.js';
+import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, MAP_SPACE, MAP_NODES, FARE, TIER_NAMES, encounterName, resolveLocation, locationLore } from '../world/data.js';
 import { checkInfo, checkChance, rollCheck } from '../world/checks.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { repTier, factionName, tierAtLeast } from '../world/reputation.js';
@@ -19,6 +19,8 @@ import { runEvent, travelEvents } from './event.js';
 import { runEncounter } from './encounter.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
+
+const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
 
 const TRAVEL_DAY_S = 0.55;
 const MAP_IMG = new URL('../../assets/world-map.jpg', import.meta.url).href;
@@ -483,11 +485,19 @@ export function createWorldMapScene() {
       ...(S.pflags.has('map-memory') && sv.visited.includes(id) && l.caches?.some((c) => !sv.caches.includes(c.id)) ? [{ text: t('map.cacheHere'), color: C.a }] : []),
       ...(l.services.length ? [{ text: l.services.map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
     ];
-    const w = 360, h = 16 + lines.length * LINE;
+    // v4: the node description (locations-lore.js desc, else locations.js desc), up to CARD_DESC_LINES lines
+    const desc = locationLore(id)?.desc || l.desc || '';
+    const w = desc ? 440 : 360;
+    if (desc) {
+      const dl = wrap(ctx, desc, w - 20, SMALL_FONT);
+      dl.slice(0, CARD_DESC_LINES).forEach((s, i, a) => lines.push({ text: i === a.length - 1 && dl.length > CARD_DESC_LINES ? `${s.replace(/\s*\S*$/, '')}…` : s, color: C['5'], font: SMALL_FONT, small: true }));
+    }
+    const h = 16 + lines.reduce((s, ln) => s + (ln.small ? SMALL_LINE : LINE), 0);
     const p = nodePos(id);
     const x = Math.min(W - w - 8, p.x + 24), y = Math.min(H - BOTTOM - h - 4, Math.max(TOP + 4, p.y - 20));
     panel(ctx, x, y, w, h, C['0'], C['3']);
-    lines.forEach((ln, i) => text(ctx, fit(ctx, ln.text, w - 20, ln.font || FONT), x + 10, y + 8 + i * LINE, ln.color, ln.font || FONT));
+    let ly = y + 8;
+    for (const ln of lines) { text(ctx, fit(ctx, ln.text, w - 20, ln.font || FONT), x + 10, ly, ln.color, ln.font || FONT); ly += ln.small ? SMALL_LINE : LINE; }
   }
 
   function drawLegend(ctx, W) {
