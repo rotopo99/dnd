@@ -15,7 +15,7 @@
   <script type="module">
     import {
       SPRITES, PALETTE, PALETTE_KEYS, RACE_IDS, CLASS_IDS, ENEMY_IDS, SUMMON_IDS, NPC_IDS, WORLD_ENEMY_IDS, MAP_ICON_IDS, TILE,
-      drawPortrait, drawMapIcon,
+      drawPortrait, drawHeroPortrait, validatePortraits, drawMapIcon,
       drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, validateSprites,
     } from '../game/src/assets/sprites.js';
     import { NPCS, recruitables } from '../game/src/data/npcs.js';
@@ -29,7 +29,7 @@
 
     const canvas = document.getElementById('c');
     canvas.width = 1240;
-    canvas.height = 3200;
+    canvas.height = 4200;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#14141c';
@@ -138,23 +138,40 @@
     // v2 world enemies, 7 per row
     for (let i = 0; i < WORLD_ENEMY_IDS.length; i += 7) mobRow(WORLD_ENEMY_IDS.slice(i, i + 7), i ? 'World enemies (cont.)' : 'World enemies v2 (frame 0 / 1)');
 
-    // Portraits: key NPCs + companions (+ lox), x2 = 64 px
-    title('Portraits 32x32 at x2: key NPCs + companions');
-    const pcs = Object.values(NPCS).filter((n) => n.key || n.recruitable);
-    const PW = 64 + 16;
-    pcs.forEach((n, i) => {
-      const col = i % 15, row = Math.floor(i / 15);
-      const x = 8 + col * PW, yy = y + row * (64 + 26);
-      drawPortrait(ctx, n.id, x, yy, 2);
-      label(n.id.slice(0, 11), x, yy + 66);
+    // Portraits v2 (48x48, native)
+    window.__pY = y;
+    const RACES4 = [['human', 'technikums'], ['skeleton', 'none'], ['android', 'mechanids'], ['mutant-beast', 'mutantsBeast'], ['mutant-plant', 'mutantsPlant'], ['cringegon', 'cringegons'], ['tekhonok', 'tekhonki'], ['skrilet', 'none']];
+    const fake = (race, faction, id) => ({ id: id ?? `t-${race}`, race, faction });
+    const PX = 50;
+    title('Portraits 48x48: 8 emotions x 8 races');
+    ['neutral', 'happy', 'angry', 'sad', 'scared', 'smug', 'surprised', 'cringe'].forEach((emo, i) => {
+      RACES4.forEach(([r, f], j) => drawPortrait(ctx, fake(r, f, `emo-${r}`), 8 + i * PX, y + j * PX, 1, { native: true, emotion: emo, frame: 1, blink: false }));
+      label(emo.slice(0, 7), 8 + i * PX, y + RACES4.length * PX);
     });
-    y += Math.ceil(pcs.length / 15) * (64 + 26) + 6;
-    title('Portraits: generated for ordinary NPCs (first 15 non-key) + x3');
-    Object.values(NPCS).filter((n) => !n.key && !n.recruitable).slice(0, 15).forEach((n, i) => {
-      const x = 8 + i * PW; drawPortrait(ctx, n.id, x, y, 2); label(n.id.slice(0, 11), x, y + 66);
+    ctx.fillStyle = '#8d95a8';
+    // hp rows to the right
+    [1, 0.65, 0.35, 0.1].forEach((hp, i) => {
+      RACES4.forEach(([r, f], j) => drawPortrait(ctx, fake(r, f, `emo-${r}`), 430 + i * PX, y + j * PX, 1, { native: true, hp, frame: 1, blink: false, emotion: i > 1 ? 'sad' : 'neutral' }));
+      label(`hp ${hp}`, 430 + i * PX, y + RACES4.length * PX);
     });
-    y += 64 + 26;
-    ['lox', 'gans', 'judge', 'cyber-priest', 'zver', 'aunt-loza', 'old-god'].forEach((id, i) => drawPortrait(ctx, id, 8 + i * 104, y, 3));
+    [0.2].forEach((mrl) => RACES4.forEach(([r, f], j) => drawPortrait(ctx, fake(r, f, `emo-${r}`), 640, y + j * PX, 1, { native: true, mrl, frame: 1, blink: false })));
+    label('mrl 0.2', 640, y + RACES4.length * PX);
+    // accessories
+    const ACCS = ['glasses', 'shades', 'goggles', 'patch', 'cybereye', 'respirator', 'gp5', 'scarf', 'cig', 'pipe', 'bandage', 'bandana', 'cap', 'vosmiklinka', 'hood', 'helmet', 'headset', 'earbuds', 'earring', 'chain', 'halo', 'headlamp', 'plaster', 'scar-seam', 'ushanka', 'kabuto', 'crown', 'medals'];
+    const AX = 700;
+    ACCS.forEach((a, i) => { const x = AX + (i % 7) * PX, yy = y + Math.floor(i / 7) * (PX + 10); drawPortrait(ctx, fake('human', 'none', 'acc-demo'), x, yy, 1, { native: true, frame: 1, blink: false, accessories: [a], emotion: i % 3 ? 'neutral' : 'smug' }); label(a.slice(0, 8), x, yy + PX); });
+    y += RACES4.length * PX + 20;
+    title('Portraits: 12 key NPCs, x2 (96 px)');
+    ['lox', 'seer', 'glava-musora', 'galina', 'marta', 'burevestnik', 'khan', 'zver', 'aunt-loza', 'cringe-jester', 'aztun', 'paracetamol'].forEach((id, i) => {
+      const x = 8 + (i % 10) * 100, yy = y + Math.floor(i / 10) * 112; drawPortrait(ctx, id, x, yy, 2, { native: true, frame: 1, blink: false }); label(id.slice(0, 13), x, yy + 98); });
+    y += 230;
+    title('Hero portraits (class accessory) + generated NPCs');
+    ['zabivnoy', 'technomant', 'itishnik', 'arbiter', 'ugolovnik', 'ecolog', 'reper', 'slavotech', 'cybertech', 'ranger'].forEach((cls, i) => drawHeroPortrait(ctx, { race: 'human', cls, look: null, name: 'h' + i, sex: i % 2 ? 'f' : 'm' }, 8 + i * PX, y, 1, { native: true, frame: 1, blink: false }));
+    Object.values(NPCS).filter((n) => !n.key && !n.recruitable).slice(0, 14).forEach((n, i) => drawPortrait(ctx, n.id, 8 + i * PX, y + PX + 6, 1, { native: true, frame: 1, blink: false }));
+    y += 2 * PX + 20;
+    const perr = validatePortraits(); if (perr.length) document.getElementById('errors').textContent += '\n' + perr.slice(0, 10).join('\n');
+    window.__pEnd = y;
+
     y += 96 + 12;
 
     // Map icons
