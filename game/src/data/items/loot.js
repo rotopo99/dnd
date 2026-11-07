@@ -64,6 +64,7 @@ const LIST = [
     e('makarych', 2), e('kedrach', 1), e('army-medkit', 2), e('party-cell', 2), e('frag-grenade', 2), e('concealed-vest', 1),
     e('ceramic-insert', 1), e('pso-scope', 1), e('folded-drone', 1), e('tushenka', 4, 3), e('rare-parts', 1), e('thermal-scope', 1), e('kevlar-sheet', 1), e('tac-flashlight', 1)]),
   t('lis-vault', 'Хранилище проекта «Лис»', 3, [40, 90], Q_HIGH, [
+    e('lis-pack', 1), // v7: рюкзак «Лис» (реликт, уникальный)
     e('lis-3-twin', 2), e('lis-4-sniffer', 2), e('lis-6-core', 1), e('lis-7-chuyo', 1), e('lis-8-hide', 1), e('army-medkit', 3), e('rare-parts', 3), e('servo-parts', 3), e('cryo-nozzle', 1), e('cryo-edge', 1), e('arc-capacitor', 1), e('hover-pads', 1)]),
   t('wolf-pack', 'Трофеи стаи «Волк»', 2, [20, 60], Q_HIGH, [
     e('wolf-fang', 3), e('wolf-link', 2), e('frag-grenade', 2), e('army-medkit', 2), e('smoke-grenade', 2), e('servo-parts', 3), e('rare-parts', 1)]),

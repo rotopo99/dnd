@@ -227,6 +227,14 @@ export function addInst(save, inst, n = 1, { key = 'hero', overflow = 'stash', o
 /** Turn edits of the count view by old code into instances (see header). Returns ids that went to the stash. */
 export function syncItems(save) {
   if (!save?.hero) return [];
+  // a companion who left the party leaves his backpack behind (hero → others → stash); his worn gear goes with him
+  for (const p of save.party || []) {
+    if (p.state !== 'left' || !p.bag) continue;
+    const b = bagOf(p);
+    const view = save.hero.items || (save.hero.items = {});
+    for (const e of [...b.grid, ...b.quick.filter(Boolean)]) { addInst(save, e, e.n || 1); view[e.item] = (view[e.item] || 0) + (e.n || 1); }
+    p.bag = { grid: [], quick: Array(QUICK_MAX).fill(null) };
+  }
   const items = save.hero.items || (save.hero.items = {});
   const have = countAll(save);
   const stashed = [];

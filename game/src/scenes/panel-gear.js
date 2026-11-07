@@ -120,7 +120,7 @@ function layoutZones(game, S) {
   // card mod slots of the selected host
   const host = cardHost(sv, S);
   const hi = host && hostInst(sv, host);
-  if (hi) modSlotTypes(ITEMS[hi.item]).forEach((type, i) => Z.mods.push({ type, host, x: ox + 700 + i * 72, y: oy + 432, w: 64, h: 52 }));
+  if (hi) modSlotTypes(ITEMS[hi.item]).forEach((type, i) => Z.mods.push({ type, host, x: ox + 700 + i * 72, y: oy + 448, w: 64, h: 52 }));
   S.Z = Z;
   return Z;
 }
@@ -324,9 +324,9 @@ export function layoutGear(game, S, b) {
   // card buttons
   const sel = S.inv.sel && peek(sv, S.inv.sel);
   if (sel && S.inv.sel.at === 'grid' && isGear(ITEMS[sel.item]) && ITEMS[sel.item].slot !== 'mod') {
-    b.push({ kind: 'gearDis', label: t('inv.disassemble'), x: ox + 700, y: oy + 504, w: 150, h: 30, font: SMALL, disabled: !canStash(sv), reason: t('inv.hubOnly') });
+    b.push({ kind: 'gearDis', label: t('inv.disassemble'), x: ox + 700, y: oy + 512, w: 150, h: 30, font: SMALL, disabled: !canStash(sv), reason: t('inv.hubOnly') });
   }
-  if (sel && ms.length > 1) b.push({ kind: 'gearGive', label: t('gear.transfer'), x: ox + 858, y: oy + 504, w: 150, h: 30, font: SMALL });
+  if (sel && ms.length > 1) b.push({ kind: 'gearGive', label: t('gear.transfer'), x: ox + 858, y: oy + 512, w: 150, h: 30, font: SMALL });
   // hidden hover/click targets for bag items (scenarios / tooltips): wearables first
   const g = Z.grids[0];
   const grid = contOf(sv, g.ref).grid;
@@ -581,7 +581,7 @@ function renderCard(game, S, Z) {
   if (!hi) return;
   const hostIt = ITEMS[hi.item];
   const cap = modCapacity(hostIt, hi.q);
-  text(ctx, `${t('inv.modsOf')}: ${hostIt.name} · ${t('inv.slots')} ${hi.mods.length}/${cap}`, ox + 700, oy + 412, C['4'], SMALL);
+  text(ctx, `${t('inv.modsOf')}: ${hostIt.name} · ${t('inv.slots')} ${hi.mods.length}/${cap}`, ox + 700, oy + 428, C['4'], SMALL);
   const d = S.inv?.drag;
   const dIt = d && ITEMS[d.item];
   for (const z of Z.mods) {

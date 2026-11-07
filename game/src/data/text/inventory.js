@@ -41,5 +41,6 @@ export const INVENTORY_TEXT = {
   'inv.rummageSwap': 'Разгрузка полна — что убрать в рюкзак?', 'inv.rummageLog': 'достаёт из рюкзака',
   'inv.lootStash': 'Не влезло в рюкзаки: {n} шт. — в схроне', 'inv.lootGround': 'Не влезло: {n} шт. лежит «На земле» (Снаряжение, G)',
   'inv.lootLost': 'Пропало: {n} шт. — некуда положить',
+  'menu.controls': 'Мышь — выбор и действия · Q W E R… — способности · 1–6 — разгрузка · Пробел — конец хода · Esc — отмена',
   'battle.items': 'Предметы', 'battle.itemsTitle': 'Разгрузка (быстрые слоты)', 'battle.noItems': 'Разгрузка пуста',
 };
