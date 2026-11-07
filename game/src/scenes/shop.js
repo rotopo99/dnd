@@ -86,7 +86,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
         const q = appraise && it.slot === 'weapon' && it.tier ? ` · ${t('shop.quality')} ${it.tier}` : '';
         const qn = r.q !== 'working' ? ` (${QUALITY[r.q]?.name || r.q})` : '';
         const mk = MARK[r.kind];
-        if (r.locked) return { label: `${it.name}${qn}`, sub: `${t(`tier.${r.locked}`)}: ${t('shop.needRep')}`, disabled: true, detail: tipOf(id, price) };
+        if (r.locked) return { label: `${it.name}${qn}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${t(`tier.${r.locked}`)}: ${t('shop.needRep')}`, disabled: true, detail: tipOf(id, price) };
         return { label: `${t('shop.buy')}: ${it.name}${qn} — ${price}${q}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`,
           subColor: mk ? mk[1] : undefined, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price),
           run: () => { sv.hero.credits -= price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); saveGame(sv); } };
