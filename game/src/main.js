@@ -1,6 +1,8 @@
 import { createInput } from './input.js';
 import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture } from './audio/sfx.js';
+import { playTrack } from './audio/music.js';
+import { exodusMark } from './world/exodus.js';
 import { PLAY_DATA as GAME_DATA } from './world/data.js';
 import { setSaveErrorHandler } from './save.js';
 import { t } from './data/text/index.js';
@@ -32,11 +34,13 @@ const game = {
     this.scene = scene;
     this.modals.length = 0;
     scene.enter?.(this);
+    syncMusic(this);
   },
   /** Return to an already entered scene without resetting it. */
   resume(scene) {
     this.scene = scene;
     scene.resume?.(this);
+    syncMusic(this);
   },
   openModal(spec) { this.modals.push(spec); },
   closeModal() { this.modals.pop(); },
@@ -69,6 +73,21 @@ resize();
 unlockAudioOnFirstGesture(window);
 
 setSaveErrorHandler(() => game.toast(t('save.failed'), 'c'));
+/** Background track by scene: boss fights, last Exodus mark → tension. */
+function syncMusic(g) {
+  try {
+    const sc = g.scene, id = sc?.id;
+    const tense = g.save && exodusMark(g.save) >= 5;
+    let tr = null;
+    if (sc === menuScene || id === 'menu') tr = 'menu';
+    else if (id === 'worldmap') tr = tense ? 'tension' : 'world';
+    else if (id === 'location') tr = tense ? 'tension' : 'town';
+    else if (id === 'cyberspace') tr = 'cyberspace';
+    else if (id === 'battle') tr = sc.S?.b?.units?.some((u) => u.boss && u.team !== 'heroes') ? 'boss' : 'battle';
+    if (tr) playTrack(tr);
+  } catch (e) { console.warn('music', e); }
+}
+
 game.setScene(menuScene);
 
 let last = performance.now();
