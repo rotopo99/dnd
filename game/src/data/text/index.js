@@ -600,7 +600,7 @@ const ru = {
   'trick.tech': 'Починить щит меха: +10', 'trick.medicine': 'Стабилизировать союзника без аптечки',
   'trick.athletics': 'Толкнуть врага на 2 клетки', 'trick.stealth': 'Затаиться: следующая атака с преимуществом (1-й раунд)',
   'trick.biology': 'Показать сопротивления цели', 'trick.noTargets': 'нет целей', 'trick.resists': 'Сопротивления',
-  'trick.immune': 'Иммунитет', 'trick.nothing': 'слабостей и защит не видно', 'trick.firstRound': 'только в 1-м раунде',
+  'trick.immune': 'Иммунитет', 'trick.r.resist': 'сопротивление', 'trick.r.vuln': 'уязвимость', 'trick.r.immune': 'иммунитет', 'trick.nothing': 'слабостей и защит не видно', 'trick.firstRound': 'только в 1-м раунде',
   'skillUse.military': 'Военное дело: партия +1 к инициативе', 'skillUse.medkit': 'медицина, лечение ×1.5',
   'skillUse.camp': 'выживание: пайки, встречи не будет', 'skillUse.samples': 'биология: образцы мутантов',
   'skillUse.crates': 'Разобрать ящики', 'skillUse.cratesSub': 'Атлетика · СЛ', 'skillUse.cratesEmpty': 'Ничего ценного',

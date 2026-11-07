@@ -63,7 +63,7 @@ export function startWorldBattle(game, o) {
     map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, hazard: o.hazard ?? loc?.hazard, id: o.id || 'world' }),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
-    race: save.hero.race, ambush: !!o.ambush, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
+    race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
     onWin: (g, S) => { for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color); afterBattle(g, S, o); },
     onLose: (g, S) => { writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
     onExit: (g) => (o.onLose || defaultLose)(g),

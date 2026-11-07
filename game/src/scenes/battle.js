@@ -23,6 +23,8 @@ import { formatEvent, eventSound } from '../ui/battle-log.js';
 import { hitButton, inRect, C } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { line as storyLine } from '../data/text/prologue.js';
+import { skillCheck } from '../rules/skills.js';
+import { SKILL_RULES } from '../data/world/skill-rules.js';
 
 const AI_STEP = 0.42; // s between AI actions
 const AI_TURN_GAP = 0.3; // s before an AI unit starts acting
@@ -146,6 +148,7 @@ export function createBattleScene(opts) {
     S.time = 0;
     S.dirty = true;
     S.flags = {};
+    S.tricksUsed = {};
     layoutBattle(game, S);
     refresh();
   }
@@ -219,6 +222,11 @@ export function createBattleScene(opts) {
     if (hero.weapon?.thrown) {
       r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : S.throwTargets.size ? null : 'noTargets';
       btns.push({ id: 'throw', label: t('battle.throw'), sub: `↔${hero.weapon.thrown} · ${t('battle.throwSub')}`, key: 'T', disabled: !!r, reason: reasonOf(r), selected: !!S.sel?.throw });
+    }
+    // v4 (skills.md N6): skill tricks — a bonus action, once per battle per skill per unit (world battles: opts.tricks)
+    if (opts.tricks) {
+      r = !S.playerTurn ? 'turn' : bt.bonus <= 0 ? 'bonus' : null;
+      btns.push({ id: 'trick', label: t('trick.button'), sub: t('act.bonus'), key: 'K', disabled: !!r, reason: r === 'bonus' ? t('trick.noBonus') : reasonOf(r) });
     }
     r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : null;
     btns.push({ id: 'dash', label: t('battle.dash'), sub: t('act.action'), disabled: !!r, reason: reasonOf(r) });
@@ -319,6 +327,7 @@ export function createBattleScene(opts) {
       case 'throw': S.sel = S.sel?.throw ? null : { kind: 'attack', throw: true }; break;
       case 'burst': S.sel = S.sel?.burst ? null : { kind: 'attack', burst: true }; break;
       case 'items': openItems(); return;
+      case 'trick': openTricks(); return;
       case 'dash': doAction({ type: 'dash' }); break;
       case 'disengage': doAction({ type: 'disengage' }); break;
       case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
@@ -330,6 +339,73 @@ export function createBattleScene(opts) {
         // untargeted (self / aura) abilities fire right away
         if (specs.length === 1 && !specs[0].target && !specs[0].tile) doAction({ type: 'ability', ability: a.id });
         else S.sel = { kind: 'ability', a };
+      }
+    }
+    S.dirty = true;
+  }
+
+  /** Targets of a skill trick for unit u. */
+  function trickTargets(skill, u) {
+    const b = S.b;
+    const foes = b.units.filter((x) => x.team !== u.team && x.team !== 'allies' && combat.isAlive(x) && !isHiddenFoe(x));
+    const friends = b.units.filter((x) => (x.team === u.team || x.team === 'allies') && !x.dead && !x.removed);
+    const adj = (x) => chebyshev(u.x, u.y, x.x, x.y) <= 1;
+    switch (skill) {
+      case 'analysis': case 'biology': return foes;
+      case 'hacking': return foes.filter((x) => (x.tags || []).includes(SKILL_RULES.tricks.hacking.onlyTag));
+      case 'tech': return friends.filter((x) => x.shield?.mech);
+      case 'medicine': return friends.filter((x) => x.down && x !== u && adj(x));
+      case 'athletics': return foes.filter(adj);
+      case 'stealth': return b.round <= SKILL_RULES.tricks.stealth.round ? [u] : [];
+      default: return [];
+    }
+  }
+
+  /** N6: skill tricks of the current unit — pick a skill, then a target, roll d20 + skill vs DC 12 + target level / 2. */
+  function openTricks() {
+    const game = S.game;
+    const b = S.b;
+    const u = b.byId[S.heroId];
+    const used = (S.tricksUsed[u.id] = S.tricksUsed[u.id] || []);
+    const skills = Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc');
+    game.openModal({
+      title: t('trick.title'), width: 900,
+      options: [...skills.map((sk) => {
+        const tg = trickTargets(sk, u);
+        const why = used.includes(sk) ? t('trick.used') : !tg.length ? (sk === 'stealth' ? t('trick.firstRound') : t('trick.noTargets')) : null;
+        return { label: `${t(`skill.${sk}`)}: ${t(`trick.${sk}`)}`, sub: why || '', disabled: !!why,
+          run: (g) => {
+            if (tg.length === 1) return doTrick(sk, u, tg[0]);
+            g.openModal({ title: `${t(`skill.${sk}`)} — ${t('trick.pickTarget')}`, options: [...tg.map((x) => ({ label: S.name(x.id), sub: `${t('battle.dc')} ${trickDc(sk, x)}`, run: () => doTrick(sk, u, x) })), { label: t('loc.close'), run: () => {} }] });
+          } };
+      }), { label: t('loc.close'), run: () => {} }],
+    });
+  }
+  const trickDc = (sk, x) => SKILL_RULES.tricks.dc + (x.team === 'enemies' ? Math.floor((x.level || 0) / 2) : 0);
+
+  function doTrick(sk, u, x) {
+    const b = S.b;
+    const T = SKILL_RULES.tricks;
+    if (b.turn.bonus <= 0 || b.turn.unitId !== u.id) return;
+    b.turn.bonus -= 1;
+    S.tricksUsed[u.id].push(sk);
+    const dc = trickDc(sk, x);
+    let r;
+    try { r = skillCheck(u, sk, dc, { data: S.game.data, rng: b.rng }); } catch { r = { success: false, total: 0, natural: 1 }; }
+    pushLog([[`${S.name(u.id)} · ${t(`skill.${sk}`)}: d20[${r.natural}] = ${r.total} ${t('battle.vs')} ${t('battle.dc')} ${dc} — `, C['5']], [t(r.success ? 'trick.ok' : 'trick.fail'), r.success ? C.j : C.c]]);
+    play(r.success ? 'buff' : 'miss');
+    if (r.success) {
+      if (sk === 'analysis') combat.applyOp(b, u, x, { op: 'mark', id: T.analysis.status, value: T.analysis.value, turns: T.analysis.turns });
+      else if (sk === 'hacking') combat.applyStatus(b, x, T.hacking.status, T.hacking.turns, u);
+      else if (sk === 'tech') { x.shield.value += T.tech.shield; pushLog([[`${S.name(x.id)}: +${T.tech.shield} ${t('trick.tech')}`, C.j]]); }
+      else if (sk === 'medicine') combat.applyOp(b, u, x, { op: 'stabilize' });
+      else if (sk === 'athletics') combat.applyOp(b, u, x, { op: 'push', tiles: T.athletics.push });
+      else if (sk === 'stealth') combat.applyStatus(b, u, T.stealth.status, T.stealth.turns, u);
+      else if (sk === 'biology') {
+        const res = Object.entries(x.resist || {}).filter(([, v]) => v).map(([k, v]) => `${t(`dmg.${k}`)} — ${t(`trick.r.${v}`)}`);
+        const imm = (x.immuneStatus || []).map((id) => S.b.data.statuses?.[id]?.name || id);
+        say(`${S.name(x.id)}: ${[res.length ? `${t('trick.resists')}: ${res.join(', ')}` : '', imm.length ? `${t('trick.immune')}: ${imm.join(', ')}` : ''].filter(Boolean).join(' · ') || t('trick.nothing')}`);
+        pushLog([[S.message.text, C.a]]);
       }
     }
     S.dirty = true;
@@ -556,6 +632,7 @@ export function createBattleScene(opts) {
     if (inp.wasPressed('KeyT')) selectButton(S.buttons.find((x) => x.id === 'throw'));
     if (inp.wasPressed('KeyB')) selectButton(S.buttons.find((x) => x.id === 'burst'));
     if (inp.wasPressed('KeyI')) selectButton(S.buttons.find((x) => x.id === 'items'));
+    if (inp.wasPressed('KeyK')) selectButton(S.buttons.find((x) => x.id === 'trick'));
     if (inp.wasPressed('Space') || inp.wasPressed('Enter')) selectButton(S.buttons.find((x) => x.id === 'endTurn'));
   }
 
