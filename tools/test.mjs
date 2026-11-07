@@ -1463,5 +1463,60 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
   });
 }
 
+// ---------------------------------------------------------------- third-exodus.md §3: world density (caches, events, quests)
+{
+  const st = await import('../game/src/world/state.js');
+  const qs = await import('../game/src/world/quests.js');
+  const ex = await import('../game/src/world/exodus.js');
+  const D = await import('../game/src/world/data.js');
+  const { cacheLoot } = await import('../game/src/data/world/locations.js');
+  const { CACHES_DENSITY } = await import('../game/src/data/world/density-caches.js');
+  const { EVENTS_DENSITY } = await import('../game/src/data/world/density-events.js');
+  const { eventsFor } = await import('../game/src/scenes/event.js');
+  const mk = () => st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+  test('density caches: loot ids grouped into {item,n} + credits, placed on nodes with check and text', () => {
+    assert.deepEqual(cacheLoot(['a', 'b', 'a'], 25), [{ item: 'a', n: 2 }, { item: 'b', n: 1 }, { credits: 25 }]);
+    assert.deepEqual(cacheLoot(['a']), [{ item: 'a', n: 1 }]);
+    for (const c of CACHES_DENSITY) {
+      const on = D.LOCATIONS[c.node].caches.find((x) => x.id === c.id);
+      assert.ok(on && on.check.skill === c.check.skill && on.text === c.text, c.id);
+      assert.equal(on.loot.filter((x) => x.item).reduce((s, x) => s + x.n, 0), c.loot.length);
+      for (const x of on.loot) if (x.item) assert.ok(D.ITEMS[x.item], x.item);
+    }
+    // the location takes the loot through grant (same shape as searchCache)
+    const s = mk(); const c = D.LOCATIONS['alpha-harmony'].caches.find((x) => x.id === 'dc-harmony-bunk');
+    const before = s.hero.credits;
+    st.grant(s, { items: c.loot.filter((x) => x.item), credits: c.loot.reduce((n, x) => n + (x.credits || 0), 0) });
+    assert.equal(s.hero.credits, before + 25); assert.ok(s.hero.items['servo-parts'] >= 1);
+  });
+  test('density events: merged, plain-string texts, fire once at their node, battle encounters exist, negative credits clamp', () => {
+    const ids = Object.keys(EVENTS_DENSITY);
+    assert.ok(ids.length >= 20 && ids.every((id) => D.EVENTS[id]));
+    assert.equal(D.storyText('Просто строка'), 'Просто строка');
+    const e = EVENTS_DENSITY['de-nightwatch'];
+    const s = mk(); s.hero.level = e.trigger.level[0];
+    const rnd = Math.random; Math.random = () => 0;
+    try {
+      assert.ok(eventsFor(s, e.location, 'enter').some((x) => x.id === e.id));
+      s.flags[`event:${e.id}`] = true;
+      assert.ok(!eventsFor(s, e.location, 'enter').some((x) => x.id === e.id), 'once');
+    } finally { Math.random = rnd; }
+    for (const ev of Object.values(EVENTS_DENSITY)) for (const c of ev.choices) for (const o of [c.success, c.fail]) if (o?.battle) assert.ok(D.ENCOUNTERS[o.battle.encounter], o.battle.encounter);
+    const p = mk(); p.hero.credits = 3; st.grant(p, { credits: -10 }); assert.equal(p.hero.credits, 0);
+  });
+  test('density quests: given by their NPC, exodus bonus once on completion', () => {
+    const q = Object.values(D.QUESTS).find((x) => x.density && x.exodus?.ext);
+    assert.ok(q && D.isNpcQuest(q.id));
+    const s = mk(); s.flags['prologue-done'] = true; ex.exodusSync(s);
+    assert.ok(qs.questsOffered(s, q.giver).some((x) => x.id === q.id));
+    qs.startQuest(s, q.id);
+    s.quests[q.id].stage = q.stages[q.stages.length - 1].id;
+    qs.onTalk(s, q.giver, GAME_DATA);
+    assert.equal(s.quests[q.id].state, 'done');
+    assert.equal(s.exodus.ext, q.exodus.ext);
+    assert.deepEqual(ex.exodusExtend(s, q.id, q.exodus.ext), []);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

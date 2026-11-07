@@ -573,7 +573,10 @@ export function createLocationScene(rawId) {
   function searchCache(game, c) {
     const sv = save(game);
     const loot = { items: c.loot.filter((x) => x.item), credits: c.loot.reduce((s, x) => s + (x.credits || 0), 0) };
-    const take = (g) => { sv.caches.push(c.id); g.toast(t('loc.found'), 'a'); toastAll(g, grant(sv, loot, g.data)); refresh(g); };
+    const take = (g) => {
+      sv.caches.push(c.id); g.toast(t('loc.found'), 'a'); toastAll(g, grant(sv, loot, g.data)); refresh(g);
+      if (c.text) g.openModal({ title: t('loc.found'), lines: [{ text: c.text }], options: [{ label: t('battle.ok'), run: () => {} }] });
+    };
     if (!c.check || hasFlagInParty(sv, game.data, 'find-cache')) return take(game);
     openCheck(game, { title: t('loc.search'), skills: cacheSkills(c), dc: c.check.dc, members: ms(game), cancel: true, memoKey: `cache:${c.id}`,
       onDone: (g, ok) => { if (ok) take(g); else { sv.caches.push(c.id); g.toast(t('loc.notFound'), 'c'); refresh(g); } } });

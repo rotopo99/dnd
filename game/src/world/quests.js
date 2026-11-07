@@ -16,7 +16,7 @@ import { NPCS } from '../data/npcs.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { questXp } from '../rules/progression.js';
 import { EXODUS } from '../data/world/exodus.js';
-import { exodusActive, exodusLeft } from './exodus.js';
+import { exodusActive, exodusLeft, exodusExtend } from './exodus.js';
 
 export const questDef = (id) => QUESTS[id];
 const stageDef = (q, id) => q.stages.find((s) => s.id === id);
@@ -143,6 +143,9 @@ function finish(save, qid, end, data) {
   const r = { ...(q.rewards || {}) };
   r.xp = questXp(q);
   out.push(...grant(save, r, data, { keyChoice: q.key }));
+  // third-exodus.md: rewards.exodus { ext } — the Exodus deadline moves once (flag exo-ext:<quest id>)
+  const ext = (q.rewards?.exodus || q.exodus)?.ext;
+  if (ext) out.push(...exodusExtend(save, qid, ext));
   if (r.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), r.talentChoice];
   return out;
 }

@@ -5,6 +5,7 @@ import { NPCS } from '../data/npcs.js';
 import { QUESTS as QUESTS_V1 } from '../data/world/quests.js';
 import { QUESTS_V3 } from '../data/world/quests-v3.js';
 import { QUESTS_NPC } from '../data/world/quests-npc.js';
+import { QUESTS_DENSITY } from '../data/world/density-quests.js';
 import { LOCATION_LORE } from '../data/world/locations-lore.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
 import { PARTY_EVENTS_TEXT } from '../data/text/party-events.js';
@@ -24,7 +25,10 @@ export {
 } from '../data/world/locations.js';
 export { ROUTES, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, AMBUSH, FIELD_CAMP, FARE } from '../data/world/travel.js';
 export { DEED_TAGS } from '../data/world/quests.js';
-export { EVENTS } from '../data/world/events.js';
+import { EVENTS as EVENTS_BASE } from '../data/world/events.js';
+import { EVENTS_DENSITY } from '../data/world/density-events.js';
+/** Events: party events + world density (density-events.js — texts are plain strings, storyText passes them through). */
+export const EVENTS = { ...EVENTS_BASE, ...EVENTS_DENSITY };
 export { ORIGINS, originAllowed } from '../data/world/origins.js';
 export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';
@@ -35,8 +39,9 @@ export { NPC_DIALOGUE, PARTY_EVENTS_TEXT };
 /** All battles: v1.0 (enemies.js) + v3 (enemies-v3.js), merged in data/index.js. */
 export const ENCOUNTERS = GAME_DATA.ENCOUNTERS;
 /** All quests: v1.0 (quests.js) + v3 (quests-v3.js, story by the writer) + v4 NPC quests (quests-npc.js, giver = NPC.quest). */
-export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC };
-export const isNpcQuest = (id) => !!QUESTS_NPC[id];
+const QUESTS_D = Object.fromEntries(QUESTS_DENSITY.map((q) => [q.id, q]));
+export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D };
+export const isNpcQuest = (id) => !!QUESTS_NPC[id] || !!QUESTS_D[id];
 
 /** Lore of a node (locations-lore.js): { desc, spots, rumor, problem } or null. */
 export const locationLore = (id) => LOCATION_LORE[resolveLocation(id)] || null;

@@ -17,6 +17,8 @@
 //   hook                — quest hook
 //   canon (path in docs/canon/) or invented: true
 
+import { DENSITY_NPCS } from './world/density-npcs.js';
+
 export const EXTRA_FACTIONS = {
   predlozhka: { name: 'Предложка' },
   technikums: { name: 'Техникумы' }, // id as in docs/specs/world.md
@@ -2085,6 +2087,9 @@ const LORE_V1 = {
 for (const n of LIST) if (!n.lore && LORE_V1[n.id]) n.lore = LORE_V1[n.id];
 for (const n of [...LIST_V3, ...LIST_V4]) n.burg = n.location;
 LIST.push(...LIST_V3, ...LIST_V4);
+// third-exodus.md §3: world density NPCs (id `d-*`), placed by location like v3/v4
+for (const n of DENSITY_NPCS) n.burg = n.location;
+LIST.push(...DENSITY_NPCS);
 
 // Companion block per docs/specs/world.md («Контракт с npcs.js»): { race, cls, path, talents, likes, dislikes, home }.
 // likes/dislikes — deed tags from world.md §4. talents — filled by designer (talents.js ids).

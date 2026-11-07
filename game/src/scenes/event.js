@@ -8,6 +8,7 @@ import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
 import { createDialogueScene } from './dialogue.js';
 import { startWorldBattle } from './world-battle.js';
 import { saveGame } from '../save.js';
+import { exodusExtend } from '../world/exodus.js';
 
 function triggerOk(save, ev, when) {
   const tr = ev.trigger || {};
@@ -73,6 +74,8 @@ export function runEvent(game, ev, then) {
   function outcome(g, o) {
     const rest = (g2) => {
       for (const x of grant(save, o, g2.data)) g2.toast(x.text, x.color);
+      // third-exodus.md: «Exodus +N days» bonus, once per event
+      if (o.exodus?.ext) for (const x of exodusExtend(save, `ev:${ev.id}`, o.exodus.ext)) g2.toast(x.text, x.color);
       saveGame(save);
       if (o.text) {
         const ls = lines(o.text);
@@ -80,7 +83,8 @@ export function runEvent(game, ev, then) {
       } else then(g2);
     };
     if (o.battle) {
-      startWorldBattle(g, { enemies: o.battle.enemies, allies: o.battle.allies || [], map: o.battle.map, title: storyText(ev.name), onWin: rest });
+      // battle: { enemies } (party events) | { encounter } (density events: an id from ENCOUNTERS)
+      startWorldBattle(g, { encounter: o.battle.encounter, enemies: o.battle.enemies, allies: o.battle.allies || [], map: o.battle.map, title: storyText(ev.name), onWin: rest });
     } else rest(g);
   }
 }

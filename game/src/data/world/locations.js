@@ -16,6 +16,7 @@
 import { BURGS, MARKERS, MAP_SIZE } from './canon-map.js';
 import { NPCS } from '../npcs.js';
 import { NODE_BATTLES_V4 } from './battles-v4.js';
+import { CACHES_DENSITY } from './density-caches.js';
 
 export const MAP_SPACE = { w: MAP_SIZE.w, h: MAP_SIZE.h, kmPerPx: MAP_SIZE.kmPerPx, image: 'docs/canon/map/map.png' };
 
@@ -479,6 +480,22 @@ for (const [id, bs] of Object.entries(NODE_BATTLES_V4)) {
     node.npcs = [...node.npcs, n.id];
     placed.add(n.id);
   }
+  // third-exodus.md §3: density NPCs of the hub platform go into the explicit lists of harmony nodes
+  for (const n of Object.values(NPCS)) {
+    const node = n.density && LOCATIONS[n.location];
+    if (node?.region === 'harmony' && !node.npcs.includes(n.id)) node.npcs = [...node.npcs, n.id];
+  }
+}
+
+// third-exodus.md §3: density caches (density-caches.js) → node caches { id, check, loot: [{ item, n }, { credits }], text }
+export const cacheLoot = (ids = [], credits = 0) => {
+  const n = {};
+  for (const id of ids) n[id] = (n[id] || 0) + 1;
+  return [...Object.entries(n).map(([item, k]) => ({ item, n: k })), ...(credits ? [{ credits }] : [])];
+};
+for (const c of CACHES_DENSITY) {
+  if (!LOCATIONS[c.node]) throw new Error(`density-caches: unknown node "${c.node}"`);
+  LOCATIONS[c.node].caches = [...LOCATIONS[c.node].caches, { id: c.id, check: c.check, loot: cacheLoot(c.loot, c.credits), text: c.text }];
 }
 
 for (const [old, target] of Object.entries(ALIASES)) {
