@@ -12,6 +12,8 @@ import { beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
 import { hotspot } from './tooltip.js';
 import { resLineTip, resTip, statusTip, termTip } from './tips.js';
 import { itemTip } from './items-ui.js';
+import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp } from './battle-terrain.js';
+import { drawPin, intentText } from './unit-pin.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -122,9 +124,10 @@ function buildMapLayer(S) {
   for (let y = 0; y < g.h; y++) {
     for (let x = 0; x < g.w; x++) {
       const ch = rows[y][x] ?? '#';
-      let ids = tileSpriteIds(ch, x, y);
+      let ids = tileSpriteIds(liveChar(b, ch, x, y), x, y);
       if (ids.includes('obj-fire')) { S.fireTiles.push(x, y); ids = ids.filter((i) => i !== 'obj-fire'); }
       drawSprite(c, ids, x * L.cell, y * L.cell, L.s);
+      drawTileExtra(c, b, ch, x, y, L.cell); // combat rework: heights, new objects, rubble
     }
   }
   // grid seams: very faint, helps reading distances
@@ -164,7 +167,10 @@ export function renderBattle(game, S) {
   const b = S.b;
   clear(ctx, L.W, L.H);
   ctx.imageSmoothingEnabled = false;
-  if ((b.gridVersion || 0) !== S.gridV) buildMapLayer(S); // a barrel broke
+  if ((b.gridVersion || 0) !== S.gridV) buildMapLayer(S); // a barrel / object broke
+  // combat rework: camera shake on crits, explosions, boss phases
+  const shaking = S.shake > 0;
+  if (shaking) { ctx.save(); ctx.translate(Math.round((Math.random() - 0.5) * 8), Math.round((Math.random() - 0.5) * 8)); }
   ctx.drawImage(S.mapLayer, L.mapX, L.mapY);
   const tms = S.time * 1000;
   drawSurfaces(ctx, S, tms, 'floor');
@@ -203,8 +209,10 @@ export function renderBattle(game, S) {
     ctx.moveTo(x + c * 0.75, y + c * 0.25); ctx.lineTo(x + c * 0.25, y + c * 0.75); ctx.stroke();
     ctx.strokeRect(x + c * 0.18, y + c * 0.18, c * 0.64, c * 0.64);
   }
+  drawObjects(ctx, S);
   const preview = drawHighlights(ctx, S);
   drawUnits(ctx, S, preview, tms);
+  drawIntents(ctx, S);
   drawSurfaces(ctx, S, tms, 'gas');
   {
     const hc = S.hover.cell;
@@ -213,6 +221,10 @@ export function renderBattle(game, S) {
   }
   drawPopups(ctx, S);
   drawActPops(ctx, S);
+  if (shaking) ctx.restore();
+  drawOddsCard(ctx, S, preview);
+  drawHelp(ctx, S);
+  drawPin(ctx, S);
   drawTopBar(ctx, S);
   drawActionBar(ctx, S);
   drawLog(ctx, S);
@@ -592,12 +604,19 @@ function unitCard(ctx, S, u, x, y, w, odds) {
   if (v.down) { text(ctx, t('state.unconscious'), x, y, C.c, FONT_B); y += LINE; }
   if (v.nadlom) { text(ctx, t('state.strain'), x, y, C.n, FONT_B); y += LINE; }
   y = statusChips(ctx, b, u, x, y, w, 3);
+  if (u.arch && u.team !== 'heroes') {
+    const it = S.intents?.[u.id];
+    text(ctx, fit(ctx, `${t(`arch.${u.arch}`)}${u.arch === 'boss' ? ` · ${t('pin.phase')} ${u.phase || 1}` : ''}${it ? ` · ${intentText(S, it)}` : ''}`, w), x, y, C.a); y += LINE;
+  }
   if (odds) {
     y += 4;
     if (odds.kind === 'hit') {
       const mode = odds.mode === 'adv' ? ` · ${t('battle.advantage')}` : odds.mode === 'dis' ? ` · ${t('battle.disadvantage')}` : '';
       text(ctx, `${t('battle.hitChance')}: ${Math.round(odds.chance * 100)}%`, x, y, C.a, FONT_B); y += LINE;
       text(ctx, `${t('battle.critChance')} ${Math.round(odds.crit * 100)}%${mode}`, x, y, C['4']); y += LINE;
+      if (odds.dmg) { text(ctx, fit(ctx, `${t('odds.dmg')} ${odds.dmg[0]}–${odds.dmg[1]} (${t('odds.crit')} ${odds.dmg[2]})`, w), x, y, C['5']); y += LINE; }
+      const mods = [odds.cover ? `${t('odds.cover')} +${odds.cover}` : '', odds.elev ? `${t('odds.elev')} ${odds.elev > 0 ? '+' : ''}${odds.elev}` : '', odds.flank ? `${t('odds.flank')} +${odds.flank}` : ''].filter(Boolean);
+      if (mods.length) { text(ctx, fit(ctx, mods.join(' · '), w), x, y, C['4']); y += LINE; }
     } else {
       text(ctx, `${t('battle.saveChance')}: ${Math.round(odds.chance * 100)}%`, x, y, C.a, FONT_B); y += LINE;
       text(ctx, `${t('battle.save')} ${t(`stat.${odds.stat}`)}, ${t('battle.dc')} ${odds.dc}`, x, y, C['4']); y += LINE;

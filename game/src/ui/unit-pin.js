@@ -69,7 +69,7 @@ export function drawPin(ctx, S) {
   if (def?.faction) sub.push(t(`faction.${def.faction}`));
   if (def?.rank) sub.push(t(`rank.${def.rank}`));
   if (!def && u.kind === 'hero') sub.push(b.data.classes[u.classId]?.name || '');
-  sub.push(`${t('battle.levelShort') !== 'battle.levelShort' ? t('battle.levelShort') : 'ур.'} ${u.level || 1}`);
+  sub.push(`${t('pin.level')} ${u.level || 1}`);
   text(ctx, fit(ctx, sub.filter(Boolean).join(' · '), tw), tx, y + 22, C['4']);
   y += 52;
   const line = (s, col = C['4'], font = FONT) => { for (const l of wrap(ctx, s, w)) { text(ctx, l, x, y, col, font); y += LINE; } };
