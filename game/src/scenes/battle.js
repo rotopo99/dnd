@@ -192,11 +192,13 @@ export function createBattleScene(opts) {
     S.throwTargets = new Set();
     S.specs = {};
     S.endStatuses = [];
+    S.smashTiles = new Set();
     if (S.playerTurn) {
       if (b.turn.move > 0) S.reach = getReachable(b, S.heroId);
       for (const act of getLegalActions(b, S.heroId, { noMoves: true })) {
         if (act.target && isHiddenFoe(b.byId[act.target])) continue;
         if (act.type === 'endStatus') { S.endStatuses.push(act.status); continue; }
+        if (act.type === 'smash') { S.smashTiles.add(act.tile.y * b.grid.w + act.tile.x); continue; }
         if (act.type === 'attack') {
           // v3.1 area weapons: attack a tile / unit as an area (preview like a grenade)
           if (hero.weapon?.area) (S.specs[AREA_KEY] || (S.specs[AREA_KEY] = [])).push(act);
@@ -267,6 +269,8 @@ export function createBattleScene(opts) {
       const cells = new Map();
       if (S.sel.kind === 'attack') {
         for (const id of S.sel.burst ? S.burstTargets : S.sel.throw ? S.throwTargets : S.attackTargets) { const u = b.byId[id]; cells.set(u.y * b.grid.w + u.x, { target: id }); }
+        // combat rework §3.2: plain attack mode also targets destructible objects in reach
+        if (!S.sel.burst && !S.sel.throw) for (const idx of S.smashTiles) cells.set(idx, { smash: { x: idx % b.grid.w, y: (idx / b.grid.w) | 0 } });
       } else {
         for (const act of S.specs[S.sel.a.id] || []) {
           if (act.target) { const u = b.byId[act.target]; cells.set(u.y * b.grid.w + u.x, { target: act.target }); }
@@ -275,6 +279,11 @@ export function createBattleScene(opts) {
       }
       S.targetCells = cells;
     } else if (S.sel) S.sel = null;
+    // combat rework §5: intent icons — forecast at the player's turn, kept while enemies act
+    if (S.playerTurn) {
+      S.intents = {};
+      for (const u of b.units) if (u.team === 'enemies' && isStanding(u) && !isHiddenFoe(u)) S.intents[u.id] = intentOf(b, u);
+    }
   }
 
   // ---------------------------------------------------------------- previews for the UI
@@ -470,7 +479,8 @@ export function createBattleScene(opts) {
     if (S.sel) {
       const tc = S.targetCells && S.targetCells.get(idx);
       if (!tc) { S.sel = null; S.dirty = true; return; }
-      if (S.sel.kind === 'attack') doAction({ type: S.sel.burst ? 'burst' : S.sel.throw ? 'throw' : 'attack', target: tc.target });
+      if (tc.smash) doAction({ type: 'smash', tile: tc.smash });
+      else if (S.sel.kind === 'attack') doAction({ type: S.sel.burst ? 'burst' : S.sel.throw ? 'throw' : 'attack', target: tc.target });
       else if (S.sel.weaponArea) doAction({ type: 'attack', ...(tc.target ? { target: tc.target } : { tile: tc.tile }) });
       else if (S.sel.item) doAction({ type: 'useItem', item: S.sel.item, ...(tc.target ? { target: tc.target } : { tile: tc.tile }) });
       else doAction({ type: 'ability', ability: S.sel.a.id, ...(tc.target ? { target: tc.target } : { tile: tc.tile }) });
@@ -700,7 +710,17 @@ export function createBattleScene(opts) {
     const logUsed = updateScroll(S.logScroll, L.log, S.log.length * LINE + 8, m, { step: LINE * 3, follow: true });
     if (logUsed) return;
     const locked = !S.playerTurn || S.queue.length || busy();
-    if (inp.wasPressed('Escape') || m.rightClicked) { if (S.sel) { S.sel = null; S.dirty = true; } }
+    // combat rework §5: F (or Space while enemies act) — ×2 speed of AI turns; Enter while enemies act — skip to our turn
+    if (inp.wasPressed('KeyF') || (!S.playerTurn && inp.wasPressed('Space'))) { S.fast = !S.fast; saveFast(S.fast); }
+    if (!S.playerTurn && S.b.turn && !S.b.winner && inp.wasPressed('Enter')) S.skip = true;
+    // pinned unit card: RMB / Tab over a unit — pin (again — unpin), Esc / × — unpin; scroll inside
+    if (updatePin(S, m, inp)) return;
+    const hcU = S.hover.cell ? S.b.units.find((u) => !u.dead && !u.removed && u.x === S.hover.cell.x && u.y === S.hover.cell.y && !isHiddenFoe(u)) : null;
+    if (inp.wasPressed('Tab') || (m.rightClicked && !S.sel)) { if (hcU || inp.wasPressed('Tab')) pinUnit(S, hcU); }
+    if (inp.wasPressed('Escape') || m.rightClicked) {
+      if (S.sel) { S.sel = null; S.dirty = true; }
+      else if (inp.wasPressed('Escape') && S.pin.id) pinUnit(S, null);
+    }
     if (locked) return;
     if (m.clicked) {
       if (S.hover.button) selectButton(S.hover.button);
@@ -734,7 +754,11 @@ export function createBattleScene(opts) {
     update(game, dt) {
       S.time += dt;
       S.game = game;
-      animate(dt);
+      const aiRun = !!S.b.turn && !S.b.winner && !S.playerTurn;
+      if (!aiRun) S.skip = false;
+      const k = aiRun ? (S.skip ? PACE.skipMul : S.fast ? PACE.fastMul : 1) : 1;
+      if (S.shake > 0) S.shake -= dt;
+      animate(dt * k);
       processQueue();
       if (S.dirty) refresh();
       handleInput(game);
@@ -751,7 +775,7 @@ export function createBattleScene(opts) {
       }
       if (S.banner) return;
       if (isAiTurn(b)) {
-        S.aiTimer -= dt;
+        S.aiTimer -= dt * k;
         if (S.aiTimer <= 0) aiStep();
       } else if (!b.turn) {
         // no one can act and no winner: close the battle as a defeat
