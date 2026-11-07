@@ -64,6 +64,15 @@
 //     aftermath.js applies it after the battle. Mech armour shield = permanent shield (turns null) at battle start.
 // 18. v4 N6 Acrobatics trick: grantSafePassage(b, u) sets b.turn.safePassage — hazard tiles (and future damaging
 //     zones) deal no damage to that unit until its turn ends (event 'hazard' with avoided: true). Traps still fire.
+// 19. Stage B statuses & surfaces (docs/specs/statuses-surfaces.md, surfaces — rules/surfaces.js header):
+//     status ticks with scale 'tier' are × tier(L) of the applier (status.level); tagMul scales duration and tick
+//     damage (R 0.5 / V 1.5); shocked's −2 init for machines is skipped (initiative is rolled once). Smoke zones
+//     became gas surfaces ('smoke'); other zone kinds stay in b.zones. T_HAZARD = permanent fire surface (entry
+//     still logs 'hazard'). panic is applied through op status { mrlBelow } (else `elseId` or nothing).
+//     glitch: an ability with cost > 0 fails on d20 ≤ failOn (resources spent); ranged weapon shots «lag» (miss)
+//     with chance `lag`. overload: after an attack / offensive ability the bearer takes selfDmg. Moves avoid harmful
+//     surfaces when a detour costs ≤ 3 extra steps (movePath). Cumulative stacks of one stat don't add up (acid +
+//     corrosion — the bigger penalty).
 
 import { createRng } from './rng.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
@@ -73,6 +82,10 @@ import {
   parseMap, makeArena, chebyshev, lineOfSight, hasCover, reachable, pathTo, walkLine,
   tileAt, isPassable, inBounds, nearestFree, DIRS8, T_HAZARD, T_EXIT, T_WALL,
 } from './grid.js';
+import {
+  initSurfaces, tickSurfaces, surfaceEffect, createSurface, radiusTiles, elementHit, surfacesOn, clearSurfaces,
+  gasBetween, surfaceHitBonus, surfaceHarm, surfaceKindsAt, battleLevel, tierFor, breakBarrelsIn, floorAt, cellAt,
+} from './surfaces.js';
 
 export const STATUS_FALLBACK = {
   stun: { kind: 'debuff', skipTurn: true },
@@ -135,6 +148,26 @@ function emit(b, ev) {
   ev.round = b.round;
   if (b.log) b.log.push(ev);
   if (b.onEvent) b.onEvent(ev, b);
+}
+export { emit as emitEvent };
+
+/** Tag check with Stage B pseudo-tags: 'mutant' (mutant races), 'cls:<class>', 'race:<race>', 'phobia:<trigger>'. */
+export function unitHasTag(u, tag) {
+  if (u.tags && u.tags.includes(tag)) return true;
+  if (tag === 'mutant') return !!(u.raceId && String(u.raceId).startsWith('mutant'));
+  if (tag.startsWith('cls:')) return u.classId === tag.slice(4);
+  if (tag.startsWith('race:')) return u.raceId === tag.slice(5);
+  if (tag.startsWith('phobia:')) return (u.phobias || []).some((p) => p.trigger === tag.slice(7));
+  return false;
+}
+
+/** Duration / tick multiplier of a status on u from its tagMul (resistance 0.5, vulnerability 1.5). */
+export function statusFactor(b, u, id) {
+  const d = statusDef(b, id);
+  if (!d || !d.tagMul) return 1;
+  let f = 1;
+  for (const [tag, k] of Object.entries(d.tagMul)) if (unitHasTag(u, tag)) f *= k;
+  return f;
 }
 
 // ---------------------------------------------------------------- status helpers
@@ -203,8 +236,12 @@ export function buffSum(u, key) {
   const s = u.buffs;
   for (let i = 0; i < s.length; i++) if (s[i].stat === key) sum += s[i].value;
   const st = u.statuses;
-  for (let i = 0; i < st.length; i++) if (st[i].stackStat === key) sum += st[i].stack;
-  return sum;
+  let neg = 0, pos = 0;
+  for (let i = 0; i < st.length; i++) {
+    if (st[i].stackStat !== key) continue;
+    if (st[i].stack < 0) neg = Math.min(neg, st[i].stack); else pos = Math.max(pos, st[i].stack);
+  }
+  return sum + neg + pos;
 }
 
 function skipsTurn(b, u) {
@@ -436,6 +473,7 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
     summonCount: 0, reactionDepth: 0, statusCache: {}, autoReactions, reachCache: null,
     traps: [], trapCount: 0, drops: [], zones: [], zoneCount: 0,
   };
+  initSurfaces(b);
   const spawn = (list, starts, team, kind) => {
     list.forEach((item, i) => {
       let u;
@@ -497,6 +535,7 @@ function startNextTurn(b) {
       for (const u of b.units) u.roundHpLoss = 0;
       emit(b, { type: 'roundStart' });
       tickZones(b);
+      tickSurfaces(b);
     }
     const u = b.byId[b.order[b.turnIndex]];
     if (!u || u.dead || u.removed) continue;
@@ -540,18 +579,31 @@ function beginTurn(b, u) {
       const d = statusDef(b, s.id);
       if (!d || !d.tick) continue;
       const src = (s.source && b.byId[s.source]) || u;
-      if (d.tick.op === 'buff' && d.tick.cumulative) {
-        const cap = d.tick.cap ?? (d.tick.value < 0 ? -99 : 99);
-        s.stackStat = d.tick.stat;
-        const next = (s.stack || 0) + (d.tick.value || 0);
-        s.stack = d.tick.value < 0 ? Math.max(cap, next) : Math.min(cap, next);
-        emit(b, { type: 'tick', actor: s.source, target: u.id, status: s.id, stat: s.stackStat, value: s.stack });
-        continue;
+      for (const tk of Array.isArray(d.tick) ? d.tick : [d.tick]) {
+        if (!isStanding(u) || !u.statuses.includes(s)) break;
+        if (tk.ifStatus && !hasStatus(u, tk.ifStatus)) continue;
+        if (tk.op === 'buff' && tk.cumulative) {
+          const cap = tk.cap ?? (tk.value < 0 ? -99 : 99);
+          s.stackStat = tk.stat;
+          const next = (s.stack || 0) + (tk.value || 0);
+          s.stack = tk.value < 0 ? Math.max(cap, next) : Math.min(cap, next);
+          emit(b, { type: 'tick', actor: s.source, target: u.id, status: s.id, stat: s.stackStat, value: s.stack });
+          continue;
+        }
+        if (tk.op === 'maxHpLoss') { radiationTick(b, u, s, tk); continue; }
+        emit(b, { type: 'tick', actor: s.source, target: u.id, status: s.id });
+        const mul = (tk.scale === 'tier' ? tierFor(b, s.level || battleLevel(b)) : 1) * statusFactor(b, u, s.id);
+        applyOp(b, src, u, tk, { tick: true, mul });
       }
-      emit(b, { type: 'tick', actor: s.source, target: u.id, status: s.id });
-      applyOp(b, src, u, d.tick, { tick: true });
+      if (d.bleedSurface && isAlive(u) && (u.tags.includes('organic') || u.tags.includes('hybrid'))) {
+        s.bleedN = (s.bleedN || 0) + 1;
+        const every = b.data.surfaceRules?.bleedEvery ?? 2;
+        if (s.bleedN % every === 0) createSurface(b, 'blood', [{ x: u.x, y: u.y }], src === u ? null : src, {});
+      }
     }
   }
+  // Stage B: the tile under the unit acts at the start of its turn
+  if (isStanding(u) && b.surfaces.size) surfaceEffect(b, u, 'turn');
   // whatever the tick phase applied to this unit belongs to THIS turn (no extra "fresh" turn)
   for (const s of u.statuses) s.fresh = false;
   for (const s of u.buffs) s.fresh = false;
@@ -563,6 +615,7 @@ function beginTurn(b, u) {
     emit(b, { type: 'skipTurn', actor: u.id });
     return false;
   }
+  if (modFlag(b, u, 'noBonus')) b.turn.bonus = 0;
   let speed = getSpeed(b, u);
   if (hasStatus(u, 'prone')) {
     removeStatus(b, u, 'prone');
@@ -575,6 +628,15 @@ function beginTurn(b, u) {
     emit(b, { type: 'lostControlTurn', actor: u.id });
   }
   return true;
+}
+
+/** irradiated: −pct of max HP per own turn, up to cap (rounded up); restored when the status goes. */
+function radiationTick(b, u, s, tk) {
+  if (u.baseMaxHp == null) u.baseMaxHp = u.maxHp;
+  s.stack = Math.min(tk.cap ?? 0.25, (s.stack || 0) + (tk.pct ?? 0.05));
+  u.maxHp = Math.max(1, u.baseMaxHp - Math.ceil(u.baseMaxHp * s.stack));
+  if (u.hp > u.maxHp) u.hp = u.maxHp;
+  emit(b, { type: 'tick', actor: s.source, target: u.id, status: s.id, maxHp: u.maxHp });
 }
 
 function decTimed(list, onExpire) {
@@ -666,9 +728,15 @@ function reviveUnit(b, caster, t) {
 function kill(b, u, reason) {
   if (u.dead) return;
   const x = u.x, y = u.y;
+  const burning = hasStatus(u, 'burn');
   u.dead = true; u.down = false; u.hp = 0; u.shield = null;
   clearPos(b, u);
   emit(b, { type: 'death', target: u.id, reason });
+  if (surfacesOn(b) && x >= 0 && u.kind !== 'summon') {
+    const SR = b.data.surfaceRules || {};
+    if (burning) createSurface(b, 'fire', [{ x, y }], null, { turns: SR.burnDeathFire ?? 2 });
+    else if (u.tags.includes('organic') && !floorAt(b, x, y)) createSurface(b, 'blood', [{ x, y }], null, { turns: SR.deathBlood ?? 6 });
+  }
   if (!u.deathFired) { u.deathFired = true; deathEffects(b, u, x, y); }
   checkVictory(b);
 }
@@ -693,6 +761,7 @@ function deathEffects(b, u, x, y) {
       }
       for (const op of a.effects || []) if (isAlive(t)) applyOp(b, u, t, op, { half, dc, ability: a });
     }
+    for (const op of a.effects || []) if (op.op === 'surface' && !op.per && !op.crit) placeSurfaceOp(b, u, a, op, { x, y }, null);
   }
 }
 
@@ -722,6 +791,17 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
   if (dmgType === 'proxy') {
     mult = proxyFactor(tgt.tags);
     amt = Math.floor(amt * mult);
+  }
+  // Stage B: status reactions to a damage type (wet ×1.5 electric, frozen cracks on blunt)
+  let broke = null;
+  if (dmgType && tgt.statuses.length) {
+    for (const st of tgt.statuses) {
+      const d = statusDef(b, st.id);
+      if (!d) continue;
+      if (d.vulnMul && d.vulnMul[dmgType]) { amt = Math.floor(amt * d.vulnMul[dmgType]); mult *= d.vulnMul[dmgType]; }
+      if (d.breakOnDmg && d.breakOnDmg[dmgType] != null && amt > 0) { amt += d.breakOnDmg[dmgType]; broke = st.id; }
+    }
+    if (broke) removeStatus(b, tgt, broke);
   }
   const r = resistOf(b, tgt, dmgType);
   if (r === 'immune') amt = 0;
@@ -764,13 +844,40 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
     }
     return amt;
   }
+  const tx = tgt.x, ty = tgt.y;
   tgt.hp -= amt;
   tgt.roundHpLoss += amt;
   emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, absorbed, dmgType, resource: 'hp', resist: r, mult, crit, value: Math.max(0, tgt.hp) });
   if (tgt.hp <= 0) zeroHp(b, tgt, src);
-  else if (amt > 0) { bigHitCheck(b, tgt); phobiaDamage(b, tgt, dmgType, src); }
+  else if (amt > 0) { bigHitCheck(b, tgt); phobiaDamage(b, tgt, dmgType, src); if (opts && opts.phobia) phobiaTrigger(b, tgt, opts.phobia, null); }
+  if (amt > 0 && isAlive(tgt)) damageReactions(b, src, tgt, dmgType, opts);
   if (amt > 0 && isAlive(tgt)) triggerReactions(b, 'allyDamaged', tgt, src);
+  if (amt > 0 && (dmgType === 'fire' || dmgType === 'electric') && !(opts && (opts.surface || opts.extra))) elementHit(b, src, tx, ty, dmgType);
   return amt;
+}
+
+/** Stage B: statuses reacting to damage (oiled + fire, wet + electric, fire thaws ice) and «Запах крови». */
+function damageReactions(b, src, tgt, dmgType, opts) {
+  if (dmgType) {
+    for (const st of tgt.statuses.slice()) {
+      const d = statusDef(b, st.id);
+      if (!d || !tgt.statuses.includes(st)) continue;
+      if (d.endOnDmg && d.endOnDmg.includes(dmgType)) { removeStatus(b, tgt, st.id); continue; }
+      if (d.onDmgStatus && d.onDmgStatus[dmgType]) {
+        const [id, turns] = d.onDmgStatus[dmgType];
+        applyStatus(b, tgt, id, turns, src || null);
+      }
+      if (d.onDmgExtra && d.onDmgExtra[dmgType] && !(opts && opts.extra) && isAlive(tgt)) {
+        const L = (src && src.level) || battleLevel(b);
+        dealDamage(b, src, tgt, rollDice(b.rng, d.onDmgExtra[dmgType]) * tierFor(b, L), dmgType, { extra: true });
+      }
+      if (!isAlive(tgt)) return;
+    }
+  }
+  const share = b.data.surfaceRules?.scentHpShare;
+  if (share && tgt.roundHpLoss >= tgt.maxHp * share && !hasStatus(tgt, 'scent') && tgt.tags.includes('organic') && statusDef(b, 'scent')) {
+    applyStatus(b, tgt, 'scent', null, null);
+  }
 }
 
 function zeroHp(b, u, src) {
@@ -839,11 +946,16 @@ export function healUnit(b, src, tgt, amount, resource = 'hp') {
       got = tgt.hp;
       emit(b, { type: 'stabilize', actor: src ? src.id : null, target: tgt.id, value: tgt.hp });
     } else {
+      const hm = modProduct(b, tgt, 'healMul');
+      if (hm !== 1) amount = Math.max(1, Math.floor(amount * hm));
       got = Math.min(tgt.maxHp - tgt.hp, amount);
       tgt.hp += got;
     }
     for (let i = tgt.statuses.length - 1; i >= 0; i--) {
-      if (statusDef(b, tgt.statuses[i].id)?.endOnHeal) removeStatus(b, tgt, tgt.statuses[i].id);
+      const st = tgt.statuses[i];
+      const d = statusDef(b, st.id);
+      if (d?.endOnHeal) removeStatus(b, tgt, st.id);
+      else if (d?.healShortens && st.turns != null && (st.turns -= d.healShortens) <= 0) removeStatus(b, tgt, st.id);
     }
   } else if (resource === 'mrl') {
     got = Math.min(tgt.maxMrl - tgt.mrl, amount);
@@ -867,23 +979,49 @@ export function applyStatus(b, tgt, id, turns, src, value, dc) {
     emit(b, { type: 'statusUnknown', target: tgt.id, id });
     return false;
   }
-  if (tgt.immuneStatus.includes(id) || (d.immuneTags && d.immuneTags.some((t) => tgt.tags.includes(t)))) {
+  if (tgt.immuneStatus.includes(id) || (d.immuneTags && d.immuneTags.some((t) => unitHasTag(tgt, t)))) {
     emit(b, { type: 'statusImmune', actor: src ? src.id : null, target: tgt.id, id });
     return false;
   }
-  const n = turns ?? d.turns ?? 1;
+  // Stage B interactions (effects.js header): swaps, blockers, upgrades, mutual removal
+  if (d.organicSwap && tgt.tags.includes('organic') && !tgt.tags.includes('hybrid')) {
+    return applyStatus(b, tgt, d.organicSwap.id, d.organicSwap.turns, src, value, dc);
+  }
+  if (d.blockedBy) {
+    for (const bid of Object.keys(d.blockedBy)) {
+      if (!hasStatus(tgt, bid)) continue;
+      removeStatus(b, tgt, bid);
+      emit(b, { type: 'extinguish', actor: src ? src.id : null, target: tgt.id, id, by: bid });
+      return false;
+    }
+  }
+  if (d.upgradeTo && hasStatus(tgt, id) && statusDef(b, d.upgradeTo)) {
+    removeStatus(b, tgt, id);
+    return applyStatus(b, tgt, d.upgradeTo, null, src, value, dc);
+  }
+  if (d.removes) for (const rid of d.removes) if (rid !== id && hasStatus(tgt, rid)) removeStatus(b, tgt, rid);
+  let n = turns ?? (d.turns === null ? null : d.turns ?? 1);
+  if (d.wetTurns && n != null && hasStatus(tgt, 'wet')) n = Math.max(n, d.wetTurns);
+  const fct = statusFactor(b, tgt, id);
+  if (fct !== 1 && n != null) n = Math.max(1, Math.round(n * fct));
   const fresh = !!(b.turn && b.turn.unitId === tgt.id);
   const cur = getStatus(tgt, id);
+  const level = (src && src.level) || null;
   if (cur) {
-    cur.turns = Math.max(cur.turns ?? 0, n);
+    cur.turns = n == null || cur.turns == null ? null : Math.max(cur.turns, n);
     if (src) cur.source = src.id;
     if (value != null) cur.value = Math.max(cur.value ?? 0, value);
     if (dc != null) cur.dc = Math.max(cur.dc ?? 0, dc);
+    if (cur.turns != null && n == null) cur.turns = null;
+    if (level) cur.level = level;
     cur.fresh = cur.fresh || fresh;
   } else {
-    tgt.statuses.push({ id, turns: n, source: src ? src.id : null, fresh, value: value ?? null, dc: dc ?? null, stack: 0, stackStat: null });
+    tgt.statuses.push({ id, turns: n, source: src ? src.id : null, fresh, value: value ?? null, dc: dc ?? null, stack: 0, stackStat: null, level });
   }
   emit(b, { type: 'status', actor: src ? src.id : null, target: tgt.id, id, turns: n });
+  if (d.withTag) {
+    for (const [tag, [wid, wt]] of Object.entries(d.withTag)) if (wid !== id && unitHasTag(tgt, tag)) applyStatus(b, tgt, wid, wt, src, null, dc);
+  }
   return true;
 }
 
@@ -892,6 +1030,7 @@ export function removeStatus(b, u, id) {
     if (u.statuses[i].id === id) {
       u.statuses.splice(i, 1);
       emit(b, { type: 'statusEnd', target: u.id, id });
+      if (u.baseMaxHp != null && !u.statuses.some((s) => statusDef(b, s.id)?.tick?.op === 'maxHpLoss')) { u.maxHp = u.baseMaxHp; u.baseMaxHp = null; }
     }
   }
 }
@@ -928,7 +1067,9 @@ function saveMode(u, stat) {
   return { adv, dis };
 }
 function saveBonusOf(b, u, stat) {
-  return mod(effStat(b, u, stat)) + (u.saves.includes(stat) ? u.prof : 0) + statusMod(b, u, 'saves', 'save') + buffSum(u, 'save');
+  let sm = 0;
+  for (const s of u.statuses) { const v = statusDef(b, s.id)?.mods?.saveMods?.[stat]; if (v) sm += v; }
+  return mod(effStat(b, u, stat)) + (u.saves.includes(stat) ? u.prof : 0) + statusMod(b, u, 'saves', 'save') + buffSum(u, 'save') + sm;
 }
 
 /** Saving throw. Returns true on success. */
@@ -952,10 +1093,12 @@ export function enemyAdjacent(b, att, x = att.x, y = att.y) {
 
 function attackMode(b, att, tgt, melee, isWeapon, fx = att.x, fy = att.y) {
   const adv = !!modFlag(b, att, 'attackAdv') || !!modFlag(b, att, 'firstAttackAdv') || !!modFlag(b, tgt, 'attackedAdv')
-    || (melee && !!modFlag(b, tgt, 'attackedAdvMelee')) || tgt.down;
+    || (melee && !!modFlag(b, tgt, 'attackedAdvMelee')) || tgt.down
+    || (att.kind !== 'hero' && hasStatus(tgt, 'scent') && att.tags.includes('beast') && tgt.hp <= tgt.maxHp * 0.5);
   const dis = !!modFlag(b, att, 'attackDisadv') || !!modFlag(b, tgt, 'attackedDisadv')
     || (!melee && !!modFlag(b, tgt, 'attackedDisadvRanged')) || (isWeapon && att.weaponTier <= 1) || (!melee && enemyAdjacent(b, att, fx, fy)) || !!att.armorPenalty
-    || (!melee && b.zones.length > 0 && smokeBetween(b, fx, fy, tgt.x, tgt.y));
+    || (!melee && !!modFlag(b, att, 'rangedDisadv'))
+    || (!melee && (b.zones.length > 0 || b.surfaces.size > 0) && smokeBetween(b, fx, fy, tgt.x, tgt.y));
   return { adv, dis };
 }
 
@@ -975,11 +1118,13 @@ function attackRoll(b, att, tgt, bonus, melee, isWeapon, opts) {
   if (!isAlive(tgt) || !isStanding(att)) return { hit: false, crit: false, extraDice: 0 };
   const extraDice = isWeapon ? statusMod(b, att, 'extraWeaponDice') : 0;
   const r = d20(b.rng, attackMode(b, att, tgt, melee, isWeapon));
-  const total = r.natural + bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att);
+  const total = r.natural + bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att)
+    + (b.surfaces.size ? surfaceHitBonus(b, att) : 0);
   const arc = isWeapon && !melee && att.weapon && att.weapon.arc;
   const kb = getKb(b, tgt, arc ? null : att, !melee) - apReduction(att, tgt, isWeapon) + ((opts && opts.kbPenalty) || 0);
   let crit = r.natural >= Math.min(20, att.critRange || 20);
   const hit = r.natural !== 1 && (crit || total >= kb);
+  if (modFlag(b, att, 'noCrit')) crit = false;
   if (hit && tgt.down) crit = true;
   if (!hit) crit = false;
   emit(b, { type: 'attack', actor: att.id, target: tgt.id, roll: { natural: r.natural, rolls: r.rolls, mode: r.mode, bonus: total - r.natural, total }, kb, hit, crit, melee });
@@ -1060,6 +1205,7 @@ function weaponAttack(b, att, tgt, op) {
   if (!att.weapon) return { hit: false, crit: false };
   const melee = isMeleeWeapon(att);
   payWeapon(b, att);
+  if (!melee && glitchLag(b, att, tgt)) return { hit: false, crit: false };
   const res = attackRoll(b, att, tgt, weaponAttackBonus(b, att) + ((op && op.hit) || 0), melee, true);
   if (res.hit) {
     weaponDamage(b, att, tgt, res.crit, res.extraDice, op && op.extraDice, op && op.extraType);
@@ -1067,6 +1213,28 @@ function weaponAttack(b, att, tgt, op) {
   }
   if (res.natural != null && isAlive(att)) afterShot(b, att, res.natural);
   return res;
+}
+
+/** Stage B glitch: the bearer's status with a `glitch` spec, or null. */
+function glitchSpec(b, u) {
+  for (const s of u.statuses) { const g = statusDef(b, s.id)?.glitch; if (g) return g; }
+  return null;
+}
+/** Ranged shot «lag» under glitch: the shot misses (event glitchLag). */
+function glitchLag(b, att, tgt) {
+  const g = u_glitch(b, att);
+  if (!g || !g.lag || b.rng() >= g.lag) return false;
+  emit(b, { type: 'glitchLag', actor: att.id, target: tgt.id });
+  return true;
+}
+const u_glitch = (b, u) => (u.statuses.length ? glitchSpec(b, u) : null);
+/** overload: after an attack / offensive ability the bearer hurts itself (selfDmg). */
+function selfDamage(b, u) {
+  if (!isAlive(u) || !u.statuses.length) return;
+  for (const s of u.statuses.slice()) {
+    const sd = statusDef(b, s.id)?.selfDmg;
+    if (sd && isAlive(u)) dealDamage(b, null, u, rollDice(b.rng, sd.dice), sd.dmgType || null, { surface: true });
+  }
 }
 
 /** Weapon save DC (area weapons): 8 + prof + mod(weapon stat). */
@@ -1082,6 +1250,7 @@ function areaWeaponAttack(b, att, center) {
   const dc = weaponDc(b, att);
   const targets = abilityTargets(b, att, weaponAreaAbility(att), center);
   emit(b, { type: 'weaponArea', actor: att.id, x: center.x, y: center.y, shape: w.area.shape, size: w.area.size || 1, targets: targets.map((t) => t.id) });
+  if (b.barrels && b.barrels.length) breakBarrelsIn(b, (x, y) => inArea(b, att, weaponAreaAbility(att), center, { x, y }) || (x === center.x && y === center.y), att);
   for (const t of targets) {
     if (!isAlive(t)) continue;
     const half = rollSave(b, t, save, dc, att, 'weapon:' + (w.id || w.name));
@@ -1132,6 +1301,11 @@ export function zoneOf(a) {
 
 function placeZone(b, u, a, center) {
   const z = zoneOf(a);
+  if ((z.kind || 'smoke') === 'smoke' && surfacesOn(b) && b.data.surfaces.smoke) {
+    const size = z.size ?? (a.area ? a.area.size || 1 : 1);
+    createSurface(b, 'smoke', radiusTiles(b, center.x, center.y, size), u, { turns: z.turns, size });
+    return null;
+  }
   const zone = {
     id: `zone${++b.zoneCount}`, kind: z.kind || 'smoke', x: center.x, y: center.y,
     size: z.size ?? (a.area ? a.area.size || 1 : 1), turns: z.turns ?? 2, owner: u.id, team: u.team,
@@ -1158,7 +1332,54 @@ export function smokeBetween(b, ax, ay, tx, ty) {
     if (inZone(z, ax, ay) || inZone(z, tx, ty)) return true;
     if (walkLine(ax, ay, tx, ty, (x, y) => inZone(z, x, y))) return true;
   }
-  return false;
+  return gasBetween(b, ax, ay, tx, ty);
+}
+
+// ---------------------------------------------------------------- surfaces (rules/surfaces.js) glue
+
+/** Tiles a surface spec covers: op.size → radius around the centre; null size → the ability area; else 1 tile. */
+function surfaceTiles(b, u, a, op, center) {
+  if (op.size != null) return radiusTiles(b, center.x, center.y, op.size);
+  if (a && a.area) {
+    const out = [];
+    const sz = a.area.size || 1;
+    const ox = a.area.shape === 'radius' ? center.x : u.x, oy = a.area.shape === 'radius' ? center.y : u.y;
+    for (let y = oy - sz; y <= oy + sz; y++) for (let x = ox - sz; x <= ox + sz; x++) {
+      if (!inBounds(b.grid, x, y)) continue;
+      if (inArea(b, u, a, center, { x, y })) out.push({ x, y });
+    }
+    if (a.area.shape === 'radius' && !out.some((p) => p.x === center.x && p.y === center.y)) out.push({ ...center });
+    return out;
+  }
+  return [{ x: center.x, y: center.y }];
+}
+/** Place one surface op / spec { kind, size, turns } of ability a at center. */
+function placeSurfaceOp(b, u, a, op, center, tgt) {
+  if (!surfacesOn(b) || !op || !op.kind) return;
+  if (op.ifSurface && !surfaceKindsAt(b, center.x, center.y).some((k) => [].concat(op.ifSurface).includes(k))) return;
+  createSurface(b, op.kind, surfaceTiles(b, u, tgt ? null : a, op, center), u, { turns: op.turns ?? undefined, size: op.size ?? (a && a.area ? a.area.size : 0) });
+}
+/** Center of an ability's area (self / target unit / tile). */
+function abilityCenter(b, u, a, spec) {
+  return isSelfCentered(u, a, spec) ? { x: u.x, y: u.y } : spec && spec.unit && b.byId[spec.unit] ? { x: b.byId[spec.unit].x, y: b.byId[spec.unit].y }
+    : spec && spec.x != null ? { x: spec.x, y: spec.y } : { x: u.x, y: u.y };
+}
+/** Path of a move to `to` (index) that avoids harmful surfaces if a detour costs ≤ 3 extra steps. */
+export function movePath(b, u, to) {
+  const reach = getReachable(b, u.id);
+  const idx = to.y * b.grid.w + to.x;
+  const path = pathTo(reach, idx);
+  if (!path || !b.surfaces.size || !surfacesOn(b)) return path;
+  const harmful = (p) => surfaceHarm(b, u, p.x, p.y) > 0;
+  if (!path.slice(0, -1).some(harmful)) return path;
+  const blocked = new Uint8Array(b.grid.w * b.grid.h);
+  for (const k of b.surfaces.keys()) {
+    const [x, y] = k.split(',').map(Number);
+    if ((x !== to.x || y !== to.y) && surfaceHarm(b, u, x, y) > 0) blocked[y * b.grid.w + x] = 1;
+  }
+  const move = b.turn && b.turn.unitId === u.id ? b.turn.move : getSpeed(b, u);
+  const alt = pathTo(reachable(b.grid, u.x, u.y, move, b.occ, { blocked }), idx);
+  return alt && alt.length <= path.length + 3 ? alt : path;
 }
 
 // ---------------------------------------------------------------- movement
@@ -1174,6 +1395,7 @@ export function grantSafePassage(b, u) {
 export const hasSafePassage = (b, u) => !!(b.turn && b.turn.safePassage && b.turn.unitId === u.id);
 
 function hazardEnter(b, u) {
+  if (surfacesOn(b)) { if (b.surfaces.size && cellAt(b, u.x, u.y)) surfaceEffect(b, u, 'enter'); return; }
   if (tileAt(b.grid, u.x, u.y) !== T_HAZARD || !isAlive(u)) return;
   if (hasSafePassage(b, u)) { emit(b, { type: 'hazard', target: u.id, x: u.x, y: u.y, avoided: true }); return; }
   emit(b, { type: 'hazard', target: u.id, x: u.x, y: u.y });
@@ -1232,7 +1454,7 @@ function walk(b, u, path, noProvoke) {
     setPos(b, u, step.x, step.y);
     steps++;
     seg.push({ x: step.x, y: step.y });
-    if (tileAt(b.grid, u.x, u.y) === T_HAZARD) { flush(); hazardEnter(b, u); }
+    if (b.surfaces.size ? cellAt(b, u.x, u.y) : tileAt(b.grid, u.x, u.y) === T_HAZARD) { flush(); hazardEnter(b, u); }
     if (b.traps.length && trapAt(b, u.x, u.y, u)) { flush(); trapCheck(b, u); }
     if (b.drops.length) pickUpCheck(b, u);
   }
@@ -1261,6 +1483,7 @@ function opportunity(b, r, mover) {
 function pushUnit(b, src, tgt, tiles) {
   const dx = Math.sign(tgt.x - src.x), dy = Math.sign(tgt.y - src.y);
   if (!dx && !dy) return;
+  for (const st of tgt.statuses) tiles += statusDef(b, st.id)?.pushPlus || 0;
   const from = { x: tgt.x, y: tgt.y };
   let moved = 0;
   for (let i = 0; i < tiles; i++) {
@@ -1268,11 +1491,13 @@ function pushUnit(b, src, tgt, tiles) {
     if (!isPassable(b.grid, nx, ny) || unitAt(b, nx, ny)) break;
     setPos(b, tgt, nx, ny);
     moved++;
-    if (tileAt(b.grid, nx, ny) === T_HAZARD || (b.traps.length && trapAt(b, nx, ny, tgt))) break;
+    if (tileAt(b.grid, nx, ny) === T_HAZARD || (b.traps.length && trapAt(b, nx, ny, tgt)) || (b.surfaces.size && surfaceHarm(b, tgt, nx, ny) >= 5)) break;
   }
   emit(b, { type: 'push', actor: src.id, target: tgt.id, from, to: { x: tgt.x, y: tgt.y }, tiles: moved });
   if (moved) { hazardEnter(b, tgt); trapCheck(b, tgt); }
 }
+/** Push tgt away from a point { id, x, y } (gas explosions). */
+export function pushFrom(b, src, tgt, tiles) { pushUnit(b, src, tgt, tiles); }
 
 // ---------------------------------------------------------------- abilities: legality & targets
 
@@ -1451,6 +1676,7 @@ export function abilityTargets(b, u, a, spec) {
 
 function tagOk(t, only) {
   if (!only) return true;
+  if (Array.isArray(only)) return only.some((o) => t.tags.includes(o)) || t.tags.includes('hybrid');
   return t.tags.includes(only) || t.tags.includes('hybrid');
 }
 export { tagOk };
@@ -1465,6 +1691,7 @@ export function applyOp(b, caster, t, op, ctx = {}) {
   if (op.only && op.op !== 'heal' && !tagOk(t, op.only)) { emit(b, { type: 'onlySkip', actor: caster.id, target: t.id, op: op.op, only: op.only }); return; }
   const half = !!ctx.half;
   if (half && op.op !== 'damage' && op.op !== 'drain') return;
+  if (op.ifSurface && !surfaceKindsAt(b, t.x, t.y).some((k) => [].concat(op.ifSurface).includes(k))) return;
   const a = ctx.ability || null;
   switch (op.op) {
     case 'damage': {
@@ -1472,6 +1699,7 @@ export function applyOp(b, caster, t, op, ctx = {}) {
       let amt = rollDice(b.rng, op.dice, critDice) + bonusValue(b, caster, op.bonus, a);
       if (ctx.attacked && !ctx.dmgBonusUsed) { amt += attackDmgBonus(b, caster, t, 'spell'); ctx.dmgBonusUsed = true; }
       if (!ctx.tick && a && caster !== t) amt += dmgTypeTier(caster, op.dmgType);
+      if (ctx.mul != null && ctx.mul !== 1) amt = Math.floor(amt * ctx.mul);
       if (half) amt = Math.floor(amt / 2);
       dealDamage(b, ctx.tick ? null : caster, t, Math.max(0, amt), op.dmgType || null, { crit: critDice });
       break;
@@ -1492,14 +1720,24 @@ export function applyOp(b, caster, t, op, ctx = {}) {
       addShield(b, caster, t, v, op.turns);
       break;
     }
-    case 'status':
-      applyStatus(b, t, op.id, op.turns, caster, op.value, ctx.dc ?? getDc(b, caster, a));
+    case 'status': {
+      let id = op.id;
+      if (op.mrlBelow != null && !(t.maxMrl > 0 && t.mrl <= t.maxMrl * op.mrlBelow)) { id = op.elseId || null; if (!id) break; }
+      applyStatus(b, t, id, op.turns, caster, op.value, ctx.dc ?? getDc(b, caster, a));
+      break;
+    }
+    case 'surface':
+      // per-target surfaces (crit blood, oil under the target…); area surfaces are placed once in resolveAbility
+      if ((op.per || op.crit || ctx.trap) && (!op.crit || ctx.crit)) placeSurfaceOp(b, caster, a, { ...op, ifSurface: null }, { x: t.x, y: t.y }, t);
+      break;
+    case 'clearSurface':
+      if (ctx.trap || !a) clearSurfaces(b, op.kinds || [], t.x, t.y, op.size ?? 1, caster);
       break;
     case 'cleanse': {
-      let n = op.count || 1;
+      let n = op.ids ? op.ids.length : op.count || 1;
       const list = t.statuses
         .map((s) => ({ s, d: statusDef(b, s.id) }))
-        .filter((x) => op.kind === 'any' || x.d?.kind === 'debuff')
+        .filter((x) => (op.ids ? op.ids.includes(x.s.id) : op.kind === 'any' || x.d?.kind === 'debuff'))
         .sort((x, y) => (x.d?.kind === 'debuff' ? 0 : 1) - (y.d?.kind === 'debuff' ? 0 : 1));
       const removed = [];
       for (const x of list) { if (n-- <= 0) break; removeStatus(b, t, x.s.id); removed.push(x.s.id); }
@@ -1755,7 +1993,7 @@ export function itemAbility(it) {
     range: it.range ?? (it.target === 'self' ? 0 : 1), target: it.target || 'self', area: it.area || null,
     roll: it.roll || 'auto', save: it.save || null, onSave: it.onSave || 'none', usesPerBattle: null,
     effects: it.trap ? [] : (it.effects || []), castStat: it.castStat || 'dex', dc: it.dc ?? null, item: it.id, trap: it.trap || null,
-    zone: it.zone || null, nextTurnPenalty: it.nextTurnPenalty || null,
+    zone: it.zone || null, surface: it.surface || null, nextTurnPenalty: it.nextTurnPenalty || null,
   };
 }
 
@@ -1790,7 +2028,7 @@ function trapCheck(b, u) {
       if (trap.onSave !== 'half') continue;
       half = true;
     }
-    for (const op of trap.effects) { if (isAlive(t)) applyOp(b, owner, t, op, { half, dc: trap.dc }); }
+    for (const op of trap.effects) { if (isAlive(t)) applyOp(b, owner, t, op, { half, dc: trap.dc, trap: true }); }
   }
 }
 
@@ -1869,6 +2107,11 @@ function resolveAbility(b, u, a, spec, asReaction) {
     if (t1 !== t0) spec = { unit: t1.id };
   }
   emit(b, { type: 'ability', actor: u.id, ability: a.id, name: a.name, target: spec && spec.unit ? spec.unit : null, tile: spec && spec.x != null ? { x: spec.x, y: spec.y } : null, cost, overcast });
+  const gl = cost > 0 && u.statuses.length ? glitchSpec(b, u) : null;
+  if (gl && 1 + Math.floor(b.rng() * 20) <= (gl.failOn ?? 5)) {
+    emit(b, { type: 'glitchFail', actor: u.id, ability: a.id, name: a.name });
+    return;
+  }
   const effects = a.effects || [];
   for (const op of effects) if (op.op === 'move' && !op.random) abilityMove(b, u, op, spec);
   if (!isStanding(u)) return;
@@ -1915,17 +2158,24 @@ function resolveAbility(b, u, a, spec, asReaction) {
     }
     if (ctx.thorns) applyThorns(b, u, t);
   }
-  if (zoneOf(a)) {
-    const c = isSelfCentered(u, a, spec) ? { x: u.x, y: u.y } : spec && spec.unit && b.byId[spec.unit] ? { x: b.byId[spec.unit].x, y: b.byId[spec.unit].y }
-      : spec && spec.x != null ? { x: spec.x, y: spec.y } : { x: u.x, y: u.y };
-    placeZone(b, u, a, c);
+  if (zoneOf(a)) placeZone(b, u, a, abilityCenter(b, u, a, spec));
+  if (surfacesOn(b)) {
+    const c = abilityCenter(b, u, a, spec);
+    if (a.area && effects.some((op) => op.op === 'damage') && b.barrels.length) {
+      breakBarrelsIn(b, (x, y) => inArea(b, u, a, c, { x, y }) || (a.area.shape === 'radius' && x === c.x && y === c.y), u);
+    }
+    if (a.surface) placeSurfaceOp(b, u, a, a.surface, c, null);
+    for (const op of effects) {
+      if (op.op === 'surface' && !op.per && !op.crit) placeSurfaceOp(b, u, a, op, c, null);
+      else if (op.op === 'clearSurface') clearSurfaces(b, op.kinds || [], c.x, c.y, op.size ?? 1, u);
+    }
   }
   for (const op of effects) {
     if (op.op === 'summon') spawnSummon(b, u, op.unit, op.turns, spec && spec.x != null ? spec : null, op.side === 'hostileToAll' ? 'chaos' : op.team);
     else if (op.op === 'extraAction') applyOp(b, u, u, op, { ability: a });
     else if (op.self && op.op !== 'move') applyOp(b, u, u, op, { ability: a, dc });
   }
-  if (offensive) breakStatuses(b, u, 'attack');
+  if (offensive) { breakStatuses(b, u, 'attack'); if (!asReaction) selfDamage(b, u); }
   breakStatuses(b, u, 'ability');
   if (overcast && cost > 0) overcastRoll(b, u, targets.find((t) => t !== u) || null);
   checkVictory(b);
@@ -1968,6 +2218,18 @@ function triggerReactions(b, trigger, unit, source) {
  *  { type: 'endStatus', unit, status } · { type: 'endTurn', unit }
  * opts.noMoves — skip move enumeration (use getReachable directly).
  */
+/** Can the status be ended by an action now (endAction; endNeeds 'water' — wet or next to water)? */
+export function endStatusOk(b, u, id) {
+  const d = statusDef(b, id);
+  if (!d || !d.endAction) return false;
+  if (d.endNeeds === 'water') {
+    if (hasStatus(u, 'wet')) return true;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (floorAt(b, u.x + dx, u.y + dy)?.kind === 'water') return true;
+    return false;
+  }
+  return true;
+}
+
 export function getLegalActions(b, unitId, opts) {
   const u = b.byId[unitId];
   const t = b.turn;
@@ -1985,8 +2247,10 @@ export function getLegalActions(b, unitId, opts) {
   }
   if (t.actions > 0 && getSpeed(b, u) > 0) out.push({ type: 'dash', unit: unitId });
   if (t.bonus > 0 && !t.disengaged) out.push({ type: 'disengage', unit: unitId });
-  if (t.actions > 0) {
-    for (const s of u.statuses) if (statusDef(b, s.id)?.endAction) out.push({ type: 'endStatus', unit: unitId, status: s.id });
+  for (const s of u.statuses) {
+    const sd = statusDef(b, s.id);
+    if (!sd?.endAction || !(sd.endActionKind === 'bonus' ? t.bonus > 0 : t.actions > 0) || !endStatusOk(b, u, s.id)) continue;
+    out.push({ type: 'endStatus', unit: unitId, status: s.id });
   }
   if (t.actions > 0 && canUseWeapon(b, u)) {
     const range = weaponRange(u);
@@ -2107,7 +2371,7 @@ export function perform(b, action) {
       const idx = action.to.y * b.grid.w + action.to.x;
       if (reach.dist[idx] <= 0) return fail(b, start, 'unreachable');
       if (!approachOk(b, u, action.to.x, action.to.y)) return fail(b, start, 'fear');
-      const steps = walk(b, u, pathTo(reach, idx), t.disengaged);
+      const steps = walk(b, u, movePath(b, u, action.to), t.disengaged);
       t.move = Math.max(0, t.move - steps);
       checkVictory(b);
       break;
@@ -2125,9 +2389,11 @@ export function perform(b, action) {
       emit(b, { type: 'disengage', actor: uid });
       break;
     case 'endStatus': {
-      if (t.actions <= 0) return fail(b, start, 'noAction');
-      if (!hasStatus(u, action.status) || !statusDef(b, action.status)?.endAction) return fail(b, start, 'badStatus');
-      t.actions--;
+      const sd = statusDef(b, action.status);
+      const bonusKind = sd?.endActionKind === 'bonus';
+      if (bonusKind ? t.bonus <= 0 : t.actions <= 0) return fail(b, start, bonusKind ? 'noBonus' : 'noAction');
+      if (!hasStatus(u, action.status) || !endStatusOk(b, u, action.status)) return fail(b, start, 'badStatus');
+      if (bonusKind) t.bonus--; else t.actions--;
       emit(b, { type: 'endStatus', actor: uid, id: action.status });
       removeStatus(b, u, action.status);
       break;
@@ -2140,6 +2406,7 @@ export function perform(b, action) {
         t.actions--;
         t.acted = true;
         areaWeaponAttack(b, u, { x: action.tile.x, y: action.tile.y });
+        selfDamage(b, u);
         checkVictory(b);
         break;
       }
@@ -2151,6 +2418,7 @@ export function perform(b, action) {
       tgt = hallucinate(b, u, tgt, weaponRange(u));
       if (u.weapon.area) areaWeaponAttack(b, u, { x: tgt.x, y: tgt.y });
       else weaponAttack(b, u, tgt, null);
+      selfDamage(b, u);
       checkVictory(b);
       break;
     }
@@ -2164,6 +2432,7 @@ export function perform(b, action) {
       t.acted = true;
       tgt = hallucinate(b, u, tgt, u.weapon.thrown);
       throwWeapon(b, u, tgt);
+      selfDamage(b, u);
       checkVictory(b);
       break;
     }
@@ -2177,6 +2446,7 @@ export function perform(b, action) {
       t.acted = true;
       tgt = hallucinate(b, u, tgt, weaponRange(u));
       burstAttack(b, u, tgt);
+      selfDamage(b, u);
       checkVictory(b);
       break;
     }
@@ -2214,7 +2484,7 @@ export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy =
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
   let kb = getKb(b, tgt, null, false) - apReduction(att, tgt, isWeapon);
   if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += COVER_KB;
-  const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit');
+  const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + (b.surfaces.size ? surfaceHitBonus(b, att) : 0);
   const critRange = Math.min(20, att.critRange || 20);
   const need = Math.min(kb - total, critRange);
   return { need, mode, chance: chanceD20(need, mode), critChance: chanceD20(critRange, mode) };
@@ -2232,6 +2502,7 @@ export function saveFailChance(b, u, stat, dc) {
 /** Multiplier and resource for a damage type against tgt: { mult, resource: 'hp' | 'mrl' }. */
 export function damageMultiplier(b, tgt, dmgType) {
   let mult = dmgType === 'proxy' ? proxyFactor(tgt.tags) : 1;
+  if (dmgType) for (const st of tgt.statuses) { const v = statusDef(b, st.id)?.vulnMul?.[dmgType]; if (v) mult *= v; }
   const r = resistOf(b, tgt, dmgType);
   if (r === 'immune') mult = 0;
   else if (r === 'resist') mult *= 0.5;
@@ -2250,7 +2521,7 @@ export function weaponDamageBonus(b, att, tgt) {
 export function spellDamageBonus(b, att, tgt) { return attackDmgBonus(b, att, tgt, 'spell'); }
 export function isStatusImmune(b, u, id) {
   const d = statusDef(b, id);
-  return !d || u.immuneStatus.includes(id) || !!(d.immuneTags && d.immuneTags.some((t) => u.tags.includes(t)));
+  return !d || u.immuneStatus.includes(id) || !!(d.immuneTags && d.immuneTags.some((t) => unitHasTag(u, t)));
 }
 export { canUseWeapon, approachOk };
 
@@ -2260,7 +2531,7 @@ export function unitView(b, u) {
     id: u.id, name: u.name, team: u.team, kind: u.kind, x: u.x, y: u.y,
     hp: u.hp, maxHp: u.maxHp, mrl: u.mrl, maxMrl: u.maxMrl, enr: u.enr, maxEnr: u.maxEnr,
     kb: getKb(b, u), speed: getSpeed(b, u), shield: u.shield ? u.shield.value : 0,
-    statuses: u.statuses.map((s) => ({ id: s.id, turns: s.turns, value: s.value })),
+    statuses: u.statuses.map((s) => ({ id: s.id, turns: s.turns, value: s.value, source: s.source })),
     buffs: u.buffs.map((s) => ({ stat: s.stat, value: s.value, turns: s.turns })),
     down: u.down, dead: u.dead, nadlom: u.nadlom, lostControl: u.lostControl > 0,
     weaponCharges: u.weaponCharges, weaponHot: !!u.weaponHot, weaponBlocked: u.weapon ? weaponBlocked(b, u) : null,

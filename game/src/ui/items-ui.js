@@ -6,6 +6,7 @@ import { ARMOR_TYPES } from '../data/items/armor.js';
 import { weaponTierFor, armorTierFor } from '../rules/equipment.js';
 import { C } from './draw.js';
 import { FACTIONS } from '../data/factions.js';
+import { surfaceLines } from './tips.js';
 
 const sign = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v)}`;
 export const weaponTypeName = (k) => WEAPON_TYPES[k]?.name || k;
@@ -113,6 +114,7 @@ export function itemTip(it, o = {}) {
   if (props.length) lines.push({ text: `${t('tip.props')}: ${props.map(([k, v]) => propText(k, v)).join(', ')}`, color: 'a' });
   const eff = it.battle?.desc || (it.field?.heal ? `+${it.field.heal.dice}${it.field.heal.bonus ? `+${it.field.heal.bonus}` : ''} ${t(`res.${it.field.heal.resource === 'mrl' ? 'mrl' : 'hp'}`)}` : '');
   if (eff) lines.push({ text: `${t('tip.effect')}: ${eff}`, color: 'j' });
+  if (slot === 'consumable' && (it.effects || it.trap || it.surface)) lines.push(...surfaceLines({ surface: it.surface, effects: [...(it.effects || []), ...(it.trap?.effects || [])] }));
   if (it.desc && it.desc !== eff) lines.push({ text: it.desc, color: '4' });
   const soon = soonNote(it);
   if (soon) lines.push({ text: soon, color: 'a' });

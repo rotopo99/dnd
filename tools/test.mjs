@@ -14,6 +14,8 @@ import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL, grantSafePassage, hasSafePas
 import { validateBuild } from '../game/src/rules/build.js';
 import { profPoints, proficiencyCost, defaultProficiencies } from '../game/src/rules/equipment.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
+import { createSurface, radiusTiles, floorAt, gasAt, surfaceHarm, surfaceEnterPreview, tierOf } from '../game/src/rules/surfaces.js';
+import { SURFACES, SURFACE_RULES } from '../game/src/data/surfaces.js';
 import { DATA } from './fixtures/rules-data.mjs';
 import { rollLoot } from '../game/src/world/loot.js';
 import { GAME_DATA } from '../game/src/data/index.js';
@@ -1515,6 +1517,136 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
     assert.equal(s.quests[q.id].state, 'done');
     assert.equal(s.exodus.ext, q.exodus.ext);
     assert.deepEqual(ex.exodusExtend(s, q.id, q.exodus.ext), []);
+  });
+}
+
+console.log('stage B: statuses & surfaces');
+{
+  const DS = {
+    ...D31, SURFACES, SURFACE_RULES,
+    STATUSES: { ...D31.STATUSES, ...GAME_DATA.STATUSES },
+    CONSUMABLES: { ...D31.CONSUMABLES, molotov: GAME_DATA.ITEMS.molotov, 'smoke-grenade': GAME_DATA.ITEMS['smoke-grenade'] },
+  };
+  const sb = (grid, enemies = ['thug'], over = {}) => {
+    const b = createBattle({ map: { id: 'tsb', grid, win: 'killAll' }, heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data: DS, ...over })], enemies, data: DS, seed: 5, autoReactions: false });
+    const H = b.units.find((u) => u.team === 'heroes');
+    const E = b.units.filter((u) => u.team === 'enemies');
+    for (const u of E) { u.maxHp = u.hp = 300; }
+    H.maxHp = H.hp = 300;
+    forceTurn(b, H);
+    return { b, H, E, E0: E[0] };
+  };
+  const has = (u, id) => u.statuses.some((s) => s.id === id);
+  const OPEN = ['############', '#P.........#', '#..........#', '#.........E#', '############'];
+
+  test('tier(L): 1–5 ×1, 6–10 ×2, 11–15 ×3, 16–20 ×4', () => {
+    assert.deepEqual([1, 5, 6, 10, 11, 16, 20].map((l) => tierOf(l)), [1, 1, 2, 2, 3, 4, 4]);
+  });
+  test('T_HAZARD becomes a permanent fire surface; T_WATER — permanent water; barrels parse', () => {
+    const { b } = sb(['#######', '#P~wbE#', '#######']);
+    assert.equal(floorAt(b, 2, 1).kind, 'fire'); assert.equal(floorAt(b, 2, 1).turns, null);
+    assert.equal(floorAt(b, 3, 1).kind, 'water');
+    assert.equal(b.barrels.length, 1);
+  });
+  test('molotov into an oil puddle: the whole puddle burns, units in it burn, surfaceCombo blaze', () => {
+    const { b, H, E0 } = sb(OPEN, ['thug'], { inventory: { molotov: 1 } });
+    const oil = []; for (let x = 4; x <= 10; x++) oil.push({ x, y: 3 });
+    createSurface(b, 'oil', oil, null, {});
+    assert.ok(has(E0, 'oiled'), 'standing in new oil → oiled');
+    assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'molotov', tile: { x: 4, y: 2 } }).ok);
+    for (const p of oil) assert.equal(floorAt(b, p.x, p.y).kind, 'fire', `${p.x},${p.y}`);
+    assert.ok(events(b, 'surfaceCombo').some((e) => e.result === 'blaze'));
+    assert.ok(has(E0, 'burn'));
+  });
+  test('wet + electric: +50% damage and shocked without a save; burn is put out by wet', () => {
+    const { b, H, E0 } = sb(OPEN);
+    applyStatus(b, E0, 'burn', 3, H);
+    applyStatus(b, E0, 'wet', 3, H);
+    assert.ok(!has(E0, 'burn') && has(E0, 'wet'));
+    const got = dealDamage(b, H, E0, 10, 'electric');
+    assert.equal(got, 15);
+    assert.ok(has(E0, 'shocked'));
+    applyStatus(b, E0, 'burn', 3, H);
+    assert.ok(!has(E0, 'burn') && !has(E0, 'wet'), 'water puts the fire out (both gone)');
+    assert.ok(events(b, 'extinguish').length >= 1);
+  });
+  test('electric on water spreads through the whole connected puddle', () => {
+    const { b, E0 } = sb(OPEN);
+    const pool = []; for (let x = 3; x <= 10; x++) pool.push({ x, y: 3 }); pool.push({ x: 3, y: 2 });
+    createSurface(b, 'water', pool, null, {});
+    assert.ok(has(E0, 'wet'));
+    const hp = E0.hp;
+    createSurface(b, 'electric', [{ x: 3, y: 2 }], null, {});
+    assert.ok(pool.every((p) => floorAt(b, p.x, p.y).kind === 'water' && floorAt(b, p.x, p.y).charged > 0));
+    assert.ok(E0.hp < hp && has(E0, 'shocked'));
+    assert.ok(events(b, 'surfaceCombo').some((e) => e.result === 'electrify' && e.tiles === pool.length));
+  });
+  test('toxgas + fire explodes (gas gone, fire at the centre); water + fire → steam; ice + fire → water', () => {
+    const { b, E0 } = sb(OPEN);
+    createSurface(b, 'toxgas', radiusTiles(b, 9, 3, 1), null, {});
+    const hp = E0.hp;
+    createSurface(b, 'fire', [{ x: 8, y: 2 }], null, {});
+    assert.ok(events(b, 'surfaceCombo').some((e) => e.result === 'explosion'));
+    assert.ok(!gasAt(b, 9, 3) && !gasAt(b, 10, 3));
+    assert.ok(E0.hp < hp, 'explosion damage');
+    assert.equal(floorAt(b, 8, 2).kind, 'fire');
+    createSurface(b, 'water', [{ x: 2, y: 2 }], null, {});
+    createSurface(b, 'fire', [{ x: 2, y: 2 }], null, {});
+    assert.ok(!floorAt(b, 2, 2) && gasAt(b, 2, 2).kind === 'steam');
+    createSurface(b, 'ice', [{ x: 3, y: 1 }], null, {});
+    createSurface(b, 'fire', [{ x: 3, y: 1 }], null, {});
+    assert.equal(floorAt(b, 3, 1).kind, 'water');
+  });
+  test('surface ticks: −1 per round, surfaceEnd at 0; entry damage once per turn per type; status ticks × tier', () => {
+    const { b, H, E0 } = sb(OPEN);
+    createSurface(b, 'acid', [{ x: 5, y: 1 }], null, { turns: 2 });
+    const r0 = b.round;
+    while (floorAt(b, 5, 1) && b.round < r0 + 4) endTurn(b);
+    assert.equal(b.round, r0 + 2);
+    assert.ok(events(b, 'surfaceEnd').some((e) => e.kind === 'acid'));
+    // tier 2 source: burn tick = 1d6 × 2 (always even)
+    const src = { ...H, level: 8 };
+    while (b.turn.unitId !== H.id) endTurn(b);
+    applyStatus(b, E0, 'burn', 3, src);
+    endTurn(b);
+    while (b.turn.unitId !== E0.id) endTurn(b);
+    const tick = b.log.filter((e) => e.type === 'damage' && e.target === E0.id && e.dmgType === 'fire').pop();
+    assert.ok(tick && tick.amount % 2 === 0 && tick.amount >= 2);
+  });
+  test('statuses: glitch on pure organics → hallucination; chilled twice → frozen; frozen cracks on blunt (+3)', () => {
+    const { b, H, E0 } = sb(OPEN);
+    applyStatus(b, E0, 'glitch', 2, H);
+    assert.ok(has(E0, 'hallucination') && !has(E0, 'glitch'));
+    applyStatus(b, E0, 'chilled', 2, H);
+    applyStatus(b, E0, 'chilled', 2, H);
+    assert.ok(has(E0, 'frozen') && !has(E0, 'chilled'));
+    assert.equal(dealDamage(b, H, E0, 5, 'blunt'), 8);
+    assert.ok(!has(E0, 'frozen'));
+  });
+  test('smoke grenade with surfaces: gas smoke gives disadvantage to ranged shots', () => {
+    const { b, H, E0 } = sb(['#########', '#P.....E#', '#########'], ['gunner'], { inventory: { 'smoke-grenade': 1 } });
+    assert.ok(perform(b, { type: 'useItem', unit: H.id, item: 'smoke-grenade', tile: { x: 4, y: 1 } }).ok);
+    assert.equal(gasAt(b, 4, 1).kind, 'smoke');
+    assert.equal(attackOdds(b, E0, H, 4, false, true).mode, 'dis');
+  });
+  test('AI avoids fire when there is a way around; harm and enter preview', () => {
+    const { b, H, E0 } = sb(['##########', '#P...~..E#', '#........#', '##########']);
+    assert.ok(surfaceHarm(b, E0, 5, 1) > 0);
+    const pv = surfaceEnterPreview(b, H, 5, 1);
+    assert.ok(pv.dmg > 0 && pv.statuses.includes('burn'));
+    endTurn(b);
+    let guard = 0;
+    while (b.turn && b.turn.unitId === E0.id && guard++ < 3) playTurn(b);
+    assert.ok(E0.x < 8, 'enemy advanced');
+    assert.ok(!b.log.some((e) => (e.type === 'hazard' || e.type === 'surfaceEnter') && e.target === E0.id), 'no fire entered');
+  });
+  test('AI values setting fire to a target standing in oil', () => {
+    const { b, H, E0 } = sb(OPEN, ['thug'], { inventory: { molotov: 1 } });
+    H.control = 'ai';
+    const act = { type: 'useItem', unit: H.id, item: 'molotov', tile: { x: E0.x, y: E0.y } };
+    const dry = evalAction(b, H, act);
+    createSurface(b, 'oil', radiusTiles(b, E0.x, E0.y, 1), null, {});
+    assert.ok(evalAction(b, H, act) > dry + 2);
   });
 }
 

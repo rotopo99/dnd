@@ -179,10 +179,12 @@ export function createBattleScene(opts) {
     S.burstTargets = new Set();
     S.throwTargets = new Set();
     S.specs = {};
+    S.endStatuses = [];
     if (S.playerTurn) {
       if (b.turn.move > 0) S.reach = getReachable(b, S.heroId);
       for (const act of getLegalActions(b, S.heroId, { noMoves: true })) {
         if (act.target && isHiddenFoe(b.byId[act.target])) continue;
+        if (act.type === 'endStatus') { S.endStatuses.push(act.status); continue; }
         if (act.type === 'attack') {
           // v3.1 area weapons: attack a tile / unit as an area (preview like a grenade)
           if (hero.weapon?.area) (S.specs[AREA_KEY] || (S.specs[AREA_KEY] = [])).push(act);
@@ -233,6 +235,11 @@ export function createBattleScene(opts) {
     if (opts.tricks) {
       r = !S.playerTurn ? 'turn' : bt.bonus <= 0 ? 'bonus' : null;
       btns.push({ id: 'trick', label: t('trick.button'), sub: t('act.bonus'), key: 'K', disabled: !!r, reason: r === 'bonus' ? t('trick.noBonus') : reasonOf(r) });
+    }
+    // Stage B: end a status by an action / bonus action (put out fire, wipe off oil, catch breath…)
+    for (const sid of S.endStatuses) {
+      const sd = b.data.statuses[sid];
+      btns.push({ id: `end:${sid}`, endStatus: sid, label: `${t('battle.endStatusBtn')}: ${sd?.name || sid}`, sub: t(sd?.endActionKind === 'bonus' ? 'act.bonus' : 'act.action'), disabled: false });
     }
     r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : null;
     btns.push({ id: 'dash', label: t('battle.dash'), sub: t('act.action'), disabled: !!r, reason: reasonOf(r) });
@@ -339,6 +346,7 @@ export function createBattleScene(opts) {
       case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
       case 'retreat': opts.onRetreat(game, S); return;
       default: {
+        if (btn.endStatus) { doAction({ type: 'endStatus', status: btn.endStatus }); break; }
         const a = btn.a;
         if (S.sel?.kind === 'ability' && S.sel.a.id === a.id) { S.sel = null; break; }
         const specs = S.specs[a.id] || [];
@@ -488,6 +496,13 @@ export function createBattleScene(opts) {
     S.lastActPop = { id: u.id, time: S.time };
   }
 
+  /** Stage B: combination name over a tile («Электролужа!», «Пожар!», «Взрыв газа!»). */
+  function tilePop(x, y, label, color) {
+    const id = `tile:${x},${y}`;
+    compact(S.actPops, (p) => p.id !== id);
+    S.actPops.push({ id, tx: x, ty: y, text: label, color, t: 0 });
+  }
+
   function bubble(u, text, portrait = false) {
     compact(S.bubbles, (x) => x.id !== u.id);
     S.bubbles.push({ id: u.id, text, t: 0, portrait });
@@ -538,6 +553,8 @@ export function createBattleScene(opts) {
       case 'weaponArea': actPop(A, A?.weapon?.name); break;
       case 'opportunity': actPop(A, t('battle.opportunityPop')); break;
       case 'trapPlaced': actPop(A, ITEMS[e.item]?.name || e.item); break;
+      case 'surfaceCombo': tilePop(e.x, e.y, t(`combo.${e.result}`), C[S.b.data.surfaces?.[e.result === 'explosion' || e.result === 'blaze' ? 'fire' : e.b]?.color] || C.a); break;
+      case 'glitchFail': actPop(A, t('battle.glitchFail')); break;
       case 'damage': {
         if (!T) break;
         const d = dispOf(T);

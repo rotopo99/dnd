@@ -2,6 +2,7 @@
 // Descriptions come from data: STATUSES[id].desc, ability.desc, TALENTS[id].desc; resource texts — data/text `tip.res.*`.
 import { t } from '../data/text/index.js';
 import { STATUSES } from '../data/effects.js';
+import { SURFACES } from '../data/surfaces.js';
 import { TALENTS } from '../data/talents.js';
 import { C, text, bar, resLine } from './draw.js';
 import { hotspot } from './tooltip.js';
@@ -14,11 +15,52 @@ export function resTip(res) {
   return { title: `${t(`res.${res}.full`)}`, titleColor: C[RES_COL[res]] || C.h, lines: [t(`tip.res.${res}`)] };
 }
 
-/** Status by id (or a status object from battle data). */
-export function statusTip(id, statuses = STATUSES) {
+/**
+ * Status by id (or a status object from battle data). extra (battle, Stage B): { turns, source, resist: 'R'|'V'|'I'|null }
+ * → rounds left, source, tick numbers, removal ways and the bearer's resistance.
+ */
+export function statusTip(id, statuses = STATUSES, extra = null) {
   const s = statuses?.[id] || STATUSES[id];
   if (!s) return null;
-  return { title: s.name, titleColor: s.kind === 'buff' ? C.j : C.a, lines: [{ text: t(s.kind === 'buff' ? 'tip.buff' : 'tip.debuff'), color: '4' }, s.desc || ''] };
+  const lines = [{ text: t(s.kind === 'buff' ? 'tip.buff' : 'tip.debuff'), color: '4' }, s.desc || ''];
+  const ticks = (Array.isArray(s.tick) ? s.tick : s.tick ? [s.tick] : []).filter((x) => x.dice);
+  if (ticks.length) lines.push({ text: `${t('tip.tick')}: ${ticks.map((x) => `${x.dice}${x.dmgType ? ' ' + t(`dmg.${x.dmgType}`) : ''}${x.scale === 'tier' ? ' ×tier' : ''}`).join(', ')}`, color: 'b' });
+  if (extra) {
+    if ('turns' in extra) lines.push({ text: extra.turns == null ? t('tip.permanent') : `${t('tip.left')}: ${extra.turns} ${t('tip.rounds')}`, color: '5' });
+    if (extra.source) lines.push({ text: `${t('tip.source')}: ${extra.source}`, color: '4' });
+    if (extra.resist) lines.push({ text: t(extra.resist === 'I' ? 'tip.immune' : extra.resist === 'R' ? 'tip.resist' : 'tip.vuln'), color: extra.resist === 'V' ? 'c' : 'j' });
+  }
+  if (s.removal) lines.push({ text: `${t('tip.removal')}: ${s.removal}`, color: '4' });
+  return { title: s.name, titleColor: s.kind === 'buff' ? C.j : C.a, glyph: s.icon ? { ch: '●', color: C[s.icon] } : undefined, lines };
+}
+
+/** Surface layer tip (battle tile hover). layer: { kind, turns, charged?, acidic?, proxied? }; step — enter preview. */
+export function surfaceTip(layer, step = null, surfaces = SURFACES) {
+  const d = surfaces[layer.kind];
+  if (!d) return null;
+  const flags = [layer.charged && t('tip.charged'), layer.acidic && t('tip.acidic'), layer.proxied && t('tip.proxied')].filter(Boolean);
+  const lines = [{ text: t('tip.surface'), color: '4' }, d.desc];
+  lines.push({ text: layer.turns == null ? t('tip.permanent') : `${t('tip.left')}: ${layer.turns} ${t('tip.rounds')}`, color: '5' });
+  if (d.interacts && d.interacts !== '—') lines.push({ text: `${t('tip.interacts')}: ${d.interacts}`, color: 'b' });
+  if (step) {
+    const parts = [];
+    if (step.dmg > 0) parts.push(`−${step.dmg} ${t(step.dmgType === 'cringe' ? 'res.mrl' : 'res.hp')}`);
+    for (const id of step.statuses) parts.push(STATUSES[id]?.name || id);
+    lines.push({ text: `${t('tip.step')}: ${parts.length ? parts.join(', ') : t('tip.harmless')}`, color: step.dmg > 0 ? 'c' : 'a' });
+  }
+  return { title: d.name + (flags.length ? ` (${flags.join(', ')})` : ''), titleColor: C[d.color], glyph: { ch: '▒', color: C[d.color] }, lines };
+}
+
+/** «Создаёт: Огонь R1, 4 р.» / «Накладывает: Горение, Шок» lines of an ability or item. */
+export function surfaceLines(a) {
+  const out = [];
+  const specs = [a.surface, ...(a.effects || []).filter((e) => e.op === 'surface')].filter(Boolean);
+  if (specs.length) {
+    out.push({ text: `${t('tip.creates')}: ${specs.map((sp) => `${SURFACES[sp.kind]?.name || sp.kind}${sp.size ? ` ${t('tip.radius')}${sp.size}` : ''}${sp.turns ? `, ${sp.turns} ${t('tip.rounds')}` : ''}`).join('; ')}`, color: 'e' });
+  }
+  const st = [...new Set((a.effects || []).filter((e) => e.op === 'status').map((e) => STATUSES[e.id]?.name || e.id))];
+  if (st.length) out.push({ text: `${t('tip.applies')}: ${st.join(', ')}`, color: 'a' });
+  return out;
 }
 
 /** Ability: action type, cost, range, area, uses; description. */
@@ -33,6 +75,7 @@ export function abilityTip(a) {
   const lines = [];
   if (parts.length) lines.push({ text: parts.join(' · '), color: 'b' });
   if (a.desc) lines.push(a.desc);
+  lines.push(...surfaceLines(a));
   return { title: a.name, lines };
 }
 

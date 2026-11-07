@@ -1,5 +1,5 @@
 // Procedural battle map for world battles (until hand-made maps exist): 22x12, border walls, scattered cover,
-// optional fire for burning regions. 4 'P' starts on the left, enemy starts 'E' on the right (row-major order).
+// optional fire for burning regions, water puddles and barrels (Stage B). 4 'P' starts on the left, enemy starts 'E' on the right (row-major order).
 export function makeWorldMap({ seed = 1, enemies = 4, hazard = null, id = 'world' } = {}) {
   let s = seed >>> 0 || 1;
   const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
@@ -26,6 +26,20 @@ export function makeWorldMap({ seed = 1, enemies = 4, hazard = null, id = 'world
       const x = 5 + Math.floor(rnd() * 12), y = 1 + Math.floor(rnd() * 10);
       if (g[y][x] === '.') g[y][x] = '~';
     }
+  }
+  // Stage B (statuses-surfaces §6.4): 0–2 water puddles ('w', 2×2-ish) and 0–2 barrels ('b' oil, 'g' toxgas)
+  const puddles = Math.floor(rnd() * 3);
+  for (let i = 0; i < puddles; i++) {
+    const cx = 6 + Math.floor(rnd() * 10), cy = 2 + Math.floor(rnd() * 8);
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [-1, 0]]) {
+      const x = cx + dx, y = cy + dy;
+      if (x > 4 && x < w - 5 && y > 0 && y < h - 1 && g[y][x] === '.' && rnd() < 0.85) g[y][x] = 'w';
+    }
+  }
+  const barrels = hazard === 'fire' ? 1 + Math.floor(rnd() * 2) : Math.floor(rnd() * 3);
+  for (let i = 0; i < barrels; i++) {
+    const x = 6 + Math.floor(rnd() * 10), y = 2 + Math.floor(rnd() * 8);
+    if (g[y][x] === '.') g[y][x] = rnd() < 0.3 ? 'g' : 'b';
   }
   const ps = [[2, 4], [2, 7], [3, 5], [3, 6]];
   for (const [x, y] of ps) g[y][x] = 'P';

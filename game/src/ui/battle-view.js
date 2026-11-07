@@ -3,8 +3,8 @@
 import { t } from '../data/text/index.js';
 import { drawUnitPortrait } from './portrait-of.js';
 import { TILE, drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
-import { abilityRange, unitView } from '../rules/combat.js';
-import { pathTo } from '../rules/grid.js';
+import { abilityRange, unitView, movePath, statusFactor, isStatusImmune } from '../rules/combat.js';
+import { drawSurfaces, drawBarrels, surfaceHover } from './surface-view.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, clear } from './draw.js';
 import { teamColor } from './battle-log.js';
 import { ITEMS } from '../data/index.js';
@@ -135,6 +135,7 @@ function buildMapLayer(S) {
   for (let y = 1; y < g.h; y++) { c.moveTo(0, y * L.cell + 0.5); c.lineTo(cv.width, y * L.cell + 0.5); }
   c.stroke();
   S.mapLayer = cv;
+  S.gridV = b.gridVersion || 0;
 }
 
 const isHidden = (u) => u.team === 'enemies' && u.statuses.some((s) => s.id === 'invisible' || s.id === 'stealth');
@@ -163,8 +164,11 @@ export function renderBattle(game, S) {
   const b = S.b;
   clear(ctx, L.W, L.H);
   ctx.imageSmoothingEnabled = false;
+  if ((b.gridVersion || 0) !== S.gridV) buildMapLayer(S); // a barrel broke
   ctx.drawImage(S.mapLayer, L.mapX, L.mapY);
   const tms = S.time * 1000;
+  drawSurfaces(ctx, S, tms, 'floor');
+  drawBarrels(ctx, S);
   // fire (animated)
   for (let i = 0; i < S.fireTiles.length; i += 2) {
     drawSprite(ctx, 'obj-fire', L.mapX + S.fireTiles[i] * L.cell, L.mapY + S.fireTiles[i + 1] * L.cell, L.s, { frame: idleFrame(tms * 0.8, i * 0.13) });
@@ -201,6 +205,12 @@ export function renderBattle(game, S) {
   }
   const preview = drawHighlights(ctx, S);
   drawUnits(ctx, S, preview, tms);
+  drawSurfaces(ctx, S, tms, 'gas');
+  {
+    const hc = S.hover.cell;
+    const inReach = !!(hc && S.playerTurn && !S.sel && S.reach && S.reach.dist[hc.y * b.grid.w + hc.x] > 0);
+    surfaceHover(S, b.byId[S.heroId], inReach);
+  }
   drawPopups(ctx, S);
   drawActPops(ctx, S);
   drawTopBar(ctx, S);
@@ -286,7 +296,9 @@ function drawHighlights(ctx, S) {
       out.odds = S.odds(u, { kind: 'attack' });
     } else if (S.reach && S.reach.dist[idx] > 0) {
       const pc = S.pathCache;
-      if (!pc || pc.idx !== idx || pc.reach !== S.reach) S.pathCache = { idx, reach: S.reach, path: pathTo(S.reach, idx) };
+      if (!pc || pc.idx !== idx || pc.reach !== S.reach || pc.sv !== b.surfaceVersion) {
+        S.pathCache = { idx, reach: S.reach, sv: b.surfaceVersion, path: movePath(b, hero, { x: hc.x, y: hc.y }) || [] };
+      }
       const path = S.pathCache.path;
       out.path = path;
       ctx.fillStyle = C.h;
@@ -341,15 +353,22 @@ function drawUnits(ctx, S, preview, tms) {
     const by = py - (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s - bh * 2 - 4;
     bar(ctx, bx, by, bw, bh, d.hp, u.maxHp, 'hp');
     if (u.maxMrl > 0) bar(ctx, bx, by + bh + 1, bw, bh, d.mrl, u.maxMrl, 'mrl');
-    // status pips
+    // status icons (Stage B: palette colour per status, max 4, then «+N»)
     let sx = bx;
-    for (const s of u.statuses) {
+    const pip = Math.max(4, L.s * 2);
+    u.statuses.forEach((s, i) => {
+      if (i > 4 || (i === 4 && u.statuses.length > 5)) return;
+      if (i === 4 || sx + pip > bx + bw) {
+        if (i < u.statuses.length) text(ctx, `+${u.statuses.length - i}`, sx, by - pip - 8, C['5'], '10px monospace');
+        sx = bx + bw + 99;
+        return;
+      }
       const def = b.data.statuses[s.id];
-      ctx.fillStyle = def && def.kind === 'buff' ? C.j : C.a;
-      ctx.fillRect(sx, by - 6, 4, 4);
-      sx += 6;
-      if (sx > bx + bw - 4) break;
-    }
+      ctx.fillStyle = C['0']; ctx.fillRect(sx - 1, by - pip - 3, pip + 2, pip + 2);
+      ctx.fillStyle = def && def.icon ? C[def.icon] : def && def.kind === 'buff' ? C.j : C.a;
+      ctx.fillRect(sx, by - pip - 2, pip, pip);
+      sx += pip + 2;
+    });
     if (d.down) text(ctx, t('battle.downTag'), px + L.cell - 2, py + 2, C.c, FONT_B, 'right');
   }
   // speech bubbles
@@ -396,9 +415,9 @@ function drawActPops(ctx, S) {
   const L = S.L;
   const font = 'bold 14px monospace';
   for (const p of S.actPops || []) {
-    const u = S.b.byId[p.id];
-    if (!u) continue;
-    const d = S.dispOf(u);
+    const u = p.tx != null ? null : S.b.byId[p.id];
+    if (!u && p.tx == null) continue;
+    const d = u ? S.dispOf(u) : { x: p.tx, y: p.ty };
     ctx.font = font;
     const w = Math.ceil(ctx.measureText(p.text).width) + 14;
     const x = Math.round(L.mapX + d.x * L.cell + L.cell / 2 - w / 2);
@@ -522,6 +541,17 @@ function logTermTip(S, str) {
   return null;
 }
 
+/** Battle details for a status tip: rounds left, source, the bearer's resistance. */
+function statusExtra(b, u, st) {
+  const bu = b.byId[u.id] || u;
+  const src = st.source && b.byId[st.source];
+  const f = bu.tags ? statusFactor(b, bu, st.id) : 1;
+  return {
+    turns: st.turns, source: src ? src.name : null,
+    resist: bu.tags && isStatusImmune(b, bu, st.id) ? 'I' : f < 1 ? 'R' : f > 1 ? 'V' : null,
+  };
+}
+
 /** Statuses as hover-able names (wrapping). Returns the y after the last row. */
 function statusChips(ctx, b, u, x, y, w, maxRows = 3) {
   const list = u.statuses || [];
@@ -535,7 +565,7 @@ function statusChips(ctx, b, u, x, y, w, maxRows = 3) {
     if (cx + sw > x + w && cx > x) { cx = x; row++; }
     if (row >= maxRows) return;
     text(ctx, s, cx, y + row * LINE, d?.kind === 'buff' ? C.j : C.a, FONT);
-    hotspot(cx, y + row * LINE, sw, LINE, statusTip(st.id, b.data.statuses));
+    hotspot(cx, y + row * LINE, sw, LINE, () => statusTip(st.id, b.data.statuses, statusExtra(b, u, st)));
     cx += sw + ctx.measureText(' ').width;
   });
   return y + (Math.min(row, maxRows - 1) + 1) * LINE;

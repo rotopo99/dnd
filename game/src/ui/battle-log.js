@@ -28,6 +28,8 @@ export function teamColor(u) {
  * Returns an array of segments or null (event not logged).
  */
 const itemName = (id) => ITEMS[id]?.name || id;
+const surfName = (b, k) => b.data.surfaces?.[k]?.name || k;
+const surfCol = (b, k) => C[b.data.surfaces?.[k]?.color] || C.a;
 
 export function formatEvent(S, e) {
   const b = S.b;
@@ -128,6 +130,16 @@ export function formatEvent(S, e) {
     case 'phobia': return [a(T), g(': '), [`${t('battle.phobia')} (${t(`phobia.${e.trigger}`)})`, C.n]];
     case 'outOfRange': return [a(A), g(`: ${t('battle.outOfRangeEv')}`)];
     case 'victory': return [w(e.winner === 'heroes' ? t('battle.victory') : t('battle.defeat'))];
+    // Stage B: surfaces
+    case 'surfaceCreate': return [[surfName(b, e.kind), surfCol(b, e.kind)], g(` ${t('battle.surfaceCreate')}${e.tiles > 1 ? ` (${e.tiles})` : ''}${e.turns ? `, ${e.turns} ${t('tip.rounds')}` : ''}`)];
+    case 'surfaceEnd': return e.kind.includes(',') ? null : [[surfName(b, e.kind), surfCol(b, e.kind)], g(` ${t('battle.surfaceEnd')}`)];
+    case 'surfaceEnter': return e.mode === 'turn' ? null : [a(T), g(` ${t('battle.surfaceEnter')} `), [surfName(b, e.kind), surfCol(b, e.kind)], e.avoided ? [` — ${t('battle.hazardAvoided')}`, C.j] : g('')];
+    case 'surfaceCombo': return [[t(`combo.${e.result}`), surfCol(b, e.result === 'explosion' || e.result === 'blaze' || e.result === 'burnout' ? 'fire' : e.b)], g(e.tiles > 1 ? ` (${e.tiles})` : '')];
+    case 'surfaceIgnite': return [[t('battle.surfaceIgnite'), C.e], g(` (${e.tiles})`)];
+    case 'barrelBreak': return [[t('battle.barrelBreak'), C.a], g(`: ${surfName(b, e.kind)}`)];
+    case 'extinguish': return [a(T), g(': '), [`${b.data.statuses[e.by]?.name || e.by} ${t('battle.extinguish')} «${b.data.statuses[e.id]?.name || e.id}»`, C.f]];
+    case 'glitchFail': return [a(A), g(': '), [t('battle.glitchFail'), C.h]];
+    case 'glitchLag': return [a(A), g(': '), [t('battle.glitchLag'), C.h]];
     default: return null;
   }
 }
@@ -164,6 +176,9 @@ export function eventSound(S, e) {
     case 'summon': play('summon'); break;
     case 'overcast': play('overcast'); break;
     case 'trapTriggered': play('hit'); break;
+    case 'surfaceCombo': play(e.result === 'explosion' ? 'crit' : e.result === 'electrify' || e.result === 'overvolt' ? 'electric' : e.result === 'burnout' || e.result === 'cringeProxy' ? 'cringe' : e.result === 'steam' || e.result === 'dissolve' ? 'toxin' : 'fire'); break;
+    case 'surfaceCreate': play({ fire: 'fire', electric: 'electric', acid: 'toxin', toxgas: 'toxin', cringe: 'cringe', proxy: 'proxy' }[e.kind] || 'debuff'); break;
+    case 'glitchFail': play('cyber'); break;
     case 'victory': play(e.winner === 'heroes' ? 'victory' : 'defeat'); break;
     default: break;
   }

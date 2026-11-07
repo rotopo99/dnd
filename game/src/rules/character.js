@@ -45,6 +45,8 @@ export function normalizeData(d = {}) {
     skills: d.skills || d.SKILLS || null,
     items: collectItems(d),
     multiclass: d.multiclass || d.MULTICLASS || [],
+    surfaces: d.surfaces || d.SURFACES || null,
+    surfaceRules: d.surfaceRules || d.SURFACE_RULES || null,
   };
 }
 

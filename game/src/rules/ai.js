@@ -11,12 +11,16 @@ import {
   abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS, itemAbility,
   isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop,
 } from './combat.js';
+import { surfaceHarm, surfaceOf, surfaceDefs, surfaceKindsAt, cellAt, connected } from './surfaces.js';
 
 const STATUS_VALUE = {
   stun: 12, root: 4, slow: 3, fear: 5, blind: 5, silence: 4, disarm: 5, curse: 3, prone: 3, poison: 4,
   bleed: 4, burn: 5, cringed: 4, corrosion: 3, hallucination: 4, dazed: 3, taunt: 4, marked: 3,
   invisible: 5, stealth: 4, regen: 4, inspired: 2, blessed: 3, haste: 4, berserk: 3, fortified: 4,
+  wet: 1, oiled: 2, shocked: 4, chilled: 3, frozen: 8, acid: 4, irradiated: 4, panic: 8, glitch: 4, overload: 3,
+  choking: 3, scent: 1, slick: 1,
 };
+const HOT = { fire: 1, electric: 1 };
 const BUFF_WEIGHT = { kb: 0.8, hit: 0.8, dmg: 1, init: 0.1, speed: 0.3, save: 0.4 };
 
 // ---------------------------------------------------------------- value model
@@ -191,6 +195,8 @@ export function evalAbility(b, u, a, spec) {
     for (const op of effects) {
       if (op.self || op.op === 'summon' || op.op === 'extraAction' || op.op === 'move' || op.op === 'zone') continue;
       if (op.only && op.op !== 'heal' && !tagOk(t, op.only)) continue;
+      if (op.ifSurface && !surfaceKindsAt(b, t.x, t.y).some((k) => [].concat(op.ifSurface).includes(k))) continue;
+      if (op.op === 'status' && op.mrlBelow != null && !(t.maxMrl > 0 && t.mrl <= t.maxMrl * op.mrlBelow) && !op.elseId) continue;
       const p = pass * gate;
       switch (op.op) {
         case 'weapon': {
@@ -205,6 +211,7 @@ export function evalAbility(b, u, a, spec) {
           const amt = avgDice(op.dice) + bonusValue(b, u, op.bonus, a) + (a.roll === 'attack' && !hasWeapon ? spellDamageBonus(b, u, t) : 0);
           const val = dmgValue(b, t, amt, op.dmgType) * (p + halfP * 0.5);
           v += hostile ? val : -val * (t === u ? 0.6 : 1.2);
+          if (hostile && HOT[op.dmgType]) v += comboEV(b, u, t.x, t.y, 0, op.dmgType) * (p + halfP);
           if (op.op === 'drain' && hostile) v += healValue(u, amt * (op.ratio ?? 0.5) * p, op.to || 'hp') * 0.8;
           break;
         }
@@ -232,7 +239,7 @@ export function evalAbility(b, u, a, spec) {
           if (!hostile) v += t.statuses.filter((s) => statusDef(b, s.id)?.kind === 'debuff').length * 2.5;
           break;
         case 'push':
-          if (hostile) v += 1 * p;
+          if (hostile) v += (1 + pushIntoHarm(b, u, t, op.tiles || 1)) * p;
           break;
         case 'stabilize':
           if (!hostile && (t.down || (op.revive && t.dead)) && !t.soulless) v += t.dead ? 30 : 20;
@@ -257,11 +264,80 @@ export function evalAbility(b, u, a, spec) {
   }
   const z = zoneOf(a);
   if (z) v += zoneValue(b, u, a, z, spec);
-  if (!targets.length && !z && !effects.some((e) => e.op === 'summon' || e.op === 'extraAction')) return 0;
+  const sf = surfaceOf(a);
+  if (sf) v += surfaceEV(b, u, a, spec);
+  if (sf && sf.kind === 'smoke') v += zoneValue(b, u, a, { size: sf.size, turns: sf.turns, kind: 'smoke' }, spec);
+  if (!targets.length && !z && !sf && !effects.some((e) => e.op === 'summon' || e.op === 'extraAction')) return 0;
   const cost = a.cost || 0;
   v -= cost * 0.3;
   if (cost > u.enr) v -= 8; // overcast risk
   return v;
+}
+
+// ---------------------------------------------------------------- surfaces (spec §7)
+
+const specCenter = (b, u, spec) => (spec && spec.unit && b.byId[spec.unit] ? b.byId[spec.unit] : spec && spec.x != null ? spec : u);
+
+/** Harm of standing in a surface kind for e (data `ai`, 0 for its native / immune element). */
+function kindHarm(b, e, kind) {
+  const def = surfaceDefs(b)[kind];
+  if (!def) return 0;
+  if (kind === 'proxy' && e.tags.includes('proxy')) return 0;
+  if (!def.enter?.dice && (def.enter?.statuses || []).every(([id]) => isStatusImmune(b, e, id))) return 0;
+  return def.ai || 0;
+}
+
+/**
+ * Value of surfaces an ability creates: Σ hostile units in the area × harm − own units × harm, plus fire / electric
+ * combinations (blaze, gas explosion, electrified puddle).
+ */
+function surfaceEV(b, u, a, spec) {
+  const c = specCenter(b, u, spec);
+  const list = [];
+  if (a.surface) list.push(a.surface);
+  for (const op of a.effects || []) if (op.op === 'surface' && !op.per && !op.crit) list.push(op);
+  let v = 0;
+  for (const sp of list) {
+    const size = sp.size ?? (a.area ? a.area.size || 1 : 0);
+    const k = Math.min(sp.turns ?? 2, 3) / 2;
+    for (const e of b.units) {
+      if (!isStanding(e) || chebyshev(c.x, c.y, e.x, e.y) > size) continue;
+      const h = kindHarm(b, e, sp.kind);
+      v += (isHostile(b, u, e) ? h * 0.5 : -h * 0.8) * k;
+    }
+    if (HOT[sp.kind]) v += comboEV(b, u, c.x, c.y, size, sp.kind);
+  }
+  return v;
+}
+
+/** Fire / electricity reaching oil, toxgas or water near (x, y): +4 per hostile in the region, −6 per own unit. */
+function comboEV(b, u, x, y, size, kind) {
+  if (!b.surfaces || !b.surfaces.size) return 0;
+  const tiles = new Set();
+  for (let dy = -size; dy <= size; dy++) for (let dx = -size; dx <= size; dx++) {
+    const c = cellAt(b, x + dx, y + dy);
+    if (!c) continue;
+    const add = (layer, kinds) => { for (const p of connected(b, x + dx, y + dy, layer, kinds, 40)) tiles.add(`${p.x},${p.y}`); };
+    if (c.gas && c.gas.kind === 'toxgas') add('gas', ['toxgas']);
+    if (c.floor && c.floor.kind === 'oil') add('floor', ['oil']);
+    if (kind === 'electric' && c.floor && (c.floor.kind === 'water' || c.floor.kind === 'blood') && !c.floor.charged) add('floor', [c.floor.kind]);
+  }
+  if (!tiles.size) return 0;
+  let v = 0;
+  for (const e of b.units) {
+    if (!isStanding(e) || !tiles.has(`${e.x},${e.y}`)) continue;
+    v += isHostile(b, u, e) ? 4 : e === u ? -8 : -6;
+  }
+  return v;
+}
+
+/** +3 when a push lands the target on a harmful surface. */
+function pushIntoHarm(b, u, t, tiles) {
+  if (!b.surfaces || !b.surfaces.size) return 0;
+  const dx = Math.sign(t.x - u.x), dy = Math.sign(t.y - u.y);
+  if (!dx && !dy) return 0;
+  for (let i = 1; i <= tiles; i++) if (surfaceHarm(b, t, t.x + dx * i, t.y + dy * i) > 0) return 3;
+  return 0;
 }
 
 /**
@@ -290,7 +366,12 @@ export function evalAction(b, u, act) {
         return c ? areaWeaponEV(b, u, c) : 0;
       }
       const t = b.byId[act.target];
-      return t ? weaponEV(b, u, t, null).v : 0;
+      if (!t) return 0;
+      const r = weaponEV(b, u, t, null);
+      let v = r.v;
+      if (u.weapon && HOT[u.weapon.dmgType]) v += comboEV(b, u, t.x, t.y, 0, u.weapon.dmgType) * (r.chance ?? 0.6);
+      if (hasStatus(t, 'scent') && u.tags.includes('beast')) v *= 1.5;
+      return v;
     }
     case 'throw': {
       const t = b.byId[act.target];
@@ -317,7 +398,9 @@ export function evalAction(b, u, act) {
     }
     case 'endStatus': {
       const s = u.statuses.find((x) => x.id === act.status);
-      return s ? 3.5 * Math.min(s.turns || 1, 3) : 0;
+      if (!s) return 0;
+      const base = act.status === 'burn' ? 3.5 : (STATUS_VALUE[act.status] ?? 3) * 0.4;
+      return base * Math.min(s.turns || 1, 3);
     }
     default:
       return 0;
@@ -461,7 +544,10 @@ export function planTile(b, u, opts) {
       s -= adj * 4 + near;
       if (cover) s += 1.5;
     }
-    if (tileAt(g, x, y) === T_HAZARD) s -= 6;
+    if (b.surfaces && b.surfaces.size) {
+      const h = surfaceHarm(b, u, x, y);
+      if (h) s -= h > 0 && melee ? h * 0.5 : h;
+    } else if (tileAt(g, x, y) === T_HAZARD) s -= 6;
     if (drop && x === drop.x && y === drop.y) s += 8; // v3.1: pick the thrown weapon back up
     if (!ignoreOA) s -= oaRisk(b, u, x, y);
     s -= reach.dist[idx] * 0.05;
