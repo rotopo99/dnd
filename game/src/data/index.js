@@ -8,6 +8,7 @@ import { ENCOUNTERS_V4 } from './enemies-v4.js'; // v4: враги и бои 6�
 import { WEAPONS, CLASS_PROFICIENCY } from './items/weapons.js';
 import { ARMOR } from './items/armor.js';
 import { MODS } from './items/mods.js';
+import { OFFHAND } from './items/offhand.js';
 import { CONSUMABLES } from './items/consumables.js';
 import { ITEMS as WORLD_ITEMS } from './world/locations.js';
 import { TALENTS, SKILLS, COMBAT_TALENT_LIMIT } from './talents.js';
@@ -33,7 +34,7 @@ export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4
  * One item catalogue: v3 gear (items/*) + v1.0 world items (world/locations.js ITEMS). Same id in both
  * (medkit, calmers, grenade) → one record: world fields (use, passives, price, desc) over the v3 battle fields.
  */
-export const ITEMS = { ...WEAPONS, ...ARMOR, ...MODS, ...CONSUMABLES };
+export const ITEMS = { ...WEAPONS, ...ARMOR, ...OFFHAND, ...MODS, ...CONSUMABLES };
 for (const [id, it] of Object.entries(WORLD_ITEMS)) ITEMS[id] = { ...(ITEMS[id] || {}), ...it };
 
 // Этап B: теги фракций (plant, proxy, beast…) и привязки поверхностей/статусов к способностям (data/surfaces.js).
