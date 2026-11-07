@@ -105,7 +105,7 @@ export function createCyberspaceScene() {
     const n = enemies.length;
     const scene = createBattleScene({
       heroes: (g) => [spiritUnit(g)], allies: c.helped ? ['spirit'] : [], enemies,
-      map: (seed) => makeWorldMap({ seed, enemies: n, id: 'cyberspace' }), title: t('cyber.title'), race: game.save.hero.race,
+      map: (seed) => makeWorldMap({ seed, enemies: n, biome: 'cyber', id: 'cyberspace' }), title: t('cyber.title'), race: game.save.hero.race,
       onWin: (g) => { g.resume(self); resolve(g, true); },
       onLose: (g) => { g.resume(self); resolve(g, false); },
       onExit: (g) => { g.resume(self); resolve(g, false); },

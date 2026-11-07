@@ -12,6 +12,8 @@ import {
   isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop,
 } from './combat.js';
 import { surfaceHarm, surfaceOf, surfaceDefs, surfaceKindsAt, cellAt, connected } from './surfaces.js';
+import { archTargetMul, archAbilityMul, archTileScore, archHarmMul, fleeAction } from './archetypes.js';
+import { objectAt } from './terrain.js';
 
 const STATUS_VALUE = {
   stun: 12, root: 4, slow: 3, fear: 5, blind: 5, silence: 4, disarm: 5, curse: 3, prone: 3, poison: 4,
@@ -371,6 +373,7 @@ export function evalAction(b, u, act) {
       let v = r.v;
       if (u.weapon && HOT[u.weapon.dmgType]) v += comboEV(b, u, t.x, t.y, 0, u.weapon.dmgType) * (r.chance ?? 0.6);
       if (hasStatus(t, 'scent') && u.tags.includes('beast')) v *= 1.5;
+      if (u.arch) v *= archTargetMul(b, u, t);
       return v;
     }
     case 'throw': {
@@ -383,7 +386,8 @@ export function evalAction(b, u, act) {
       let spec = act.target ? { unit: act.target } : act.tile ? { x: act.tile.x, y: act.tile.y } : {};
       const mv = (a.effects || []).find((e) => e.op === 'move');
       if (mv && a.target === 'self') return 0; // pure repositioning: handled by movement planning
-      return evalAbility(b, u, a, spec);
+      const v = evalAbility(b, u, a, spec);
+      return u.arch ? v * archAbilityMul(b, u, a, act.target ? b.byId[act.target] : null) : v;
     }
     case 'burst': {
       const t = b.byId[act.target];
@@ -396,6 +400,8 @@ export function evalAction(b, u, act) {
       const spec = act.target ? { unit: act.target } : act.tile ? { x: act.tile.x, y: act.tile.y } : {};
       return evalAbility(b, u, itemAbility(it), spec) - ITEM_USE_COST;
     }
+    case 'smash':
+      return smashEV(b, u, act.tile);
     case 'endStatus': {
       const s = u.statuses.find((x) => x.id === act.status);
       if (!s) return 0;
@@ -405,6 +411,18 @@ export function evalAction(b, u, act) {
     default:
       return 0;
   }
+}
+
+/** Shooting a barrel / generator next to enemies (combat rework §3.2): +4 per enemy, −6 per ally in radius 1. */
+function smashEV(b, u, tile) {
+  const o = tile && objectAt(b, tile.x, tile.y);
+  if (!o || (o.kind !== 'barrel' && o.kind !== 'generator') || o.hp > avgDice(u.weapon.dice) * 1.6 + 2) return 0;
+  let v = 0;
+  for (const e of b.units) {
+    if (!isStanding(e) || chebyshev(e.x, e.y, o.x, o.y) > 1) continue;
+    v += isHostile(b, u, e) ? 4 : e.team === u.team ? -6 : 0;
+  }
+  return v * 0.65;
 }
 
 // ---------------------------------------------------------------- movement planning
@@ -419,7 +437,8 @@ function buildOptions(b, u) {
     for (const e of b.units) {
       if (!isAlive(e) || !isHostile(b, u, e) || e.down) continue;
       if (taunt && taunt !== e) continue;
-      const v = u.weapon.area ? areaWeaponEV(b, u, { x: e.x, y: e.y }) : Math.max(weaponEV(b, u, e, null).v, burstEV(b, u, e));
+      let v = u.weapon.area ? areaWeaponEV(b, u, { x: e.x, y: e.y }) : Math.max(weaponEV(b, u, e, null).v, burstEV(b, u, e));
+      if (u.arch) v *= archTargetMul(b, u, e);
       if (v > 0) list.push({ t: e, v });
     }
     const arc = !!u.weapon.arc;
@@ -500,6 +519,7 @@ export function planTile(b, u, opts) {
   const options = buildOptions(b, u);
   const df = enemies.length ? distanceField(g, enemies) : null;
   const melee = u.ai === 'melee';
+  const harmMul = u.arch ? archHarmMul(b, u) : null;
   const pref = preferredRange(b, u);
   let best = null;
   let current = null;
@@ -546,8 +566,9 @@ export function planTile(b, u, opts) {
     }
     if (b.surfaces && b.surfaces.size) {
       const h = surfaceHarm(b, u, x, y);
-      if (h) s -= h > 0 && melee ? h * 0.5 : h;
+      if (h) s -= h > 0 && harmMul != null ? h * harmMul : h > 0 && melee ? h * 0.5 : h;
     } else if (tileAt(g, x, y) === T_HAZARD) s -= 6;
+    if (u.arch) s += archTileScore(b, u, x, y, enemies);
     if (drop && x === drop.x && y === drop.y) s += 8; // v3.1: pick the thrown weapon back up
     if (!ignoreOA) s -= oaRisk(b, u, x, y);
     s -= reach.dist[idx] * 0.05;
@@ -581,11 +602,13 @@ export function chooseAction(b, unitId) {
   if (!t || t.unitId !== unitId || !u || !isStanding(u)) return end;
   if (t.lostControl) return chaotic(b, u);
   if (u.decoy || (u.noAttack && !u.abilities.length)) return end;
+  const flee = u.arch === 'coward' ? fleeAction(b, u) : null;
+  if (flee) return flee;
 
   const legal = getLegalActions(b, unitId, { noMoves: true });
   let best = null, bestBonus = null;
   for (const act of legal) {
-    if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus' && act.type !== 'burst' && act.type !== 'useItem' && act.type !== 'throw') continue;
+    if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus' && act.type !== 'burst' && act.type !== 'useItem' && act.type !== 'throw' && act.type !== 'smash') continue;
     const v = evalAction(b, u, act);
     const isBonus = (act.type === 'ability' && u.abilities.find((x) => x.id === act.ability)?.action === 'bonus')
       || (act.type === 'useItem' && b.data.items[act.item]?.action === 'bonus');

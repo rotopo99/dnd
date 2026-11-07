@@ -66,7 +66,7 @@ export function startWorldBattle(game, o) {
     heroes: () => partyUnits(save, data),
     enemies: setup.enemies,
     allies,
-    map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, hazard: o.hazard ?? loc?.hazard, id: o.id || 'world' }),
+    map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, hazard: o.hazard ?? loc?.hazard, biome: o.biome, region: loc?.region, faction: o.faction, id: o.id || 'world' }),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
