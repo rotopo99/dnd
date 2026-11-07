@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createRng } from '../game/src/rules/rng.js';
 import { parseDice, rollDice, d20, avgDice } from '../game/src/rules/dice.js';
-import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost, defaultCombatTalentLimit, DEFAULT_ASI_LEVELS } from '../game/src/rules/character.js';
+import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost, defaultCombatTalentLimit, DEFAULT_ASI_LEVELS, applyUpgrades } from '../game/src/rules/character.js';
 import { parseMap, chebyshev, lineOfSight, hasCover, findPath, reachable, makeArena } from '../game/src/rules/grid.js';
 import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack, attackOdds,
   BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT } from '../game/src/rules/combat.js';
@@ -740,6 +740,8 @@ test('upgrades: dice, cost, uses, area, bonus, other fields; by level and path; 
   const zab = Object.fromEntries(buildCreature({ race: 'human', cls: 'zabivnoy', level: 3, data: D3 }).abilities.map((a) => [a.id, a]));
   assert.equal(zab['steel-fist'].effects[0].extraDice, '2d6'); assert.equal(zab['steel-fist'].effects[0].dice, undefined);
   assert.equal(zab.blood.effects[0].bonus, 3); assert.equal(zab.blood.cost, 2);
+  const mk = applyUpgrades([{ id: 'm', effects: [{ op: 'mark', value: 2 }] }], [{ level: 1, ability: 'm', changes: { bonus: 4 } }], 1, null);
+  assert.equal(mk[0].effects[0].value, 4, 'mark: bonus is its value');
 });
 test('stabilize revive: raises a dead ally (not soulless) on its tile; plain stabilize does not', () => {
   const raise = { id: 'raise', name: 'Подъём', level: 1, cost: 0, action: 'action', range: 6, target: 'ally', roll: 'auto',
@@ -756,8 +758,7 @@ test('stabilize revive: raises a dead ally (not soulless) on its tile; plain sta
   };
   let { b, H, F } = mk();
   F.deathSavesLeft = 0;
-  dealDamage(b, H, F, 999, 'slash');
-  if (!F.dead) dealDamage(b, H, F, 999, 'slash');
+  for (let i = 0; i < 5 && !F.dead; i++) dealDamage(b, H, F, 999, 'slash');
   assert.ok(F.dead, 'ally is dead');
   b.turn.unitId = H.id; b.turn.actions = 1; b.order.splice(b.order.indexOf(H.id), 1); b.order.splice(b.turnIndex, 0, H.id);
   assert.ok(!getLegalActions(b, H.id).some((x) => x.ability === 'lift' && x.target === 'F'), 'plain stabilize cannot target the dead');
@@ -768,7 +769,7 @@ test('stabilize revive: raises a dead ally (not soulless) on its tile; plain sta
   assert.ok(F.x >= 0 && b.occ[F.y * b.grid.w + F.x] > 0, 'back on the grid');
   ({ b, H, F } = mk());
   F.soulless = true; F.deathSavesLeft = 0;
-  dealDamage(b, H, F, 999, 'slash'); if (!F.dead) dealDamage(b, H, F, 999, 'slash');
+  for (let i = 0; i < 5 && !F.dead; i++) dealDamage(b, H, F, 999, 'slash');
   assert.ok(!getLegalActions(b, H.id).some((x) => x.ability === 'raise' && x.target === 'F'), 'soulless cannot be raised');
 });
 test('XP scale above level 5: enemy and quest fallbacks follow the XP a level needs', () => {

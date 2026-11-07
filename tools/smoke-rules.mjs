@@ -1,5 +1,6 @@
 // Smoke test of the rules engine on real game data:
-// every class x every playable race x levels 1 and 5 vs ENCOUNTERS.standard1/5, N battles each;
+// every class x every playable race x path x levels 1, 5, 10, 15, 20 (levels-20.md; ASI 'auto') vs ENCOUNTERS.standard1/5
+// (×2/×3/×4 on 10/15/20), N battles each; data check of `upgrades` (unknown ability / never applied);
 // story maps; every v3 weapon (items/weapons.js) on a hero vs ENCOUNTERS_V3 (counts v3.1 item-property events).
 // Usage: node tools/smoke-rules.mjs [--n 20] [--seed 1]   (exit code 1 on exceptions)
 import fs from 'node:fs';
@@ -20,8 +21,26 @@ const races = Object.values(RACES).filter((r) => r.playable);
 let battles = 0, errors = 0, skipped = 0;
 const t0 = Date.now();
 const rows = [];
-for (const level of [1, 5]) {
-  const enc = ENCOUNTERS[level === 1 ? 'standard1' : 'standard5'];
+const LEVELS = [1, 5, 10, 15, 20];
+const warnings = [];
+for (const cid of CLASS_ORDER) {
+  const cls = CLASSES[cid];
+  const ids = new Set((cls.abilities || []).map((a) => a.id));
+  for (const g of [...(cls.upgrades || []), ...cls.paths.flatMap((p) => (p.upgrades || []).map((x) => ({ ...x, path: x.path || p.id })))]) {
+    if (!ids.has(g.ability)) { warnings.push(`${cid}: upgrade L${g.level} of unknown ability "${g.ability}"`); continue; }
+    const a = cls.abilities.find((x) => x.id === g.ability);
+    if ((a.level || 1) > (g.level || 1)) warnings.push(`${cid}: upgrade L${g.level} of "${g.ability}" before the ability (L${a.level})`);
+    const path = g.path || a.path || cls.paths[0].id;
+    try {
+      const u = buildCreature({ race: 'human', cls, level: 20, path, data, asi: 'auto' });
+      const ua = u.abilities.find((x) => x.id === g.ability);
+      if (!ua || !(ua.upgrades || []).includes(g.level || 1)) warnings.push(`${cid}/${path}: upgrade L${g.level} of "${g.ability}" not applied`);
+    } catch { /* race not allowed: covered below */ }
+  }
+}
+for (const level of LEVELS) {
+  const base = ENCOUNTERS[level === 1 ? 'standard1' : 'standard5'];
+  const enc = { enemies: Array.from({ length: Math.max(1, Math.floor(level / 5)) }, () => base.enemies).flat() };
   for (const cid of CLASS_ORDER) {
     const cls = CLASSES[cid];
     let wins = 0, total = 0, draws = 0;
@@ -30,8 +49,8 @@ for (const level of [1, 5]) {
       for (const path of cls.paths.map((p) => p.id)) {
         for (let i = 0; i < N; i++) {
           try {
-            const hero = buildCreature({ race, cls, level, path, data });
-            const r = simulateBattle({ heroes: [hero], enemies: enc.enemies, data, seed: SEED + i, maxRounds: 30 });
+            const hero = buildCreature({ race, cls, level, path, data, asi: 'auto' });
+            const r = simulateBattle({ heroes: [hero], enemies: enc.enemies, data, seed: SEED + i, maxRounds: 40 });
             battles++; total++;
             if (r.winner === 'heroes') wins++;
             if (r.winner === 'draw') draws++;
@@ -98,5 +117,6 @@ rows.push(`v3 weapons x encounters: ${v3total} battles, heroes win ${(100 * v3wi
 rows.push(`v3.1 events: ${JSON.stringify(seen)}`);
 
 console.log(rows.join('\n'));
+if (warnings.length) console.log(`\nupgrade data warnings (${warnings.length}):\n  ${warnings.slice(0, 30).join('\n  ')}`);
 console.log(`\n${battles} battles, ${errors} exceptions, ${skipped} disallowed class/race pairs skipped (per level), ${Date.now() - t0} ms`);
 process.exit(errors ? 1 : 0);

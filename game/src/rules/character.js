@@ -294,6 +294,7 @@ function upValue(cur, v, negIsDelta = false) {
  *   dice  — dice of the first effect with dice or a `weapon` op (for a `weapon` op it is its `extraDice`);
  *           `effect: i` picks the effect;
  *   bonus — new `bonus` of that effect (a number, 'castMod', or an array summed by combat.bonusValue);
+ *           no dice effect → new `value` of the first `mark` op;
  *   cost, usesPerBattle — new value (tolerated deltas: '+N' / '-N' strings, a negative cost);
  *   area  — number = new area.size, object = merged into area;
  *   anything else (range, turns, …) — replaces the ability field.
@@ -312,10 +313,13 @@ export function applyUpgrades(abilities, upgrades, level, path) {
       for (const [k, v] of Object.entries(ch)) {
         if (k === 'effect') continue;
         if (k === 'dice' || k === 'bonus') {
-          const idx = ch.effect != null ? ch.effect : a.effects.findIndex((e) => e.dice || e.extraDice || e.op === 'weapon');
+          const withDice = (e) => e.dice || e.extraDice || e.op === 'weapon';
+          let idx = ch.effect != null ? ch.effect : a.effects.findIndex(withDice);
+          if (idx < 0 && k === 'bonus') idx = a.effects.findIndex((e) => e.op === 'mark');
           const e = a.effects[idx];
           if (!e) continue;
           if (k === 'dice') { if (e.op === 'weapon') e.extraDice = v; else e.dice = v; }
+          else if (e.op === 'mark') e.value = v;
           else e.bonus = v;
         } else if (k === 'cost') a.cost = upValue(a.cost, v, true);
         else if (k === 'usesPerBattle') a.usesPerBattle = upValue(a.usesPerBattle, v);
