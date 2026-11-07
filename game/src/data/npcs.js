@@ -18,6 +18,7 @@
 //   canon (path in docs/canon/) or invented: true
 
 import { DENSITY_NPCS } from './world/density-npcs.js';
+import { COMPANION_NPCS, COMPANIONS } from './companions.js';
 
 export const EXTRA_FACTIONS = {
   predlozhka: { name: 'Предложка' },
@@ -2090,6 +2091,7 @@ LIST.push(...LIST_V3, ...LIST_V4);
 // third-exodus.md §3: world density NPCs (id `d-*`), placed by location like v3/v4
 for (const n of DENSITY_NPCS) n.burg = n.location;
 LIST.push(...DENSITY_NPCS);
+LIST.push(...COMPANION_NPCS); // companions-scenes.md: 5 new companions
 
 // Companion block per docs/specs/world.md («Контракт с npcs.js»): { race, cls, path, talents, likes, dislikes, home }.
 // likes/dislikes — deed tags from world.md §4. talents — filled by designer (talents.js ids).
@@ -2133,6 +2135,14 @@ const COMPANION_TALENTS = {
   'sister-pomekha': ['digital-asceticism', 'judge-whisper'],
 };
 for (const id in COMPANION_TALENTS) if (COMPANION[id]) COMPANION[id].talents = COMPANION_TALENTS[id];
+// New companions (companions.js): likes/dislikes/home/talents for the five women of companions-scenes.md.
+Object.assign(COMPANION, {
+  'sedmaya':   { likes: ['mercy', 'free-slaves'],    dislikes: ['serve-ai', 'cruelty'],          home: 'warprom',  talents: ['any-gun-shot', 'cold-blood'] },
+  'bulatka':   { likes: ['honor', 'help-weak'],      dislikes: ['lie', 'kill-surrendered'],      home: 'tin-arena', talents: ['death-rhythm', 'smith-strike'] },
+  'kosochka':  { likes: ['help-weak', 'free-slaves'], dislikes: ['kill-surrendered', 'greed'],   home: 'king-dumps', talents: ['knee-repair', 'reverse-engineering'] },
+  'laska':     { likes: ['greed', 'lie'],            dislikes: ['serve-ai', 'cruelty'],          home: 'raytsentr', talents: ['beast-reflexes', 'tracker'] },
+  'provoloka': { likes: ['tech-faith', 'mercy'],     dislikes: ['cult-deal', 'anti-mutant'],     home: 'zavod',    talents: ['anomaly-physicist', 'spirit-whisper'] },
+});
 
 // Tabletop party members appear ONLY in their unique event (GDD, «Ответы человека по миру», п. 2): world/events.js.
 const CAMEO_EVENT = {
@@ -2140,7 +2150,7 @@ const CAMEO_EVENT = {
 };
 
 for (const n of LIST) {
-  if (n.recruitable) n.companion = { race: n.race, cls: n.cls, path: n.path, talents: [], ...COMPANION[n.id] };
+  if (n.recruitable) n.companion = { race: n.race, cls: n.cls, path: n.path, talents: [], ...COMPANION[n.id], spec: COMPANIONS[n.id] || null };
   if (CAMEO_EVENT[n.id]) { n.event = CAMEO_EVENT[n.id]; n.services = []; }
 }
 
