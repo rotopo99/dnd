@@ -11,7 +11,7 @@ import { FACTION_IDS, factionName, repTier, TIERS, isMet } from '../world/reputa
 import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, learnTalent, members } from '../world/state.js';
 import { QUESTS, gadgetFor, ITEMS, SKILL_RULES } from '../world/data.js';
 import { autoCheck } from '../world/skill-uses.js';
-import { stageOf, currentGoalText } from '../world/quests.js';
+import { stageOf, currentGoalText, turninText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
@@ -254,12 +254,14 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     const entries = Object.entries(sv.quests).filter(([id]) => QUESTS[id]);
     // active first, then done / failed
     const order = { active: 0, done: 1, failed: 2 };
-    entries.sort((a, b) => (order[a[1].state] ?? 0) - (order[b[1].state] ?? 0));
+    const rank = (st) => (st.turnin ? 0 : order[st.state] ?? 0); // waiting for a turn-in — with the active ones
+    entries.sort((a, b) => rank(a[1]) - rank(b[1]));
     if (!entries.length) rows.push({ text: t('journal.none'), color: C['3'], font: FONT, x: 0 });
     for (const [id, st] of entries) {
       const q = QUESTS[id];
-      const col = st.state === 'done' ? C.j : st.state === 'failed' ? C.c : q.key ? C.a : C['5'];
-      for (const l of wrap(ctx, `${q.key ? '★ ' : ''}${q.name} — ${t(`journal.${st.state}`)}`, w, FONT_B)) rows.push({ text: l, color: col, font: FONT_B, x: 0 });
+      const col = st.turnin && st.state === 'done' ? C.a : st.state === 'done' ? C.j : st.state === 'failed' ? C.c : q.key ? C.a : C['5'];
+      for (const l of wrap(ctx, `${q.key ? '★ ' : ''}${q.name} — ${t(st.turnin && st.state === 'done' ? 'journal.turnin' : `journal.${st.state}`)}`, w, FONT_B)) rows.push({ text: l, color: col, font: FONT_B, x: 0 });
+      if (st.turnin && st.state === 'done') for (const l of wrap(ctx, turninText(sv, id), w - 20, FONT)) rows.push({ text: l, color: C['4'], font: FONT, x: 20 });
       if (stageOf(sv, id) && st.state === 'active') for (const l of wrap(ctx, currentGoalText(sv, id), w - 20, FONT)) rows.push({ text: l, color: C['4'], font: FONT, x: 20 });
       rows.push({ gap: true });
     }

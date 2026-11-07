@@ -12,7 +12,7 @@ import { openCheck, openGroupCheck, openChallenge } from '../ui/checks-ui.js';
 import {
   LOCATIONS, REGIONS, ITEMS, SHOP_STOCK, TERMINAL_ACTIONS, SERVICE_PRICES, QUESTS, ENCOUNTER_TABLES,
   npcsAt, npcGreeting, npcTopics, npcRepFaction, TRAINER_ALIAS, encounterName, resolveLocation, factionStock,
-  locationLore, LORE_RUMORS, SKILL_RULES,
+  locationLore, LORE_RUMORS, SKILL_RULES, QUEST_TURNIN,
 } from '../world/data.js';
 import { autoCheck, disassembleDc, disassembleParts } from '../world/skill-uses.js';
 import { isGear } from './panel-gear.js';
@@ -28,7 +28,8 @@ import {
 import { exodusSync, passDays, serviceOff, tollMult } from '../world/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
-import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc } from '../world/quests.js';
+import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc,
+  pendingTurnins, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
@@ -60,7 +61,7 @@ export function createLocationScene(rawId) {
   // v3.1: gear stigma shifts how the faction sees the party (effectiveRep)
   const facTier = (game, f) => (f ? repTier(effectiveRep(game.save, f, game.data)) : 'neutral');
   const back = (game) => { game.resume(self); refresh(game); };
-  const refresh = (game) => { toastAll(game, autoProgress(save(game), game.data)); toastAll(game, exodusSync(save(game)).out); persist(game); layout(game); };
+  const refresh = (game) => { S.turnin = true; toastAll(game, autoProgress(save(game), game.data)); toastAll(game, exodusSync(save(game)).out); persist(game); layout(game); };
   const ms = (game) => members(save(game), game.data);
   const homeTier = (game) => facTier(game, locFaction(locId) || (loc.region === 'harmony' ? 'technikums' : null));
   const toMap = (g) => { g.visit = null; import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene())); };
@@ -71,6 +72,7 @@ export function createLocationScene(rawId) {
   function afterGate(g) {
     const v = V(g);
     v.gate = true;
+    S.turnin = true; // quest turn-ins / radio calls — from update(), when no modal is open
     toastAll(g, autoProgress(save(g), g.data)); // e.g. a 'reach' goal of this very node
     persist(g);
     layout(g);
@@ -599,6 +601,51 @@ export function createLocationScene(rawId) {
     void aid;
   }
 
+  /**
+   * Quest turn-ins (data/text/quest-turnin.js): unreachable NPC → reward with a short line; queued radio calls → modal;
+   * a pending 'return' NPC on this node or in the active party → dialogue with its portrait, then the reward list.
+   * → true if something was opened.
+   */
+  function turnins(game) {
+    const sv = save(game);
+    toastAll(game, turninFallback(sv, game.data));
+    const radio = (sv.pendingRadio || []).shift();
+    if (radio) { openRadio(game, radio); persist(game); return true; }
+    const near = new Set([...npcsAt(locId, sv), ...activeCompanions(sv).map((p) => p.npc)]);
+    const qid = pendingTurnins(sv).find((id) => near.has(QUEST_TURNIN[id].npc));
+    if (!qid) return false;
+    const npc = NPCS[QUEST_TURNIN[qid].npc];
+    const st = sv.quests[qid];
+    game.setScene(createDialogueScene({
+      title: tf('q.turninTitle', { name: QUESTS[qid].name }),
+      lines: turninLines(qid, st.outcome).slice(0, 3).map((text) => ({ who: npc.id, name: npc.name, text })), hero: heroOf(sv), wounds: true,
+      onDone: (g) => {
+        g.resume(self);
+        const got = claimTurnin(sv, qid, g.data);
+        persist(g);
+        showReward(g, QUESTS[qid].name, got);
+      },
+    }));
+    return true;
+  }
+
+  function showReward(game, name, got) {
+    if (!got.length) { refresh(game); return; }
+    game.openModal({ title: `${t('q.reward')}: ${name}`, lines: got.map((x) => ({ text: x.text, color: x.color })),
+      options: [{ label: t('battle.ok'), run: (g) => { refresh(g); if (!pendingChoice(g)) levelUp(g); } }], onCancel: (g) => refresh(g) });
+  }
+
+  function openRadio(game, qid) {
+    const sv = save(game);
+    const td = QUEST_TURNIN[qid], st = sv.quests[qid];
+    const npc = NPCS[td.npc];
+    const lines = [{ text: tf('q.radioFrom', { npc: npc?.name || td.npc }), color: 'a' }];
+    if (td.radioCall) lines.push({ text: `${sv.hero.name}: «${td.radioCall}»`, color: 'h' });
+    for (const l of turninLines(qid, st?.outcome).slice(0, 3)) lines.push({ text: `${npc?.name || td.npc}: «${l}»` });
+    game.openModal({ title: `${t('q.radio')} · ${QUESTS[qid].name}`, width: 820, lines,
+      options: [{ label: t('battle.continue'), run: (g) => refresh(g) }], onCancel: (g) => refresh(g) });
+  }
+
   /** talentChoice from quest rewards: pick one. */
   function pendingChoice(game) {
     const sv = save(game);
@@ -640,7 +687,7 @@ export function createLocationScene(rawId) {
         btns.push({ ...a, kind: 'npc', npc: id, act: a.id, x, y: y + 14, w: 92, h: 34, font: FONT });
       }
       const all = questsOffered(sv, id);
-      S.rows.push({ id, y, quest: offeredBy(game, npc).length > 0, questLocked: all.length > 0 && !offeredBy(game, npc).length, tier: sv.rep[normFaction(npcRepFaction(npc))] != null ? repTier(sv.rep[normFaction(npcRepFaction(npc))]) : null });
+      S.rows.push({ id, y, quest: offeredBy(game, npc).length > 0 || pendingTurnins(sv, id).length > 0, questLocked: all.length > 0 && !offeredBy(game, npc).length, tier: sv.rep[normFaction(npcRepFaction(npc))] != null ? repTier(sv.rep[normFaction(npcRepFaction(npc))]) : null });
     });
     if (pages > 1) {
       btns.push({ kind: 'page', dir: -1, label: '‹', x: ox + 24, y: oy + 120 + PAGE * 66, w: 40, h: 28, disabled: S.page === 0 });
@@ -701,6 +748,7 @@ export function createLocationScene(rawId) {
     update(game, dt) {
       S.time += dt;
       const inp = game.input;
+      if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return; }
       S.hover = hitButton(S.buttons, inp.mouse);
       if (inp.mouse.clicked && S.hover) click(game, S.hover);
       else if (inp.wasPressed('KeyM')) nav(game, 'map');

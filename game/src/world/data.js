@@ -9,6 +9,7 @@ import { QUESTS_DENSITY } from '../data/world/density-quests.js';
 import { LOCATION_LORE } from '../data/world/locations-lore.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
 import { PARTY_EVENTS_TEXT } from '../data/text/party-events.js';
+import { QUEST_TURNIN } from '../data/text/quest-turnin.js';
 import { PROLOGUE } from '../data/text/prologue.js';
 import { LOCATIONS, ITEMS as WORLD_ITEMS, resolveLocation } from '../data/world/locations.js';
 import { GAME_DATA } from '../data/index.js';
@@ -34,6 +35,7 @@ export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';
 export { SKILL_RULES } from '../data/world/skill-rules.js';
 export { LOCATION_LORE };
+export { QUEST_TURNIN };
 export { NPC_DIALOGUE, PARTY_EVENTS_TEXT };
 
 /** All battles: v1.0 (enemies.js) + v3 (enemies-v3.js), merged in data/index.js. */
@@ -89,6 +91,11 @@ function wantedAt(save, id) {
     const goals = stage ? [stage.goal, ...(stage.goal.goals || []), ...(stage.goal.options || []).map((o) => o.goal)] : [];
     for (const g of goals) if (g?.kind === 'talk' && g.npc && sameLocation(g.location, id)) out.add(g.npc);
   }
+  // quest turn-in (data/text/quest-turnin.js): the NPC waiting for the reward stands at its burg too
+  for (const [qid, st] of Object.entries(save?.quests || {})) {
+    const n = st?.turnin && QUEST_TURNIN[qid]?.npc;
+    if (n && sameLocation(NPCS[n]?.burg, id)) out.add(n);
+  }
   return out;
 }
 
@@ -115,6 +122,15 @@ export function npcsAt(locId, save = null) {
     if (burgHere && !(listed && listed !== id) && !LOCATIONS[resolveLocation(n.location)]) out.push(n.id);
   }
   return out;
+}
+
+/** Node where an NPC can be found: explicit `npcs` list → `location` (if a node) → `burg` (if a node); null — nowhere. */
+export function npcHome(npcId) {
+  const n = NPCS[npcId];
+  if (!n) return null;
+  if (LISTED_AT.has(npcId)) return LISTED_AT.get(npcId);
+  for (const l of [n.location, n.burg]) { const r = resolveLocation(l); if (r && LOCATIONS[r]) return r; }
+  return null;
 }
 
 /** Enemies of an encounter for a party of `size` (enemies.js: first ceil(n × s / 4), bosses first). */

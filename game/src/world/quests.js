@@ -8,11 +8,19 @@
 //   stage.risk { flag, text } — a single decision «go anyway» (sets the flag; the flag should be in stage.requires.any);
 //   else the stage's slots come with `locked` (reason text from stage.gate { text, vars }) and cannot be completed.
 //   Old saves / stages without requires — no gate.
-import { QUESTS, sameLocation } from './data.js';
+// Turn-in (data/text/quest-turnin.js QUEST_TURNIN[qid] = { npc, mode: 'return'|'radio', lines, radioCall? }):
+//   st.path — chosen option ids and visited stage ids; at finish st.outcome = the latest of them that is a key of
+//   `lines` (key k also matches stage 'end-k'), 'failed' for failed quests, else 'default'.
+//   'return': finish marks st.turnin = true (state 'done', follow-ups unlock), the reward waits for claimTurnin
+//     (location scene: the NPC is on the node / in the party). NPC nowhere to be found → reward at once + short line.
+//   'radio': reward at once, qid queued in save.pendingRadio (the location scene shows the radio modal).
+//   Failed quest with lines.failed: same delivery, no reward. Quests without an entry — as before.
+import { QUESTS, sameLocation, QUEST_TURNIN, npcHome } from './data.js';
 import { t } from '../data/text/index.js';
 import { grant, journal, requiresOk, tf, repToasts } from './state.js';
 import { applyRep, normFaction } from './reputation.js';
 import { NPCS } from '../data/npcs.js';
+import { LOCATIONS } from '../data/world/locations.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { questXp } from '../rules/progression.js';
 import { EXODUS } from '../data/world/exodus.js';
@@ -20,6 +28,83 @@ import { exodusActive, exodusLeft, exodusExtend } from './exodus.js';
 
 export const questDef = (id) => QUESTS[id];
 const stageDef = (q, id) => q.stages.find((s) => s.id === id);
+const track = (st, id) => { if (id) (st.path = st.path || []).push(id); };
+const SPECIAL_LINES = ['default', 'partial', 'failed'];
+
+/** Outcome id of a finished quest for its turn-in lines. */
+export function questOutcome(st, td) {
+  if (st.state === 'failed') return 'failed';
+  const keys = Object.keys(td?.lines || {}).filter((k) => !SPECIAL_LINES.includes(k));
+  const hist = [...(st.path || []), st.opt, st.stage].filter(Boolean);
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const k = keys.find((x) => x === hist[i] || `end-${x}` === hist[i]);
+    if (k) return k;
+  }
+  return 'default';
+}
+
+/** Turn-in lines (strings) of a quest by outcome: lines[outcome] → lines.default. */
+export function turninLines(qid, outcome) {
+  const l = QUEST_TURNIN[qid]?.lines || {};
+  const v = l[outcome] ?? l.default ?? [];
+  return Array.isArray(v) ? v : [v];
+}
+
+/** Can the turn-in NPC be met (exists and stands somewhere, or travels with the party)? */
+export function turninReachable(save, npcId) {
+  if (!NPCS[npcId] || save.npcs?.[npcId]?.dead) return false;
+  if (save.party?.some((p) => p.npc === npcId)) return true;
+  return !!npcHome(npcId);
+}
+
+/** Quests waiting for a turn-in: [qid]; with npcId — only this NPC's. */
+export function pendingTurnins(save, npcId = null) {
+  return Object.keys(save.quests || {}).filter((id) => save.quests[id]?.turnin && QUEST_TURNIN[id] && (!npcId || QUEST_TURNIN[id].npc === npcId));
+}
+
+/** Journal text of a pending turn-in: «Вернуться к X (Y)». */
+export function turninText(save, qid) {
+  const n = QUEST_TURNIN[qid]?.npc;
+  return tf('q.turnin', { npc: NPCS[n]?.name || n, loc: LOCATIONS[npcHome(n)]?.name || '?' });
+}
+
+/** Rewards of a done quest (xp, rewards, Exodus extension, talent choice). → toasts. */
+function reward(save, qid, data) {
+  const q = QUESTS[qid];
+  const r = { ...(q.rewards || {}) };
+  r.xp = questXp(q);
+  const out = grant(save, r, data, { keyChoice: q.key });
+  // third-exodus.md: rewards.exodus { ext } — the Exodus deadline moves once (flag exo-ext:<quest id>)
+  const ext = (q.rewards?.exodus || q.exodus)?.ext;
+  if (ext) out.push(...exodusExtend(save, qid, ext));
+  if (r.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), r.talentChoice];
+  return out;
+}
+
+/** The player met the NPC: the pending turn-in is closed, the reward granted (none for failed). → toasts. */
+export function claimTurnin(save, qid, data) {
+  const st = save.quests[qid];
+  if (!st?.turnin) return [];
+  st.turnin = false;
+  return st.state === 'done' ? reward(save, qid, data) : [];
+}
+
+/** Pending turn-ins whose NPC cannot be met any more: reward at once with a short line. → toasts. */
+export function turninFallback(save, data) {
+  const out = [];
+  for (const qid of pendingTurnins(save)) {
+    const n = QUEST_TURNIN[qid].npc;
+    if (turninReachable(save, n)) continue;
+    out.push(...shortLine(qid, save.quests[qid].outcome), ...claimTurnin(save, qid, data));
+  }
+  return out;
+}
+
+const shortLine = (qid, outcome) => {
+  const line = turninLines(qid, outcome)[0];
+  const n = QUEST_TURNIN[qid]?.npc;
+  return line ? [{ text: `${NPCS[n]?.name || n}: «${line}»`, color: '5' }] : [];
+};
 
 export function stageOf(save, id) {
   const q = QUESTS[id], st = save.quests[id];
@@ -131,23 +216,36 @@ function finish(save, qid, end, data) {
   const st = save.quests[qid];
   const out = [];
   st.state = end === 'failed' ? 'failed' : 'done';
+  const td = QUEST_TURNIN[qid];
+  if (td) st.outcome = questOutcome(st, td);
   if (st.state === 'failed') {
     journal(save, tf('q.failed', { name: q.name }));
     out.push({ text: tf('q.failed', { name: q.name }), color: 'c' });
     const f = normFaction(NPCS[q.giver]?.faction);
     if (f) out.push(...repToasts(applyRep(save, f, R.questFailRep)));
+    if (td?.lines.failed) out.push(...deliver(save, qid, td));
     return out;
   }
   journal(save, tf('q.done', { name: q.name }));
   out.push({ text: tf('q.done', { name: q.name }), color: 'j' });
-  const r = { ...(q.rewards || {}) };
-  r.xp = questXp(q);
-  out.push(...grant(save, r, data, { keyChoice: q.key }));
-  // third-exodus.md: rewards.exodus { ext } — the Exodus deadline moves once (flag exo-ext:<quest id>)
-  const ext = (q.rewards?.exodus || q.exodus)?.ext;
-  if (ext) out.push(...exodusExtend(save, qid, ext));
-  if (r.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), r.talentChoice];
+  if (td) {
+    out.push(...deliver(save, qid, td));
+    if (st.turnin) return out;
+  }
+  out.push(...reward(save, qid, data));
   return out;
+}
+
+/** Turn-in delivery at finish: 'radio' → queue the radio modal; 'return' → wait for the NPC (or a short line if unreachable). */
+function deliver(save, qid, td) {
+  const st = save.quests[qid];
+  if (td.mode === 'radio') { save.pendingRadio = [...(save.pendingRadio || []), qid]; return []; }
+  if (td.mode !== 'return') return [];
+  if (!turninReachable(save, td.npc)) return shortLine(qid, st.outcome);
+  st.turnin = true;
+  if (st.state !== 'done') return [];
+  journal(save, tf('q.turninJournal', { name: QUESTS[qid].name, npc: NPCS[td.npc]?.name || td.npc, loc: LOCATIONS[npcHome(td.npc)]?.name || '?' }));
+  return [{ text: turninText(save, qid), color: 'a' }];
 }
 
 function toStage(save, qid, next, data) {
@@ -156,6 +254,7 @@ function toStage(save, qid, next, data) {
   const stage = stageOf(save, qid);
   if (!next || !stageDef(q, next)) return finish(save, qid, stage?.end || 'done', data);
   st.stage = next; st.opt = null; st.subs = {};
+  track(st, next);
   journal(save, tf('q.stage', { name: q.name, text: stageDef(q, next).text }));
   return [];
 }
@@ -178,6 +277,7 @@ export function completeSlot(save, slot, data) {
   if (slot.locked && stageLocked(save, slot.stage)) return [];
   if (slot.sub !== undefined && subDone(save, st, slot.stage.goal.goals[slot.sub], slot.sub)) return [];
   const out = applyEffects(save, slot.option?.effects, data, q.key);
+  track(st, slot.option?.id);
   if (slot.sub !== undefined) {
     st.subs[slot.sub] = true;
     const g = slot.stage.goal;
@@ -201,6 +301,7 @@ export function chooseOption(save, slot, optId, data) {
   const o = slot.choice.options.find((x) => x.id === optId);
   if (!o) return [];
   if (o.goal) {
+    track(st, o.id);
     if (slot.sub !== undefined) st.subs[slot.sub] = `opt:${o.id}`;
     else st.opt = o.id;
     const s = slots(save, slot.qid).find((x) => x.option === o);
@@ -242,6 +343,7 @@ export function failSlot(save, slot, data) {
     return finish(save, slot.qid, 'failed', data);
   }
   if (slot.choice && slot.choice.options.some((o) => o.id === target)) {
+    track(st, target);
     if (slot.sub !== undefined) st.subs[slot.sub] = `opt:${target}`;
     else st.opt = target;
     return [];

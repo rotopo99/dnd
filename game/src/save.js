@@ -121,6 +121,7 @@ export function normalizeSave(s, data) {
   out.settings = { aiCompanions: false, ...obj(s.settings) };
   out.cyberspace = s.cyberspace && typeof s.cyberspace === 'object' ? s.cyberspace : null;
   out.pendingTalentChoice = arr(s.pendingTalentChoice);
+  out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)
   const ex = obj(s.exodus);
   out.exodus = s.exodus && typeof s.exodus === 'object'
