@@ -21,7 +21,7 @@ export const SKILL_RULES = {
     // who does not listen: factions, enemy tags, id / name patterns (beasts, undead, cringegons)
     deafFactions: ['cringegons', 'mutantsBeast', 'mutantsPlant'],
     deafTags: ['digital'],
-    deafPattern: 'fauna|beast|wolf|rat|dog|cringe|crg-|dead|ghost|zomb|spore|swarm|plague|mutz-|mutr-|зверь|волк|крыс|пёс|мертв|призрак|упыр|кринж|рой|тварь|чудищ',
+    deafPattern: 'fauna|beast|wolf|ratwolf|^rat|dog|cringe|crg-|dead|ghost|zomb|spore|swarm|plague|mutz-|mutr-|зверь|волк|крыс|пёс|мертв|призрак|упыр|кринж|рой|тварь|чудищ',
   },
   // N5: caches with several skills — the check window offers each skill and the best roll
   // N6: battle tricks — a bonus action once per battle per skill per unit, d20 + skill vs dc + enemy level / 2
