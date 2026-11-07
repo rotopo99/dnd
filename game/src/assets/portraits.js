@@ -85,7 +85,8 @@ const FACTION_LOOK = {
   predlozhka: { bg: 'g', cloth: 'g', accent: 'h', acc: ['hood'], style: 'robe' },
   none: { bg: '2', cloth: '3', accent: '4', acc: [], style: 'plain' },
 };
-const SKINS = [{ b: '9', s: '8' }, { b: 'p', s: '4' }, { b: '8', s: '7' }, { b: '7', s: '6' }, { b: '6', s: '1' }, { b: 'm', s: 'l' }];
+// Skin tones: only warm palette tones (QA v4: 'p' read as grey, 'm' as olive). Pairs base/shadow.
+const SKINS = [{ b: '9', s: '8' }, { b: '9', s: '7' }, { b: '8', s: '7' }, { b: '7', s: '6' }, { b: '6', s: '1' }, { b: '8', s: '6' }];
 const SKIN_W = [0, 0, 0, 1, 1, 2, 2, 3, 4, 5]; // index table for hash picks (fair skin more common)
 const EYE_COLORS = ['6', 'f', 'j', '4', '8', 'h'];
 const HAIR_COLORS = ['1', '6', '7', '8', '1', '6', 'a', '4'];

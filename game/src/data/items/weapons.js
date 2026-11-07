@@ -289,9 +289,9 @@ const LIST = [
     desc: 'Растёт у мутантов-Р. Стрелы-шипы отравляют на 1 ход. Поливать.' }),
 
   // --- Метание
-  w({ id: 'throwing-knives', dmg: 1, name: 'Связка метательных ножей', wtype: 'throwing', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 5, noise: 0,
+  w({ id: 'throwing-knives', dmg: 1, name: 'Связка метательных ножей', wtype: 'throwing', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 5, noise: 0, props: { thrown: 5 },
     tier: 1, price: 25, factions: ['pirates', 'neutralVillages'], desc: 'Цирковая техника. Подобрать после боя.' }),
-  w({ id: 'saw-stars', dmg: 1, name: 'Звёздочки из пильных дисков', wtype: 'throwing', dice: '1d6', dmgType: 'slash', stat: 'dex', range: 6, noise: 0,
+  w({ id: 'saw-stars', dmg: 1, name: 'Звёздочки из пильных дисков', wtype: 'throwing', dice: '1d6', dmgType: 'slash', stat: 'dex', range: 6, noise: 0, props: { thrown: 6 },
     onCrit: [{ op: 'status', id: 'bleed', turns: 2 }], tier: 2, price: 35, factions: ['tinBrotherhood', 'scavengers'], desc: 'Крит — кровотечение.' }),
   w({ id: 'wire-bolas', dmg: 1, name: 'Болас из провода', wtype: 'throwing', dice: '1d6', dmgType: 'blunt', stat: 'dex', range: 5, noise: 0,
     grants: [ability({ id: 'item-bolas', name: 'Опутать', range: 5, roll: 'save', save: 'dex', usesPerBattle: 1,
