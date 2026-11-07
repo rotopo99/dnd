@@ -85,8 +85,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         }
         add({ act: 'calmers', label: `${ITEMS.calmers.name} ${sv.hero.items.calmers || 0}`, w: 150, disabled: !(sv.hero.items.calmers > 0) });
         add({ act: 'medkit', label: `${ITEMS.medkit.name} ${sv.hero.items.medkit || 0}`, w: 116, disabled: !(sv.hero.items.medkit > 0) });
-        if (!m.p || m.p.state !== 'cyberspace') add({ act: 'gear', label: t('panel.gear'), w: 104 });
-        add({ act: 'sheet', label: t('lvl.sheet'), w: 104 });
+        if (!m.p || m.p.state !== 'cyberspace') add({ act: 'gear', label: t('panel.gear'), w: 120 });
+        add({ act: 'sheet', label: t('lvl.sheet'), w: 70 });
       });
       // talents (hero)
       const tl = sv.hero.talents.map((id) => TALENTS[id]).filter(Boolean);

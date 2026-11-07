@@ -9,7 +9,7 @@ import { buildHero, chooseAsi, learnTalent, activeCompanions, tf } from '../worl
 import { saveGame } from '../save.js';
 
 const statName = (k) => t(`stat.${k}`);
-const MAX_LINES = 14;
+const MAX_LINES = 12;
 const cut = (s, n = 140) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || '');
 const sign = (v) => (typeof v === 'number' && v >= 0 ? `+${v}` : String(v));
 

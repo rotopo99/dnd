@@ -251,7 +251,7 @@ const ru = {
   'lvl.ok': 'Дальше',
   'lvl.talentLine': 'Можно выбрать новый талант: «Партия» → «Выбрать новый талант».',
   'lvl.companions': 'Компаньоны',
-  'lvl.sheet': 'Способности',
+  'lvl.sheet': 'Лист',
   'lvl.sheetTitle': '{name}: способности',
   'lvl.upgraded': 'улучш. ур. {n}',
   'lvl.stats': 'Характеристики',
