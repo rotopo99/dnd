@@ -439,6 +439,7 @@ const ru = {
   'faction.technikums': 'Техникумы',
   'faction.predlozhka': 'Предложка',
   'fx.credits': '{n} кредов',
+  'loot.title': 'Добыча', 'loot.takeAll': 'Забрать всё', 'loot.got': 'В рюкзак: предметов {n}',
   'fx.xp': '+{n} опыта',
   'fx.level': 'Новый уровень: {n}',
   'fx.talent': 'Новый талант: {name}',

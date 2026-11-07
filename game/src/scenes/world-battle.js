@@ -17,7 +17,6 @@ import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINAL
 import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
 import { saveGame } from '../save.js';
-import { rollDice } from '../rules/dice.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { tf } from '../world/state.js';
 
@@ -145,11 +144,10 @@ function openLoot(game, loot, then) {
   const QC = { junk: 'n', working: 'h', masterwork: 'b', relic: 'f' };
   const lines = [];
   if (loot.credits) lines.push({ text: tf('fx.credits', { n: `+${loot.credits}` }), color: 'b' });
-  for (const { id, n } of loot.items) {
-    const it = ITEMS[id];
-    lines.push({ text: `• ${it?.name || id}${n > 1 ? ` ×${n}` : ''}`, color: QC[it?.quality] || 'h' });
-  }
-  game.openModal({ title: t('loot.title'), lines, onCancel: () => { game.closeModal(); take(); },
+  const label = ({ id, n }) => `${ITEMS[id]?.name || id}${n > 1 ? ` ×${n}` : ''}`;
+  if (loot.items.length > 8) lines.push({ text: loot.items.map(label).join(', ') }); // long lists wrap as one paragraph
+  else for (const x of loot.items) lines.push({ text: `• ${label(x)}`, color: QC[ITEMS[x.id]?.quality] || 'h' });
+  game.openModal({ title: t('loot.title'), lines, onCancel: take, // Esc also takes everything (the modal is already closed)
     options: [{ label: t('loot.takeAll'), run: take }] });
 }
 

@@ -15,6 +15,8 @@ import { validateBuild } from '../game/src/rules/build.js';
 import { profPoints, proficiencyCost, defaultProficiencies } from '../game/src/rules/equipment.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
 import { DATA } from './fixtures/rules-data.mjs';
+import { rollLoot } from '../game/src/world/loot.js';
+import { GAME_DATA } from '../game/src/data/index.js';
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -1178,6 +1180,34 @@ test('safePassage: hazard tiles deal no damage this turn, flag ends with the tur
   assert.ok(!hasSafePassage(b, H));
   const E = b.units.find((u) => u.team === 'enemies');
   assert.equal(grantSafePassage(b, E), false);
+});
+
+test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, world flags', () => {
+  const D = GAME_DATA;
+  const foes = ['pir-deckhand', 'pir-knifer', 'ai-patrol'].filter((id) => D.ENEMIES[id]);
+  assert.ok(foes.length >= 2, 'enemies exist');
+  const units = foes.map((id) => ({ enemyId: id, tags: D.ENEMIES[id].tags || [] }));
+  const a = rollLoot(units, D, createRng(42));
+  const b = rollLoot(units, D, createRng(42));
+  assert.deepEqual(a, b);
+  assert.ok(a.credits > 0 && a.items.length > 0);
+  for (const x of a.items) { assert.ok(D.ITEMS[x.id], x.id); assert.ok(x.n >= 1); }
+  // summons: nothing
+  const s = rollLoot(units.map((u) => ({ ...u, kind: 'summon' })), D, createRng(42), { flags: ['battle-loot', 'scrap-loot'] });
+  assert.deepEqual(s, { credits: 0, items: [] });
+  // gear always drops at chance 1, never at 0
+  const def = D.ENEMIES[foes[0]];
+  const all = rollLoot([foes[0]], { ...D, LOOT_TABLES: {}, GEAR_DROP: { junk: 1, working: 1, masterwork: 1, relic: 1 } }, createRng(1));
+  assert.ok(all.items.some((x) => x.id === def.gear.weapon));
+  assert.deepEqual(rollLoot([foes[0]], { ...D, LOOT_TABLES: {}, GEAR_DROP: {} }, createRng(1)), { credits: 0, items: [] });
+  // flags add draws (no table → credits); scrap-loot only with a mechanical foe
+  const noT = { ...D, LOOT_TABLES: {}, GEAR_DROP: {} };
+  assert.ok(rollLoot([foes[0]], noT, createRng(3), { flags: ['battle-loot'] }).credits > 0);
+  assert.equal(rollLoot([foes[0]], noT, createRng(3), { flags: ['scrap-loot'] }).credits, 0);
+  const cnt = (r) => r.items.reduce((n, x) => n + x.n, 0);
+  const base = rollLoot([foes[0]], { ...D, GEAR_DROP: {} }, createRng(5));
+  const more = rollLoot([foes[0]], { ...D, GEAR_DROP: {} }, createRng(5), { flags: ['battle-loot'] });
+  assert.ok(cnt(more) > cnt(base));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
