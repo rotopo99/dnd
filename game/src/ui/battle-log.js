@@ -140,6 +140,18 @@ export function formatEvent(S, e) {
     case 'extinguish': return [a(T), g(': '), [`${b.data.statuses[e.by]?.name || e.by} ${t('battle.extinguish')} «${b.data.statuses[e.id]?.name || e.id}»`, C.f]];
     case 'glitchFail': return [a(A), g(': '), [t('battle.glitchFail'), C.h]];
     case 'glitchLag': return [a(A), g(': '), [t('battle.glitchLag'), C.h]];
+    // combat rework
+    case 'objectBreak': return [[t(`obj.${e.kind}`), C.a], g(` ${t('log.objectBreak')}`)];
+    case 'smash': return [a(A), g(` ${t('log.smash')} `), [t(`obj.${e.kind}`), C.a], g(`: ${rollStr(e.roll)} ${t('battle.vs')} ${t('res.kb')} ${e.kb} — `), e.hit ? [t('battle.hit'), C['5']] : [t('battle.miss'), C['4']]];
+    case 'objectLoot': return [g(t('log.objectLoot'))];
+    case 'fall': return [a(T), g(` ${t('log.fall')} (${e.levels}): `), [String(e.amount), C.c]];
+    case 'slam': return [a(T), g(` ${t('log.slam')}: ${e.amount}`)];
+    case 'phase': return [a(A), g(': '), [t('log.phase').replace('{n}', e.n) + (e.say ? ` ${e.say}` : ''), C.c]];
+    case 'flee': return [a(T), g(` ${t('log.flee')}`)];
+    case 'fleeStart': return [a(A), g(` ${t('log.fleeStart')}`)];
+    case 'rage': return [a(A), [` ${t('log.rage')}`, C.c]];
+    case 'holdPos': return [a(A), g(` ${t('log.holdPos')}`)];
+    case 'archSummon': return [a(A), g(` ${t('log.archSummon')}`)];
     default: return null;
   }
 }
@@ -179,6 +191,9 @@ export function eventSound(S, e) {
     case 'surfaceCombo': play(e.result === 'explosion' ? 'crit' : e.result === 'electrify' || e.result === 'overvolt' ? 'electric' : e.result === 'burnout' || e.result === 'cringeProxy' ? 'cringe' : e.result === 'steam' || e.result === 'dissolve' ? 'toxin' : 'fire'); break;
     case 'surfaceCreate': play({ fire: 'fire', electric: 'electric', acid: 'toxin', toxgas: 'toxin', cringe: 'cringe', proxy: 'proxy' }[e.kind] || 'debuff'); break;
     case 'glitchFail': play('cyber'); break;
+    case 'objectBreak': play('crit'); break;
+    case 'fall': case 'slam': play('hit', { dmgType: 'blunt' }); break;
+    case 'phase': play('enemyTurn'); break;
     case 'victory': play(e.winner === 'heroes' ? 'victory' : 'defeat'); break;
     default: break;
   }

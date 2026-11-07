@@ -22,15 +22,22 @@ import { play } from '../audio/sfx.js';
 import { formatEvent, eventSound, teamColor } from '../ui/battle-log.js';
 import { createScroll, updateScroll } from '../ui/scroll.js';
 import { ITEMS } from '../data/index.js';
+import { PACE } from '../data/combat.js';
+import { intentOf } from '../rules/archetypes.js';
+import { objectAt } from '../rules/terrain.js';
+import { createPin, pinUnit, updatePin } from '../ui/unit-pin.js';
 import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
 import { SKILL_RULES } from '../data/world/skill-rules.js';
 
-const AI_STEP = 0.42; // s between AI actions
-const AI_TURN_GAP = 0.3; // s before an AI unit starts acting
-const WALK_SPEED = 9; // tiles per second
+// combat rework §5: pace of AI turns from data (PACE); F — ×2, Enter — skip to the player's turn
+const AI_STEP = PACE.aiStep; // s between AI actions
+const AI_TURN_GAP = PACE.turnGap; // s before an AI unit starts acting
+const WALK_SPEED = PACE.walk; // tiles per second
+const loadFast = () => { try { return globalThis.localStorage?.getItem(PACE.storageKey) === '1'; } catch { return false; } };
+const saveFast = (on) => { try { globalThis.localStorage?.setItem(PACE.storageKey, on ? '1' : '0'); } catch { /* private mode */ } };
 const MAX_LOG = 3000; // the whole battle (scrolled in the log panel)
 const ACT_POP_T = 1.2; // seconds an action name hangs over the unit
 const MAX_AI_STEPS = 16;
@@ -143,6 +150,11 @@ export function createBattleScene(opts) {
     S.log = [];
     S.sel = null; // { kind: 'attack' } | { kind: 'ability', a }
     S.aiTimer = AI_TURN_GAP;
+    S.fast = loadFast();
+    S.skip = false;
+    S.shake = 0;
+    S.intents = {};
+    S.pin = createPin();
     S.aiSteps = 0;
     S.aiUnit = null;
     S.result = null;
@@ -555,6 +567,14 @@ export function createBattleScene(opts) {
       case 'trapPlaced': actPop(A, ITEMS[e.item]?.name || e.item); break;
       case 'surfaceCombo': tilePop(e.x, e.y, t(`combo.${e.result}`), C[S.b.data.surfaces?.[e.result === 'explosion' || e.result === 'blaze' ? 'fire' : e.b]?.color] || C.a); break;
       case 'glitchFail': actPop(A, t('battle.glitchFail')); break;
+      // combat rework: objects, falls, phases, flight
+      case 'objectHit': tilePop(e.x, e.y, `−${e.amount}`, C.c); break;
+      case 'objectBreak': tilePop(e.x, e.y, t(`obj.${e.kind}`), C.a); S.shake = 0.15; break;
+      case 'smash': actPop(A, t(`obj.${e.kind}`)); if (!e.hit) tilePop(e.x, e.y, t('battle.miss'), C['4']); break;
+      case 'fall': if (T) popup(T, t('log.fall'), C.c); break;
+      case 'phase': if (A) { popup(A, t('log.phase').replace('{n}', e.n), C.c); S.shake = 0.25; } break;
+      case 'flee': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('log.flee'), C['4']); } break;
+      case 'rage': if (A) popup(A, t('log.rage'), C.c); break;
       case 'damage': {
         if (!T) break;
         const d = dispOf(T);
@@ -567,6 +587,7 @@ export function createBattleScene(opts) {
         if (e.absorbed) popup(T, `◊${e.absorbed}`, C.f);
         if (e.amount > 0) emote(T, e.resource === 'mrl' || d.hp < T.maxHp * 0.4 ? 'scared' : 'angry');
         if (e.crit && A && A !== T) emote(A, pick2('smug', 'happy'));
+        if (e.crit) S.shake = Math.max(S.shake || 0, 0.15);
         break;
       }
       case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); emote(T, 'happy'); } break;
@@ -647,7 +668,7 @@ export function createBattleScene(opts) {
     } else {
       const res = perform(b, act);
       if (!res.ok) { endTurn(b); S.aiTimer = AI_TURN_GAP; }
-      else S.aiTimer = act.type === 'move' || act.type === 'disengage' ? 0.12 : AI_STEP;
+      else S.aiTimer = act.type === 'move' || act.type === 'disengage' ? PACE.moveStep : AI_STEP;
     }
     S.dirty = true;
   }
