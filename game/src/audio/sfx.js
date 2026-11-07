@@ -100,6 +100,16 @@ export function getVolume() {
   return volume;
 }
 
+/** Shared AudioContext (null until initAudio). Used by music.js. */
+export function getAudioContext() {
+  return ctx;
+}
+
+/** Shared 1 s white-noise buffer (null until initAudio). Used by music.js. */
+export function getNoiseBuffer() {
+  return noiseBuf;
+}
+
 // ---------- helpers ----------
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -125,6 +135,22 @@ function cleanup(src, nodes) {
       /* ignore */
     }
   };
+}
+
+// Saturation (soft clip) for dry mechanical timbres. Shared curve, no oversampling (cheap, low latency).
+let SAT = null;
+function satNode() {
+  if (!SAT) {
+    SAT = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      SAT[i] = Math.tanh(3 * x) / Math.tanh(3);
+    }
+  }
+  const ws = ctx.createWaveShaper();
+  ws.curve = SAT;
+  ws.oversample = 'none';
+  return ws;
 }
 
 /**
@@ -186,10 +212,19 @@ function noise(o) {
   if (o.f1) fl.frequency.exponentialRampToValueAtTime(o.f1, t + dur);
   fl.Q.value = o.q ?? 1;
   const g = envGain(t, o.peak ?? 0.2, o.attack ?? 0.002, dur, o.dest);
-  src.connect(fl).connect(g);
+  const extra = [];
+  let head = fl;
+  if (o.sat) {
+    const sh = satNode();
+    extra.push(sh);
+    fl.connect(sh);
+    head = sh;
+  }
+  src.connect(fl);
+  head.connect(g);
   src.start(t, o.offset ?? Math.random() * 0.9);
   src.stop(t + dur + 0.05);
-  cleanup(src, [fl, g]);
+  cleanup(src, [fl, g, ...extra]);
   return src;
 }
 
@@ -211,26 +246,27 @@ function steps(freqs, stepDur, o = {}) {
 // ---------- hit timbres by dmgType ----------
 
 const HIT = {
+  // Quasimorph-style: dry, heavy, mechanical. Noise -> short filter -> saturation, tails cut short.
   slash() {
-    noise({ type: 'bandpass', f: vary(2500), f1: vary(6500), q: 2, dur: 0.11, peak: 0.35 });
-    tone({ type: 'sawtooth', f: vary(900), f1: 300, dur: 0.08, peak: 0.08, filter: { type: 'highpass', f: 600 } });
+    noise({ type: 'bandpass', f: vary(3200), f1: vary(1600), q: 2.5, dur: 0.06, peak: 0.4, attack: 0.001, sat: true });
+    tone({ type: 'square', f: vary(700), f1: 260, dur: 0.04, peak: 0.07, filter: { type: 'lowpass', f: 1500 } });
   },
   pierce() {
-    noise({ type: 'bandpass', f: vary(4500), q: 4, dur: 0.045, peak: 0.35 });
-    tone({ type: 'sine', f: vary(1600), f1: 350, dur: 0.07, peak: 0.25 });
+    noise({ type: 'bandpass', f: vary(4500), q: 5, dur: 0.03, peak: 0.35, attack: 0.001, sat: true });
+    tone({ type: 'sine', f: vary(1400), f1: 600, dur: 0.03, peak: 0.1 });
   },
   blunt() {
-    tone({ type: 'sine', f: vary(160, 60), f1: 45, dur: 0.18, peak: 0.55 });
-    noise({ type: 'lowpass', f: 700, f1: 200, dur: 0.12, peak: 0.35 });
+    noise({ type: 'lowpass', f: vary(600, 80), f1: 150, q: 0.7, dur: 0.09, peak: 0.5, attack: 0.001, sat: true });
+    tone({ type: 'sine', f: vary(120, 60), f1: 45, dur: 0.08, peak: 0.35 });
   },
   energy() {
-    tone({ type: 'square', f: vary(1100), f1: 180, dur: 0.16, peak: 0.12, filter: { type: 'lowpass', f: 3000, f1: 600 } });
-    tone({ type: 'sine', f: vary(2200), f1: 900, dur: 0.12, peak: 0.12 });
+    noise({ type: 'highpass', f: vary(3000), q: 1, dur: 0.05, peak: 0.25, attack: 0.001, sat: true });
+    tone({ type: 'square', f: vary(1100), f1: 180, dur: 0.07, peak: 0.1, filter: { type: 'lowpass', f: 2500, f1: 500 } });
   },
   fire() {
-    noise({ type: 'bandpass', f: vary(900), f1: 400, q: 0.8, dur: 0.32, peak: 0.35, attack: 0.004 });
-    for (let i = 0; i < 5; i++) noise({ type: 'highpass', f: 3000, at: rand(0, 0.25), dur: 0.015, peak: rand(0.08, 0.18) });
-    tone({ type: 'sine', f: vary(90), f1: 50, dur: 0.25, peak: 0.25 });
+    noise({ type: 'bandpass', f: vary(900), f1: 400, q: 0.8, dur: 0.2, peak: 0.4, attack: 0.002, sat: true });
+    for (let i = 0; i < 4; i++) noise({ type: 'highpass', f: 3000, at: rand(0, 0.15), dur: 0.012, peak: rand(0.08, 0.16), sat: true });
+    tone({ type: 'sine', f: vary(90), f1: 50, dur: 0.15, peak: 0.2 });
   },
   electric() {
     const t = ctx.currentTime;
@@ -307,13 +343,11 @@ const SOUNDS = {
   },
   crit(opts = {}) {
     (HIT[opts.dmgType] || HIT.blunt)();
-    tone({ type: 'sine', f: vary(2093, 20), dur: 0.25, peak: 0.15 }); // ping C7
-    tone({ type: 'sine', f: vary(3136, 20), dur: 0.2, peak: 0.08 });
-    tone({ type: 'sine', f: 120, f1: 35, dur: 0.3, peak: 0.4 }); // boom
-    noise({ type: 'lowpass', f: 1200, f1: 150, dur: 0.25, peak: 0.25 });
+    tone({ type: 'sine', f: 120, f1: 35, dur: 0.2, peak: 0.35 }); // heavy mechanical thump
+    noise({ type: 'lowpass', f: 900, f1: 150, q: 0.7, dur: 0.14, peak: 0.25, attack: 0.001, sat: true });
   },
   miss() {
-    noise({ type: 'bandpass', f: vary(500), f1: vary(1800), q: 3, dur: 0.16, peak: 0.18, attack: 0.01 });
+    noise({ type: 'bandpass', f: vary(900), f1: vary(2200), q: 4, dur: 0.07, peak: 0.22, attack: 0.002, sat: true });
   },
   shieldBlock() {
     const f0 = vary(620, 50);
