@@ -147,6 +147,7 @@ export function createWorldMapScene() {
       { id: 'party', label: t('panel.party'), key: 'P' },
       { id: 'rep', label: t('panel.rep'), key: 'R' },
       { id: 'journal', label: t('panel.journal'), key: 'J' },
+      { id: 'codex', label: t('panel.codex'), key: 'B' },
       { id: 'menu', label: t('loc.toMenu'), key: 'Esc' },
     ];
     let x = W - 16;
@@ -564,6 +565,7 @@ export function createWorldMapScene() {
         if (inp.wasPressed('KeyP')) return nav(game, 'party');
         if (inp.wasPressed('KeyR')) return nav(game, 'rep');
         if (inp.wasPressed('KeyJ')) return nav(game, 'journal');
+        if (inp.wasPressed('KeyB')) return nav(game, 'codex');
         if (!S.paused) stepTravel(game, dt);
         return;
       }
@@ -580,6 +582,7 @@ export function createWorldMapScene() {
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
+      else if (inp.wasPressed('KeyB')) nav(game, 'codex');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },
     render(game) {

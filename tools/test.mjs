@@ -1539,7 +1539,7 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
     const out = qs.onTalk(s, 'galina', GAME_DATA);
     assert.equal(s.quests[id].state, 'done'); assert.equal(s.quests[id].turnin, true);
     assert.equal(s.hero.xp, xp0, 'no reward yet');
-    assert.ok(out.some((x) => x.text === qs.turninText(s, id)) && /Галин|galina/i.test(qs.turninText(s, id)) || qs.turninText(s, id).startsWith('Вернуться'));
+    assert.ok(out.some((x) => x.text === qs.turninText(s, id)) && qs.turninText(s, id).startsWith('Вернуться'));
     assert.deepEqual(qs.pendingTurnins(s, 'galina'), [id]);
     assert.ok(D.npcsAt(D.npcHome('galina'), s).includes('galina'));
     qs.claimTurnin(s, id, GAME_DATA);
@@ -1547,7 +1547,9 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
     const xp1 = s.hero.xp; assert.deepEqual(qs.claimTurnin(s, id, GAME_DATA), []); assert.equal(s.hero.xp, xp1, 'once');
     // survives save normalization
     const s2 = mk(); qs.startQuest(s2, id); s2.quests[id] = { ...s2.quests[id], state: 'done', turnin: true, outcome: 'default' };
-    assert.equal(normalizeSave(JSON.parse(JSON.stringify(s2))).quests[id].turnin, true);
+    s2.pendingRadio = ['mq-exodus', 'nope'];
+    const n2 = normalizeSave(JSON.parse(JSON.stringify(s2)), GAME_DATA);
+    assert.equal(n2.quests[id].turnin, true); assert.deepEqual(n2.pendingRadio, ['mq-exodus']);
   });
   test('turn-in outcome: id of the chosen option (or end-<key> stage), failed, default', () => {
     const td = { lines: { default: ['d'], marta: ['m'], light: ['l'], failed: ['f'] } };

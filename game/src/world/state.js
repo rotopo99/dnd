@@ -273,6 +273,8 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   if (r.credits) { save.hero.credits = Math.max(0, save.hero.credits + r.credits); out.push({ text: tf('fx.credits', { n: `${r.credits > 0 ? '+' : ''}${r.credits}` }), color: 'b' }); }
   for (const it of r.items || []) { save.hero.items[it.item] = (save.hero.items[it.item] || 0) + (it.n || 1); out.push({ text: `+ ${itemName(it.item)}${it.n > 1 ? ` ×${it.n}` : ''}`, color: 'a' }); }
   for (const it of r.removeItems || []) save.hero.items[it.item] = Math.max(0, (save.hero.items[it.item] || 0) - (it.n || 1));
+  // vendors-bestiary.md: a new `cx-*` flag opens a codex find
+  if ([...(r.flags || []), r.flag].some((f) => typeof f === 'string' && f.startsWith('cx-') && !save.flags[f])) out.push({ text: t('codex.newFind'), color: 'f' });
   for (const f of r.flags || []) save.flags[f] = true;
   if (r.flag) save.flags[r.flag] = true;
   if (r.terminal) save.terminals[r.terminal.id] = r.terminal.state;

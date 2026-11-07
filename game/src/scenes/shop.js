@@ -3,6 +3,9 @@
 // v4 (skills.md N1, N7): the best CHA modifier of the party moves prices; once a day per shop — haggling (Persuasion:
 // discount) and selling junk at full price (Deception: fail closes the shop for the day); Military in the party shows
 // the weapon quality. Per-shop state lives in save.flags `shop:<key>:<day>` = { haggle, junk, closed }.
+// vendors-bestiary.md part 1: `vendor: npcId` — the NPC's own shelf (world/vendors.js vendorStock: staples, signature,
+// editions, rotation by save.day, rare goods), his markup/greed and what he buys (sell rate, loves ×1.25); without it — the
+// old `stock` list. Seen rotation period — save.flags `vstock:<npcId>` (toast «Новый товар» after a change).
 import { t } from '../data/text/index.js';
 import { priceMult as exodusPrice } from '../world/exodus.js';
 import { play } from '../audio/sfx.js';
@@ -14,6 +17,9 @@ import { chaTrade, knowsSkill } from '../world/skill-uses.js';
 import { openCheck } from '../ui/checks-ui.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { saveGame } from '../save.js';
+import { C } from '../ui/draw.js';
+import { vendorStock, vendorSellRate } from '../world/vendors.js';
+import { QUALITY } from '../data/items/mods.js';
 
 const T = SKILL_RULES.trade;
 const shopKey = (sv, key) => `shop:${key}:${sv.day}`;
@@ -31,18 +37,25 @@ export function shopPrices(game, tier, faction, key = null) {
   const st = key ? shopState(game.save, key) : {};
   buy *= cha.buy * (st.haggle === 'ok' ? 1 - T.haggle.discount : 1);
   buy *= exodusPrice(game.save); // third-exodus.md: marks 3+ raise prices
-  const sell = st.junk === 'ok' ? T.junk.sellRate : R.prices.sell * (1 + sellBonus) * cha.sell;
-  return { buy, sell, cha: cha.mod, haggled: st.haggle === 'ok', junk: st.junk === 'ok' };
+  const sellMul = (1 + sellBonus) * cha.sell;
+  const sell = st.junk === 'ok' ? T.junk.sellRate : R.prices.sell * sellMul;
+  return { buy, sell, sellMul, cha: cha.mod, haggled: st.haggle === 'ok', junk: st.junk === 'ok' };
 }
 
-export function openShop(game, { title, stock, tier = 'neutral', faction = null, key = null, onClose }) {
+export function openShop(game, { title, stock, tier = 'neutral', faction = null, key = null, vendor = null, onClose }) {
   const sv = game.save;
-  key = key || title;
+  key = key || vendor || title;
+  if (vendor && !vendorStock(vendor, sv.day, tier)) vendor = null;
+  if (vendor) {
+    const per = vendorStock(vendor, sv.day, tier).period, fk = `vstock:${vendor}`;
+    if (sv.flags[fk] != null && sv.flags[fk] !== per) game.toast(t('shop.newStock'), 'b');
+    sv.flags[fk] = per;
+  }
   if (shopState(sv, key).closed) {
     game.openModal({ title, lines: [{ text: t('shop.closed'), color: 'c' }], onCancel: (g) => onClose?.(g), options: [{ label: t('loc.close'), run: (g) => onClose?.(g) }] });
     return;
   }
-  const reopen = (g) => openShop(g, { title, stock, tier, faction, key, onClose });
+  const reopen = (g) => openShop(g, { title, stock, tier, faction, key, vendor, onClose });
   game.openModal({
     width: 980,
     onCancel: (g) => onClose?.(g),
@@ -64,15 +77,27 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
           } }) });
       const hero = ms[0]?.unit;
       const tipOf = (id, price) => () => itemTip(ITEMS[id], { u: hero, price, have: sv.hero.items[id] || 0, equipped: ITEMS[sv.hero.equipment?.[ITEMS[id].slot]] });
-      const buy = stock.filter((id) => ITEMS[id]).map((id) => {
-        const it = ITEMS[id];
-        const price = Math.max(1, Math.round(it.price * pr.buy));
+      const vs = vendor ? vendorStock(vendor, sv.day, tier) : null;
+      const rows = vs ? vs.rows : stock.filter((id) => ITEMS[id]).map((id) => ({ id, q: 'working', kind: 'stock', mult: 1 }));
+      const MARK = { sig: ['shop.sig', C.b], edition: ['shop.edition', C.b], rare: ['shop.rare', C.a] };
+      const buy = rows.filter((r) => ITEMS[r.id]).map((r) => {
+        const id = r.id, it = ITEMS[id];
+        const price = Math.max(1, Math.round(it.price * r.mult * pr.buy));
         const q = appraise && it.slot === 'weapon' && it.tier ? ` · ${t('shop.quality')} ${it.tier}` : '';
-        return { label: `${t('shop.buy')}: ${it.name} — ${price}${q}`, sub: `${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price),
+        const qn = r.q !== 'working' ? ` (${QUALITY[r.q]?.name || r.q})` : '';
+        const mk = MARK[r.kind];
+        if (r.locked) return { label: `${it.name}${qn}`, sub: `${t(`tier.${r.locked}`)}: ${t('shop.needRep')}`, disabled: true, detail: tipOf(id, price) };
+        return { label: `${t('shop.buy')}: ${it.name}${qn} — ${price}${q}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`,
+          subColor: mk ? mk[1] : undefined, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price),
           run: () => { sv.hero.credits -= price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); saveGame(sv); } };
       });
-      const sell = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && ITEMS[id]?.price > 0 && !ITEMS[id].key).map(([id, n]) => {
-        const price = Math.max(1, Math.floor(ITEMS[id].price * pr.sell));
+      const sellRate = (it) => {
+        if (!vs || pr.junk) return pr.sell;
+        const r = vendorSellRate(vendor, it);
+        return r == null ? null : r * pr.sellMul;
+      };
+      const sell = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && ITEMS[id]?.price > 0 && !ITEMS[id].key && sellRate(ITEMS[id]) != null).map(([id, n]) => {
+        const price = Math.max(1, Math.floor(ITEMS[id].price * sellRate(ITEMS[id])));
         return { label: `${t('shop.sell')}: ${ITEMS[id].name} ×${n} — ${price}`, keep: true, detail: tipOf(id, price),
           run: () => { sv.hero.items[id]--; sv.hero.credits += price; play('uiClick'); saveGame(sv); } };
       });
@@ -80,8 +105,14 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
       if (pr.buy !== 1) info.push(`${t('loc.prices')} ×${pr.buy.toFixed(2)}`);
       if (pr.cha > 0) info.push(`${t('shop.cha')} +${pr.cha}: −${Math.round(Math.min(T.buyMax, T.buyPerMod * pr.cha) * 100)}% / +${Math.round(Math.min(T.sellMax, T.sellPerMod * pr.cha) * 100)}%`);
       if (pr.haggled) info.push(`${t('shop.haggle')} −${Math.round(T.haggle.discount * 100)}%`);
+      const head = [];
+      if (vs) {
+        head.push({ text: `[${vs.arch.name}] ${vs.vendor.note || ''}`, color: 'a' });
+        const g = vs.vendor.greed || 0;
+        info.push(`${t('shop.restock').replace('{n}', vs.left)}${g ? ` · ${t(g > 0 ? 'shop.greedy' : 'shop.generous')} ${g > 0 ? '+' : '−'}${Math.round(Math.abs(g) * 100)}%` : ''}`);
+      }
       return {
-        title, lines: [{ text: info.join(' · '), color: 'b' }],
+        title, lines: [...head, { text: info.join(' · '), color: 'b' }],
         options: [...social, ...buy, ...sell, { label: t('loc.close'), run: (g) => onClose?.(g) }],
       };
     },

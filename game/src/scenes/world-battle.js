@@ -22,6 +22,7 @@ import { saveGame } from '../save.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { tf } from '../world/state.js';
 import { incarnate, exodusZeroFinale } from '../world/exodus.js';
+import { markSeen, markKills, markTerm } from '../world/codex.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -57,6 +58,8 @@ export function startWorldBattle(game, o) {
   // a fight introduces the factions involved (reputation screen stops hiding them)
   if (o.faction) meetFaction(save, o.faction);
   for (const e of setup.enemies || []) { const id = typeof e === 'string' ? e : e?.id; if (ENEMIES[String(id).split('^')[0]]?.faction) meetFaction(save, ENEMIES[String(id).split('^')[0]].faction); }
+  // codex (vendors-bestiary.md): every enemy of the battle is «seen»
+  for (const x of markSeen(save, setup.enemies).slice(0, 3)) game.toast(x.text, x.color);
   const loc = LOCATIONS[o.location || save.location];
   // N6 Military: the best member reads the ground — the party gets +1 initiative
   const MIL = SKILL_RULES.preBattle.military;
@@ -71,6 +74,8 @@ export function startWorldBattle(game, o) {
     map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, hazard: o.hazard ?? loc?.hazard, biome: o.biome, region: loc?.region, faction: o.faction, id: o.id || 'world' }),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
+    // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)
+    onEvent: (S, e) => { if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind); },
     race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
     onWin: (g, S) => {
       for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
@@ -220,6 +225,7 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     // N7 Biology: samples of beaten mutants sell for credits
     const SM = SKILL_RULES.economy.samples;
     const beaten = b.units.filter((u) => u.team === 'enemies' && u.kind !== 'summon' && (u.dead || u.removed)).map((u) => u.enemyId);
+    out.push(...markKills(save, beaten.filter(Boolean))); // codex: +1 win per record per battle
     if (mutantsIn(beaten, game.data)) {
       const r = autoCheck(members(save, game.data), [SM.skill], SM.dc);
       if (r.success) {

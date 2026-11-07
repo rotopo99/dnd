@@ -9,6 +9,7 @@ import { npcRepFaction } from './world/data.js';
 import { WORLD_RULES as R } from './data/world/rules.js';
 import { MAX_LEVEL } from './rules/progression.js';
 import { EXODUS } from './data/world/exodus.js';
+import { normCodex } from './world/codex.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -121,6 +122,7 @@ export function normalizeSave(s, data) {
   out.settings = { aiCompanions: false, ...obj(s.settings) };
   out.cyberspace = s.cyberspace && typeof s.cyberspace === 'object' ? s.cyberspace : null;
   out.pendingTalentChoice = arr(s.pendingTalentChoice);
+  out.codex = normCodex(s.codex); // vendors-bestiary.md: bestiary progress (old saves — empty)
   out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)
   const ex = obj(s.exodus);

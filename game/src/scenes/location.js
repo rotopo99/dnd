@@ -36,6 +36,7 @@ import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
 import { openShop } from './shop.js';
+import { VENDORS } from '../world/vendors.js';
 import { runEncounter } from './encounter.js';
 import { hasWorldFlag } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
@@ -199,6 +200,7 @@ export function createLocationScene(rawId) {
       acts.push({ id: 'trade', label: ta.bribe ? `${t('loc.trade')} ${ta.bribe}` : t('loc.trade'), disabled: !ta.ok || (ta.bribe && save(game).hero.credits < ta.bribe), reason: ta.reason || (ta.bribe ? t('loc.noMoney') : null) });
     }
     if (sv.includes('train') && trainerTalents(game, npc).length) acts.push({ id: 'train', label: loc.services.includes('implant') ? t('loc.implant') : t('loc.train') });
+    if (!sv.includes('trade') && sv.includes('train') && VENDORS[npc.id]?.mentor) acts.push({ id: 'trade', label: t('shop.mentorBuy') }); // vendors-bestiary.md: mentor shop
     if (npc.recruitable) {
       const why = canRecruit(save(game), npc.id, game.data);
       if (why !== 'already') acts.push({ id: 'recruit', label: t('loc.recruit'), disabled: !!why, reason: why ? t(`loc.recruit.${why}`) : null });
@@ -218,7 +220,7 @@ export function createLocationScene(rawId) {
       const ta = tradeAccess(game, npc);
       if (!ta.ok) return;
       if (ta.bribe) { sv.hero.credits -= ta.bribe; game.toast(`${t('check.bribe')}: −${ta.bribe}`, 'b'); }
-      return openShopHere(game, npc.name, tier);
+      return openShopHere(game, npc.name, tier, null, npc);
     }
     if (act === 'train') return openTrain(game, npc);
     if (act === 'recruit') {
@@ -278,7 +280,9 @@ export function createLocationScene(rawId) {
     });
   }
 
-  function openShopHere(game, who, tier, stock) {
+  function openShopHere(game, who, tier, stock, npc = null) {
+    // vendors-bestiary.md: an NPC with a VENDORS profile — his own shelf (world/vendors.js); else the old faction shop
+    if (npc && VENDORS[npc.id]) return openShop(game, { title: `${t('loc.trade')}: ${who}`, vendor: npc.id, tier, faction: normFaction(npcRepFaction(npc)), onClose: (g) => back(g) });
     // v3: the faction's shop (items/shops.js) plus the basic v1.0 goods
     if (!stock) stock = [...new Set([...(factionStock(locFaction(locId), tier) || []), ...SHOP_STOCK])];
     openShop(game, { title: `${t('loc.trade')}: ${who}`, stock, tier, faction: locFaction(locId), onClose: (g) => back(g) });
@@ -755,6 +759,7 @@ export function createLocationScene(rawId) {
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
+      else if (inp.wasPressed('KeyB')) nav(game, 'codex');
       else if (inp.wasPressed('KeyS')) nav(game, 'save');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },
