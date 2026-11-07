@@ -1,8 +1,10 @@
 // Tunes POWER_V3 (enemies-v3.js) per battle by bisection to the centre of the target band.
 // Usage: node tools/sim/tune-v3.mjs [--n 150] [--seed 5] [--part i/k] [--out file.json] [--only id,id] [--from file.json]
-// Output: JSON { id: power }. Apply: node tools/sim/tune-v3.mjs --apply file.json [file2.json ...] (rewrites POWER_V3 in enemies-v3.js).
+// Output: JSON { id: power }. Apply: node tools/sim/tune-v3.mjs --apply file.json [file2.json ...] (rewrites POWER_V3 in enemies-v3.js; ENCOUNTERS_V3 + ENCOUNTERS_V4). NB: --apply replaces the WHOLE table — merge with the current POWER_V3 first (tools/sim/merge-power.mjs).
 import fs from 'node:fs';
 import { ENCOUNTERS_V3, scaleV3, SCALE_V3 } from '../../game/src/data/enemies-v3.js';
+import { ENCOUNTERS_V4 } from '../../game/src/data/enemies-v4.js';
+const ALL_ENC = { ...ENCOUNTERS_V3, ...ENCOUNTERS_V4 };
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const FILE = new URL('../../game/src/data/enemies-v3.js', import.meta.url).pathname;
@@ -21,10 +23,10 @@ const [pi, pk] = opt('--part', '0/1').split('/').map(Number);
 const only = opt('--only', null)?.split(',');
 const prev = opt('--from', null) ? JSON.parse(fs.readFileSync(opt('--from'), 'utf8')) : {};
 const out = {};
-const ids = Object.keys(ENCOUNTERS_V3).filter((_, i) => i % pk === pi).filter((id) => !only || only.includes(id));
+const ids = Object.keys(ALL_ENC).filter((_, i) => i % pk === pi).filter((id) => !only || only.includes(id));
 const rnd = (x) => Math.round(x * 20) / 20;
 for (const id of ids) {
-  const enc0 = ENCOUNTERS_V3[id]; const base = enc0.enemies.map((x) => x.split('^')[0]);
+  const enc0 = ALL_ENC[id]; const base = enc0.enemies.map((x) => x.split('^')[0]);
   const tg = TARGET_V3[kindV3(id)]; const mid = args.includes('--hi') ? tg[1] - 0.02 : (tg[0] + tg[1]) / 2;
   const VARS = [null, { hp: 0.2, atk: 2, dmg: 4, kb: 1 }, { hp: 0, atk: 2, dmg: 5, kb: 0 }];
   const cands = [];

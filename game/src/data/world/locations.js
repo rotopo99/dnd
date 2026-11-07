@@ -15,6 +15,7 @@
 
 import { BURGS, MARKERS, MAP_SIZE } from './canon-map.js';
 import { NPCS } from '../npcs.js';
+import { NODE_BATTLES_V4 } from './battles-v4.js';
 
 export const MAP_SPACE = { w: MAP_SIZE.w, h: MAP_SIZE.h, kmPerPx: MAP_SIZE.kmPerPx, image: 'docs/canon/map/map.png' };
 
@@ -458,6 +459,12 @@ export const NPC_PLACE = {
 };
 
 export const LOCATIONS = Object.fromEntries(LIST.map((l) => [l.id, l]));
+
+// v4 (ур. 6–20): свободные бои узлов по шкале уровней (battles-v4.js); квестовые бои узлов не затронуты
+for (const [id, bs] of Object.entries(NODE_BATTLES_V4)) {
+  if (!LOCATIONS[id]) throw new Error(`battles-v4: unknown node "${id}"`);
+  LOCATIONS[id].battles = [...LOCATIONS[id].battles, ...bs];
+}
 
 // NPC по месту из npcs.js: если у узла нет явного списка npcs, его заполняют NPC, чей location (через ALIASES / NPC_PLACE)
 // указывает на этот узел. Камео партии настолки (cameo) — только в ивентах, на узлы не ставятся.

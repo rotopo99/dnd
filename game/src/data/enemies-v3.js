@@ -4,7 +4,7 @@
 //   inventory — расходники для useItem движка ({ id: count }); loot — id таблицы из items/loot.js;
 //   rank: 'grunt' | 'specialist' | 'elite' | 'miniboss' | 'boss'; places — slug / тип POI канон-карты.
 // weapon строится из gear.weapon (числа предмета, hit −1 как у врагов v1 — ступень «владеет» уже в attack);
-// attack = mod(стат) + владение (ур. 1–4: 2, ур. 5: 3) + 1 + hit. kb без явного значения = 10 + броня + mod(ЛВК) (с потолком).
+// attack = mod(стат) + владение (docs/specs/levels-20.md: ур. 1–4 +2, 5–8 +3, 9–12 +4, 13–16 +5, 17–20 +6) + 1 + hit. kb без явного значения = 10 + броня + mod(ЛВК) (с потолком).
 // Числа — ориентир, сравнимый с enemies.js своего уровня; подгонку делает balance-tester. Спека — docs/specs/items.md.
 
 import { WEAPONS } from './items/weapons.js';
@@ -12,9 +12,11 @@ import { ARMOR } from './items/armor.js';
 import { ENEMIES as ENEMIES_V1 } from './enemies.js';
 
 const mod = (v) => Math.floor(((v ?? 10) - 10) / 2);
-const st = (str, dex, con, int, wil, cha, per) => ({ str, dex, con, int, wil, cha, per });
+/** Бонус владения по уровню (таблица спеки levels-20.md; как profBonus в rules/character.js). */
+export const profOf = (level) => 2 + Math.floor((Math.max(1, level || 1) - 1) / 4);
+export const st = (str, dex, con, int, wil, cha, per) => ({ str, dex, con, int, wil, cha, per });
 
-const ability = (o) => ({
+export const ability = (o) => ({
   level: 1, path: null, cost: 0, action: 'action', trigger: null,
   range: 1, target: 'enemy', area: null, roll: 'attack', save: null, onSave: 'none',
   usesPerBattle: null, effects: [], desc: '', canon: null,
@@ -36,8 +38,8 @@ function weaponFrom(id, adj) {
   };
 }
 
-function foe(o) {
-  const prof = o.level >= 5 ? 3 : 2;
+export function foe(o) {
+  const prof = profOf(o.level);
   const gear = o.gear || {};
   let weapon = null;
   if (o.weapon !== undefined) weapon = o.weapon && { hit: -1, ...o.weapon };

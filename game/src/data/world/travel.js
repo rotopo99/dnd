@@ -8,6 +8,7 @@
 import { LOCATIONS } from './locations.js';
 import { REGIONS } from './regions.js';
 import { SKILL_EVENTS } from './travel-skills.js';
+import { TABLE_BATTLES_V4, SEA_EXTRA_V4 } from './battles-v4.js';
 
 /** км в день по типу пути. */
 export const SPEED = { district: Infinity, road: 40, trail: 25, wild: 20, sea: 150, lake: 100, canoe: 60, tunnel: 30 };
@@ -260,6 +261,9 @@ export const ENCOUNTER_TABLES = {
     TRADER(1, ['medkit', 'oak-amulet']), RUMOR(),
   ],
 };
+// v4 (ур. 6–20): боевые записи регионов второго круга и дальше — по шкале уровней (battles-v4.js); события и торговцы остаются
+for (const [r, bs] of Object.entries(TABLE_BATTLES_V4)) ENCOUNTER_TABLES[r] = [...bs, ...ENCOUNTER_TABLES[r].filter((e) => e.kind !== 'battle')];
+ENCOUNTER_TABLES.sea.push(...SEA_EXTRA_V4);
 // проверки навыков на дорогах (по региону) — world/travel-skills.js
 for (const [r, list] of Object.entries(SKILL_EVENTS)) ENCOUNTER_TABLES[r].push(...list);
 // старые ключи v1.0

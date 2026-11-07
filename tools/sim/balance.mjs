@@ -19,6 +19,7 @@ import { TALENTS, COMBAT_TALENT_LIMIT, talentsForSlot, isCombatTalent } from '..
 import { gadgetFor } from '../../game/src/data/gadgets.js';
 import { createRng } from '../../game/src/rules/rng.js';
 import { ENCOUNTERS_V3, ENEMIES_V3, scaleV3 } from '../../game/src/data/enemies-v3.js';
+import { ENCOUNTERS_V4 } from '../../game/src/data/enemies-v4.js';
 import { WEAPONS } from '../../game/src/data/items/weapons.js';
 import { ARMOR } from '../../game/src/data/items/armor.js';
 import { STARTER_KITS } from '../../game/src/data/items/shops.js';
@@ -227,8 +228,9 @@ const KIND_V3 = { // quest battles (enc-*), elite and boss markers; everything e
     'v3-mon-lake', 'v3-mon-sea', 'v3-mon-hills', 'v3-boss-great-mech', 'v3-boss-plague-seed', 'v3-boss-vibe-burner', 'v3-boss-ice-ring', 'v3-boss-sputnik', 'v3-boss-bazaar', 'v3-boss-armory', 'v3-boss-lis-1',
     'enc-vibe-burner', 'enc-judge', 'enc-great-mech', 'enc-plague-seed', 'enc-lake-monster', 'enc-sea-monster', 'enc-hill-monster', 'enc-arena-final'],
 };
-const kindV3 = (id) => (KIND_V3.elite.includes(id) ? 'elite' : id.startsWith('enc-') ? 'quest' : 'normal');
-const TARGET_V3 = { normal: [0.75, 0.90], quest: [0.65, 0.80], elite: [0.50, 0.65] };
+// v4 (ур. 6–20): *-elite, v4-boss-*, v4-mon-* — элита/боссы; финал 'w-cc-finale' — свой коридор 40–50%
+const kindV3 = (id) => (id === 'w-cc-finale' ? 'final' : KIND_V3.elite.includes(id) || /^v4-(boss|mon)-|^v4-.*-elite$|^v4-cyber/.test(id) ? 'elite' : id.startsWith('enc-') ? 'quest' : 'normal');
+const TARGET_V3 = { normal: [0.75, 0.90], quest: [0.65, 0.80], elite: [0.50, 0.65], final: [0.40, 0.50] };
 const mkEquip = (cid, path) => {
   const k = STARTER_KITS[`${cid}:${path}`] || STARTER_KITS[cid];
   const inv = {}; for (const id of k.belt || []) if (GAME_DATA.ITEMS[id]) inv[id] = (inv[id] || 0) + 1;
@@ -258,7 +260,7 @@ function printV3() {
   const kf = opt('--kind', null);
   console.log(`\n=== v3 battles: party of 4 of own level, starter kits + talents + gadget, n=${N}, seed ${SEED} ===`);
   let bad = 0, cnt = 0, sumR = 0;
-  for (const enc of Object.values(ENCOUNTERS_V3)) {
+  for (const enc of [...Object.values(ENCOUNTERS_V3), ...Object.values(ENCOUNTERS_V4)]) {
     if (ONLY && enc.id !== ONLY) continue; const kind = kindV3(enc.id); if (kf && kf !== kind) continue;
     const r = v3Rate(enc, N, SEED); const tg = TARGET_V3[kind];
     const flag = r.rate < tg[0] - 0.03 ? ' <-- HARD' : r.rate > tg[1] + 0.03 ? ' <-- EASY' : ''; const lg = r.rounds > 10.5 ? ' LONG' : '';
