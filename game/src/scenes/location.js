@@ -23,8 +23,11 @@ import { hotspot } from '../ui/tooltip.js';
 import { resTip, xpInfo } from '../ui/tips.js';
 import {
   members, activeCompanions, buildHero, canRecruit, recruit, hireInfo, grant, restParty, restDepartures, journal, tf,
-  locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
+  locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY, requiresOk,
 } from '../world/state.js';
+import { exodusSync, passDays, serviceOff, tollMult } from '../world/exodus.js';
+import { EXODUS } from '../data/world/exodus.js';
+import { startExodusZero } from './exodus-zero.js';
 import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
@@ -57,7 +60,7 @@ export function createLocationScene(rawId) {
   // v3.1: gear stigma shifts how the faction sees the party (effectiveRep)
   const facTier = (game, f) => (f ? repTier(effectiveRep(game.save, f, game.data)) : 'neutral');
   const back = (game) => { game.resume(self); refresh(game); };
-  const refresh = (game) => { toastAll(game, autoProgress(save(game), game.data)); persist(game); layout(game); };
+  const refresh = (game) => { toastAll(game, autoProgress(save(game), game.data)); toastAll(game, exodusSync(save(game)).out); persist(game); layout(game); };
   const ms = (game) => members(save(game), game.data);
   const homeTier = (game) => facTier(game, locFaction(locId) || (loc.region === 'harmony' ? 'technikums' : null));
   const toMap = (g) => { g.visit = null; import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene())); };
@@ -121,7 +124,7 @@ export function createLocationScene(rawId) {
     }
     if (tier === 'suspicious') {
       const ch = e.check || { skills: G.talkSkills, dc: G.talkDc };
-      const toll = SERVICE_PRICES.toll(e.toll || G.toll);
+      const toll = Math.round(SERVICE_PRICES.toll(e.toll || G.toll) * tollMult(sv0));
       // forge-pass: AI Party checkpoints (aiParty / agrozone) — the document check with advantage
       const forge = has('forge-pass') && ['aiParty', 'agrozone'].includes(f) ? t('flag.forge-pass') : null;
       game.openModal({
@@ -187,7 +190,7 @@ export function createLocationScene(rawId) {
   }
 
   function npcActions(game, npc) {
-    const sv = npc.services || [];
+    const sv = (npc.services || []).filter((x) => !serviceOff(save(game), loc, x));
     const acts = [{ id: 'talk', label: t('loc.talk') }];
     if (sv.includes('trade')) {
       const ta = tradeAccess(game, npc);
@@ -314,9 +317,10 @@ export function createLocationScene(rawId) {
     const goal = s.goal;
     const done = (g, extra) => { toastAll(g, completeSlot(sv, s, g.data)); if (extra) toastAll(g, extra); refresh(g); };
     const failed = (g) => { toastAll(g, failSlot(sv, s, g.data)); refresh(g); };
+    if (s.locked) return { label: `${s.goal.kind === 'battle' ? t('loc.fight') : t('loc.decide')}: ${q.name}`, sub: s.locked, disabled: true, reason: s.locked };
     if (s.kind === 'choice') {
-      return { label: `${t('loc.decide')}: ${q.name}`, sub: s.stage.text, run: (g) => g.openModal({
-        title: q.name, width: 960, lines: [{ text: s.stage.text }],
+      return { label: `${t('loc.decide')}: ${q.name}`, sub: s.gate || s.stage.text, run: (g) => g.openModal({
+        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
         options: [...availableOptions(sv, s).map((o) => {
           const ok = !o.requires || requires(g, o.requires);
           return { label: o.text, disabled: !ok, sub: ok ? null : t('loc.notAvailable'), run: (g2) => { toastAll(g2, chooseOption(sv, s, o.id, g2.data)); refresh(g2); } };
@@ -354,6 +358,9 @@ export function createLocationScene(rawId) {
     if (r.item && !(sv.hero.items[r.item] > 0)) return false;
     if (r.credits && sv.hero.credits < r.credits) return false;
     if (r.worldFlag && !hasFlagInParty(sv, game.data, r.worldFlag)) return false;
+    // third-exodus.md §2: level / terminals / regions / any / not — the shared world check
+    const { avgLevel, terminalsOff, visitedRegions, flags, any, not } = r;
+    if ((avgLevel || terminalsOff || visitedRegions || flags || any || not) && !requiresOk(sv, { avgLevel, terminalsOff, visitedRegions, flags, any, not }, game.data)) return false;
     return true;
   };
 
@@ -412,7 +419,7 @@ export function createLocationScene(rawId) {
       } else if (state !== 'ritual') out.push({ label: `${t('map.terminal')}: ${t(`term.${state}`)}`, sub: t('loc.termInfo'), disabled: true });
     }
     // services
-    const svc = loc.services;
+    const svc = loc.services.filter((x) => !serviceOff(sv, loc, x));
     if (svc.includes('rest')) {
       const free = tierAtLeast(tier, 'friendly');
       const cost = free ? 0 : SERVICE_PRICES.rest(sv.hero.level);
@@ -446,6 +453,10 @@ export function createLocationScene(rawId) {
     const has = (f) => hasWorldFlag(party, f);
     // rest-heal: a field camp restores everything; rest-mrl: MRL fully
     restParty(sv, game.data, field && has('rest-heal') ? 1 : frac);
+    // third-exodus.md: a rest costs a day of the Exodus timer
+    const ex = passDays(sv, EXODUS.restDays);
+    toastAll(game, ex.out);
+    if (ex.zero) { persist(game); startExodusZero(game); return; }
     if (field && has('rest-mrl') && !has('rest-heal')) { sv.hero.mrl = null; for (const p of activeCompanions(sv)) p.mrl = null; }
     if (has('free-medkit') || has('herb-medkit') || has('multitool')) sv.hero.items.medkit = (sv.hero.items.medkit || 0) + 1;
     delete sv.flags['used:disguise'];
@@ -672,6 +683,10 @@ export function createLocationScene(rawId) {
     enter(game) {
       S.time = 0;
       layout(game);
+      // third-exodus.md: the zero — the Judge incarnates, the party is pulled to the Main node
+      const ex = exodusSync(save(game));
+      toastAll(game, ex.out);
+      if (ex.zero && !save(game).cyberspace) { startExodusZero(game); return; }
       const v = V(game);
       if (!v.gate && gateCheck(game)) return;
       afterGate(game);

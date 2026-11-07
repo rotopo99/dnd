@@ -1,6 +1,7 @@
 // Prologue «Суд над Гармонией» flow: intro -> scene 1 -> battle 1 -> ... -> epilogue. Script: docs/story/prologue.md.
 // Between battles the hero rests: every battle builds a fresh creature, so ЗДР/МРЛ/ЭНР are full again.
 import { t } from '../data/text/index.js';
+import { exodusStart } from '../world/exodus.js';
 import { line } from '../data/text/prologue.js';
 import { MAPS } from '../data/index.js';
 import { createDialogueScene, toLines } from './dialogue.js';
@@ -93,6 +94,7 @@ export function startPrologue(game, hero) {
 export function startWorld(game, hero, flags = {}) {
   const save = newSave(hero);
   save.flags['prologue-done'] = true;
+  exodusStart(save); // third-exodus.md: the Exodus timer starts with the prologue
   if (flags.gansAlive) save.flags['gans-alive'] = true;
   game.save = save;
   for (const x of gainXp(save, 350, game.data)) game.toast(x.text, x.color);

@@ -19,6 +19,9 @@ import { runEvent, travelEvents } from './event.js';
 import { runEncounter } from './encounter.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
+import { passDays, exodusHud } from '../world/exodus.js';
+import { startExodusZero } from './exodus-zero.js';
+import { hotspot } from '../ui/tooltip.js';
 import { openPauseMenu } from '../ui/save-ui.js';
 
 const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
@@ -210,7 +213,9 @@ export function createWorldMapScene() {
     // day counter: one per travelled day; travel events — once per day
     while (tr.day < days && tr.t >= (tr.day + 1) * TRAVEL_DAY_S) {
       tr.day++;
-      save(game).day++;
+      const ex = passDays(save(game), 1);
+      for (const x of ex.out) log(x.text, x.color);
+      if (ex.zero && !save(game).cyberspace) { S.paused = true; saveGame(save(game)); startExodusZero(game); return; }
       const ev = travelEvents(save(game), LOCATIONS[hop.to].region)[0];
       if (ev) { S.paused = true; runEvent(game, ev, (g) => { g.resume(self); S.paused = false; }); return; }
     }
@@ -591,7 +596,16 @@ export function createWorldMapScene() {
       // top bar
       ctx.fillStyle = C['0']; ctx.fillRect(0, 0, W, TOP);
       text(ctx, t('map.title'), 24, 12, C.h, FONT_L);
-      text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} · ${t('map.here')}: ${LOCATIONS[sv.location].name}`, 220, 8, C.b, FONT_B);
+      const hudLine = `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} · ${t('map.here')}: ${LOCATIONS[sv.location].name}`;
+      text(ctx, hudLine, 220, 8, C.b, FONT_B);
+      // third-exodus.md: «Исход: N дн.» after the prologue; red at ≤ 30%, blinking at ≤ 5%
+      const ex = exodusHud(sv);
+      if (ex) {
+        ctx.font = FONT_B;
+        const x = 220 + ctx.measureText(`${hudLine} · `).width;
+        if (!ex.blink || Math.floor(S.time * 2) % 2 === 0) text(ctx, `· ${ex.text}`, x - ctx.measureText('· ').width, 8, C[ex.color], FONT_B);
+        hotspot(x, 8, ctx.measureText(ex.text).width, 18, { title: t('exodus.hud'), lines: [t('exodus.tip'), ...(sv.exodus.mark ? [{ text: `${t('exodus.mark')} ${sv.exodus.mark}: ${t(`exodus.mark.${sv.exodus.mark}`)}`, color: 'c' }] : [])] });
+      }
       drawLegend(ctx, W);
       if (S.hoverNode && !S.travel) drawCard(ctx, sv, W, H);
       // bottom: log + buttons

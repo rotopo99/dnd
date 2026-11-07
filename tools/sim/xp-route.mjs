@@ -1,6 +1,6 @@
 // Темп опыта «средним маршрутом» (docs/specs/levels-20.md, «Мир 6–20»): регионы по порядку, в каждом —
 // все свободные бои узлов (1 раз) + N случайных встреч по таблице региона + доля квестов региона.
-// Usage: node tools/sim/xp-route.mjs [--rand 6] [--quests 0.7]
+// Usage: node tools/sim/xp-route.mjs [--rand 6] [--quests 0.7] [--stops 1]  (--stops 0 = все узлы с боями/квестами)
 import { GAME_DATA } from '../../game/src/data/index.js';
 import { LOCATIONS } from '../../game/src/data/world/locations.js';
 import { REGIONS } from '../../game/src/data/world/regions.js';

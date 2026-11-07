@@ -17,6 +17,7 @@ import { simulateBattle } from '../game/src/rules/simulate.js';
 import { DATA } from './fixtures/rules-data.mjs';
 import { rollLoot } from '../game/src/world/loot.js';
 import { GAME_DATA } from '../game/src/data/index.js';
+import { LOCATIONS as LOCS } from '../game/src/data/world/locations.js';
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -1333,6 +1334,134 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
   const more = rollLoot([foes[0]], { ...D, GEAR_DROP: {} }, createRng(5), { flags: ['battle-loot'] });
   assert.ok(cnt(more) > cnt(base));
 });
+
+// ---------------------------------------------------------------- third-exodus.md: Exodus timer, extensions, marks, gates
+{
+  const st = await import('../game/src/world/state.js');
+  const ex = await import('../game/src/world/exodus.js');
+  const qs = await import('../game/src/world/quests.js');
+  const { EXODUS: X, EXODUS_GATES: G } = await import('../game/src/data/world/exodus.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const mk = () => {
+    const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+    return s;
+  };
+  test('exodus: no timer before prologue-done; starts once; rest/travel days count', () => {
+    const s = mk();
+    assert.equal(ex.exodusSync(s).zero, false);
+    assert.equal(s.exodus, undefined);
+    assert.equal(ex.exodusHud(s), null);
+    s.flags['prologue-done'] = true; s.day = 3;
+    ex.exodusSync(s);
+    assert.deepEqual(s.exodus, { start: 3, ext: 0, mark: 0 });
+    assert.equal(ex.exodusLeft(s), X.t0);
+    ex.passDays(s, 6);
+    assert.equal(ex.exodusLeft(s), X.t0 - 6);
+    ex.passDays(s, X.restDays);
+    assert.equal(ex.exodusLeft(s), X.t0 - 6 - X.restDays);
+    assert.ok(ex.exodusHud(s).text.includes(String(ex.exodusLeft(s))));
+  });
+  test('exodus: extensions fire once, survive save/load, capped at extCap', () => {
+    const s = mk(); s.flags['prologue-done'] = true; ex.exodusSync(s);
+    s.terminals['term-villages'] = 'dead';
+    assert.equal(ex.exodusSync(s).out.length, 1);
+    assert.equal(s.exodus.ext, 8);
+    ex.exodusSync(s);
+    assert.equal(s.exodus.ext, 8, 'no double extension');
+    s.terminals['term-villages'] = 'ours';
+    ex.exodusSync(s);
+    assert.equal(s.exodus.ext, 12, 'reflash +4 on top');
+    const back = normalizeSave(JSON.parse(JSON.stringify(s)), GAME_DATA);
+    ex.exodusSync(back);
+    assert.equal(back.exodus.ext, 12, 'reload does not double');
+    for (const id of ['term-agrozone', 'cc-terminal-1', 'cc-terminal-2', 'cc-terminal-3']) s.terminals[id] = 'ours';
+    Object.assign(s.flags, { 'beacons-out': true, 'agro-marta': true, 'terminals-marked': true });
+    s.quests['sq-archon'] = { state: 'done' }; s.quests['sq-cult-mines'] = { state: 'done' };
+    ex.exodusSync(s);
+    assert.equal(s.exodus.ext, X.extCap);
+    assert.equal(ex.exodusLeft(s), X.t0 + X.extCap);
+  });
+  test('exodus: marks one-way at thresholds, Harmony falls at 4, zero, stop', () => {
+    const s = mk(); s.flags['prologue-done'] = true; ex.exodusSync(s);
+    const T = X.t0;
+    const dayAt = (share) => s.exodus.start + Math.ceil(T - share * T);
+    s.day = dayAt(0.75) - 1; ex.exodusSync(s); assert.equal(s.exodus.mark, 0);
+    s.day = dayAt(0.75); ex.exodusSync(s); assert.equal(s.exodus.mark, 1);
+    assert.equal(ex.encounterMod(s, 'cult'), 1); assert.equal(ex.encounterMod(s, 'harmony'), 0);
+    s.day = dayAt(0.5); ex.exodusSync(s); assert.equal(s.exodus.mark, 2); assert.equal(ex.tollMult(s), 1.25);
+    s.day = dayAt(0.3); ex.exodusSync(s); assert.equal(s.exodus.mark, 3); assert.equal(ex.priceMult(s), 1.2);
+    assert.ok(!s.flags['harmony-fallen']);
+    s.day = dayAt(0.15); const r = ex.exodusSync(s); assert.equal(s.exodus.mark, 4);
+    assert.ok(s.flags['harmony-fallen'] && r.out.length === 2);
+    assert.ok(ex.serviceOff(s, { region: 'harmony' }, 'rest') && !ex.serviceOff(s, { region: 'pirates' }, 'rest'));
+    s.exodus.ext = 30; ex.exodusSync(s); assert.equal(s.exodus.mark, 4, 'marks do not roll back');
+    s.exodus.ext = 0; s.day = dayAt(0.05); ex.exodusSync(s); assert.equal(s.exodus.mark, 5); assert.equal(ex.priceMult(s), 1.4);
+    assert.equal(ex.exodusSync(s).zero, false);
+    s.day = s.exodus.start + T; assert.equal(ex.exodusSync(s).zero, true);
+    s.flags['exodus-zero'] = true; assert.ok(ex.exodusZeroFinale(s));
+    s.flags['node-destroyed-late'] = true;
+    assert.equal(ex.exodusSync(s).zero, false); assert.equal(ex.exodusHud(s), null); assert.equal(ex.priceMult(s), 1);
+    assert.ok(!ex.exodusZeroFinale(s));
+    const d = { 'boss-x': { id: 'boss-x', hp: 100 } };
+    assert.deepEqual(ex.incarnate(['boss-x', 'y'], d), ['boss-x^inc', 'y']); assert.equal(d['boss-x^inc'].hp, 125);
+  });
+  test('exodus: old saves load (prologue-done → timer from now; none → no timer)', () => {
+    const s = mk(); s.flags['prologue-done'] = true; s.day = 40; delete s.exodus;
+    const a = normalizeSave(JSON.parse(JSON.stringify(s)), GAME_DATA);
+    assert.deepEqual(a.exodus, { start: 40, ext: 0, mark: 0 });
+    const b = normalizeSave(JSON.parse(JSON.stringify(mk())), GAME_DATA);
+    assert.equal(b.exodus, null);
+    const c = normalizeSave({ ...JSON.parse(JSON.stringify(s)), exodus: { start: 'x', ext: 999, mark: 9 } }, GAME_DATA);
+    assert.deepEqual(c.exodus, { start: 40, ext: X.extCap, mark: X.marks.length });
+  });
+  test('requires: avgLevel / any / not / terminalsOff / visitedRegions', () => {
+    const s = mk();
+    s.hero.level = 11;
+    assert.ok(!st.requiresOk(s, { avgLevel: 12 }));
+    s.hero.level = 12;
+    assert.ok(st.requiresOk(s, { avgLevel: 12 }));
+    assert.ok(st.requiresOk(s, { any: [{ flag: 'nope' }, { avgLevel: 5 }] }));
+    assert.ok(!st.requiresOk(s, { not: { avgLevel: 5 } }));
+    assert.ok(!st.requiresOk(s, { terminalsOff: 1 }));
+    s.terminals['cc-terminal-1'] = 'dead';
+    assert.ok(st.requiresOk(s, { terminalsOff: 1 }));
+    assert.ok(!st.requiresOk(s, { visitedRegions: ['warprom'] }));
+    s.visited.push(Object.values(LOCS).find((l) => l.region === 'warprom').id);
+    assert.ok(st.requiresOk(s, { visitedRegions: ['warprom'] }));
+  });
+  test('mq-exodus gates: find-node risk option, assault locked until level/terminals/zero', () => {
+    const s = mk(); s.flags['prologue-done'] = true; s.hero.level = 8;
+    qs.startQuest(s, 'mq-exodus');
+    s.quests['mq-exodus'].stage = 'find-node';
+    let sl = qs.slots(s, 'mq-exodus');
+    assert.equal(sl.length, 1); assert.ok(sl[0].gate);
+    assert.deepEqual(sl[0].choice.options.map((o) => o.id), ['gate-risk']);
+    qs.chooseOption(s, sl[0], 'gate-risk', GAME_DATA);
+    assert.ok(s.flags['gate-passed-early']);
+    assert.equal(s.quests['mq-exodus'].stage, 'find-node');
+    sl = qs.slots(s, 'mq-exodus');
+    assert.ok(!sl[0].gate && sl[0].choice.options.some((o) => o.id === 'trace'));
+    // old save without the gate flag but level 12 → open
+    delete s.flags['gate-passed-early']; s.hero.level = G.findNode;
+    assert.ok(!qs.slots(s, 'mq-exodus')[0].gate);
+    s.quests['mq-exodus'].stage = 'assault';
+    sl = qs.slots(s, 'mq-exodus');
+    assert.ok(sl[0].locked && sl[0].goal.kind === 'battle');
+    assert.deepEqual(qs.completeSlot(s, sl[0], GAME_DATA), []);
+    assert.equal(qs.onBattleWon(s, 'w-cc-finale', 'cc-node', GAME_DATA).length, 0);
+    assert.equal(s.quests['mq-exodus'].stage, 'assault');
+    s.flags['exodus-zero'] = true;
+    assert.ok(!qs.slots(s, 'mq-exodus')[0].locked);
+    delete s.flags['exodus-zero'];
+    for (const id of ['term-villages', 'term-agrozone', 'cc-terminal-1']) s.terminals[id] = 'dead';
+    assert.ok(qs.slots(s, 'mq-exodus')[0].locked, 'terminals alone are not enough');
+    const LOC = Object.values(LOCS);
+    s.visited.push(LOC.find((l) => l.region === 'warprom').id, LOC.find((l) => l.region === 'cringegons').id);
+    assert.ok(!qs.slots(s, 'mq-exodus')[0].locked);
+    s.visited = []; s.hero.level = G.assault;
+    assert.ok(!qs.slots(s, 'mq-exodus')[0].locked);
+  });
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

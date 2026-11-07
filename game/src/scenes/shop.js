@@ -4,6 +4,7 @@
 // discount) and selling junk at full price (Deception: fail closes the shop for the day); Military in the party shows
 // the weapon quality. Per-shop state lives in save.flags `shop:<key>:<day>` = { haggle, junk, closed }.
 import { t } from '../data/text/index.js';
+import { priceMult as exodusPrice } from '../world/exodus.js';
 import { play } from '../audio/sfx.js';
 import { ITEMS, SKILL_RULES } from '../world/data.js';
 import { itemStats, soonNote, itemTip } from '../ui/items-ui.js';
@@ -29,6 +30,7 @@ export function shopPrices(game, tier, faction, key = null) {
   const cha = chaTrade(ms);
   const st = key ? shopState(game.save, key) : {};
   buy *= cha.buy * (st.haggle === 'ok' ? 1 - T.haggle.discount : 1);
+  buy *= exodusPrice(game.save); // third-exodus.md: marks 3+ raise prices
   const sell = st.junk === 'ok' ? T.junk.sellRate : R.prices.sell * (1 + sellBonus) * cha.sell;
   return { buy, sell, cha: cha.mod, haggled: st.haggle === 'ok', junk: st.junk === 'ok' };
 }

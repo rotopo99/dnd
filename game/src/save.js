@@ -8,6 +8,7 @@ import { locFaction } from './world/state.js';
 import { npcRepFaction } from './world/data.js';
 import { WORLD_RULES as R } from './data/world/rules.js';
 import { MAX_LEVEL } from './rules/progression.js';
+import { EXODUS } from './data/world/exodus.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -118,6 +119,11 @@ export function normalizeSave(s, data) {
   out.settings = { aiCompanions: false, ...obj(s.settings) };
   out.cyberspace = s.cyberspace && typeof s.cyberspace === 'object' ? s.cyberspace : null;
   out.pendingTalentChoice = arr(s.pendingTalentChoice);
+  // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)
+  const ex = obj(s.exodus);
+  out.exodus = s.exodus && typeof s.exodus === 'object'
+    ? { start: Math.max(1, num(ex.start, out.day)), ext: Math.max(0, Math.min(EXODUS.extCap, num(ex.ext))), mark: Math.max(0, Math.min(EXODUS.marks.length, Math.floor(num(ex.mark)))) }
+    : out.flags[EXODUS.startFlag] ? { start: out.day, ext: 0, mark: 0 } : null;
   return out;
 }
 
