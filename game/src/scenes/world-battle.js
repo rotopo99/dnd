@@ -14,7 +14,8 @@ import { autoCheck, canParley, parleyDc, mutantsIn } from '../world/skill-uses.j
 import { openCheck } from '../ui/checks-ui.js';
 import { applyRep } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
-import { MAPS } from '../data/index.js';
+import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
+import { rollLoot } from '../world/loot.js';
 import { saveGame } from '../save.js';
 import { rollDice } from '../rules/dice.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
@@ -64,7 +65,10 @@ export function startWorldBattle(game, o) {
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
-    onWin: (g, S) => { for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color); afterBattle(g, S, o); },
+    onWin: (g, S) => {
+      for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
+      openLoot(g, battleLoot(g, S), () => afterBattle(g, S, o));
+    },
     onLose: (g, S) => { writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
     onExit: (g) => (o.onLose || defaultLose)(g),
     // world flag 'retreat': leave a non-boss battle — back to the previous node, no loot
@@ -113,6 +117,40 @@ export function startSkirmish(game, o) {
 
 function defaultLose(game) {
   import('./cyberspace.js').then((m) => m.startCyberspace(game, { reason: 'wipe', helped: false }));
+}
+
+/** Loot of the beaten enemies (world/loot.js). Unique items already owned by the party do not drop again. */
+function battleLoot(game, S) {
+  const save = game.save;
+  const flags = new Set(partyUnits(save, game.data).flatMap((u) => (u.worldFlags || []).map((w) => w.id)));
+  const owned = new Set(Object.keys(save.hero.items || {}).filter((id) => save.hero.items[id] > 0));
+  const worn = (eq) => Object.values(eq || {}).flat().forEach((id) => id && owned.add(id));
+  worn(save.hero.equipment);
+  for (const p of activeCompanions(save)) worn(p.equipment);
+  const beaten = S.b.units.filter((u) => u.team === 'enemies' && (u.dead || u.removed));
+  return rollLoot(beaten, { ...game.data, ENEMIES }, Math.random, { flags, owned });
+}
+
+/** Battle results: credits and items, «Забрать всё» puts them into the shared backpack (no weight limit in data). */
+function openLoot(game, loot, then) {
+  if (!loot.credits && !loot.items.length) { then(); return; }
+  const take = () => {
+    const h = game.save.hero;
+    h.credits += loot.credits;
+    for (const { id, n } of loot.items) h.items[id] = (h.items[id] || 0) + n;
+    if (loot.credits) game.toast(tf('fx.credits', { n: `+${loot.credits}` }), 'b');
+    if (loot.items.length) game.toast(tf('loot.got', { n: loot.items.reduce((s, x) => s + x.n, 0) }), 'j');
+    then();
+  };
+  const QC = { junk: 'n', working: 'h', masterwork: 'b', relic: 'f' };
+  const lines = [];
+  if (loot.credits) lines.push({ text: tf('fx.credits', { n: `+${loot.credits}` }), color: 'b' });
+  for (const { id, n } of loot.items) {
+    const it = ITEMS[id];
+    lines.push({ text: `• ${it?.name || id}${n > 1 ? ` ×${n}` : ''}`, color: QC[it?.quality] || 'h' });
+  }
+  game.openModal({ title: t('loot.title'), lines, onCancel: () => { game.closeModal(); take(); },
+    options: [{ label: t('loot.takeAll'), run: take }] });
 }
 
 function afterBattle(game, S, o) {
@@ -164,17 +202,6 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
   if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
   if (won) {
     out.push(...gainXp(save, battleXp(b, game.data), game.data));
-    // scrap-loot (mechanical enemies) / battle-loot: an extra loot roll each
-    const ms = partyUnits(save, game.data);
-    const flags = new Set(ms.flatMap((u) => (u.worldFlags || []).map((w) => w.id)));
-    const mech = b.units.some((u) => u.team === 'enemies' && (u.tags || []).includes('mechanical'));
-    const rolls = (flags.has('battle-loot') ? 1 : 0) + (flags.has('scrap-loot') && mech ? 1 : 0);
-    if (rolls) {
-      let c = 0;
-      for (let i = 0; i < rolls; i++) c += rollDice(Math.random, R.loot.dice) * R.loot.mult;
-      save.hero.credits += c;
-      out.push({ text: tf('fx.credits', { n: `+${c}` }), color: 'b' });
-    }
     const killed = b.units.filter((u) => u.team === 'enemies' && u.kind !== 'summon' && (u.dead || u.removed)).length;
     if (o.faction && killed) out.push(...repToasts(applyRep(save, o.faction, Math.max(R.killRep.maxPerBattle, R.killRep.perKill * killed))));
     if (o.id && !save.battlesDone.includes(o.id)) save.battlesDone.push(o.id);
