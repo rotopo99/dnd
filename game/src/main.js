@@ -5,6 +5,7 @@ import { PLAY_DATA as GAME_DATA } from './world/data.js';
 import { setSaveErrorHandler } from './save.js';
 import { t } from './data/text/index.js';
 import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
+import { renderTips, clearTips } from './ui/tooltip.js';
 
 // Minimal logical size: the UI is laid out for >= 1280x720. Bigger windows get a bigger canvas
 // at 1:1 pixels (pixel-perfect); smaller ones are downscaled by CSS as a fallback.
@@ -88,7 +89,8 @@ function frame(now) {
     }
   }
   game.scene.render(game);
-  if (game.modals.length) renderModal(game);
+  if (game.modals.length) { clearTips(); renderModal(game); } // scene tooltips are stale under a modal
+  renderTips(game);
   renderToasts(game);
 }
 requestAnimationFrame(frame);

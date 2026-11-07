@@ -12,7 +12,7 @@ import { partyUnits, activeCompanions, gainXp, hasFlagInParty, journal, repToast
 import { SKILL_RULES } from '../world/data.js';
 import { autoCheck, canParley, parleyDc, mutantsIn } from '../world/skill-uses.js';
 import { openCheck } from '../ui/checks-ui.js';
-import { applyRep } from '../world/reputation.js';
+import { applyRep, meetFaction } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
 import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
@@ -49,6 +49,9 @@ export function startWorldBattle(game, o) {
       options: [{ label: t('battle.ok'), run: () => {} }] });
     return;
   }
+  // a fight introduces the factions involved (reputation screen stops hiding them)
+  if (o.faction) meetFaction(save, o.faction);
+  for (const e of setup.enemies || []) { const id = typeof e === 'string' ? e : e?.id; if (ENEMIES[String(id).split('^')[0]]?.faction) meetFaction(save, ENEMIES[String(id).split('^')[0]].faction); }
   const loc = LOCATIONS[o.location || save.location];
   // N6 Military: the best member reads the ground — the party gets +1 initiative
   const MIL = SKILL_RULES.preBattle.military;

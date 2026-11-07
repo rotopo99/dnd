@@ -2,7 +2,7 @@
 import { FACTIONS } from '../data/factions.js';
 import { t } from '../data/text/index.js';
 import { EXTRA_FACTIONS } from '../data/npcs.js';
-import { REP_FACTIONS, REP_TIERS, repTier as tierOf, spreadRep, startingRep as start, PROLOGUE_REP } from '../data/world/origins.js';
+import { REP_FACTIONS, REP_TIERS, repTier as tierOf, spreadRep, startingRep as start, PROLOGUE_REP, ORIGINS } from '../data/world/origins.js';
 import { FACTION_ALIAS } from './data.js';
 
 export const FACTION_IDS = REP_FACTIONS;
@@ -32,3 +32,19 @@ export function applyRep(save, faction, delta) {
 /** Starting reputation after the prologue (race → origin → override → prologue result). */
 export const startingRep = (race, origin, prologue = true) => start(race, origin, { prologue });
 export { PROLOGUE_REP };
+
+/**
+ * Factions the player has met (save.met): visiting a node of the faction, talking to its NPC or fighting it.
+ * Until then the reputation screen shows «???». Old saves without `met` — see save.js normalizeSave.
+ */
+export function meetFaction(save, faction) {
+  const f = normFaction(faction);
+  if (!f || !FACTION_IDS.includes(f)) return false;
+  if (!Array.isArray(save.met)) save.met = [];
+  if (save.met.includes(f)) return false;
+  save.met.push(f);
+  return true;
+}
+export const isMet = (save, faction) => !Array.isArray(save?.met) || save.met.includes(normFaction(faction));
+/** Factions known from the start: met in the prologue + the origin faction. */
+export const startMet = (origin) => [...new Set([...Object.keys(PROLOGUE_REP), ORIGINS[origin]?.faction].filter((f) => f && FACTION_IDS.includes(f)))];

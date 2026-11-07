@@ -17,7 +17,10 @@ import {
 import { autoCheck, disassembleDc, disassembleParts } from '../world/skill-uses.js';
 import { isGear } from './panel-gear.js';
 import { rollDice } from '../rules/dice.js';
-import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputation.js';
+import { repTier, factionName, normFaction, tierAtLeast, meetFaction } from '../world/reputation.js';
+import { openPauseMenu, openSaveMenu } from '../ui/save-ui.js';
+import { hotspot } from '../ui/tooltip.js';
+import { resTip, xpInfo } from '../ui/tips.js';
 import {
   members, activeCompanions, buildHero, canRecruit, recruit, hireInfo, grant, restParty, restDepartures, journal, tf,
   locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY,
@@ -231,6 +234,7 @@ export function createLocationScene(rawId) {
   function talk(game, npc, tier) {
     const sv = save(game);
     sv.npcs[npc.id] = { ...(sv.npcs[npc.id] || {}), met: true };
+    meetFaction(sv, npcRepFaction(npc));
     const askTopics = (g) => {
       const topics = npcTopics(npc);
       if (!topics.length || tier === 'hostile') return finishTalk(g);
@@ -636,8 +640,8 @@ export function createLocationScene(rawId) {
       btns.push({ kind: 'apage', dir: -1, label: '‹', x: ox + 1170, y: oy + 96, w: 40, h: 22, disabled: S.apage === 0 });
       btns.push({ kind: 'apage', dir: 1, label: '›', x: ox + 1216, y: oy + 96, w: 40, h: 22, disabled: S.apage >= apages - 1 });
     }
-    const nav = [['map', 'loc.map', 'M'], ['party', 'panel.party', 'P'], ['rep', 'panel.rep', 'R'], ['journal', 'panel.journal', 'J'], ['menu', 'loc.toMenu', 'Esc']];
-    nav.forEach(([id, key, k], i) => btns.push({ kind: 'nav', id, label: t(key), key: k, x: ox + 648 + i * 122, y: oy + BASE_H - 60, w: 116, h: 44 }));
+    const nav = [['map', 'loc.map', 'M'], ['party', 'panel.party', 'P'], ['rep', 'panel.rep', 'R'], ['journal', 'panel.journal', 'J'], ['save', 'save.save', 'S'], ['menu', 'loc.toMenu', 'Esc']];
+    nav.forEach(([id, key, k], i) => btns.push({ kind: 'nav', id, label: t(key), key: k, x: ox + 648 + i * 102, y: oy + BASE_H - 60, w: 98, h: 44 }));
     if (sv.hero.pendingTalents > 0) btns.push({ kind: 'nav', id: 'party', label: t('talent.pending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     else if ((sv.hero.pendingAsi || []).length) btns.push({ kind: 'nav', id: 'party', label: t('lvl.asiPending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     S.buttons = btns;
@@ -646,7 +650,9 @@ export function createLocationScene(rawId) {
 
   function nav(game, id) {
     if (id === 'map') return toMap(game);
-    if (id === 'menu') { persist(game); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
+    if (id === 'toMenu') { persist(game); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
+    if (id === 'menu') return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') });
+    if (id === 'save') { persist(game); return openSaveMenu(game); }
     return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: self, canSwap: !!S.canSwap || loc.services.includes('rest') })));
   }
 
@@ -683,6 +689,7 @@ export function createLocationScene(rawId) {
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
+      else if (inp.wasPressed('KeyS')) nav(game, 'save');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },
     render(game) {
@@ -696,7 +703,7 @@ export function createLocationScene(rawId) {
       const tier = f ? facTier(game, f) : null;
       const regName = reg?.name && !loc.name.startsWith(reg.name) ? reg.name : '';
       text(ctx, [regName, f ? `${factionName(f)}: ${t(`tier.${tier}`)}` : ''].filter(Boolean).join(' · '), ox + 24, oy + 50, f ? tierColor(tier) : C['4'], FONT);
-      if (!sv.hero.pendingTalents && !(sv.hero.pendingAsi || []).length) text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} (${sv.hero.xp} XP)`, ox + BASE_W - 24, oy + 20, C.b, FONT_B, 'right');
+      if (!sv.hero.pendingTalents && !(sv.hero.pendingAsi || []).length) text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} (${xpInfo(sv.hero.xp, sv.hero.level).max ? sv.hero.xp : `${sv.hero.xp}/${xpInfo(sv.hero.xp, sv.hero.level).to}`} ${t('res.xp')})`, ox + BASE_W - 24, oy + 20, C.b, FONT_B, 'right');
       textBlock(ctx, loc.desc || '', ox + 24, oy + 72, BASE_W - 300, C['4'], FONT, LINE, 1);
       text(ctx, t('loc.people'), ox + 24, oy + 100, C['4'], FONT_B);
       S.rows.forEach((row) => {
@@ -724,6 +731,14 @@ export function createLocationScene(rawId) {
         text(ctx, fit(ctx, m.name, 130, FONT_B), x + 8, y + 4, m.isHero ? C.h : C['5'], FONT_B);
         bar(ctx, x + 8, y + 28, 130, 6, m.unit.hp, m.unit.maxHp, 'hp');
         bar(ctx, x + 8, y + 39, 130, 6, m.unit.mrl, m.unit.maxMrl, 'mrl');
+        hotspot(x + 4, y + 24, 138, 10, resTip('hp'));
+        hotspot(x + 4, y + 35, 138, 10, resTip('mrl'));
+        if (m.isHero) {
+          // XP to the next level (hover — numbers)
+          const xi = xpInfo(sv.hero.xp, sv.hero.level);
+          bar(ctx, x + 8, y + 47, 130, 3, xi.k, 1, 'xp');
+          hotspot(x + 4, y + 45, 138, 7, { ...resTip('xp'), lines: [t('tip.res.xp'), { text: xi.text, color: 'a' }] });
+        }
       });
     },
   };

@@ -1,11 +1,13 @@
 // Modal windows (stack in game.modals) and toasts (game.toasts). While a modal is open the scene gets no update().
-// Modal spec: { title, lines: [string | { text, color }], options: [{ label, sub?, disabled?, reason?, keep?, run?(game) }],
+// Modal spec: { title, lines: [string | { text, color }], options: [{ label, sub?, disabled?, reason?, keep?, run?(game), tip? }],
+//               tip — hover tooltip (ui/tooltip.js spec or () => spec)
 //               build?(game) -> spec (re-evaluated every frame: live shops), width?, onCancel?(game) }
 // Clicking an option closes the modal first (unless keep) and then calls run — so run may open the next modal.
 // Keys: 1–9 pick options, Esc — cancel (onCancel or close), Enter/Space — the only enabled option.
 import { C, FONT, FONT_B, FONT_L, LINE, text, wrap, panel, button, hitButton, fit } from './draw.js';
 import { play } from '../audio/sfx.js';
 import { t } from '../data/text/index.js';
+import { hotspot } from './tooltip.js';
 
 const OPT_H = 44;
 const GAP = 8;
@@ -100,7 +102,7 @@ export function renderModal(game) {
   panel(ctx, L.x, L.y, L.w, L.h, C['1'], spec.border ? C[spec.border] : C.h);
   text(ctx, fit(ctx, spec.title || '', L.w - 48, FONT_L), L.x + 24, L.y + 22, spec.titleColor ? C[spec.titleColor] : C.h, FONT_L);
   L.lines.forEach((l, i) => text(ctx, l.text, L.x + 24, L.y + 72 + i * LINE, l.color ? (C[l.color] || l.color) : C['5'], l.font || FONT));
-  for (const b of L.buttons) button(ctx, b, m._hover === b);
+  for (const b of L.buttons) { button(ctx, b, m._hover === b); if (b.tip) hotspot(b.x, b.y, b.w, b.h, b.tip); }
 }
 
 // ----------------------------------------------------------------------------- toasts

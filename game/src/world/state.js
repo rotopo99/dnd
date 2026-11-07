@@ -14,7 +14,7 @@ import {
   LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
   PLAY_DATA as GAME_DATA, resolveLocation, starterKit,
 } from './data.js';
-import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast } from './reputation.js';
+import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast, meetFaction, startMet } from './reputation.js';
 import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
 
@@ -38,7 +38,7 @@ export function newSave(hero) {
     party: [],
     location: START_LOCATION, prevLocation: null,
     discovered: [...START_DISCOVERED], visited: [],
-    rep: startingRep(hero.race, hero.origin, true),
+    rep: startingRep(hero.race, hero.origin, true), met: startMet(hero.origin),
     quests: {}, terminals: {}, flags: {}, deeds: {}, npcs: {}, caches: [], battlesDone: [], events: [],
     journal: [], cyberspace: null, settings: { aiCompanions: false },
   };
@@ -490,6 +490,7 @@ export function visit(save, raw) {
   if (save.location && save.location !== id) save.prevLocation = save.location;
   save.location = id;
   if (!save.visited.includes(id)) save.visited.push(id);
+  meetFaction(save, locFaction(id));
   discover(save, id);
   for (const r of routesFrom(id)) {
     const o = otherEnd(r, id);

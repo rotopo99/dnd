@@ -9,7 +9,8 @@ import { NPCS } from '../data/npcs.js';
 import { mod, TIER_BONUS } from '../rules/character.js';
 import { isBattleItem } from '../rules/combat.js';
 import { C, FONT, FONT_B, LINE, text, fit, panel } from '../ui/draw.js';
-import { itemStats, soonNote, unmetReq, tierName } from '../ui/items-ui.js';
+import { itemStats, soonNote, unmetReq, tierName, itemTip } from '../ui/items-ui.js';
+import { hotspot, showTip } from '../ui/tooltip.js';
 import { saveGame } from '../save.js';
 
 const SMALL = '12px monospace';
@@ -154,6 +155,7 @@ function slotLine(ctx, u, slot, id, x, y, w) {
     text(ctx, twoH ? t('gear.twoHandedBusy') : slot === 'weapon' ? `${u.weapon?.name || '—'} (${t('gear.classDefault')})` : slot === 'armor' ? t('gear.classDefault') : '—', x + 10, y + 24, C['3'], FONT);
     return;
   }
+  hotspot(x, y, w - 130, 70, () => itemTip(it, { u }));
   text(ctx, fit(ctx, it.name, w - 150, FONT_B), x + 10, y + 22, C['5'], FONT_B);
   const soon = soonNote(it);
   text(ctx, fit(ctx, `${itemStats(it)}${soon ? ` · ${soon}` : ''}`, w - 20, SMALL), x + 10, y + 42, soon ? C.a : C['4'], SMALL);
@@ -185,8 +187,8 @@ export function renderGear(game, S) {
   text(ctx, fit(ctx, pen.join(' · ') || t('gear.noPenalty'), 624, FONT), ox + 24, y, pen.length ? C.a : C['4'], FONT);
   // belt (battle items)
   y += LINE + 8;
-  const belt = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && isBattleItem(ITEMS[id])).map(([id, n]) => `${ITEMS[id].name} ×${n}`);
-  if (key === 'hero') text(ctx, fit(ctx, `${t('gear.belt')}: ${belt.join(', ') || '—'}`, 624, FONT), ox + 24, y, C['5'], FONT);
+  const belt = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && isBattleItem(ITEMS[id]));
+  if (key === 'hero') itemChips(ctx, `${t('gear.belt')}:`, belt, ox + 24, y, 624, { u });
   else text(ctx, fit(ctx, t('gear.sharedBackpack'), 624, FONT), ox + 24, y, C['4'], FONT);
   // backpack + comparison
   text(ctx, t('gear.backpack'), ox + 680, oy + 64, C['4'], FONT_B);
@@ -225,13 +227,26 @@ function compare(game, S, b) {
     lines.push({ text: `${t('prof.tier')}: ${d(cur.weaponTier, nu.weaponTier)} (${tierName(nu.weaponTier)})`, color: nu.weaponTier <= 1 ? C.c : col(cur.weaponTier, nu.weaponTier) });
   }
   if (it.slot === 'armor') lines.push({ text: `${t('prof.tier')}: ${d(cur.armorTier, nu.armorTier)} (${tierName(nu.armorTier)})${nu.armorPenalty ? ` — ${t('gear.penalty')}` : ''}`, color: nu.armorPenalty ? C.c : C['5'] });
-  const req = unmetReq(it, nu);
-  if (req.length) lines.push({ text: `${t('item.req')} ${req.join(', ')}: ${t('gear.reqPenalty')}`, color: C.c });
-  const soon = soonNote(it);
-  if (soon) lines.push({ text: soon, color: C.a });
-  if (it.desc) lines.push({ text: it.desc, color: C['4'] });
-  const w = 420, hgt = 14 + lines.length * 18;
-  const x = Math.max(8, b.x - w - 8), y = Math.min(S.oy + 700 - hgt, b.y);
-  panel(ctx, x, y, w, hgt, C['0'], C.h);
-  lines.forEach((l, i) => text(ctx, fit(ctx, l.text, w - 20, SMALL), x + 10, y + 8 + i * 18, l.color, SMALL));
+  const eqNow = eqOf(sv, key);
+  const worn = ITEMS[it.slot === 'mod' ? null : eqNow[it.slot]];
+  const tip = itemTip(it, { u: nu, equipped: worn, tier: false });
+  showTip({ ...tip, width: 440, lines: [...tip.lines, '', { text: t('tip.ifEquip'), color: C.h }, ...lines] });
+}
+
+/** Inline list of items «name ×n» with hover cards (wraps; returns the y after the last row). */
+export function itemChips(ctx, label, entries, x, y, w, o = {}) {
+  ctx.font = FONT;
+  let cx = x;
+  if (label) { text(ctx, label, x, y, C['4'], FONT); cx += ctx.measureText(label).width + 8; }
+  if (!entries.length) { text(ctx, '—', cx, y, C['3'], FONT); return y + LINE; }
+  entries.forEach(([id, n], i) => {
+    const it = ITEMS[id];
+    const s = `${it?.name || id}${n > 1 ? ` ×${n}` : ''}${i < entries.length - 1 ? ',' : ''}`;
+    const sw = ctx.measureText(s).width;
+    if (cx + sw > x + w && cx > x) { cx = x; y += LINE; }
+    text(ctx, s, cx, y, C['5'], FONT);
+    if (it) hotspot(cx, y, sw, LINE, () => itemTip(it, { u: o.u, have: n }));
+    cx += sw + ctx.measureText(' ').width;
+  });
+  return y + LINE;
 }

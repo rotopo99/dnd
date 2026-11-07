@@ -21,6 +21,15 @@ export function levelForXp(xp) {
   return Math.min(MAX_LEVEL, lv);
 }
 export const xpForLevel = (level) => XP_THRESHOLDS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+/** Progress inside the current level (UI XP bars): { from, to, into, span, left, k ∈ [0,1], max }. */
+export function xpProgress(xp, level = levelForXp(xp)) {
+  const lv = Math.max(1, Math.min(MAX_LEVEL, level));
+  const from = XP_THRESHOLDS[lv - 1];
+  if (lv >= MAX_LEVEL) return { from, to: from, into: 0, span: 0, left: 0, k: 1, max: true };
+  const to = XP_THRESHOLDS[lv];
+  const into = Math.max(0, xp - from);
+  return { from, to, into, span: to - from, left: Math.max(0, to - xp), k: Math.max(0, Math.min(1, into / (to - from))), max: false };
+}
 /** XP still needed for the next level (0 at the cap). */
 export function xpToNext(xp) {
   const lv = levelForXp(xp);

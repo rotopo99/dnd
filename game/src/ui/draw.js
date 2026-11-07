@@ -15,6 +15,7 @@ export const RES_COLORS = {
   hp: { fill: C.c, empty: C.d },
   mrl: { fill: C.f, empty: C.g },
   enr: { fill: C.b, empty: C['6'] },
+  xp: { fill: C.a, empty: C['2'] },
 };
 
 export function text(ctx, s, x, y, color = C['5'], font = FONT, align = 'left') {

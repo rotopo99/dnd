@@ -19,8 +19,10 @@ import {
 import { chebyshev, lineOfSight, walkLine, T_WALL } from '../rules/grid.js';
 import { chooseAction } from '../rules/ai.js';
 import { play } from '../audio/sfx.js';
-import { formatEvent, eventSound } from '../ui/battle-log.js';
-import { hitButton, inRect, C } from '../ui/draw.js';
+import { formatEvent, eventSound, teamColor } from '../ui/battle-log.js';
+import { createScroll, updateScroll } from '../ui/scroll.js';
+import { ITEMS } from '../data/index.js';
+import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
@@ -29,7 +31,8 @@ import { SKILL_RULES } from '../data/world/skill-rules.js';
 const AI_STEP = 0.42; // s between AI actions
 const AI_TURN_GAP = 0.3; // s before an AI unit starts acting
 const WALK_SPEED = 9; // tiles per second
-const MAX_LOG = 200;
+const MAX_LOG = 3000; // the whole battle (scrolled in the log panel)
+const ACT_POP_T = 1.2; // seconds an action name hangs over the unit
 const MAX_AI_STEPS = 16;
 const EMO_HOLD = 1.5; // s a battle portrait keeps an event emotion (portraits v2), then back to neutral
 
@@ -134,6 +137,8 @@ export function createBattleScene(opts) {
     S.disp = {};
     b.units.forEach((u, i) => addDisp(u, i));
     S.popups = [];
+    S.actPops = []; // action / ability / item names over the acting unit
+    S.logScroll = createScroll();
     S.bubbles = [];
     S.log = [];
     S.sel = null; // { kind: 'attack' } | { kind: 'ability', a }
@@ -475,6 +480,14 @@ export function createBattleScene(opts) {
     S.popups.push({ id: u.id, x: d.x, y: d.y, text, color, t: -stack * 0.25 });
   }
 
+  /** Name of the used action over the unit (team colour, ~1 s). Weapon attacks inside an ability are not repeated. */
+  function actPop(u, label) {
+    if (!u || !label || isHiddenFoe(u)) return;
+    compact(S.actPops, (x) => x.id !== u.id);
+    S.actPops.push({ id: u.id, text: label, color: teamColor(u), t: 0 });
+    S.lastActPop = { id: u.id, time: S.time };
+  }
+
   function bubble(u, text, portrait = false) {
     compact(S.bubbles, (x) => x.id !== u.id);
     S.bubbles.push({ id: u.id, text, t: 0, portrait });
@@ -514,7 +527,17 @@ export function createBattleScene(opts) {
         if (u) dispOf(u).path.push({ ...e.to });
         break;
       }
-      case 'attack': if (!e.hit && T) popup(T, t('battle.miss'), C['4']); break;
+      case 'attack':
+        if (A && !(S.lastActPop?.id === A.id && S.lastActPop.time === S.time)) actPop(A, A.weapon?.name || t('battle.attack'));
+        if (!e.hit && T) popup(T, t('battle.miss'), C['4']);
+        break;
+      case 'ability': actPop(A, e.name); break;
+      case 'useItem': actPop(A, ITEMS[e.item]?.name || e.item); break;
+      case 'burst': actPop(A, t('battle.burst')); break;
+      case 'throw': actPop(A, `${t('battle.throwPop')}: ${ITEMS[e.item]?.name || A?.weapon?.name || ''}`); break;
+      case 'weaponArea': actPop(A, A?.weapon?.name); break;
+      case 'opportunity': actPop(A, t('battle.opportunityPop')); break;
+      case 'trapPlaced': actPop(A, ITEMS[e.item]?.name || e.item); break;
       case 'damage': {
         if (!T) break;
         const d = dispOf(T);
@@ -584,6 +607,8 @@ export function createBattleScene(opts) {
       if (dist <= stepLen) { d.x = p.x; d.y = p.y; d.path.shift(); play('step'); }
       else { d.x += (dx / dist) * stepLen; d.y += (dy / dist) * stepLen; }
     }
+    for (const p of S.actPops) p.t += dt;
+    compact(S.actPops, (p) => p.t < ACT_POP_T);
     for (const p of S.popups) p.t += dt;
     compact(S.popups, (p) => p.t < 1.1);
     for (const x of S.bubbles) x.t += dt;
@@ -633,6 +658,9 @@ export function createBattleScene(opts) {
       if (cx >= 0 && cy >= 0 && cx < S.b.grid.w && cy < S.b.grid.h) S.hover.cell = { x: cx, y: cy };
     }
     S.hover.button = hitButton(S.buttons, m);
+    // battle log: wheel + slider, sticks to the newest line while scrolled to the end
+    const logUsed = updateScroll(S.logScroll, L.log, S.log.length * LINE + 8, m, { step: LINE * 3, follow: true });
+    if (logUsed) return;
     const locked = !S.playerTurn || S.queue.length || busy();
     if (inp.wasPressed('Escape') || m.rightClicked) { if (S.sel) { S.sel = null; S.dirty = true; } }
     if (locked) return;

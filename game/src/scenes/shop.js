@@ -6,7 +6,7 @@
 import { t } from '../data/text/index.js';
 import { play } from '../audio/sfx.js';
 import { ITEMS, SKILL_RULES } from '../world/data.js';
-import { itemStats, soonNote } from '../ui/items-ui.js';
+import { itemStats, soonNote, itemTip } from '../ui/items-ui.js';
 import { members } from '../world/state.js';
 import { worldFlagValues } from '../world/checks.js';
 import { chaTrade, knowsSkill } from '../world/skill-uses.js';
@@ -60,16 +60,18 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
             g2.toast(t(ok ? 'shop.junkOk' : 'shop.junkFail'), ok ? 'j' : 'c'); saveGame(sv);
             if (ok) reopen(g2); else onClose?.(g2);
           } }) });
+      const hero = ms[0]?.unit;
+      const tipOf = (id, price) => () => itemTip(ITEMS[id], { u: hero, price, have: sv.hero.items[id] || 0, equipped: ITEMS[sv.hero.equipment?.[ITEMS[id].slot]] });
       const buy = stock.filter((id) => ITEMS[id]).map((id) => {
         const it = ITEMS[id];
         const price = Math.max(1, Math.round(it.price * pr.buy));
         const q = appraise && it.slot === 'weapon' && it.tier ? ` · ${t('shop.quality')} ${it.tier}` : '';
-        return { label: `${t('shop.buy')}: ${it.name} — ${price}${q}`, sub: `${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price,
+        return { label: `${t('shop.buy')}: ${it.name} — ${price}${q}`, sub: `${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price, tip: tipOf(id, price),
           run: () => { sv.hero.credits -= price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); saveGame(sv); } };
       });
       const sell = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && ITEMS[id]?.price > 0 && !ITEMS[id].key).map(([id, n]) => {
         const price = Math.max(1, Math.floor(ITEMS[id].price * pr.sell));
-        return { label: `${t('shop.sell')}: ${ITEMS[id].name} ×${n} — ${price}`, keep: true,
+        return { label: `${t('shop.sell')}: ${ITEMS[id].name} ×${n} — ${price}`, keep: true, tip: tipOf(id, price),
           run: () => { sv.hero.items[id]--; sv.hero.credits += price; play('uiClick'); saveGame(sv); } };
       });
       const info = [`${t('world.credits')}: ${sv.hero.credits}`];

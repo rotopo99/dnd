@@ -19,6 +19,7 @@ import { runEvent, travelEvents } from './event.js';
 import { runEncounter } from './encounter.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
+import { openPauseMenu } from '../ui/save-ui.js';
 
 const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
 
@@ -287,7 +288,9 @@ export function createWorldMapScene() {
     if (id === 'center') return centerOn(save(game).location);
     if (id === 'night') { S.night = !S.night; layout(game); return; }
     if (id === 'enter') return enterLocation(game);
-    if (id === 'menu') { saveGame(save(game)); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
+    if (id === 'toMenu') { saveGame(save(game)); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
+    if (id === 'menu') { if (S.travel) return; saveGame(save(game)); return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') }); }
+    if (id === 'enter' && S.travel) return;
     return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: self })));
   }
 
@@ -541,6 +544,7 @@ export function createWorldMapScene() {
       if (inp.wasPressed('Equal') || inp.wasPressed('NumpadAdd')) nav(game, 'zoomIn');
       if (inp.wasPressed('Minus') || inp.wasPressed('NumpadSubtract')) nav(game, 'zoomOut');
       if (inp.wasPressed('KeyC')) nav(game, 'center');
+      for (const b of S.buttons) if (b.id === 'enter' || b.id === 'menu') b.disabled = !!S.travel;
       S.hover = hitButton(S.buttons, m);
       if (m.clicked && !S.hover && m.y >= S.area.y && m.y < S.area.y + S.area.h) S.drag = { x: m.x, y: m.y, cx: S.cam.x, cy: S.cam.y, moved: false };
       if (S.drag && m.down) {
@@ -548,7 +552,16 @@ export function createWorldMapScene() {
         if (Math.abs(dx) + Math.abs(dy) > 6) S.drag.moved = true;
         if (S.drag.moved) { S.cam.x = S.drag.cx - dx / S.cam.z; S.cam.y = S.drag.cy - dy / S.cam.z; clampCam(); }
       }
-      if (S.travel) { if (m.released) S.drag = null; if (!S.paused) stepTravel(game, dt); return; }
+      if (S.travel) {
+        if (m.released) S.drag = null;
+        // while travelling: zoom / centre / night and the panels work (the trip waits while a panel is open)
+        if (m.clicked && S.hover && !S.hover.disabled) { play('uiClick'); S.drag = null; nav(game, S.hover.id); return; }
+        if (inp.wasPressed('KeyP')) return nav(game, 'party');
+        if (inp.wasPressed('KeyR')) return nav(game, 'rep');
+        if (inp.wasPressed('KeyJ')) return nav(game, 'journal');
+        if (!S.paused) stepTravel(game, dt);
+        return;
+      }
       S.hoverNode = !S.hover && m.inside && m.y >= S.area.y && m.y < S.area.y + S.area.h ? nodeAt(sv, m.x, m.y) : null;
       if (m.clicked && S.hover) { play('uiClick'); S.drag = null; nav(game, S.hover.id); return; }
       // click on a node = pointer released without dragging (a quick click may release within the same step)

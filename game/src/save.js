@@ -3,23 +3,58 @@
 import { TALENTS } from './data/talents.js';
 import { NPCS } from './data/npcs.js';
 import { LOCATIONS, START_LOCATION, START_DISCOVERED, QUESTS, ITEMS, resolveLocation, starterKit } from './world/data.js';
-import { FACTION_IDS } from './world/reputation.js';
+import { FACTION_IDS, startMet, normFaction } from './world/reputation.js';
+import { locFaction } from './world/state.js';
+import { npcRepFaction } from './world/data.js';
 import { WORLD_RULES as R } from './data/world/rules.js';
 import { MAX_LEVEL } from './rules/progression.js';
 
-export const SAVE_KEY = 'ruslania-save-v1';
+export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
+/** Manual slots 1..SLOT_COUNT + 'auto'. Every saveGame() writes the autosave; saveToSlot() — a manual slot. */
+export const SLOT_COUNT = 4;
+export const SLOTS = ['auto', ...Array.from({ length: SLOT_COUNT }, (_, i) => i + 1)];
+export const slotKey = (slot) => (slot === 'auto' ? SAVE_KEY : `${SAVE_KEY}-slot${slot}`);
 
 let onError = null;
 /** Called with no args when a save could not be written (UI shows a toast). */
 export function setSaveErrorHandler(fn) { onError = fn; }
 
-export function hasSave() {
+function readRaw(slot) {
   try {
-    return !!globalThis.localStorage?.getItem(SAVE_KEY);
+    return globalThis.localStorage?.getItem(slotKey(slot)) || null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Any slot has a save. */
+export function hasSave() { return SLOTS.some((s) => !!readRaw(s)); }
+
+/**
+ * Slot list for the load / save windows: [{ slot, empty, broken?, name, level, location, day, savedAt }].
+ * Reads only the header fields (no normalisation); `location` is the raw id.
+ */
+export function listSlots() {
+  return SLOTS.map((slot) => {
+    const raw = readRaw(slot);
+    if (!raw) return { slot, empty: true };
+    try {
+      const s = JSON.parse(raw);
+      if (!s?.hero || s.version !== SAVE_VERSION) return { slot, empty: false, broken: true };
+      return { slot, empty: false, name: s.hero.name, level: s.hero.level || 1, location: s.location, day: s.day || 1, savedAt: s.savedAt || 0, cyberspace: !!s.cyberspace };
+    } catch {
+      return { slot, empty: false, broken: true };
+    }
+  });
+}
+
+/** The most recently written usable slot (for «Продолжить»), or null. */
+export function latestSlot() {
+  const ok = listSlots().filter((x) => !x.empty && !x.broken);
+  if (!ok.length) return null;
+  ok.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0) || (a.slot === 'auto' ? -1 : 1));
+  return ok[0].slot;
 }
 
 const num = (v, d = 0) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : d);
@@ -68,6 +103,10 @@ export function normalizeSave(s, data) {
   out.rep = Object.fromEntries(FACTION_IDS.map((f) => [f, Math.max(-100, Math.min(100, num(rep[f])))]));
   out.quests = Object.fromEntries(Object.entries(obj(s.quests)).filter(([id, q]) => QUESTS[id] && q && QUESTS[id].stages.some((x) => x.id === q.stage))
     .map(([id, q]) => [id, { opt: null, subs: {}, fails: {}, failedOpts: {}, ...q, subs: obj(q.subs), fails: obj(q.fails), failedOpts: obj(q.failedOpts) }]));
+  // factions met (reputation hidden until then); old saves: prologue + origin + factions of visited nodes and met NPCs
+  out.met = Array.isArray(s.met) ? uniq(s.met.filter((f) => FACTION_IDS.includes(f)))
+    : uniq([...startMet(h.origin), ...out.visited.map(locFaction), ...Object.keys(obj(s.npcs)).filter((id) => NPCS[id] && s.npcs[id]?.met).map((id) => normFaction(npcRepFaction(NPCS[id])))]
+      .filter((f) => FACTION_IDS.includes(f)));
   out.terminals = obj(s.terminals);
   for (const l of Object.values(LOCATIONS)) if (l.terminal && !['ritual', 'dead', 'ours'].includes(out.terminals[l.terminal.id])) out.terminals[l.terminal.id] = l.terminal.state;
   out.flags = Object.fromEntries(Object.entries(obj(s.flags)).map(([k, v]) => {
@@ -92,10 +131,10 @@ function normEquipment(e, cls, path) {
   return { weapon: ok(e.weapon, 'weapon'), armor: ok(e.armor, 'armor'), offhand: ok(e.offhand, 'offhand'), mods: uniq(arr(e.mods).filter((m) => ok(m, 'mod'))) };
 }
 
-/** Returns the normalised save or null (missing / corrupted / other version). */
-export function loadGame(data) {
+/** Returns the normalised save of a slot (default — autosave) or null (missing / corrupted / other version). */
+export function loadGame(data, slot = 'auto') {
   try {
-    const raw = globalThis.localStorage?.getItem(SAVE_KEY);
+    const raw = readRaw(slot);
     if (!raw) return null;
     const s = JSON.parse(raw);
     if (!s || s.version !== SAVE_VERSION) return null;
@@ -105,11 +144,16 @@ export function loadGame(data) {
   }
 }
 
-export function saveGame(save) {
+/** Autosave (every world action calls it). */
+export function saveGame(save) { return saveToSlot(save, 'auto'); }
+
+/** Write a save into a slot ('auto' or 1..SLOT_COUNT). */
+export function saveToSlot(save, slot) {
   if (!save) return false;
   try {
     if (save.battlesDone) save.battlesDone = uniq(save.battlesDone);
-    globalThis.localStorage?.setItem(SAVE_KEY, JSON.stringify(save));
+    save.savedAt = Date.now();
+    globalThis.localStorage?.setItem(slotKey(slot), JSON.stringify(save));
     return true;
   } catch {
     onError?.();
@@ -117,9 +161,10 @@ export function saveGame(save) {
   }
 }
 
-export function deleteSave() {
+/** Deletes the autosave (game over); manual slots stay — they are the player's. */
+export function deleteSave(slot = 'auto') {
   try {
-    globalThis.localStorage?.removeItem(SAVE_KEY);
+    globalThis.localStorage?.removeItem(slotKey(slot));
   } catch {
     /* no-op */
   }

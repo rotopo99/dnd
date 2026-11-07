@@ -8,16 +8,12 @@ import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_XL, text, button, hitButton, clear } from '../ui/draw.js';
 import { createCreateScene } from './create.js';
 import { createBattleScene } from './battle.js';
-import { hasSave, loadGame } from '../save.js';
+import { hasSave } from '../save.js';
+import { continueLatest, openLoadMenu } from '../ui/save-ui.js';
 
-/** Load the save and go to its location (or back into an unfinished Cyberspace episode). */
+/** Load the most recent save (autosave or a manual slot) and go to its location / Cyberspace episode. */
 export function continueGame(game) {
-  const save = loadGame(game.data);
-  if (!save) { game.toast(t('menu.noSave'), 'c'); layout(game); return; }
-  game.save = save;
-  if (save.cyberspace?.pending || (save.cyberspace && !save.cyberspace.nodes)) import('./cyberspace.js').then((m) => m.startCyberspace(game, save.cyberspace));
-  else if (save.cyberspace) import('./cyberspace.js').then((m) => game.setScene(m.createCyberspaceScene()));
-  else import('./location.js').then((m) => game.setScene(m.createLocationScene(save.location)));
+  if (!continueLatest(game)) { game.toast(t('menu.noSave'), 'c'); layout(game); }
 }
 
 const pick = (arr) => arr[(Math.random() * arr.length) | 0];
@@ -54,7 +50,10 @@ function layout(game) {
   const y = Math.floor(H / 2) - 10;
   buttons = [];
   let yy = y;
-  if (hasSave()) { buttons.push({ id: 'continue', label: t('menu.continue'), x, y: yy, w, h, selected: true }); yy += h + 16; }
+  if (hasSave()) {
+    buttons.push({ id: 'continue', label: t('menu.continue'), x, y: yy, w, h, selected: true }); yy += h + 16;
+    buttons.push({ id: 'load', label: t('save.load'), key: 'L', x, y: yy, w, h }); yy += h + 16;
+  }
   buttons.push({ id: 'new', label: t('menu.newGame'), x, y: yy, w, h });
   buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: yy + h + 16, w, h: 60 });
 }
@@ -82,9 +81,11 @@ export const menuScene = {
     if (game.input.wasPressed('Enter') || game.input.wasPressed('Space')) act = buttons[0].id;
     if (game.input.wasPressed('KeyN')) act = 'new';
     if (game.input.wasPressed('KeyQ')) act = 'quick';
+    if (game.input.wasPressed('KeyL') && hasSave()) act = 'load';
     if (!act) return;
     play('uiClick');
     if (act === 'continue') return continueGame(game);
+    if (act === 'load') return openLoadMenu(game);
     if (act === 'new') game.setScene(createCreateScene());
     else startQuickBattle(game);
   },

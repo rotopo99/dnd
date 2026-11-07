@@ -1,6 +1,7 @@
 // Level-up windows (docs/specs/levels-20.md): what the new levels gave (hero + companions), ASI choice
 // (+2 / +1+1 / talent instead), talent pick, character sheet of abilities. All built on game.openModal.
 import { t } from '../data/text/index.js';
+import { xpInfo, abilityTip } from '../ui/tips.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, talentsForSlot } from '../data/talents.js';
 import { STATS, ASI_STAT_MAX } from '../rules/character.js';
@@ -145,15 +146,21 @@ export function openTalentPick(game, onPick, onCancel) {
 }
 
 /** Character sheet: stats and ASI in lines, abilities as paged options (sub = description), passives last. */
-export function openSheet(game, u, name) {
+export function openSheet(game, u, name, xp = null) {
   const lines = [{ text: `${t('lvl.stats')}: ${STATS.map((k) => `${statName(k)} ${u.stats[k]}`).join('  ')}`, color: '5' }];
+  if (xp != null) {
+    // XP to the next level as a text bar
+    const xi = xpInfo(xp, u.level);
+    const n = 24, k = Math.round(xi.k * n);
+    lines.push({ text: `${t('res.xp.full')}: ${'■'.repeat(k)}${'□'.repeat(n - k)} ${xi.text}`, color: 'a' });
+  }
   if (u.asi && u.asi.length) lines.push({ text: `${t('lvl.asi')}: ${u.asi.map((e) => `${e.level}: ${e.talent ? TALENTS[e.talent]?.name || e.talent : Object.entries(e.stats || {}).map(([k, v]) => `${statName(k)} +${v}`).join(', ')}`).join(' · ')}`, color: 'b' });
   const passives = u.passives.filter((p) => p.name);
   if (passives.length) lines.push({ text: `${t('lvl.passive')}: ${passives.map((p) => p.name).join(', ')}`, color: 'j' });
   const options = u.abilities.map((a) => {
     const tags = [a.level ? `${t('world.level')} ${a.level}` : '', a.cost ? tf('lvl.cost', { n: a.cost }) : '', a.usesPerBattle ? tf('lvl.uses', { n: a.usesPerBattle }) : '',
       a.upgrades ? tf('lvl.upgraded', { n: a.upgrades.join(', ') }) : ''].filter(Boolean).join(' · ');
-    return { label: `${a.upgrades ? '▲ ' : a.level === u.level ? '★ ' : ''}${a.name} (${tags})`, sub: a.desc || '', keep: true };
+    return { label: `${a.upgrades ? '▲ ' : a.level === u.level ? '★ ' : ''}${a.name} (${tags})`, sub: a.desc || '', keep: true, tip: abilityTip(a) };
   });
   options.push({ label: t('lvl.ok') });
   game.openModal({ title: tf('lvl.sheetTitle', { name }), width: 1100, lines, options });

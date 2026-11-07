@@ -5,8 +5,13 @@ import { drawUnitPortrait } from './portrait-of.js';
 import { TILE, drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
 import { abilityRange, unitView } from '../rules/combat.js';
 import { pathTo } from '../rules/grid.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, resLine, clear } from './draw.js';
+import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, clear } from './draw.js';
 import { teamColor } from './battle-log.js';
+import { ITEMS } from '../data/index.js';
+import { beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
+import { hotspot } from './tooltip.js';
+import { resLineTip, resTip, statusTip, termTip } from './tips.js';
+import { itemTip } from './items-ui.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -197,6 +202,7 @@ export function renderBattle(game, S) {
   const preview = drawHighlights(ctx, S);
   drawUnits(ctx, S, preview, tms);
   drawPopups(ctx, S);
+  drawActPops(ctx, S);
   drawTopBar(ctx, S);
   drawActionBar(ctx, S);
   drawLog(ctx, S);
@@ -385,6 +391,25 @@ function drawPopups(ctx, S) {
   ctx.globalAlpha = 1;
 }
 
+/** Action / ability / item names over the acting unit in its team colour (S.actPops, ~1 s). */
+function drawActPops(ctx, S) {
+  const L = S.L;
+  const font = 'bold 14px monospace';
+  for (const p of S.actPops || []) {
+    const u = S.b.byId[p.id];
+    if (!u) continue;
+    const d = S.dispOf(u);
+    ctx.font = font;
+    const w = Math.ceil(ctx.measureText(p.text).width) + 14;
+    const x = Math.round(L.mapX + d.x * L.cell + L.cell / 2 - w / 2);
+    const y = Math.max(TOP_H + 2, Math.round(L.mapY + d.y * L.cell - 34 - Math.min(0.25, p.t) * 16));
+    ctx.globalAlpha = p.t > 0.9 ? Math.max(0, (1.2 - p.t) / 0.3) : 1;
+    panel(ctx, x, y, w, 20, C['0'], p.color);
+    text(ctx, p.text, x + w / 2, y + 3, p.color, font, 'center');
+    ctx.globalAlpha = 1;
+  }
+}
+
 function drawTopBar(ctx, S) {
   const L = S.L, b = S.b;
   const cu = b.turn && !b.winner ? b.byId[b.turn.unitId] : null;
@@ -438,25 +463,32 @@ function drawActionBar(ctx, S) {
 function drawLog(ctx, S) {
   const L = S.L;
   const r = L.log;
+  const sc = S.logScroll || { off: Math.max(0, S.log.length * LINE + 8 - r.h), max: 0 };
   panel(ctx, r.x, r.y, r.w, r.h, C['1'], C['2']);
-  const n = Math.floor((r.h - 8) / LINE);
-  const start = Math.max(0, S.log.length - n);
+  const first = Math.max(0, Math.floor((sc.off - 4) / LINE));
+  const last = Math.min(S.log.length, first + Math.ceil(r.h / LINE) + 1);
+  const right = r.x + r.w - SCROLLBAR_W - 8;
+  beginClip(ctx, r);
   ctx.font = FONT;
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
-  for (let i = start, row = 0; i < S.log.length; i++, row++) {
-    const y = r.y + 4 + row * LINE;
+  for (let i = first; i < last; i++) {
+    const y = r.y + 4 + i * LINE - sc.off;
     const entry = S.log[i];
-    // fitted segments are cached on the entry per log width
+    // fitted segments (+ hover tips of terms: statuses, abilities, items) are cached on the entry per log width
     if (!entry.fitted || entry.fitW !== r.w) {
       entry.fitW = r.w;
       entry.fitted = [];
+      entry.tips = [];
       let x = r.x + 8;
-      for (const [s, col] of entry) {
-        if (x > r.x + r.w - 16) break;
-        const str = fit(ctx, s, r.x + r.w - 8 - x);
+      for (const [str0, col] of entry) {
+        if (x > right - 8) break;
+        const str = fit(ctx, str0, right - x);
+        const w = ctx.measureText(str).width;
         entry.fitted.push(str, col, x - r.x);
-        x += ctx.measureText(str).width;
+        const tip = col !== C['4'] ? logTermTip(S, str0) : null;
+        if (tip) entry.tips.push({ dx: x - r.x, w, tip });
+        x += w;
       }
     }
     const f = entry.fitted;
@@ -464,11 +496,49 @@ function drawLog(ctx, S) {
       ctx.fillStyle = f[k + 1];
       ctx.fillText(f[k], r.x + f[k + 2], y);
     }
+    if (y >= r.y && y + LINE <= r.y + r.h) for (const tp of entry.tips) {
+      // dotted underline marks a «hyperlink»
+      ctx.fillStyle = C['3'];
+      for (let xx = 0; xx < tp.w; xx += 3) ctx.fillRect(r.x + tp.dx + xx, y + 17, 1, 1);
+      hotspot(r.x + tp.dx, y, tp.w, LINE, tp.tip);
+    }
   }
+  endClip(ctx);
+  ctx.font = FONT;
+  if (S.logScroll) drawScrollbar(ctx, S.logScroll, r);
 }
 
-function statusLine(b, u) {
-  return u.statuses.map((s) => `${b.data.statuses[s.id]?.name || s.id}${s.turns != null ? ` ${s.turns}` : ''}`).join(', ');
+/** Tip for a log segment: status / ability name, or an item «name». */
+function logTermTip(S, str) {
+  const b = S.b;
+  if (!S._abilities) S._abilities = b.units.flatMap((u) => u.abilities || []);
+  const tip = termTip(str, b.data.statuses, S._abilities);
+  if (tip) return tip;
+  const m = /«(.+)»/.exec(str);
+  if (m) {
+    const it = Object.values(ITEMS).find((x) => x.name === m[1]);
+    if (it) return itemTip(it);
+  }
+  return null;
+}
+
+/** Statuses as hover-able names (wrapping). Returns the y after the last row. */
+function statusChips(ctx, b, u, x, y, w, maxRows = 3) {
+  const list = u.statuses || [];
+  if (!list.length) return y;
+  ctx.font = FONT;
+  let cx = x, row = 0;
+  list.forEach((st, i) => {
+    const d = b.data.statuses[st.id];
+    const s = `${d?.name || st.id}${st.turns != null ? ` ${st.turns}` : ''}${i < list.length - 1 ? ',' : ''}`;
+    const sw = ctx.measureText(s).width;
+    if (cx + sw > x + w && cx > x) { cx = x; row++; }
+    if (row >= maxRows) return;
+    text(ctx, s, cx, y + row * LINE, d?.kind === 'buff' ? C.j : C.a, FONT);
+    hotspot(cx, y + row * LINE, sw, LINE, statusTip(st.id, b.data.statuses));
+    cx += sw + ctx.measureText(' ').width;
+  });
+  return y + (Math.min(row, maxRows - 1) + 1) * LINE;
 }
 
 function unitCard(ctx, S, u, x, y, w, odds) {
@@ -481,17 +551,17 @@ function unitCard(ctx, S, u, x, y, w, odds) {
   const tx = x + 56, tw = w - 56;
   text(ctx, fit(ctx, S.name(u.id), tw, FONT_B), tx, y, teamColor(u), FONT_B);
   y += 24;
-  resLine(ctx, tx, y, tw, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
-  if (v.maxMrl > 0) { resLine(ctx, tx, y, tw, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
+  resLineTip(ctx, tx, y, tw, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
+  if (v.maxMrl > 0) { resLineTip(ctx, tx, y, tw, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
   y = Math.max(y, top + 52);
-  if (v.maxEnr > 0) { resLine(ctx, x, y, w, 'enr', v.enr, v.maxEnr, t('res.enr')); y += 22; }
+  if (v.maxEnr > 0) { resLineTip(ctx, x, y, w, 'enr', v.enr, v.maxEnr, t('res.enr')); y += 22; }
   let info = `${t('res.kb')} ${v.kb}  ${t('create.speed')} ${v.speed}`;
   if (v.shield) info += `  ${t('battle.shield')} ${v.shield}`;
-  text(ctx, info, x, y, C['4']); y += LINE;
+  text(ctx, info, x, y, C['4']);
+  hotspot(x, y, 70, LINE, resTip('kb')); y += LINE;
   if (v.down) { text(ctx, t('state.unconscious'), x, y, C.c, FONT_B); y += LINE; }
   if (v.nadlom) { text(ctx, t('state.strain'), x, y, C.n, FONT_B); y += LINE; }
-  const st = statusLine(b, u);
-  if (st) y = textBlock(ctx, st, x, y, w, C.a, FONT, LINE, 3);
+  y = statusChips(ctx, b, u, x, y, w, 3);
   if (odds) {
     y += 4;
     if (odds.kind === 'hit') {
@@ -546,11 +616,12 @@ function drawPanel(ctx, S, preview) {
   text(ctx, fit(ctx, raceName, w - 108), x + 106, y + 30, C['4']);
   text(ctx, fit(ctx, cls?.name || '', w - 108), x + 106, y + 50, C['4']);
   y += 110;
-  resLine(ctx, x, y, w, 'hp', S.dispOf(hero).hp, hero.maxHp, t('res.hp')); y += 22;
-  resLine(ctx, x, y, w, 'mrl', S.dispOf(hero).mrl, hero.maxMrl, t('res.mrl')); y += 22;
-  resLine(ctx, x, y, w, 'enr', hero.enr, hero.maxEnr, t('res.enr')); y += 24;
+  resLineTip(ctx, x, y, w, 'hp', S.dispOf(hero).hp, hero.maxHp, t('res.hp')); y += 22;
+  resLineTip(ctx, x, y, w, 'mrl', S.dispOf(hero).mrl, hero.maxMrl, t('res.mrl')); y += 22;
+  resLineTip(ctx, x, y, w, 'enr', hero.enr, hero.maxEnr, t('res.enr')); y += 24;
   const v = unitView(b, hero);
   text(ctx, `${t('res.kb')} ${v.kb}${v.shield ? `  ${t('battle.shield')} ${v.shield}` : ''}`, x, y, C['5'], FONT_B);
+  hotspot(x, y, 70, LINE, resTip('kb'));
   if (S.playerTurn) {
     const tr = b.turn;
     const pip = (on) => (on ? '●' : '○');
@@ -559,10 +630,9 @@ function drawPanel(ctx, S, preview) {
     text(ctx, `${t('battle.action')} ${pip(tr.actions > 0)}   ${t('battle.bonus')} ${pip(tr.bonus > 0)}`, x, y, C['5']);
   } else y += LINE;
   y += LINE;
-  const st = statusLine(b, hero);
   if (v.down) { text(ctx, t('state.unconscious'), x, y, C.c, FONT_B); y += LINE; }
   if (v.nadlom) { text(ctx, t('state.strain'), x, y, C.n, FONT_B); y += LINE; }
-  if (st) y = textBlock(ctx, st, x, y, w, C.a, FONT, LINE, 2);
+  y = statusChips(ctx, b, hero, x, y, w, 2);
   y += 8;
   // context card
   const cardY = y;
