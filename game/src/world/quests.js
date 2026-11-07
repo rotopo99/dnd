@@ -4,6 +4,10 @@
 // A "slot" is one executable goal of the current stage: { qid, stage, goal, sub?: index, option?: Option, choice?: Goal }.
 //   kind 'choice' slots are decisions (UI lists options); other kinds are goals to resolve:
 //   reach / talk / item / terminal — automatic (onArrive / onTalk / autoProgress); battle / check / challenge / pay — UI actions.
+// Stage gate (third-exodus.md §2): stage.requires (Requires, e.g. { avgLevel }) not met →
+//   stage.risk { flag, text } — a single decision «go anyway» (sets the flag; the flag should be in stage.requires.any);
+//   else the stage's slots come with `locked` (reason text from stage.gate { text, vars }) and cannot be completed.
+//   Old saves / stages without requires — no gate.
 import { QUESTS, sameLocation } from './data.js';
 import { t } from '../data/text/index.js';
 import { grant, journal, requiresOk, tf, repToasts } from './state.js';
@@ -11,6 +15,8 @@ import { applyRep, normFaction } from './reputation.js';
 import { NPCS } from '../data/npcs.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { questXp } from '../rules/progression.js';
+import { EXODUS } from '../data/world/exodus.js';
+import { exodusActive, exodusLeft } from './exodus.js';
 
 export const questDef = (id) => QUESTS[id];
 const stageDef = (q, id) => q.stages.find((s) => s.id === id);
@@ -36,7 +42,25 @@ export function startQuest(save, id) {
 const optionsOf = (save, goal) => (goal.options || []).filter((o) => requiresOk(save, o.requires));
 
 /** Current executable slots of a quest. */
+/** Gate of a stage: null (open) or the reason text. */
+export function stageLocked(save, stage) {
+  if (!stage?.requires || requiresOk(save, stage.requires)) return null;
+  return stage.gate ? tf(stage.gate.text, stage.gate.vars) : t('loc.notAvailable');
+}
+
 export function slots(save, qid) {
+  const lock = stageLocked(save, stageOf(save, qid));
+  const out = openSlots(save, qid);
+  if (!lock) return out;
+  const stage = stageOf(save, qid);
+  if (stage.risk) {
+    const choice = { kind: 'choice', location: stage.goal.location, options: [{ id: 'gate-risk', gateRisk: true, text: t(stage.risk.text), effects: { flags: [stage.risk.flag] } }] };
+    return [{ qid, stage, goal: choice, choice, kind: 'choice', gate: lock }];
+  }
+  return out.map((s) => ({ ...s, locked: lock }));
+}
+
+function openSlots(save, qid) {
   const st = save.quests[qid];
   const stage = stageOf(save, qid);
   if (!stage) return [];
@@ -147,6 +171,8 @@ export function completeSlot(save, slot, data) {
   const st = save.quests[slot.qid];
   // stale slot (already resolved, e.g. a battle won twice through a scene reload): no double rewards
   if (st?.state !== 'active' || st.stage !== slot.stage.id) return [];
+  if (slot.option?.gateRisk) return applyEffects(save, slot.option.effects, data, q.key);
+  if (slot.locked && stageLocked(save, slot.stage)) return [];
   if (slot.sub !== undefined && subDone(save, st, slot.stage.goal.goals[slot.sub], slot.sub)) return [];
   const out = applyEffects(save, slot.option?.effects, data, q.key);
   if (slot.sub !== undefined) {
@@ -232,7 +258,7 @@ export function onArrive(save, locId, data) {
 export function onTalk(save, npcId, data) {
   const out = [];
   for (let guard = 0; guard < 8; guard++) {
-    const s = allSlots(save).find((x) => x.goal.kind === 'talk' && x.goal.npc === npcId);
+    const s = allSlots(save).find((x) => !x.locked && x.goal.kind === 'talk' && x.goal.npc === npcId);
     if (!s) break;
     out.push(...completeSlot(save, s, data));
   }
@@ -251,9 +277,9 @@ export function onBattleWon(save, encId, locId, data) {
 export function autoProgress(save, data) {
   const out = [];
   for (let guard = 0; guard < 8; guard++) {
-    const s = allSlots(save).find((x) => (x.goal.kind === 'reach' && sameLocation(x.goal.location, save.location))
+    const s = allSlots(save).find((x) => !x.locked && ((x.goal.kind === 'reach' && sameLocation(x.goal.location, save.location))
       || (x.goal.kind === 'item' && (save.hero.items[x.goal.item] || 0) >= (x.goal.n || 1))
-      || (x.goal.kind === 'terminal' && save.terminals[x.goal.terminal] && save.terminals[x.goal.terminal] !== 'ritual'));
+      || (x.goal.kind === 'terminal' && save.terminals[x.goal.terminal] && save.terminals[x.goal.terminal] !== 'ritual')));
     if (!s) break;
     if (s.goal.kind === 'item') save.hero.items[s.goal.item] -= s.goal.n || 1;
     out.push(...completeSlot(save, s, data));
@@ -271,6 +297,9 @@ export function currentGoalText(save, id) {
   const s = stageOf(save, id);
   if (!s) return '';
   const st = save.quests[id];
-  if (s.goal.kind === 'choice' && st.opt) return s.goal.options.find((o) => o.id === st.opt)?.text || s.text;
-  return s.text;
+  let text = s.goal.kind === 'choice' && st.opt ? s.goal.options.find((o) => o.id === st.opt)?.text || s.text : s.text;
+  const lock = stageLocked(save, s);
+  if (lock) text += ` (${lock})`;
+  if (id === EXODUS.quest && exodusActive(save)) text += ` · ${tf('exodus.left', { n: Math.max(0, exodusLeft(save)) })}`;
+  return text;
 }

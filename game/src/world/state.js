@@ -12,8 +12,9 @@ import { isBattleItem } from '../rules/combat.js';
 import { clearWithdrawal } from '../rules/aftermath.js';
 import {
   LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
-  PLAY_DATA as GAME_DATA, resolveLocation, starterKit,
+  PLAY_DATA as GAME_DATA, resolveLocation, starterKit, FINALE_TERMINALS,
 } from './data.js';
+import { EXODUS } from '../data/world/exodus.js';
 import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast, meetFaction, startMet } from './reputation.js';
 import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
@@ -245,7 +246,21 @@ export function requiresOk(save, req, data = GAME_DATA) {
     if (req.stage && q.stage !== req.stage) return false;
     if (req.quest.state && q.state !== req.quest.state) return false;
   }
+  // third-exodus.md §2: avgLevel (party mean level), terminalsOff (FINALE_TERMINALS not 'ritual'), visitedRegions (a node of each),
+  // flags (all set), any: [Requires] (one of), not: Requires
+  if (req.avgLevel && partyAvgLevel(save) < req.avgLevel) return false;
+  if (req.terminalsOff && FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length < req.terminalsOff) return false;
+  if (req.visitedRegions && !req.visitedRegions.every((r) => (save.visited || []).some((id) => LOCATIONS[id]?.region === r))) return false;
+  if (req.flags && !req.flags.every((f) => save.flags[f])) return false;
+  if (req.any && !req.any.some((r) => requiresOk(save, r, data))) return false;
+  if (req.not && requiresOk(save, req.not, data)) return false;
   return true;
+}
+
+/** Mean level of the active party (companions without their own level follow the hero). */
+export function partyAvgLevel(save) {
+  const lv = [save.hero.level || 1, ...activeCompanions(save).map((p) => p.level || save.hero.level || 1)];
+  return lv.reduce((s, x) => s + x, 0) / lv.length;
 }
 
 /**
@@ -523,6 +538,9 @@ export function encounterThreshold(save, r, data = GAME_DATA) {
   const safe = worldFlagValues(ms, 'safe-route');
   mod -= (ENCOUNTER_MODS.safeRouteBestTwo ? safe.slice(0, 2) : safe).reduce((s, v) => s + (v || 1), 0);
   mod += ENCOUNTER_MODS.pirates[repTier(save.rep.pirates)] || 0;
+  // third-exodus.md: mark 1+ — the cult's lands get busier (save.exodus.mark, the timer is off once stopped)
+  const E = EXODUS.encounter, reg = LOCATIONS[resolveLocation(r.to)]?.region;
+  if (save.exodus && (save.exodus.mark || 0) >= E.fromMark && !EXODUS.stopFlags.some((f) => save.flags[f]) && E.regions.includes(reg)) mod += E.mod;
   return { danger, mod, need: Math.max(1, ENCOUNTER_PER_DANGER * danger + mod) };
 }
 

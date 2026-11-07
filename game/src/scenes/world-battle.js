@@ -19,6 +19,7 @@ import { rollLoot } from '../world/loot.js';
 import { saveGame } from '../save.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { tf } from '../world/state.js';
+import { incarnate, exodusZeroFinale } from '../world/exodus.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -27,6 +28,8 @@ const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balan
 export function encounterSetup(save, encId) {
   let reduce = 0;
   const allies = [];
+  // third-exodus.md: after the zero (Judge incarnates) — no terminal reduce, no finaleMods allies, the boss +25% ЗДР
+  if (encId === FINALE_ENCOUNTER && exodusZeroFinale(save)) return { enemies: incarnate(encounterEnemies(encId, partySize(save)), ENEMIES), allies };
   if (encId === 'w-cc-finale') {
     reduce = FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length;
     for (const m of QUESTS['mq-exodus']?.finaleMods || []) if (m.flag && save.flags[m.flag]) allies.push(...(m.allies || []));
@@ -43,7 +46,7 @@ export function startWorldBattle(game, o) {
   const data = game.data;
   const setup = o.encounter ? encounterSetup(save, o.encounter) : { enemies: o.enemies, allies: [] };
   const allies = [...setup.allies, ...(o.allies || [])];
-  if (o.encounter === FINALE_ENCOUNTER && partySize(save) + allies.length < FINALE_MIN_PARTY) {
+  if (o.encounter === FINALE_ENCOUNTER && !exodusZeroFinale(save) && partySize(save) + allies.length < FINALE_MIN_PARTY) {
     game.openModal({ title: t('world.finaleLockedTitle'), border: 'a', titleColor: 'a',
       lines: [{ text: t('world.finaleLocked').replace('{n}', partySize(save) + allies.length).replace('{min}', FINALE_MIN_PARTY) }],
       options: [{ label: t('battle.ok'), run: () => {} }] });

@@ -17,14 +17,17 @@
 //                                                                          у подцели: doneFlag? (засчитана флагом), location?
 //   { kind: 'choice', options: [Option] }
 // Option: { id, text, requires?, goal?: Goal, effects?: Effects, next }
-// Requires: { flag } | { notFlag } | { rep: { faction, min: tier } } | { worldFlag } | { alignment } | { item } | { credits }
+// Requires: { avgLevel } | { terminalsOff: N } | { visitedRegions: [..] } | { flags: [..] } | { any: [Requires] } | { not: Requires } |
+//           { flag } | { notFlag } | { rep: { faction, min: tier } } | { worldFlag } | { alignment } | { item } | { credits }
 // Effects: { xp, credits, rep: { faction: delta } (с распространением), deeds: [tag], flags: [flag], items: [{ item, n }],
 //            removeItems, talent, talentChoice: [id], recruit: npc id, terminal: { id, state }, text }
+
+import { EXODUS_GATES as G } from './exodus.js';
 
 const LIST = [
   // ==================================================================== КЛЮЧЕВЫЕ
   {
-    id: 'mq-exodus', name: 'Третий исход', type: 'mixed', key: true, giver: 'sera', region: 'corruption', level: 3,
+    id: 'mq-exodus', name: 'Третий исход', type: 'mixed', key: true, giver: 'sera', region: 'corruption', level: 17,
     requires: { flag: 'prologue-done' },
     summary: 'Сеть ритуальных терминалов культа сходится в Коррупция-Сити. Найти Главный узел и закрыть его.',
     finaleMods: [
@@ -49,7 +52,11 @@ const LIST = [
       ] } },
       { id: 'gate-fight', text: 'Обман раскрыт. Чистильщики поднимают стволы.',
         goal: { kind: 'battle', encounter: 'w-cc-gate', location: 'cc-gate' }, next: 'find-node' },
-      { id: 'find-node', text: 'Узнать, где Главный узел.', goal: { kind: 'choice', options: [
+      // гейт third-exodus.md §2: предупреждение, не стена (флаг риска)
+      { id: 'find-node', text: 'Узнать, где Главный узел.',
+        requires: { any: [{ avgLevel: G.findNode }, { flag: 'gate-passed-early' }] },
+        gate: { text: 'exodus.gateFindNode', vars: { n: G.findNode } }, risk: { flag: 'gate-passed-early', text: 'exodus.gateRisk' },
+        goal: { kind: 'choice', options: [
         { id: 'archon', text: 'Расспросить Архонта — «сосуд», который выжил.', goal: { kind: 'talk', npc: 'archon', location: 'cc-dead-streets' },
           effects: { flags: ['cc-node-found'] }, next: 'assault' },
         { id: 'trace', text: 'Вычислить узел по потокам душ.', goal: { kind: 'check', skills: ['analysis', 'judge', 'hacking'], dc: 16 },
@@ -58,7 +65,10 @@ const LIST = [
           effects: { flags: ['cc-node-found'], deeds: ['greed'] }, next: 'assault' },
         { id: 'already', text: 'Ты уже знаешь, где узел.', requires: { flag: 'cc-node-found' }, next: 'assault' },
       ] } },
+      // жёсткий гейт: ср. ур. 17 ИЛИ воплощение (exodus-zero) ИЛИ 3 из 5 терминалов закрыто и посещены Военпром и Кринжгоны
       { id: 'assault', text: 'Штурмовать Главный узел. Каждый закрытый терминал облегчит бой.',
+        requires: { any: [{ avgLevel: G.assault }, { flag: 'exodus-zero' }, { terminalsOff: G.assaultTerminals, visitedRegions: G.assaultRegions }] },
+        gate: { text: 'exodus.gateAssault', vars: { lvl: G.assault, term: G.assaultTerminals } },
         goal: { kind: 'battle', encounter: 'w-cc-finale', location: 'cc-node' }, next: 'close' },
       { id: 'close', text: 'Кибер-Жрец повержен. Что сделать с узлом?', goal: { kind: 'choice', options: [
         { id: 'destroy', text: 'Сломать узел.', goal: { kind: 'check', skills: ['tech', 'athletics', 'military'], dc: 13 },
