@@ -64,7 +64,7 @@ export const RACES = {
   },
 
   'mutant-beast': {
-    id: 'mutant-beast', name: 'Мутант-зверь', icon: 'race_mutant', tags: ['organic'],
+    id: 'mutant-beast', name: 'Мутант-зверь', icon: 'race_mutant', tags: ['organic', 'beast', 'mutant'],
     playable: true,
     statBonus: { str: 1 },
     hpBonus: 0, mrlBonus: -2, enrBonus: 0, speed: 6,
@@ -87,7 +87,7 @@ export const RACES = {
   },
 
   'mutant-plant': {
-    id: 'mutant-plant', name: 'Мутант-растение', icon: 'race_mutant', tags: ['organic'],
+    id: 'mutant-plant', name: 'Мутант-растение', icon: 'race_mutant', tags: ['organic', 'plant', 'mutant'],
     playable: true,
     statBonus: { con: 1 },
     hpBonus: 0, mrlBonus: 0, enrBonus: 0, speed: 5,
@@ -103,7 +103,7 @@ export const RACES = {
   },
 
   tekhonok: {
-    id: 'tekhonok', name: 'Техонёк', icon: null, tags: ['hybrid'],
+    id: 'tekhonok', name: 'Техонёк', icon: null, tags: ['hybrid', 'proxy'],
     playable: false, // не играбельна по лору: NPC-раса (см. docs/GDD.md)
     statBonus: { wil: 1 },
     hpBonus: 0, mrlBonus: 0, enrBonus: 0, speed: 6,
@@ -135,7 +135,7 @@ export const RACES = {
   },
 
   cringegon: {
-    id: 'cringegon', name: 'Кринжгон-отступник', icon: null, tags: ['organic'],
+    id: 'cringegon', name: 'Кринжгон-отступник', icon: null, tags: ['organic', 'cringe'],
     playable: false, // не играбельна по лору: NPC-раса (см. docs/GDD.md)
     statBonus: { cha: 1 },
     hpBonus: 0, mrlBonus: 4, enrBonus: 0, speed: 6,

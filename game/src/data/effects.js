@@ -27,6 +27,19 @@
 //   endOnHeal  — снимается любым лечением ЗДР.
 //   immuneTags — теги существ, на которых статус не действует.
 //   cumulative / cap у tick buff — штраф копится каждый ход до cap и снимается вместе со статусом.
+//   Этап B (docs/specs/statuses-surfaces.md):
+//   tick.scale: 'tier' — урон тика × tier(L) (L — уровень наложившего); tick.ifStatus — тик только при статусе;
+//   tick: [op, op] — несколько операций; tick.op 'maxHpLoss' {pct, cap} — радиация (−% макс. ЗДР за ход).
+//   mods: saveMods {stat: N}, rangedDisadv, noBonus (нет бонусного действия), noCrit, healMul.
+//   tagMul {тег: k} — длительность и урон тика ×k (R 0.5, V 1.5); ключи: тег, 'mutant', 'cls:<класс>', 'phobia:<триггер>'.
+//   organicSwap {id, turns} — живым без импланта вместо статуса; withTag {тег: [id, раунды]} — доп. статус.
+//   removes [ids] — при наложении снимает; blockedBy {id: true} — не ложится, а снимает этот статус (вода гасит огонь);
+//   upgradeTo id — повторное наложение превращает в другой; wetTurns — длительность, если носитель мокрый.
+//   vulnMul {dmgType: k}, onDmgStatus {dmgType: [id, раунды]}, onDmgExtra {dmgType: dice} — реакции на урон;
+//   breakOnDmg {dmgType: +N} — +N урона и статус снимается; endOnDmg [dmgTypes] — урон снимает статус.
+//   endActionKind: 'bonus' — снять бонусным действием; endNeeds: 'water' — только мокрым или у воды;
+//   healShortens N — лечение ЗДР сокращает на N раундов; selfDmg {dice, dmgType} — после атаки/способности по себе.
+//   icon — ключ палитры значка над юнитом; removal — строка «Снимается: …» для подсказки.
 
 export const STATUSES = {
   stun: {
@@ -36,23 +49,24 @@ export const STATUSES = {
   },
   bleed: {
     id: 'bleed', name: 'Кровотечение', kind: 'debuff',
-    desc: '1d4 урона в начале каждого хода. Останавливается любым лечением.',
-    tick: { op: 'damage', dice: '1d4', dmgType: 'slash' },
-    endOnHeal: true,
+    desc: '1d4 урона в начале каждого хода, на клетке остаётся кровь. Останавливается любым лечением.',
+    tick: { op: 'damage', dice: '1d4', dmgType: 'slash', scale: 'tier' },
+    endOnHeal: true, bleedSurface: true, icon: 'c', removal: 'лечение',
     immuneTags: ['mechanical', 'digital'],
   },
   poison: {
     id: 'poison', name: 'Отравление', kind: 'debuff',
     desc: '−2 к атаке и урону, 1d4 урона ядом в начале каждого хода. Не действует на машины.',
-    tick: { op: 'damage', dice: '1d4', dmgType: 'toxin' },
-    mods: { hit: -2, dmg: -2 },
+    tick: { op: 'damage', dice: '1d4', dmgType: 'toxin', scale: 'tier' },
+    mods: { hit: -2, dmg: -2 }, tagMul: { plant: 0.5, mutant: 0.5 }, icon: 'k',
     immuneTags: ['mechanical', 'digital'],
   },
   burn: {
     id: 'burn', name: 'Горение', kind: 'debuff',
-    desc: '1d6 урона огнём в начале каждого хода. Можно потушить действием.',
-    tick: { op: 'damage', dice: '1d6', dmgType: 'fire' },
-    endAction: true,
+    desc: '1d6 урона огнём в начале каждого хода. Можно потушить действием или водой.',
+    tick: { op: 'damage', dice: '1d6', dmgType: 'fire', scale: 'tier' },
+    endAction: true, turns: 3, tagMul: { plant: 1.5 }, blockedBy: { wet: true }, removes: ['chilled', 'frozen'], icon: 'e',
+    removal: 'действие, вода, статус «Мокрый»',
   },
   fear: {
     id: 'fear', name: 'Страх', kind: 'debuff',
@@ -67,8 +81,8 @@ export const STATUSES = {
   },
   blind: {
     id: 'blind', name: 'Ослепление', kind: 'debuff',
-    desc: 'Помеха на атаки, атаки по цели с преимуществом.',
-    mods: { attackDisadv: true, attackedAdv: true },
+    desc: 'Помеха на атаки, атаки по цели с преимуществом. Причина: дым, вспышка, свет.',
+    mods: { attackDisadv: true, attackedAdv: true }, removes: ['choking'],
   },
   root: {
     id: 'root', name: 'Обездвиживание', kind: 'debuff',
@@ -118,7 +132,7 @@ export const STATUSES = {
   corrosion: {
     id: 'corrosion', name: 'Коррозия', kind: 'debuff',
     desc: 'Броня разъедается: −1 КБ каждый ход, максимум −4. Штраф проходит вместе со статусом.',
-    tick: { op: 'buff', stat: 'kb', value: -1, cumulative: true, cap: -4 },
+    tick: { op: 'buff', stat: 'kb', value: -1, cumulative: true, cap: -4 }, tagMul: { mechanical: 1.5 }, icon: '7',
   },
   hallucination: {
     id: 'hallucination', name: 'Галлюцинации', kind: 'debuff',
@@ -169,6 +183,87 @@ export const STATUSES = {
     id: 'fortified', name: 'Стойка', kind: 'buff',
     desc: 'Сопротивление рубящему, колющему и дробящему урону.',
     mods: { resist: { slash: 'resist', pierce: 'resist', blunt: 'resist' } },
+  },
+
+  // ---------------------------------------------------------------- Этап B: новые статусы (спека §3.1)
+  wet: {
+    id: 'wet', name: 'Мокрый', kind: 'debuff', turns: 3, icon: 'f',
+    desc: 'Вода на одежде: молния бьёт сильнее, огонь гаснет, лёд липнет.',
+    removes: ['burn', 'oiled', 'scent'], vulnMul: { electric: 1.5 }, onDmgStatus: { electric: ['shocked', 2] },
+    endAction: true, endActionKind: 'bonus', removal: '3 раунда, бонусное действие «Вытереться»',
+  },
+  oiled: {
+    id: 'oiled', name: 'В масле', kind: 'debuff', turns: 3, icon: '6',
+    desc: 'Масляный след: любое пламя вспыхивает, ноги скользят.',
+    mods: { saveMods: { dex: -1 } }, removes: ['wet'], onDmgExtra: { fire: '1d6' }, onDmgStatus: { fire: ['burn', 3] },
+    immuneTags: ['digital'], endAction: true, endActionKind: 'bonus', removal: 'вода, 3 раунда, бонусное действие «Стереть»',
+  },
+  shocked: {
+    id: 'shocked', name: 'Шок', kind: 'debuff', turns: 1, wetTurns: 2, icon: 'h',
+    desc: 'Судорога: ход без бонусного действия, −2 к атаке.',
+    mods: { hit: -2, noBonus: true }, tick: { op: 'damage', dice: '1d4', dmgType: 'electric', scale: 'tier', ifStatus: 'wet' },
+    tagMul: { plant: 0.5, proxy: 0.5, mechanical: 1.5 }, immuneTags: ['digital'], removal: 'истекает',
+  },
+  chilled: {
+    id: 'chilled', name: 'Озноб', kind: 'debuff', turns: 2, icon: 'h',
+    desc: 'Холод сковывает: скорость ×0.75, −1 к спасброскам ЛВК.',
+    mods: { speedMul: 0.75, saveMods: { dex: -1 } }, upgradeTo: 'frozen', removes: ['burn'], endOnDmg: ['fire'],
+    tagMul: { beast: 0.5, plant: 1.5 }, immuneTags: ['mechanical'], removal: 'истекает, огонь',
+  },
+  frozen: {
+    id: 'frozen', name: 'Обледенение', kind: 'debuff', turns: 1, wetTurns: 2, icon: '5',
+    desc: 'Ледяная корка: не двигается, но хрупок для дробящих ударов.',
+    mods: { speedMul: 0, kb: -2 }, breakOnDmg: { blunt: 3 }, endOnDmg: ['fire'], removes: ['burn'],
+    tagMul: { plant: 1.5 }, removal: 'истекает, дробящий удар (+3 урона), огонь',
+  },
+  acid: {
+    id: 'acid', name: 'Кислота', kind: 'debuff', turns: 3, icon: 'j',
+    desc: 'Едкая слизь: броня и кожа тают, −1 КБ в ход.',
+    tick: [{ op: 'damage', dice: '1d4', dmgType: 'toxin', scale: 'tier' }, { op: 'buff', stat: 'kb', value: -1, cumulative: true, cap: -3 }],
+    tagMul: { plant: 0.5, mutant: 0.5, mechanical: 1.5 }, withTag: { mechanical: ['corrosion', 3] },
+    endAction: true, endNeeds: 'water', healShortens: 1, removal: 'действие «Смыть» (мокрый или у воды), лечение −1 раунд',
+  },
+  irradiated: {
+    id: 'irradiated', name: 'Радиация', kind: 'debuff', turns: null, icon: 'b',
+    desc: 'Фон Пустоши: макс. ЗДР снижен, лечение хуже.',
+    tick: { op: 'maxHpLoss', pct: 0.05, cap: 0.25 }, mods: { healMul: 0.5 },
+    tagMul: { 'race:skeleton': 0.5 }, immuneTags: ['mechanical', 'digital', 'mutant'], removal: 'не истекает; «Чистка кода»',
+  },
+  panic: {
+    id: 'panic', name: 'Кринж-паника', kind: 'debuff', turns: 2, icon: 'n',
+    desc: 'Стыд сильнее разума: бежит от источника, не может атаковать.',
+    mods: { attackDisadv: true, noApproachSource: true, blockWeapon: true }, endSave: 'wil',
+    tick: { op: 'damage', dice: '1d4', dmgType: 'cringe', scale: 'tier' },
+    tagMul: { 'cls:reper': 0.5, cringe: 0.5, 'phobia:cringe': 1.5 }, immuneTags: ['mechanical', 'digital'],
+    removal: 'спас ТВД в конце хода, лечение МРЛ',
+  },
+  glitch: {
+    id: 'glitch', name: 'Глюк киберспейса', kind: 'debuff', turns: 2, icon: 'h',
+    desc: 'Интерфейс шалит: способности иногда не срабатывают.',
+    glitch: { failOn: 5, lag: 0.15 }, organicSwap: { id: 'hallucination', turns: 1 },
+    tagMul: { digital: 2, mechanical: 2 }, removal: 'истекает, «Чистка кода»',
+  },
+  overload: {
+    id: 'overload', name: 'Прокси-перегрузка', kind: 'debuff', turns: 3, icon: 'a',
+    desc: 'Прокси-поле рвёт цепи: каждая способность бьёт по себе.',
+    mods: { dmg: 2, noCrit: true }, selfDmg: { dice: '1d4', dmgType: 'proxy' }, immuneTags: ['proxy'],
+    removal: 'истекает, «Чистка кода»',
+  },
+  choking: {
+    id: 'choking', name: 'Удушье дымом', kind: 'debuff', turns: 2, icon: '3',
+    desc: 'Дым режет глаза и лёгкие: дальние атаки с помехой, кашель.',
+    mods: { rangedDisadv: true, speed: -1 }, tagMul: { plant: 0.5 }, immuneTags: ['mechanical', 'digital'],
+    endAction: true, endActionKind: 'bonus', removal: 'выйти из дыма + 2 раунда, бонусное действие «Отдышаться»',
+  },
+  scent: {
+    id: 'scent', name: 'Запах крови', kind: 'debuff', turns: 3, icon: 'c',
+    desc: 'Кровь манит хищников: звери и кринжгоны атакуют вас охотнее.',
+    endOnHeal: true, immuneTags: ['mechanical', 'digital', 'plant'], removal: 'истекает, вода, лечение',
+  },
+  slick: {
+    id: 'slick', name: 'Скольжение', kind: 'debuff', turns: 2, icon: '4',
+    desc: 'Под ногами скользко: толчок отбрасывает на +1 клетку, лёгкий шанс упасть.',
+    pushPlus: 1, removal: 'истекает',
   },
 };
 

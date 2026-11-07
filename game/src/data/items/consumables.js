@@ -22,7 +22,8 @@ const ability = (o) => ({
 // save, onSave, effects, dc, castStat лежат прямо на предмете; ловушка — trap: { effects, save, onSave, area, dc }.
 // Построитель c() раскладывает `battle` на предмет; у ловушек (battle.trap === true) эффекты уходят в `trap`.
 // СЛ не задаётся: движок берёт 8 + владение + mod(ЛВК) бросающего.
-const BATTLE_KEYS = ['action', 'range', 'target', 'area', 'roll', 'save', 'onSave', 'effects', 'castStat', 'needs', 'canon'];
+const BATTLE_KEYS = ['action', 'range', 'target', 'area', 'roll', 'save', 'onSave', 'effects', 'castStat', 'needs', 'canon', 'zone', 'surface'];
+// surface: { kind, size, turns } — поверхность в центре броска (data/surfaces.js, спека statuses-surfaces §6.1).
 const c = (o) => {
   const it = { cat: 'consumable', slot: 'consumable', battle: null, field: null, opiate: 0, withdrawal: null, stack: 3, tier: 1, price: 0, factions: [], desc: '', ...o };
   const b = it.battle;
@@ -138,12 +139,13 @@ const LIST = [
 
   // ---------------------------------------------------------------- Гранаты
   c({ id: 'grenade', name: 'Самодельная граната', kind: 'grenade',
-    battle: grenade({ id: 'use-grenade', name: 'Граната', area: { shape: 'radius', size: 1 }, effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }],
+    battle: grenade({ id: 'use-grenade', name: 'Граната', area: { shape: 'radius', size: 1 }, effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }, { op: 'status', id: 'burn', turns: 2 }], surface: { kind: 'fire', size: 0, turns: 2 },
       desc: '2d6 огня, радиус 1 (спас ЛВК — половина).' }),
     tier: 1, price: 40, factions: ['renegades', 'scavengers', 'pirates'], desc: '«Оружейный алхимик» в действии.' }),
   c({ id: 'molotov', name: 'Бутылка с горючим', kind: 'grenade', stack: 3,
     battle: grenade({ id: 'use-molotov', name: 'Коктейль', area: { shape: 'radius', size: 1 },
-      effects: [{ op: 'damage', dice: '1d6', dmgType: 'fire' }, { op: 'status', id: 'burn', turns: 2 }], desc: '1d6 огня и горение 2 хода, радиус 1.' }),
+      effects: [{ op: 'damage', dice: '1d6', dmgType: 'fire' }, { op: 'status', id: 'burn', turns: 2 }], surface: { kind: 'fire', size: 1, turns: 4 },
+      desc: '1d6 огня и горение 2 хода, радиус 1. Оставляет огонь на 4 раунда; масло вспыхивает пожаром.' }),
     tier: 1, price: 15, factions: ['renegades', 'agrozone', 'neutralVillages'], desc: 'Классика восстаний.' }),
   c({ id: 'frag-grenade', name: 'Осколочная РГД-кустарь', kind: 'grenade', stack: 2,
     battle: grenade({ id: 'use-frag', name: 'Осколочная', area: { shape: 'radius', size: 2 },
@@ -151,42 +153,47 @@ const LIST = [
     tier: 2, price: 60, factions: ['warprom', 'renegades'], desc: 'Гвозди внутри — из гвоздомёта.' }),
   c({ id: 'emp-grenade', name: 'ЭМ-граната', kind: 'grenade', stack: 2,
     battle: grenade({ id: 'use-emp', name: 'ЭМ-импульс', save: 'con', area: { shape: 'radius', size: 2 },
-      effects: [{ op: 'damage', dice: '2d6', dmgType: 'electric', only: 'mechanical' }, { op: 'status', id: 'stun', turns: 1, only: 'mechanical' }],
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'electric', only: 'mechanical' }, { op: 'status', id: 'stun', turns: 1, only: 'mechanical' },
+        { op: 'status', id: 'glitch', turns: 2, only: ['mechanical', 'digital'] }, { op: 'status', id: 'shocked', turns: 1 }], surface: { kind: 'electric', size: 1, turns: 2 },
       desc: 'Только по машинам: 2d6 электро и оглушение, радиус 2 (спас ТЕЛ).' }),
     tier: 3, price: 90, factions: ['tekhonki', 'tinBrotherhood', 'renegades'], desc: 'Любимое средство против Чистильщиков.' }),
   c({ id: 'cringe-grenade', name: 'Кринж-граната «Тост за молодых»', kind: 'grenade', stack: 2,
     battle: grenade({ id: 'use-cringe-grenade', name: 'Тост за молодых', save: 'wil', area: { shape: 'radius', size: 2 },
-      effects: [{ op: 'damage', dice: '2d6', dmgType: 'cringe' }, { op: 'status', id: 'cringed', turns: 2 }],
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'cringe' }, { op: 'status', id: 'cringed', turns: 2 }, { op: 'status', id: 'panic', turns: 2, mrlBelow: 0.25 }],
+      surface: { kind: 'cringe', size: 2, turns: 4 },
       desc: 'Из гранаты звучит тост дяди на свадьбе: 2d6 кринжа и кринж-эффект, радиус 2 (спас ТВД).' }),
     tier: 2, price: 70, factions: ['cringegons', 'pirates'], desc: 'Трофей с кринжгонов. Пираты перепродают.' }),
   c({ id: 'smoke-grenade', name: 'Дымовая шашка', kind: 'grenade', stack: 2,
     battle: grenade({ id: 'use-smoke', name: 'Дым', save: 'con', onSave: 'none', area: { shape: 'radius', size: 2 },
       effects: [{ op: 'status', id: 'blind', turns: 1 }], desc: 'Враги в радиусе 2 ослеплены на 1 ход; облако 2 хода блокирует линию видимости.',
-      zone: { kind: 'smoke', turns: 2 } }),
+      surface: { kind: 'smoke', size: 2, turns: 4 } }),
     tier: 1, price: 30, factions: ['renegades', 'warprom', 'pirates'], desc: 'Уйти по-английски, по-русски.' }),
   c({ id: 'flashbang', name: 'Светошумовая', kind: 'grenade', stack: 2,
     battle: grenade({ id: 'use-flashbang', name: 'Светошумовая', save: 'con', onSave: 'none', area: { shape: 'radius', size: 2 },
-      effects: [{ op: 'status', id: 'blind', turns: 1 }, { op: 'status', id: 'dazed', turns: 1 }], desc: 'Ослепление и дизбаланс на 1 ход, радиус 2 (спас ТЕЛ).' }),
+      effects: [{ op: 'status', id: 'blind', turns: 1 }, { op: 'status', id: 'dazed', turns: 1 }], surface: { kind: 'smoke', size: 0, turns: 1 }, desc: 'Ослепление и дизбаланс на 1 ход, радиус 2 (спас ТЕЛ).' }),
     tier: 3, price: 50, factions: ['aiParty', 'warprom'], desc: 'Партия разгоняет митинги.' }),
   c({ id: 'proxy-can', name: 'Прокси-банка техоньков', kind: 'grenade', stack: 2,
     battle: grenade({ id: 'use-proxy-can', name: 'Прокси-банка', area: { shape: 'radius', size: 1 },
-      effects: [{ op: 'damage', dice: '2d8', dmgType: 'proxy' }], desc: '2d8 прокси, радиус 1 (по машинам ×1.5, по живым ×0.5).' }),
+      effects: [{ op: 'damage', dice: '2d8', dmgType: 'proxy' }, { op: 'status', id: 'overload', turns: 3 }], surface: { kind: 'proxy', size: 2, turns: 5 },
+      desc: '2d8 прокси, радиус 1 (по машинам ×1.5, по живым ×0.5), перегрузка; прокси-поле радиус 2 на 5 раундов.' }),
     tier: 2, price: 80, factions: ['tekhonki'], desc: 'Банка из-под шпрот с кусочком прокси-бури.' }),
 
   // ---------------------------------------------------------------- Ловушки (ставятся на клетку, срабатывают при входе врага)
   c({ id: 'bear-trap', name: 'Капкан', kind: 'trap', stack: 2,
     battle: ability({ id: 'use-bear-trap', name: 'Поставить капкан', range: 1, target: 'tile', trap: true,
-      effects: [{ op: 'damage', dice: '1d6', dmgType: 'pierce' }, { op: 'status', id: 'root', turns: 2 }],
+      effects: [{ op: 'damage', dice: '1d6', dmgType: 'pierce' }, { op: 'status', id: 'root', turns: 2 }, { op: 'status', id: 'bleed', turns: 3 },
+        { op: 'surface', kind: 'blood', size: 0, turns: 6, per: 'target' }],
       desc: 'На соседнюю клетку. Враг, вошедший в неё: 1d6 колющего и обездвиживание на 2 хода.' }),
     tier: 1, price: 25, factions: ['mutantsBeast', 'neutralVillages', 'scavengers'], desc: 'На медведя. На мутанта тоже.' }),
   c({ id: 'tripwire', name: 'Растяжка', kind: 'trap', stack: 2,
     battle: ability({ id: 'use-tripwire', name: 'Поставить растяжку', range: 1, target: 'tile', trap: true, area: { shape: 'radius', size: 1 },
       roll: 'save', save: 'dex', onSave: 'half', dc: 'byLevel',
-      effects: [{ op: 'damage', dice: '2d6', dmgType: 'pierce' }], desc: 'Срабатывает при входе: 2d6 колющего в радиусе 1 (спас ЛВК — половина).' }),
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'pierce' }, { op: 'surface', kind: 'fire', size: 0, turns: 2, per: 'target', ifSurface: 'oil' }], desc: 'Срабатывает при входе: 2d6 колющего в радиусе 1 (спас ЛВК — половина).' }),
     tier: 2, price: 45, factions: ['renegades'], desc: 'Тихоня Ярош: «Тут мины. И тут».' }),
   c({ id: 'shock-mat', name: 'Шоковый коврик', kind: 'trap', stack: 2,
     battle: ability({ id: 'use-shock-mat', name: 'Постелить коврик', range: 1, target: 'tile', trap: true, roll: 'save', save: 'con', onSave: 'half', dc: 'byLevel',
-      effects: [{ op: 'damage', dice: '1d8', dmgType: 'electric' }, { op: 'status', id: 'stun', turns: 1 }],
+      effects: [{ op: 'damage', dice: '1d8', dmgType: 'electric' }, { op: 'status', id: 'stun', turns: 1 }, { op: 'status', id: 'shocked', turns: 1 },
+        { op: 'surface', kind: 'electric', size: 0, turns: 2, per: 'target' }],
       desc: 'Срабатывает при входе: 1d8 электро и оглушение (спас ТЕЛ — половина, без оглушения).' }),
     tier: 3, price: 70, factions: ['mechanids', 'tekhonki'], desc: '«Добро пожаловать» — написано на коврике.' }),
   c({ id: 'scrap-magnet', name: 'Магнит-ловушка мусорщиков', kind: 'trap', stack: 1,

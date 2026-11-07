@@ -6,8 +6,13 @@ export const T_WALL = 1;
 export const T_COVER = 2;
 export const T_HAZARD = 3;
 export const T_EXIT = 4;
+/** Statuses & surfaces: a water puddle (floor, permanent `water` surface) and a breakable barrel (blocks like cover). */
+export const T_WATER = 6;
+export const T_BARREL = 7;
 
-const CHAR_TILE = { '#': T_WALL, c: T_COVER, '~': T_HAZARD, D: T_EXIT };
+const CHAR_TILE = { '#': T_WALL, c: T_COVER, '~': T_HAZARD, D: T_EXIT, w: T_WATER, b: T_BARREL, g: T_BARREL };
+/** Tiles that cannot be entered (walls, cover, barrels). */
+export const blocksMove = (t) => t === T_WALL || t === T_COVER || t === T_BARREL;
 
 export const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -22,6 +27,7 @@ export function parseMap(def) {
   const tiles = new Uint8Array(w * h);
   const starts = { P: [], E: [], A: [] };
   const exits = [];
+  const barrels = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const ch = rows[y][x] ?? '#';
@@ -29,9 +35,10 @@ export function parseMap(def) {
       tiles[y * w + x] = t;
       if (ch === 'P' || ch === 'E' || ch === 'A') starts[ch].push({ x, y });
       if (t === T_EXIT) exits.push({ x, y });
+      if (t === T_BARREL) barrels.push({ x, y, kind: ch === 'g' ? 'toxgas' : 'oil' });
     }
   }
-  return { w, h, tiles, starts, exits, def };
+  return { w, h, tiles, starts, exits, barrels, def };
 }
 
 /** Simple arena map def for sims/tests: heroes on the left, enemies on the right. */
@@ -57,10 +64,10 @@ export const chebyshev = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.ab
 
 export const inBounds = (g, x, y) => x >= 0 && y >= 0 && x < g.w && y < g.h;
 export const tileAt = (g, x, y) => (inBounds(g, x, y) ? g.tiles[y * g.w + x] : T_WALL);
-/** Walls and cover cannot be entered. */
+const isCoverTile = (t) => t === T_COVER || t === T_BARREL;
+/** Walls, cover and barrels cannot be entered. */
 export const isPassable = (g, x, y) => {
-  const t = tileAt(g, x, y);
-  return t !== T_WALL && t !== T_COVER;
+  return !blocksMove(tileAt(g, x, y));
 };
 
 /**
@@ -96,12 +103,12 @@ export function lineOfSight(g, ax, ay, bx, by) {
 export function hasCover(g, ax, ay, tx, ty) {
   if (chebyshev(ax, ay, tx, ty) <= 1) return false;
   const { w, tiles } = g;
-  if (walkLine(ax, ay, tx, ty, (x, y) => tiles[y * w + x] === T_COVER)) return true;
+  if (walkLine(ax, ay, tx, ty, (x, y) => (tiles[y * w + x] === T_COVER || tiles[y * w + x] === T_BARREL))) return true;
   const sx = Math.sign(ax - tx), sy = Math.sign(ay - ty);
-  if (tileAt(g, tx + sx, ty + sy) === T_COVER) return true;
+  if (isCoverTile(tileAt(g, tx + sx, ty + sy))) return true;
   if (sx && sy) {
-    if (tileAt(g, tx + sx, ty) === T_COVER) return true;
-    if (tileAt(g, tx, ty + sy) === T_COVER) return true;
+    if (isCoverTile(tileAt(g, tx + sx, ty))) return true;
+    if (isCoverTile(tileAt(g, tx, ty + sy))) return true;
   }
   return false;
 }
@@ -125,6 +132,7 @@ export function reachable(g, sx, sy, maxCost, occ, opts) {
   const queue = new Int32Array(n);
   const list = [];
   const avoidHazard = !!(opts && opts.avoidHazard);
+  const blocked = (opts && opts.blocked) || null; // Uint8Array mask: tiles not to pass through
   const start = sy * g.w + sx;
   dist[start] = 0;
   let qh = 0, qt = 0;
@@ -141,8 +149,9 @@ export function reachable(g, sx, sy, maxCost, occ, opts) {
       const ni = ny * g.w + nx;
       if (dist[ni] !== -1) continue;
       const t = g.tiles[ni];
-      if (t === T_WALL || t === T_COVER) continue;
+      if (blocksMove(t)) continue;
       if (avoidHazard && t === T_HAZARD) continue;
+      if (blocked && blocked[ni]) continue;
       if (occ && occ[ni] !== 0) continue;
       if (!diagonalOk(g, cx, cy, DIRS8[d][0], DIRS8[d][1])) continue;
       dist[ni] = cd + 1;
@@ -227,7 +236,7 @@ export function findPath(g, sx, sy, tx, ty, occ, opts) {
       const ni = ny * g.w + nx;
       if (closed[ni]) continue;
       const t = g.tiles[ni];
-      if (t === T_WALL || t === T_COVER) continue;
+      if (blocksMove(t)) continue;
       if (avoidHazard && t === T_HAZARD && ni !== goal) continue;
       if (occ && occ[ni] !== 0 && !(toOcc && ni === goal)) continue;
       if (!diagonalOk(g, cx, cy, dx, dy)) continue;
@@ -262,8 +271,7 @@ export function distanceField(g, sources, out) {
       if (!inBounds(g, nx, ny)) continue;
       const ni = ny * g.w + nx;
       if (dist[ni] !== -1) continue;
-      const t = g.tiles[ni];
-      if (t === T_WALL || t === T_COVER) continue;
+      if (blocksMove(g.tiles[ni])) continue;
       if (!diagonalOk(g, cx, cy, DIRS8[d][0], DIRS8[d][1])) continue;
       dist[ni] = dist[cur] + 1;
       queue[qt++] = ni;

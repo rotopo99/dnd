@@ -13,6 +13,7 @@ import { ITEMS as WORLD_ITEMS } from './world/locations.js';
 import { TALENTS, SKILLS, COMBAT_TALENT_LIMIT } from './talents.js';
 import { GADGETS } from './gadgets.js';
 import { SPECIALIZATIONS } from './skills.js';
+import { SURFACES, SURFACE_RULES, FACTION_TAGS, SURFACE_BINDINGS } from './surfaces.js';
 import prologue1 from './maps/prologue-1.js';
 import prologue2 from './maps/prologue-2.js';
 import prologue3 from './maps/prologue-3.js';
@@ -34,8 +35,30 @@ export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4
 export const ITEMS = { ...WEAPONS, ...ARMOR, ...MODS, ...CONSUMABLES };
 for (const [id, it] of Object.entries(WORLD_ITEMS)) ITEMS[id] = { ...(ITEMS[id] || {}), ...it };
 
+// Этап B: теги фракций (plant, proxy, beast…) и привязки поверхностей/статусов к способностям (data/surfaces.js).
+for (const def of Object.values(ENEMIES)) {
+  const extra = FACTION_TAGS[def.faction];
+  if (extra) def.tags = [...new Set([...(def.tags || ['organic']), ...extra])];
+}
+/** Apply SURFACE_BINDINGS to an ability list (append ops, swap statuses). Idempotent per ability object. */
+function bindAbilities(list, clsId) {
+  for (const a of list || []) {
+    const bd = a && SURFACE_BINDINGS[a.id];
+    if (!bd || a.surfaceBound || (bd.classes && !bd.classes.includes(clsId))) continue;
+    a.surfaceBound = true;
+    let effects = a.effects || [];
+    if (bd.swap) effects = effects.map((op) => (op.op === 'status' && bd.swap[op.id] ? { ...op, id: bd.swap[op.id] } : op));
+    a.effects = [...effects, ...(bd.add || [])];
+  }
+}
+for (const c of Object.values(CLASSES)) {
+  bindAbilities(c.abilities, c.id);
+  for (const p of c.paths || []) bindAbilities(p.abilities, c.id);
+}
+for (const def of Object.values(ENEMIES)) if (Array.isArray(def.abilities)) bindAbilities(def.abilities, null);
+
 export const GAME_DATA = {
-  ITEMS,
+  ITEMS, SURFACES, SURFACE_RULES,
   RACES, CLASSES, STATUSES, ENEMIES, ENCOUNTERS, VEIL_TABLE, PROXY_STORM_TABLE,
   TALENTS, GADGETS, SPECIALIZATIONS, SKILLS, COMBAT_TALENT_LIMIT,
 };
