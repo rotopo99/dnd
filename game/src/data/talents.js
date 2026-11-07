@@ -36,7 +36,8 @@ const T = (o) => ({
 export const CREATION_SLOTS = ['race', 'job', 'faction', 'alignment'];
 
 /** Сколько боевых талантов (kind !== 'world') активно одновременно. Остальные лежат «в рюкзаке», меняются на отдыхе. */
-export const COMBAT_TALENT_LIMIT = (level) => (level >= 4 ? 3 : 2);
+/** docs/specs/levels-20.md: 2 на ур. 1–3, 3 на 4–7, 4 на 8–12, 5 с 13-го. */
+export const COMBAT_TALENT_LIMIT = (level) => (level >= 13 ? 5 : level >= 8 ? 4 : level >= 4 ? 3 : 2);
 
 /** Уровни, на которых герой получает дополнительный талант (из своих списков race/job или stat). */
 export const TALENT_LEVELS = [2, 4];

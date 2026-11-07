@@ -1,6 +1,23 @@
 // Мутант (аналог Варвара). Канон: rules/classes.md, rules/class-paths.md, rules/class-roadmap.md, rules/spellcasting.md.
 // Расширения схемы: path.role, passives[].level / passives[].path.
 // Ограничений по расам нет: в каноне нет запрета (см. отчёт; расхождение 8 в docs/canon/README.md — Мутант и раса, и класс).
+// Компактный конструктор способностей уровней 6+ (поля схемы — как у ручных записей ниже).
+const ab = (id, name, level, path, o) => ({
+  id, name, level, path, cost: 0, action: 'action', trigger: null, range: 0, target: 'self', area: null,
+  roll: 'auto', save: null, onSave: 'none', usesPerBattle: null, effects: [], canon: 'rules/class-roadmap.md', ...o,
+});
+const W = (extraDice, extraType) => ({ op: 'weapon', ...(extraDice && { extraDice }), ...(extraType && { extraType }) });
+const zone = (size) => ({ shape: 'radius', size });
+
+// Улучшения (docs/specs/levels-20.md): `dice` заменяет кости главного эффекта способности.
+const UPGRADES = [
+  { level: 2, ability: 'beast-claws', changes: { cost: 2 } },
+  { level: 4, ability: 'beast-roar', changes: { area: zone(3) } },
+  { level: 8, ability: 'acid-spit', changes: { dice: '3d6' } },
+  { level: 12, ability: 'rage', changes: { usesPerBattle: 2 } },
+  { level: 16, ability: 'beast-claws', changes: { dice: '2d6' } },
+];
+
 export default {
   id: 'mutant', name: 'Мутант', analog: 'Варвар', icon: null,
   role: 'melee',
@@ -45,6 +62,21 @@ export default {
       op: { regen: { dice: '1d4', resource: 'hp', every: 'turn' } } },
     { id: 'stalker', name: 'Скрытность', level: 1, path: 'predator',
       desc: 'Преимущество на проверки скрытности.', op: { advantage: ['stealth'] } },
+    // ---------- Уровни 7–20 ----------
+    { id: 'savage-rage', name: 'Улучшенная ярость', level: 7, path: 'beast',
+      desc: '+2 СИЛ и +2 к урону в ближнем бою.', op: { statBonus: { str: 2 }, dmg: { melee: 2 } } },
+    { id: 'god-beast', name: 'Бог-зверь', level: 15, path: 'beast',
+      desc: '+2 СИЛ, крит на 18–20, +2 к урону в ближнем бою.', op: { statBonus: { str: 2 }, critRange: 18, dmg: { melee: 2 } } },
+    { id: 'titan-rage', name: 'Титаническая плоть', level: 7, path: 'titan',
+      desc: '+10 ЗДР, +1 КБ, +2 к урону в ближнем бою.', op: { maxHp: 10, kb: 1, dmg: { melee: 2 } } },
+    { id: 'titan-form', name: 'Титаническая форма', level: 13, path: 'titan',
+      desc: '+2 СИЛ, +2 ТЕЛ, +10 ЗДР, +1 КБ.', op: { statBonus: { str: 2, con: 2 }, maxHp: 10, kb: 1 } },
+    { id: 'colossus', name: 'Колосс', level: 15, path: 'titan',
+      desc: '+10 ЗДР, иммунитет к оглушению и обездвиживанию, +1 КБ.', op: { maxHp: 10, kb: 1, immuneStatus: ['stun', 'root'] } },
+    { id: 'shadow-claw', name: 'Теневые когти', level: 7, path: 'predator',
+      desc: '+2 к урону в ближнем бою, +1 к атаке, +2 к инициативе.', op: { dmg: { melee: 2 }, hit: 1, init: 2 } },
+    { id: 'shadow-of-wastes', name: 'Тень Пустошей', level: 15, path: 'predator',
+      desc: '+2 ЛВК, крит на 18–20, +2 к урону в ближнем бою.', op: { statBonus: { dex: 2 }, critRange: 18, dmg: { melee: 2 } } },
   ],
   abilities: [
     // ---------- Общие ----------

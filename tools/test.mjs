@@ -2,14 +2,14 @@
 import assert from 'node:assert/strict';
 import { createRng } from '../game/src/rules/rng.js';
 import { parseDice, rollDice, d20, avgDice } from '../game/src/rules/dice.js';
-import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost } from '../game/src/rules/character.js';
+import { buildCreature, buildEnemy, mod, profBonus, pointBuyCost, defaultCombatTalentLimit, DEFAULT_ASI_LEVELS } from '../game/src/rules/character.js';
 import { parseMap, chebyshev, lineOfSight, hasCover, findPath, reachable, makeArena } from '../game/src/rules/grid.js';
 import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack, attackOdds,
   BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT } from '../game/src/rules/combat.js';
 import { chooseAction, playTurn, evalAction } from '../game/src/rules/ai.js';
 import { applyWithdrawal, clearWithdrawal } from '../game/src/rules/aftermath.js';
 import { skillCheck, skillTier } from '../game/src/rules/skills.js';
-import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS } from '../game/src/rules/progression.js';
+import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS, levelGains, xpScale, enemyXpForLevel } from '../game/src/rules/progression.js';
 import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL, grantSafePassage, hasSafePassage } from '../game/src/rules/combat.js';
 import { validateBuild } from '../game/src/rules/build.js';
 import { profPoints, proficiencyCost, defaultProficiencies } from '../game/src/rules/equipment.js';
@@ -633,9 +633,11 @@ test('skillCheck: spec adv + prof, related normal + prof, other dis; talent bonu
   assert.equal(r.success, r.total >= 13);
 });
 test('XP and levels: thresholds, battle and quest XP, level-up rebuild keeps choices', () => {
-  assert.deepEqual(XP_THRESHOLDS, [0, 300, 900, 2700, 6500]);
-  assert.equal(levelForXp(299), 1); assert.equal(levelForXp(300), 2); assert.equal(levelForXp(6500), 5); assert.equal(levelForXp(1e6), 5);
-  assert.equal(xpToNext(250), 50); assert.equal(xpToNext(7000), 0);
+  assert.equal(XP_THRESHOLDS.length, 20);
+  assert.deepEqual(XP_THRESHOLDS.slice(0, 5), [0, 300, 900, 2700, 6500]);
+  assert.equal(levelForXp(299), 1); assert.equal(levelForXp(300), 2); assert.equal(levelForXp(6500), 5); assert.equal(levelForXp(1e6), 20);
+  assert.equal(levelForXp(64000), 10); assert.equal(levelForXp(354999), 19);
+  assert.equal(xpToNext(250), 50); assert.equal(xpToNext(7000), 7000); assert.equal(xpToNext(400000), 0);
   assert.equal(battleXp(['thug', 'gunner'], DATA), 20);
   const { b, H, E } = duel();
   dealDamage(b, H, E, 999, 'slash');
@@ -655,6 +657,91 @@ test('XP and levels: thresholds, battle and quest XP, level-up rebuild keeps cho
   assert.ok(h2.maxHp > h1.maxHp);
   assert.equal(h2.maxHp - h2.hp, 5, 'damage kept');
   assert.equal(h2.id, h1.id);
+});
+
+test('levels 1–20: proficiency, combat talent limit, gainXp to 20, ASI levels, rebuild to 20', () => {
+  assert.deepEqual([1, 4, 5, 8, 9, 12, 13, 16, 17, 20].map(profBonus), [2, 2, 3, 3, 4, 4, 5, 5, 6, 6]);
+  assert.deepEqual([1, 3, 4, 7, 8, 12, 13, 20].map(defaultCombatTalentLimit), [2, 2, 3, 3, 4, 4, 5, 5]);
+  assert.deepEqual([1, 3, 4, 7, 8, 12, 13, 20].map(GAME_DATA.COMBAT_TALENT_LIMIT), [2, 2, 3, 3, 4, 4, 5, 5]);
+  const g = gainXp({ xp: 0, level: 1, cls: 'zabivnoy' }, 400000, DATA);
+  assert.equal(g.level, 20); assert.equal(g.levels.length, 19);
+  assert.deepEqual(g.asiLevels, DEFAULT_ASI_LEVELS);
+  assert.deepEqual(gainXp({ xp: 0, level: 1, cls: { asiLevels: [6] } }, 20000, DATA).asiLevels, [6]);
+  const h = buildCreature({ race: 'human', cls: 'zabivnoy', data: DATA });
+  const h20 = rebuildHero(h, { level: 20, data: DATA });
+  assert.equal(h20.level, 20); assert.equal(h20.prof, 6);
+  assert.equal(h20.maxHp - h.maxHp, 19 * (5 + 2));
+});
+test('ASI: +2 / +1+1 / talent, cap 20, validateBuild, companions auto', () => {
+  const base = buildCreature({ race: 'human', cls: 'zabivnoy', level: 8, data: DATA });
+  const asi = [{ level: 4, stats: { str: 2 } }, { level: 8, stats: { con: 1, dex: 1 } }];
+  const u = buildCreature({ race: 'human', cls: 'zabivnoy', level: 8, data: DATA, asi });
+  assert.equal(u.stats.str, base.stats.str + 2); assert.equal(u.stats.con, base.stats.con + 1); assert.equal(u.stats.dex, base.stats.dex + 1);
+  const lo = buildCreature({ race: 'human', cls: 'zabivnoy', level: 7, data: DATA, asi });
+  assert.equal(lo.stats.con, buildCreature({ race: 'human', cls: 'zabivnoy', level: 7, data: DATA }).stats.con, 'level 8 ASI not yet applied');
+  const capped = buildCreature({ race: 'human', cls: 'zabivnoy', level: 20, data: DATA, asi: [4, 8, 12, 16, 19].map((level) => ({ level, stats: { str: 2 } })) });
+  assert.equal(capped.stats.str, 20); assert.ok(capped.asiOverflow.includes('str'));
+  const tl = buildCreature({ race: 'human', cls: 'zabivnoy', level: 4, data: DATA, asi: [{ level: 4, talent: 'iron-will' }] });
+  assert.ok(tl.talents.includes('iron-will')); assert.equal(tl.maxHp, buildCreature({ race: 'human', cls: 'zabivnoy', level: 4, data: DATA }).maxHp + 4);
+  assert.deepEqual(rebuildHero(tl, { level: 5, data: DATA }).talents, ['iron-will'], 'ASI talent survives rebuild');
+  const auto = buildCreature({ race: 'human', cls: 'zabivnoy', level: 20, data: DATA, asi: 'auto' });
+  const plain = buildCreature({ race: 'human', cls: 'zabivnoy', level: 20, data: DATA });
+  assert.equal(auto.stats.str, 20); assert.equal(auto.asi.length, 5);
+  assert.equal(Object.values(auto.asi).reduce((s, e) => s + Object.values(e.stats).reduce((a, b) => a + b, 0), 0), 10);
+  assert.ok(auto.stats.con > plain.stats.con, 'overflow goes to CON');
+  const okB = { race: 'human', cls: 'zabivnoy', path: 'titan', stats: DATA.CLASSES.zabivnoy.recommended,
+    skills: { base: ['athletics', 'intimidation'], extra: ['perception', 'survival'] }, level: 8, asi };
+  assert.deepEqual(validateBuild(okB, DATA), []);
+  const codes = (b) => validateBuild({ ...okB, ...b }, DATA).map((e) => e.code);
+  assert.deepEqual(codes({ asi: [asi[0]] }), ['asiMissing']);
+  assert.ok(codes({ asi: [asi[0], { level: 8, stats: { str: 3 } }] }).includes('asiShape'));
+  assert.ok(codes({ asi: [asi[0], { level: 8, stats: { str: 1 } }] }).includes('asiShape'));
+  assert.ok(codes({ asi: [...asi, { level: 5, stats: { str: 2 } }] }).includes('asiLevel'));
+  assert.ok(codes({ asi: [asi[0], asi[0], asi[1]] }).includes('asiDuplicate'));
+  assert.ok(codes({ asi: [asi[0], { level: 8, talent: 'nope' }] }).includes('asiTalent'));
+  assert.ok(codes({ asi: [asi[0], { level: 8, talent: 'iron-will', stats: { str: 2 } }] }).includes('asiBoth'));
+  assert.ok(codes({ level: 7 }).includes('asiFuture'));
+  assert.deepEqual(codes({ asi: [asi[0], { level: 8, talent: 'iron-will' }] }), []);
+  assert.deepEqual(codes({ level: 20, asi: [4, 8, 12, 16, 19].map((level) => ({ level, stats: { str: 2 } })) }), ['asiCap']);
+});
+test('upgrades: dice, cost, uses, area, bonus, other fields; by level and path; levelGains', () => {
+  const it = DATA.CLASSES.itishnik;
+  const cls = { ...it, id: 'itishnik', upgrades: [
+    { level: 2, ability: 'zap', changes: { dice: '2d10' } },
+    { level: 4, ability: 'zap', changes: { cost: -1, bonus: 2, range: 10 } },
+    { level: 4, ability: 'emp', changes: { area: 2, usesPerBattle: '+1' } },
+    { level: 8, ability: 'repair', changes: { dice: '2d8', cost: 1 } },
+    { level: 2, ability: 'drone', path: 'hacker', changes: { cost: 0 } },
+  ], abilities: [...it.abilities, { id: 'big-zap', name: 'Большой разряд', level: 6, cost: 5, action: 'action', range: 8, target: 'enemy', roll: 'attack', effects: [] }] };
+  const D2 = { ...DATA, CLASSES: { ...DATA.CLASSES, itishnik: cls } };
+  const ab = (lv, path = 'mechanic') => Object.fromEntries(buildCreature({ race: 'human', cls: 'itishnik', path, level: lv, data: D2 }).abilities.map((a) => [a.id, a]));
+  assert.equal(ab(1).zap.effects[0].dice, '1d10'); assert.equal(ab(1).zap.upgrades, undefined);
+  assert.equal(ab(2).zap.effects[0].dice, '2d10'); assert.deepEqual(ab(2).zap.upgrades, [2]);
+  const z4 = ab(4).zap;
+  assert.equal(z4.cost, 1); assert.deepEqual(z4.effects[0].bonus, ['castMod', 2]); assert.equal(z4.range, 10); assert.deepEqual(z4.upgrades, [2, 4]);
+  assert.equal(it.abilities.find((a) => a.id === 'zap').effects[0].dice, '1d10', 'class data not mutated');
+  const e4 = ab(4).emp;
+  assert.equal(e4.area.size, 2); assert.equal(e4.usesPerBattle, 1);
+  assert.equal(ab(8).repair.cost, 1); assert.equal(ab(8).repair.effects[0].dice, '2d8');
+  assert.equal(ab(2).drone.cost, 3, 'path upgrade of another path is ignored');
+  assert.ok(!ab(5)['big-zap'] && ab(6)['big-zap']);
+  const lg = levelGains(cls, 'mechanic', 4);
+  assert.deepEqual(lg.upgrades.map((g) => g.ability), ['zap', 'emp']); assert.equal(lg.asi, true);
+  assert.deepEqual(levelGains(cls, 'mechanic', 6).abilities.map((a) => a.id), ['big-zap']);
+  assert.deepEqual(levelGains(cls, 'mechanic', 1).passives.map((p) => p.id), ['tinker']);
+  // upgraded ability works in battle (bonus array)
+  const H = buildCreature({ race: 'human', cls: 'itishnik', path: 'mechanic', level: 4, data: D2, id: 'H' });
+  const b = createBattle({ map: { id: 't', grid: ['########', '#P...E.#', '########'], win: 'killAll' }, heroes: [H], enemies: ['thug'], data: D2, seed: 3 });
+  const r = perform(b, { type: 'ability', unit: b.units.find((x) => x.team === 'heroes').id, ability: 'zap', target: b.units.find((x) => x.team === 'enemies').id });
+  assert.ok(r.ok, r.error);
+});
+test('XP scale above level 5: enemy and quest fallbacks follow the XP a level needs', () => {
+  assert.equal(xpScale(3), 1); assert.equal(xpScale(5), 1);
+  assert.ok(Math.abs(xpScale(10) - 21000 / 7500) < 1e-9);
+  assert.equal(enemyXpForLevel(1), 20); assert.equal(enemyXpForLevel(5), 150); assert.equal(enemyXpForLevel(10), 420);
+  assert.equal(battleXp([{ level: 10 }, { level: 1, xp: 7 }], DATA), 427);
+  assert.equal(questXp({ size: 'small', level: 10 }), 420); assert.equal(questXp({ size: 'small', level: 3 }), 150);
+  assert.equal(questXp({ level: 10, rewards: { xp: 99 } }), 99, 'explicit XP wins');
 });
 
 console.log('v3: equipment, proficiencies, burst, items, creation');

@@ -2,10 +2,11 @@
 //
 // build = { race, cls, path?, level = 1, stats (BEFORE racial bonuses), anyStat?, skills: { base: [2], extra: [2] },
 //           proficiencies?: { weaponTypes, dmgTypes, armor }, phobia?: { trigger, effect? } | [...],
-//           talents?, activeCombat?, gadget?, multiclass?: { cls, path? }, equipment? }
+//           talents?, activeCombat?, gadget?, multiclass?: { cls, path? }, equipment?,
+//           asi?: [{ level, stats: { str: 2 } | { str: 1, dex: 1 } } | { level, talent }] }  (levels-20.md)
 // validateBuild(build, data) -> [{ field, code, msg }] (empty = valid).
 
-import { STATS, normalizeData, pointBuyCost, isAllowed, buildCreature, MULTICLASS_MIN_LEVEL } from './character.js';
+import { STATS, normalizeData, pointBuyCost, isAllowed, buildCreature, MULTICLASS_MIN_LEVEL, asiLevelsFor, ASI_STAT_MAX } from './character.js';
 import { defaultProficiencies, proficiencyCost, profPoints, CREATION_MAX_TIER, ARMOR_ORDER } from './equipment.js';
 import { SKILL_STATS } from './skills.js';
 import { PHOBIA_COMBAT_TRIGGERS, PHOBIA_WORLD_TRIGGERS } from './combat.js';
@@ -96,10 +97,36 @@ export function validateBuild(build, data) {
     }
   }
 
+  // ASI: one choice per ASI level of the class up to the build level; +2 to one stat or +1 to two, or a talent
+  if (cls && build.asi != null && build.asi !== 'auto') {
+    const levels = asiLevelsFor(cls);
+    const list = Array.isArray(build.asi) ? build.asi : [];
+    if (!Array.isArray(build.asi)) err('asi', 'asiFormat', 'Рост характеристик: ожидается список');
+    const seen = new Set();
+    for (const e of list) {
+      const lv = e && e.level;
+      if (!levels.includes(lv)) { err('asi', 'asiLevel', `Уровень ${lv}: нет роста характеристик (есть на ${levels.join(', ')})`); continue; }
+      if (lv > level) err('asi', 'asiFuture', `Рост характеристик ${lv}-го уровня выше уровня героя ${level}`);
+      if (seen.has(lv)) err('asi', 'asiDuplicate', `Рост характеристик ${lv}-го уровня выбран дважды`);
+      seen.add(lv);
+      if (e.talent && e.stats) err('asi', 'asiBoth', `Уровень ${lv}: либо характеристики, либо талант`);
+      else if (e.talent) { if (!D.talents[e.talent]) err('asi', 'asiTalent', `Неизвестный талант "${e.talent}"`); }
+      else {
+        const ent = Object.entries(e.stats || {});
+        const okKeys = ent.every(([k]) => STATS.includes(k));
+        const vals = ent.map(([, v]) => v).sort();
+        const okShape = (vals.length === 1 && vals[0] === 2) || (vals.length === 2 && vals[0] === 1 && vals[1] === 1);
+        if (!okKeys || !okShape) err('asi', 'asiShape', `Уровень ${lv}: +2 к одной характеристике или +1 к двум`);
+      }
+    }
+    for (const lv of levels) if (lv <= level && !seen.has(lv)) err('asi', 'asiMissing', `Не выбран рост характеристик ${lv}-го уровня`);
+  }
+
   // talents, gadget, equipment: let the builder decide (limit, unknown ids, two-handed + off-hand …)
   if (!errors.length) {
     try {
-      buildCreature({ ...build, level, data: D });
+      const u = buildCreature({ ...build, level, data: D });
+      if (u.asiOverflow && u.asiOverflow.length) err('asi', 'asiCap', `Характеристика выше ${ASI_STAT_MAX}: ${[...new Set(u.asiOverflow)].join(', ')}`);
     } catch (e) {
       const m = e.message.replace(/^(buildCreature|equipment): /, '');
       const field = /talent/.test(m) ? 'talents' : /gadget/.test(m) ? 'gadget' : /item|hand/.test(m) ? 'equipment' : 'build';

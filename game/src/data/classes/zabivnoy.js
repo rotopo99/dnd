@@ -1,6 +1,21 @@
 // Забивной (аналог Воина). Канон: rules/classes.md, rules/class-paths.md, rules/class-roadmap.md, rules/spellcasting.md.
 // Расширения схемы (см. отчёт геймдизайнера): path.role, path.weapon / path.armor / path.recommended (переопределение для пути),
 // passives[].level / passives[].path, range: 'weapon' (дальность = дальность текущего оружия).
+// Компактный конструктор способностей уровней 6+ (поля схемы — как у ручных записей выше).
+const ab = (id, name, level, path, o) => ({
+  id, name, level, path, cost: 0, action: 'action', trigger: null, range: 0, target: 'self', area: null,
+  roll: 'auto', save: null, onSave: 'none', usesPerBattle: null, effects: [], canon: 'rules/class-roadmap.md', ...o,
+});
+const W = (extraDice, extraType, hit) => ({ op: 'weapon', ...(extraDice && { extraDice }), ...(extraType && { extraType }), ...(hit && { hit }) });
+
+const UPGRADES = [
+  { level: 2, ability: 'steel-fist', changes: { cost: 2 } },
+  { level: 4, ability: 'aggressive-rush', changes: { cost: 2 } },
+  { level: 8, ability: 'crushing-blow', changes: { dice: '2d8' } },
+  { level: 12, ability: 'adrenaline', changes: { usesPerBattle: 2 } },
+  { level: 16, ability: 'steel-fist', changes: { dice: '2d6' } },
+];
+
 export default {
   id: 'zabivnoy', name: 'Забивной', analog: 'Воин', icon: 'class_fighter',
   role: 'tank',
@@ -42,6 +57,27 @@ export default {
       desc: '+1 КБ.', op: { kb: 1 } },
     { id: 'tempered-steel', name: 'Закалённая сталь', level: 5, path: 'iron-titan',
       desc: '+1 КБ (броня титана закалена).', op: { kb: 1 } },
+    // ---------- Уровни 7–20 ----------
+    { id: 'mk2-implants', name: 'Импланты Mk.II', level: 7, path: 'mech-killer',
+      desc: '+2 СИЛ и +1 к атаке.', op: { statBonus: { str: 2 }, hit: 1 } },
+    { id: 'mk3-death', name: 'Mk.III (Смерть)', level: 15, path: 'mech-killer',
+      desc: '+2 СИЛ, крит на 18–20, +2 к урону в ближнем бою.', op: { statBonus: { str: 2 }, critRange: 18, dmg: { melee: 2 } } },
+    { id: 'thermal-sight', name: 'Тепловизор и расширенный магазин', level: 7, path: 'wasteland-sniper',
+      desc: '+1 к атаке, +2 к урону дальнего боя.', op: { hit: 1, dmg: { ranged: 2 } } },
+    { id: 'master-aim', name: 'Меткость мастера', level: 15, path: 'wasteland-sniper',
+      desc: 'Крит на 18–20, +1 к атаке.', op: { critRange: 18, hit: 1 } },
+    { id: 'mk2-armor', name: 'Mk.II Броня', level: 7, path: 'iron-titan',
+      desc: '+2 КБ, +20 ЗДР.', op: { kb: 2, maxHp: 20 } },
+    { id: 'unbreakable', name: 'Несокрушимый', level: 11, path: 'iron-titan',
+      desc: '+30 ЗДР.', op: { maxHp: 30 } },
+    { id: 'mk3-titan', name: 'Mk.III (Титан)', level: 15, path: 'iron-titan',
+      desc: '+20 ЗДР, иммунитет к оглушению, +1 КБ.', op: { maxHp: 20, kb: 1, immuneStatus: ['stun'] } },
+    { id: 'titan-bulwark', name: 'Непробиваемый', level: 20, path: 'iron-titan',
+      desc: 'Капстоун: сопротивление колющему, рубящему и дробящему урону.', op: { resist: { pierce: 'resist', slash: 'resist', blunt: 'resist' } } },
+    { id: 'mk-vitality', name: 'Закалка бойца', level: 9, path: 'mech-killer',
+      desc: '+20 ЗДР.', op: { maxHp: 20 } },
+    { id: 'sniper-vitality', name: 'Полевая выучка', level: 9, path: 'wasteland-sniper',
+      desc: '+20 ЗДР.', op: { maxHp: 20 } },
   ],
   abilities: [
     // ---------- Общие ----------
@@ -139,7 +175,81 @@ export default {
       desc: 'Удар всем весом брони: атака оружием +1d8 урона и отталкивание на 2 клетки.',
       canon: 'rules/class-roadmap.md',
     },
+
+    // ---------- Общие, уровни 6–18 ----------
+    ab('second-wind', 'Второе дыхание', 6, null, { cost: 4, action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'heal', dice: '3d8', resource: 'hp' }, { op: 'cleanse', count: 1, kind: 'debuff' }],
+      desc: 'Собрать волю: лечит 3d8 ЗДР и снимает 1 дебафф. Раз за бой.' }),
+    ab('war-cry', 'Боевой клич', 10, null, { cost: 5, action: 'bonus', area: { shape: 'radius', size: 4 }, usesPerBattle: 1,
+      effects: [{ op: 'buff', stat: 'hit', value: 1, turns: 3 }, { op: 'buff', stat: 'dmg', value: 2, turns: 3 }],
+      desc: 'Клич по отряду: союзники в радиусе 4 клеток получают +1 к атаке и +2 к урону на 3 хода. Раз за бой.' }),
+    ab('execution', 'Добивающий', 14, null, { cost: 8, range: 'weapon', target: 'enemy', roll: 'attack',
+      effects: [W('3d8'), { op: 'status', id: 'bleed', turns: 3 }],
+      desc: 'Удар в слабое место: оружие +3d8 урона и кровотечение на 3 хода при попадании.' }),
+    ab('unstoppable', 'Неудержимый', 18, null, { cost: 7, action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'extraAction', kind: 'action' }, { op: 'cleanse', count: 2, kind: 'debuff' }, { op: 'buff', stat: 'kb', value: 3, turns: 2 }],
+      desc: 'Боль не считается: дополнительное действие, снятие 2 дебаффов и +3 КБ на 2 хода. Раз за бой.' }),
+
+    // ---------- Путь Механизированного Убийцы, 9–20 ----------
+    ab('overdrive', 'Режим «Овердрайв»', 9, 'mech-killer', { cost: 5, action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'extraAction', kind: 'action' }, { op: 'buff', stat: 'hit', value: -2, turns: 1 }],
+      desc: 'Импланты вразнос: дополнительное действие в этот ход, −2 к атаке на 1 ход. Раз за бой.' }),
+    ab('triple-strike', 'Тройная атака', 11, 'mech-killer', { cost: 7, range: 1, target: 'enemy', roll: 'attack',
+      effects: [W(), W(), W()],
+      desc: 'Три отдельные атаки оружием подряд.' }),
+    ab('terminator-mode', 'Режим «Терминатор»', 13, 'mech-killer', { cost: 6, action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'buff', stat: 'dmg', value: 4, turns: 3 }, { op: 'buff', stat: 'hit', value: 2, turns: 3 }],
+      desc: '+4 к урону и +2 к атаке на 3 хода. Раз за бой.' }),
+    ab('shadow-mode', 'Режим «Тень»', 17, 'mech-killer', { cost: 5, action: 'bonus', usesPerBattle: 2,
+      effects: [{ op: 'status', id: 'stealth', turns: 2 }],
+      desc: 'Оптический камуфляж: скрытность на 2 хода (первая атака с преимуществом и доп. костью крита).' }),
+    ab('terminator-protocol', 'Протокол «Терминатор»', 20, 'mech-killer', { cost: 12, range: 1, target: 'enemy', roll: 'attack', usesPerBattle: 1,
+      effects: [W('2d8'), W('2d8'), W('2d8'), { op: 'status', id: 'bleed', turns: 3 }],
+      desc: 'Капстоун: три атаки оружием, каждая +2d8 урона; при попадании последней — кровотечение на 3 хода. Раз за бой.' }),
+
+    // ---------- Путь Снайпера Пустошей, 9–20 ----------
+    ab('energy-charge', 'Энергозаряд', 9, 'wasteland-sniper', { cost: 5, range: 'weapon', target: 'enemy', roll: 'attack',
+      effects: [W('2d8', 'energy')],
+      desc: 'Энергопатрон: оружие +2d8 энергоурона.' }),
+    ab('deadly-shot', 'Смертельный выстрел', 11, 'wasteland-sniper', { cost: 8, range: 'weapon', target: 'enemy', roll: 'attack', usesPerBattle: 2,
+      effects: [W('4d10')],
+      desc: 'Выстрел в уязвимую точку: оружие +4d10 урона. Дважды за бой.' }),
+    ab('tactical-drone', 'Тактический дрон', 13, 'wasteland-sniper', { cost: 5, action: 'bonus', range: 6, target: 'tile', usesPerBattle: 1,
+      effects: [{ op: 'summon', unit: 'drone', turns: 5 }],
+      desc: 'Боевой дрон поддержки на 5 ходов. Раз за бой.' }),
+    ab('plasma-shot', 'Плазменный выстрел', 15, 'wasteland-sniper', { cost: 10, range: 'weapon', target: 'enemy', roll: 'attack', usesPerBattle: 2,
+      effects: [W('5d8', 'energy')],
+      desc: 'Плазма вместо пули: оружие +5d8 энергоурона. Дважды за бой.' }),
+    ab('destabilizer', 'Дестабилизатор', 17, 'wasteland-sniper', { cost: 4, action: 'bonus', range: 20, target: 'enemy',
+      effects: [{ op: 'status', id: 'corrosion', turns: 3 }, { op: 'mark', id: 'marked', turns: 3, value: 2 }],
+      desc: 'Сбой систем цели: коррозия (до −3 КБ за 3 хода) и метка (+2 к урону от всех атак).' }),
+    ab('dead-center', 'Выстрел в десятку', 20, 'wasteland-sniper', { cost: 12, range: 'weapon', target: 'enemy', roll: 'attack', usesPerBattle: 1,
+      effects: [W('7d10'), { op: 'status', id: 'stun', turns: 1 }],
+      desc: 'Капстоун: оружие +7d10 урона; при попадании цель оглушена на 1 ход. Раз за бой.' }),
+
+    // ---------- Путь Железного Титана, 9–20 ----------
+    ab('titanic-strike', 'Титанический удар', 9, 'iron-titan', { cost: 6, range: 1, target: 'enemy', roll: 'attack', usesPerBattle: 2,
+      effects: [W('3d8'), { op: 'status', id: 'stun', turns: 1 }],
+      desc: 'Оружие +3d8 урона; при попадании цель оглушена на 1 ход. Дважды за бой.' }),
+    ab('war-god', 'Бог войны', 11, 'iron-titan', { cost: 5, action: 'bonus', range: 4, target: 'tile', area: { shape: 'radius', size: 4 },
+      roll: 'save', save: 'wil', castStat: 'str', usesPerBattle: 1,
+      effects: [{ op: 'status', id: 'taunt', turns: 2 }],
+      desc: 'Рёв: враги в радиусе 4 клеток от точки делают спасбросок ТВД, иначе обязаны атаковать тебя 2 хода. Раз за бой.' }),
+    ab('shockwave', 'Волна отталкивания', 13, 'iron-titan', { cost: 6, range: 3, target: 'tile', area: { shape: 'radius', size: 3 },
+      roll: 'save', save: 'str', castStat: 'str', onSave: 'half',
+      effects: [{ op: 'damage', dice: '4d8', dmgType: 'blunt' }, { op: 'push', tiles: 2 }],
+      desc: 'Ударная волна: 4d8 дробящего урона врагам в радиусе 3, спасбросок СИЛ — половина и без толчка; толчок на 2 клетки.' }),
+    ab('gravity-slam', 'Гравитационный удар', 15, 'iron-titan', { cost: 9, range: 1, target: 'enemy', roll: 'attack', usesPerBattle: 2,
+      effects: [W('4d8'), { op: 'status', id: 'prone', turns: 1 }, { op: 'status', id: 'slow', turns: 2 }],
+      desc: 'Оружие +4d8 урона; цель сбита с ног и замедлена на 2 хода.' }),
+    ab('retribution-shield', 'Щит возмездия', 17, 'iron-titan', { cost: 6, action: 'bonus', usesPerBattle: 2,
+      effects: [{ op: 'shield', dice: '6d6', turns: 4 }, { op: 'buff', stat: 'kb', value: 2, turns: 4 }],
+      desc: 'Щит на 6d6 поглощения и +2 КБ на 4 хода.' }),
+    ab('titan-last-bastion', 'Последний бастион', 20, 'iron-titan', { cost: 10, action: 'bonus', range: 0, area: { shape: 'radius', size: 4 }, usesPerBattle: 1,
+      effects: [{ op: 'shield', dice: '8d6', turns: 4 }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'status', id: 'fortified', turns: 4 }],
+      desc: 'Капстоун: ты и союзники в радиусе 4 клеток получают щит 8d6, +3 КБ и стойку (сопротивление физическому) на 4 хода. Раз за бой.' }),
   ],
+  upgrades: UPGRADES,
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md', 'characters/party.md'],
   lore: 'Бойцы ближнего и дальнего боя: традиционное оружие плюс высокотехнологичные гаджеты. Виктор из партии — Забивной, Путь Железного Титана.',
 };

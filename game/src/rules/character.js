@@ -14,7 +14,12 @@ export const TIER_BONUS = [0, 0, 0, 1, 2];
 export const START_WEAPON_TIER = 3;
 
 export const mod = (v) => Math.floor(((v ?? 10) - 10) / 2);
-export const profBonus = (level) => (level >= 5 ? 3 : 2);
+/** Proficiency bonus (docs/specs/levels-20.md): +2 on 1–4, +3 on 5–8, +4 on 9–12, +5 on 13–16, +6 on 17–20. */
+export const profBonus = (level) => 2 + Math.floor((Math.max(1, Math.min(20, level || 1)) - 1) / 4);
+/** Ability score improvements (levels-20.md): default levels, cap of a stat after ASI. */
+export const DEFAULT_ASI_LEVELS = [4, 8, 12, 16, 19];
+export const ASI_STAT_MAX = 20;
+export const asiLevelsFor = (cls) => (cls && Array.isArray(cls.asiLevels) ? cls.asiLevels : DEFAULT_ASI_LEVELS);
 
 /**
  * Accepts data with either lower-case or upper-case keys (RACES / races ...).
@@ -43,8 +48,8 @@ export function normalizeData(d = {}) {
   };
 }
 
-/** Fallback for data.COMBAT_TALENT_LIMIT (docs/specs/talents.md): 2 on levels 1–3, 3 on levels 4–5. */
-export const defaultCombatTalentLimit = (level) => (level >= 4 ? 3 : 2);
+/** Fallback for data.COMBAT_TALENT_LIMIT (levels-20.md): 2 on 1–3, 3 on 4–7, 4 on 8–12, 5 on 13+. */
+export const defaultCombatTalentLimit = (level) => (level >= 13 ? 5 : level >= 8 ? 4 : level >= 4 ? 3 : 2);
 export const isCombatTalent = (t) => !!t && t.kind !== 'world';
 
 const ROLE_TO_AI = { tank: 'melee', melee: 'melee', ranged: 'ranged', caster: 'caster', control: 'caster', support: 'support' };
@@ -227,8 +232,104 @@ export function multiclassAbilities(D, mainCls, mc, level) {
   return out;
 }
 
+/** Main stat of a class/path: cast stat for caster roles, else the weapon stat (same rule as racial `any`). */
+export function mainStatOf(cls, pathDef = {}, weaponDef = null) {
+  const role = pathDef.role || cls.role;
+  const casterRole = role === 'caster' || role === 'support' || role === 'control';
+  const w = weaponDef || pathDef.weapon || cls.weapon;
+  return (casterRole && cls.castStat) || (w && w.stat) || cls.castStat || 'str';
+}
+
+/**
+ * Automatic ASI choices (companions): +2 to the main stat on every ASI level ≤ level; when the main stat
+ * would exceed ASI_STAT_MAX the rest goes to CON, then DEX. `st` — stats after racial bonuses.
+ */
+export function autoAsi(cls, level, st, main) {
+  const cur = { ...st };
+  const out = [];
+  for (const lv of asiLevelsFor(cls)) {
+    if (lv > level) continue;
+    const stats = {};
+    let left = 2;
+    for (const k of [main, 'con', 'dex', 'wil']) {
+      const n = Math.min(left, Math.max(0, ASI_STAT_MAX - (cur[k] ?? 10)));
+      if (n > 0) { stats[k] = (stats[k] || 0) + n; cur[k] = (cur[k] ?? 10) + n; left -= n; }
+      if (!left) break;
+    }
+    out.push({ level: lv, stats, auto: true });
+  }
+  return out;
+}
+
+/**
+ * Apply ASI entries (level ≤ hero level) to stats after racial bonuses, capping at ASI_STAT_MAX.
+ * Returns { talents: [ids from talent choices], overflow: [stats that hit the cap] }.
+ */
+export function applyAsi(st, asi, level) {
+  const talents = [];
+  const overflow = [];
+  for (const e of asi || []) {
+    if (!e || (e.level || 0) > level) continue;
+    if (e.talent) { talents.push(e.talent); continue; }
+    for (const [k, v] of Object.entries(e.stats || {})) {
+      if (!(k in st)) continue;
+      const nv = st[k] + (Number(v) || 0);
+      if (nv > ASI_STAT_MAX) overflow.push(k);
+      st[k] = Math.min(ASI_STAT_MAX, nv);
+    }
+  }
+  return { talents, overflow };
+}
+
+/** '+1' / '-2' strings (and negative numbers for cost) are deltas, plain numbers replace. */
+function upValue(cur, v, negIsDelta = false) {
+  if (typeof v === 'string' && /^[+-]\d+$/.test(v)) return Math.max(0, (cur || 0) + Number(v));
+  if (negIsDelta && typeof v === 'number' && v < 0) return Math.max(0, (cur || 0) + v);
+  return v;
+}
+
+/**
+ * Upgrades (levels-20.md): `cls.upgrades` / `path.upgrades` = [{ level, ability, path?, changes }] with
+ * level ≤ hero level are applied in level order to a copy of the ability. changes:
+ *   dice  — new dice of the first effect with `dice` (or `extraDice` of a weapon op); `effect: i` picks the effect;
+ *   cost  — number = new ENR cost, negative number or '-N' = cheaper by N;
+ *   usesPerBattle — number = new value, '+N' = more uses;
+ *   area  — number = new area.size, object = merged into area;
+ *   bonus — number added to the effect bonus (castMod stays: bonus becomes ['castMod', n]);
+ *   anything else (range, turns, …) — replaces the ability field.
+ * The ability gets `upgrades: [levels]` (for the character sheet).
+ */
+export function applyUpgrades(abilities, upgrades, level, path) {
+  const list = (upgrades || []).filter((g) => g && g.ability && (g.level || 1) <= level && (!g.path || g.path === path))
+    .sort((a, b) => (a.level || 1) - (b.level || 1));
+  if (!list.length) return abilities;
+  return abilities.map((a0) => {
+    const mine = list.filter((g) => g.ability === a0.id);
+    if (!mine.length) return a0;
+    const a = { ...a0, effects: (a0.effects || []).map((e) => ({ ...e })), upgrades: [] };
+    for (const g of mine) {
+      const ch = g.changes || {};
+      for (const [k, v] of Object.entries(ch)) {
+        if (k === 'effect') continue;
+        if (k === 'dice' || k === 'bonus') {
+          const idx = ch.effect != null ? ch.effect : a.effects.findIndex((e) => e.dice || e.extraDice);
+          const e = a.effects[idx];
+          if (!e) continue;
+          if (k === 'dice') { if (e.dice || !e.extraDice) e.dice = v; else e.extraDice = v; }
+          else e.bonus = e.bonus == null ? v : typeof e.bonus === 'number' ? e.bonus + v : [].concat(e.bonus, v);
+        } else if (k === 'cost') a.cost = upValue(a.cost, v, true);
+        else if (k === 'usesPerBattle') a.usesPerBattle = upValue(a.usesPerBattle, v);
+        else if (k === 'area') a.area = typeof v === 'number' ? { ...(a.area || {}), size: v } : { ...(a.area || {}), ...v };
+        else a[k] = v;
+      }
+      a.upgrades.push(g.level || 1);
+    }
+    return a;
+  });
+}
+
 export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroes', data, id, name, anyStat, weaponTier, talents = [], activeCombat, gadget,
-  equipment, proficiencies, skills, phobia, multiclass, inventory } = {}) {
+  equipment, proficiencies, skills, phobia, multiclass, inventory, asi } = {}) {
   const D = data ? normalizeData(data) : null;
   if (typeof race === 'string') race = D?.races[race];
   if (typeof cls === 'string') cls = D?.classes[cls];
@@ -244,7 +345,11 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   const armorDef = EQ.armor;
   const prof = mergeProficiencies(defaultProficiencies(cls, pathDef), proficiencies);
 
-  const TL = talents.length || gadget ? resolveTalents(D || normalizeData({}), { talents, activeCombat, gadget, level }) : null;
+  // ASI talent choices count as owned talents (deduplicated)
+  const asiList = Array.isArray(asi) ? asi : [];
+  const ownTalents = [...talents];
+  for (const e of asiList) if (e && e.talent && (e.level || 0) <= level && !ownTalents.includes(e.talent)) ownTalents.push(e.talent);
+  const TL = ownTalents.length || gadget ? resolveTalents(D || normalizeData({}), { talents: ownTalents, activeCombat, gadget, level }) : null;
   const passives = [...(race.passives || []), ...(cls.passives || []), ...(TL ? TL.passives : []), ...((EQ.offhand && EQ.offhand.passives) || []),
     ...(weaponDef.passives || []), ...(armorDef.passives || [])]
     .filter((p) => passiveApplies(p, level, path));
@@ -261,6 +366,9 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
       st[target] += rb.any;
     } else if (k in st) st[k] += rb[k];
   }
+  // ASI (levels-20.md): after racial bonuses, before passive stat bonuses; 'auto' — companions (main stat)
+  const asiApplied = asi === 'auto' ? autoAsi(cls, level, st, mainStatOf(cls, pathDef, weaponDef)) : asiList;
+  const AS = applyAsi(st, asiApplied, level);
   for (const k in P.statBonus) if (k in st) st[k] += P.statBonus[k];
 
   const u = baseUnit();
@@ -311,7 +419,8 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.saves = [...(cls.saves || [])];
   u.resist = mergeResist(mergeResist(mergeResist({}, race.resist), P.resist), armor.resist);
   u.immuneStatus = [...(race.immuneStatus || []), ...P.immuneStatus];
-  u.abilities = [...(race.abilities || []), ...(cls.abilities || []), ...(TL ? TL.abilities : [])].filter((a) => abilityAvailable(a, level, path));
+  u.abilities = applyUpgrades([...(race.abilities || []), ...(cls.abilities || []), ...(TL ? TL.abilities : [])].filter((a) => abilityAvailable(a, level, path)),
+    [...(cls.upgrades || []), ...(pathDef.upgrades || [])], level, path);
   for (const a of [...(weaponDef.grants || []), ...(armorDef.grants || [])]) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
   for (const a of multiclassAbilities(ND, cls, multiclass, level)) if (!u.abilities.some((x) => x.id === a.id)) u.abilities.push(a);
   u.multiclass = multiclass ? { cls: typeof multiclass.cls === 'string' ? multiclass.cls : multiclass.cls.id, path: multiclass.path || null } : null;
@@ -326,7 +435,9 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.soulless = !!race.soulless;
   u.condBonuses = P.cond;
   u.thorns = P.thorns;
-  u.talents = [...talents];
+  u.talents = ownTalents;
+  u.asi = asiApplied.filter((e) => e && (e.level || 0) <= level).map((e) => ({ ...e }));
+  u.asiOverflow = AS.overflow;
   u.activeTalents = TL ? TL.active : [];
   u.gadget = TL ? TL.gadget : null;
   const W = worldEffects(TL ? TL.world : []);
@@ -340,7 +451,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.build = { race: race.id, cls: cls.id, path, stats: { ...base }, anyStat: anyStat || null, talents: [...talents],
     activeCombat: activeCombat ? [...activeCombat] : null, gadget: gadget || null, name: name || null, id: u.id,
     equipment: equipment || null, proficiencies: proficiencies || null, skills: skills || null, phobia: phobia || null,
-    multiclass: multiclass || null, inventory: inventory || null };
+    multiclass: multiclass || null, inventory: inventory || null, asi: asi === 'auto' ? 'auto' : asiList.map((e) => ({ ...e })) };
   return u;
 }
 
@@ -404,7 +515,7 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
   u.boss = !!def.boss;
   u.defaultTurns = def.defaultTurns ?? null;
   u.soulless = !!def.soulless;
-  u.xp = def.xp || 0;
+  u.xp = def.xp ?? null; // null → progression.enemyXpForLevel(level)
   return u;
 }
 

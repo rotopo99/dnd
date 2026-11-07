@@ -1,6 +1,23 @@
 // Техномант (аналог Волшебника). Канон: rules/classes.md, rules/class-paths.md, rules/class-roadmap.md,
 // rules/spellcasting.md, rules/spells.md, characters/party.md (Куксиус — Путь Кодера).
 // Расширения схемы: path.role, passives[].level / passives[].path.
+// Компактный конструктор способностей уровней 6+ (поля схемы — как у ручных записей ниже).
+const ab = (id, name, level, path, o) => ({
+  id, name, level, path, cost: 0, action: 'action', trigger: null, range: 0, target: 'self', area: null,
+  roll: 'auto', save: null, onSave: 'none', usesPerBattle: null, effects: [], canon: 'rules/spells.md', ...o,
+});
+const zone = (size) => ({ shape: 'radius', size });
+const AOE = { range: 20, target: 'tile', roll: 'save' };
+
+// Улучшения (docs/specs/levels-20.md): `dice` заменяет кости главного эффекта способности.
+const UPGRADES = [
+  { level: 2, ability: 'proxy-shield', changes: { dice: '2d6' } },
+  { level: 4, ability: 'energy-beam', changes: { dice: '2d8' } },
+  { level: 8, ability: 'impulse-shock', changes: { usesPerBattle: 3 } },
+  { level: 12, ability: 'cyber-storm', changes: { dice: '4d6', cost: 7 } },
+  { level: 16, ability: 'energy-beam', changes: { dice: '3d8' } },
+];
+
 export default {
   id: 'technomant', name: 'Техномант', analog: 'Волшебник', icon: 'class_tech',
   role: 'caster',
@@ -30,6 +47,23 @@ export default {
   passives: [
     { id: 'phantom-mastery', name: 'Мастер иллюзий', level: 5, path: 'illusionist',
       desc: 'Иллюзии становятся неотличимы от реальности (канон, class-paths): +2 к урону способностей.', op: { dmg: { spell: 2 } } },
+    // ---------- Уровни 7–20 ----------
+    { id: 'neural-mk2', name: 'Нейросеть Mk.II', level: 7, path: 'coder',
+      desc: '+2 ИНТ, преимущество на спасброски ИНТ (шифратор).', op: { statBonus: { int: 2 }, advantage: ['saveInt'] } },
+    { id: 'coder-ai', name: 'ИИ-помощник', level: 11, path: 'coder',
+      desc: '+2 к урону способностей, +1 к атаке.', op: { dmg: { spell: 2 }, hit: 1 } },
+    { id: 'digital-mind', name: 'Цифровое сознание', level: 15, path: 'coder',
+      desc: '+2 ИНТ, +2 к урону способностей, иммунитет к страху.', op: { statBonus: { int: 2 }, dmg: { spell: 2 }, immuneStatus: ['fear'] } },
+    { id: 'mass-illusionist', name: 'Мастер иллюзий II', level: 11, path: 'illusionist',
+      desc: '+2 к урону способностей.', op: { dmg: { spell: 2 } } },
+    { id: 'phantom-catalyst', name: 'Фантомный катализатор', level: 15, path: 'illusionist',
+      desc: '+2 ИНТ, +3 к урону способностей.', op: { statBonus: { int: 2 }, dmg: { spell: 3 } } },
+    { id: 'energy-mastery', name: 'Мастер энергии', level: 7, path: 'energetic',
+      desc: '+2 ИНТ, +2 к урону способностей.', op: { statBonus: { int: 2 }, dmg: { spell: 2 } } },
+    { id: 'energy-core', name: 'Вечный двигатель', level: 11, path: 'energetic',
+      desc: '+10 ЭНР, +1 к атаке.', op: { maxEnr: 10, hit: 1 } },
+    { id: 'energy-ascension', name: 'Аватар энергии', level: 15, path: 'energetic',
+      desc: '+2 ИНТ, +3 к урону способностей, сопротивление энергии и электричеству.', op: { statBonus: { int: 2 }, dmg: { spell: 3 }, resist: { energy: 'resist', electric: 'resist' } } },
   ],
   abilities: [
     // ---------- Общие ----------
@@ -157,7 +191,88 @@ export default {
       desc: '3d6 энергоурона всем врагам в радиусе 3 клеток, спасбросок ЛВК — половина. Раз за бой.',
       canon: 'rules/class-roadmap.md',
     },
+
+    // ---------- Общие, уровни 6–18 ----------
+    ab('arc-lance', 'Дуговой разряд', 6, null, { cost: 5, range: 20, target: 'enemy', roll: 'attack',
+      effects: [{ op: 'damage', dice: '3d8', dmgType: 'electric', bonus: 'castMod' }],
+      desc: 'Концентрированный разряд: 3d8 + ИНТ электроурона.' }),
+    ab('recharge', 'Перезарядка', 10, null, { action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'heal', dice: '4d6', resource: 'enr' }],
+      desc: 'Сброс буферов: восстанавливает 4d6 ЭНР. Раз за бой, бесплатно.' }),
+    ab('quantum-barrier', 'Квантовый барьер', 14, null, { cost: 8, action: 'bonus', range: 8, target: 'ally',
+      effects: [{ op: 'shield', dice: '5d6', turns: 4 }, { op: 'cleanse', count: 1, kind: 'debuff' }],
+      desc: 'Щит 5d6 на 4 хода на себя или союзника и снятие 1 дебаффа.' }),
+    ab('core-overload', 'Перегрузка ядра', 18, null, { ...AOE, cost: 14, area: zone(4), save: 'dex', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '8d8', dmgType: 'energy' }],
+      desc: '8d8 энергоурона всем врагам в радиусе 4 клеток, спасбросок ЛВК — половина. Раз за бой.' }),
+
+    // ---------- Путь Кодера, 9–20 ----------
+    ab('matrix-storm', 'Матричная буря', 9, 'coder', { ...AOE, cost: 9, area: zone(3), save: 'con', onSave: 'half',
+      effects: [{ op: 'damage', dice: '4d8', dmgType: 'electric' }, { op: 'status', id: 'stun', turns: 1 }],
+      desc: '4d8 электроурона врагам в радиусе 3; спасбросок ТЕЛ — половина; провалившие оглушены на 1 ход.', canon: 'rules/class-roadmap.md' }),
+    ab('absolute-hack', 'Абсолютный взлом', 11, 'coder', { cost: 8, range: 12, target: 'enemy', roll: 'save', save: 'int', usesPerBattle: 2,
+      effects: [{ op: 'status', id: 'hallucination', turns: 3 }, { op: 'status', id: 'disarm', turns: 2 }],
+      desc: 'Перехват управления: цель после провала спасброска ИНТ галлюцинирует 3 хода и разоружена на 2.', canon: 'rules/class-roadmap.md' }),
+    ab('summon-cyber-demon', 'Призыв кибер-демона', 13, 'coder', { cost: 10, range: 6, target: 'tile', usesPerBattle: 2,
+      effects: [{ op: 'summon', unit: 'cyber-demon', turns: 4 }],
+      desc: 'Кибер-демон сражается за тебя 4 хода.' }),
+    ab('global-hack', 'Глобальный взлом', 15, 'coder', { ...AOE, cost: 14, area: zone(5), save: 'int', usesPerBattle: 1,
+      effects: [{ op: 'status', id: 'stun', turns: 1 }, { op: 'status', id: 'silence', turns: 2 }, { op: 'status', id: 'disarm', turns: 2 }],
+      desc: 'Отключение всех систем в радиусе 5: после провала спасброска ИНТ оглушение 1 ход, немота и разоружение на 2. Раз за бой.', canon: 'rules/class-roadmap.md' }),
+    ab('cyber-army', 'Кибер-армия', 17, 'coder', { cost: 14, range: 6, target: 'tile', usesPerBattle: 1,
+      effects: [{ op: 'summon', unit: 'drone', turns: 4 }, { op: 'summon', unit: 'drone', turns: 4 }, { op: 'summon', unit: 'drone', turns: 4 }],
+      desc: 'Три боевых дрона на 4 хода. Раз за бой.' }),
+    ab('apocalypse-hack', 'Апокалипсис', 20, 'coder', { ...AOE, cost: 18, area: zone(6), save: 'dex', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '10d8', dmgType: 'electric' }],
+      desc: 'Капстоун: 10d8 электроурона всем врагам в радиусе 6 клеток, спасбросок ЛВК — половина. Раз за бой.', canon: 'rules/class-roadmap.md' }),
+
+    // ---------- Путь Иллюзиониста, 7–20 ----------
+    ab('mass-illusion', 'Массовая иллюзия', 7, 'illusionist', { ...AOE, range: 12, cost: 6, area: zone(3), save: 'wil',
+      effects: [{ op: 'status', id: 'blind', turns: 2 }],
+      desc: 'Ложная реальность: враги в радиусе 3 слепнут на 2 хода (спасбросок ТВД).', canon: 'rules/class-roadmap.md' }),
+    ab('illusory-world', 'Иллюзорный мир', 9, 'illusionist', { ...AOE, cost: 8, area: zone(4), save: 'wil',
+      effects: [{ op: 'status', id: 'hallucination', turns: 3 }],
+      desc: 'Иллюзорная область: враги в радиусе 4 галлюцинируют 3 хода (спасбросок ТВД).' }),
+    ab('phantom-army', 'Фантомная армия', 11, 'illusionist', { cost: 7, action: 'bonus', range: 6, target: 'tile', usesPerBattle: 2,
+      effects: [{ op: 'summon', unit: 'hologram', turns: 3 }, { op: 'summon', unit: 'hologram', turns: 3 }, { op: 'summon', unit: 'hologram', turns: 3 }],
+      desc: 'Три голограммы-приманки на 3 хода.', canon: 'rules/class-roadmap.md' }),
+    ab('illusory-storm', 'Иллюзорная буря', 13, 'illusionist', { ...AOE, cost: 10, area: zone(4), save: 'wil', onSave: 'half',
+      effects: [{ op: 'damage', dice: '5d8', dmgType: 'psychic' }],
+      desc: '5d8 пси-урона по МРЛ врагов в радиусе 4, спасбросок ТВД — половина.' }),
+    ab('reality-rift', 'Разрыв реальности', 15, 'illusionist', { ...AOE, cost: 12, area: zone(3), save: 'wil', onSave: 'half',
+      effects: [{ op: 'damage', dice: '6d8', dmgType: 'psychic' }, { op: 'status', id: 'fear', turns: 2 }],
+      desc: '6d8 пси-урона в радиусе 3; провалившие спасбросок ТВД ещё и в страхе на 2 хода.', canon: 'rules/class-roadmap.md' }),
+    ab('illusory-apocalypse', 'Иллюзорный апокалипсис', 17, 'illusionist', { ...AOE, cost: 16, area: zone(6), save: 'wil', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '8d8', dmgType: 'psychic' }],
+      desc: '8d8 пси-урона в радиусе 6, спасбросок ТВД — половина. Раз за бой.' }),
+    ab('universe-of-lies', 'Вселенная лжи', 20, 'illusionist', { ...AOE, cost: 18, area: zone(6), save: 'wil', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '6d8', dmgType: 'psychic' }, { op: 'status', id: 'hallucination', turns: 3 }, { op: 'status', id: 'fear', turns: 2 }],
+      desc: 'Капстоун: 6d8 пси-урона в радиусе 6; провалившие спасбросок ТВД галлюцинируют 3 хода и в страхе 2. Раз за бой.', canon: 'rules/class-roadmap.md' }),
+
+    // ---------- Путь Энергетика, 7–20 ----------
+    ab('plasma-storm', 'Плазменная буря', 7, 'energetic', { ...AOE, cost: 8, area: zone(3), save: 'dex', onSave: 'half',
+      effects: [{ op: 'damage', dice: '4d8', dmgType: 'energy' }],
+      desc: '4d8 энергоурона в радиусе 3, спасбросок ЛВК — половина.', canon: 'rules/class-roadmap.md' }),
+    ab('disintegration-ray', 'Луч разрушения', 9, 'energetic', { cost: 8, range: 20, target: 'enemy', roll: 'attack',
+      effects: [{ op: 'damage', dice: '5d8', dmgType: 'energy', bonus: 'castMod' }, { op: 'status', id: 'corrosion', turns: 2 }],
+      desc: '5d8 + ИНТ энергоурона и коррозия брони на 2 хода.', canon: 'rules/class-roadmap.md' }),
+    ab('supernova', 'Сверхновая', 11, 'energetic', { ...AOE, cost: 11, area: zone(4), save: 'dex', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '6d8', dmgType: 'energy' }],
+      desc: '6d8 энергоурона в радиусе 4, спасбросок ЛВК — половина. Дважды за бой.', canon: 'rules/class-roadmap.md' }),
+    ab('energy-colossus', 'Энергетический колосс', 13, 'energetic', { ...AOE, cost: 13, area: zone(5), save: 'dex', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '7d8', dmgType: 'energy' }],
+      desc: '7d8 энергоурона в радиусе 5, спасбросок ЛВК — половина. Дважды за бой.' }),
+    ab('galactic-beam', 'Галактический луч', 15, 'energetic', { cost: 14, range: 20, target: 'enemy', roll: 'attack', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '10d8', dmgType: 'energy', bonus: 'castMod' }],
+      desc: '10d8 + ИНТ энергоурона одной цели. Раз за бой.', canon: 'rules/class-roadmap.md' }),
+    ab('energy-titan', 'Энергетический титан', 17, 'energetic', { cost: 15, action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'buff', stat: 'dmg', value: 5, turns: 4 }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'shield', dice: '8d6', turns: 4 }],
+      desc: 'Превращение в энергию: +5 к урону, +3 КБ и щит 8d6 на 4 хода. Раз за бой.' }),
+    ab('singularity', 'Сингулярность', 20, 'energetic', { ...AOE, cost: 18, area: zone(5), save: 'dex', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '10d8', dmgType: 'energy' }, { op: 'status', id: 'root', turns: 2 }],
+      desc: 'Капстоун: чёрная дыра — 10d8 энергоурона в радиусе 5; провалившие спасбросок ЛВК обездвижены на 2 хода. Раз за бой.', canon: 'rules/class-roadmap.md' }),
   ],
+  upgrades: UPGRADES,
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md', 'rules/spells.md', 'characters/party.md'],
   lore: 'Специалисты по манипуляции технологиями и энергией: взлом, иллюзии, энергия. Куксиус из партии — Техномант, Путь Кодера.',
 };
