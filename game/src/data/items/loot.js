@@ -19,37 +19,37 @@ const LIST = [
   // ---------------------------------------------------------------- Фракции (14)
   t('pirates', 'Пиратская добыча', 2, [10, 40], Q_MID, [
     e('boarding-saber', 3), e('boat-hook', 2), e('makarych', 2), e('kedrach', 1), e('energy-pistol', 1), e('codeine-syrup', 3),
-    e('holo-decoy', 2), e('cringe-grenade', 1), e('tushenka', 4, 2), e('medkit', 3), e('party-cell', 1), e('forsazh-stim', 2)]),
+    e('holo-decoy', 2), e('cringe-grenade', 1), e('tushenka', 4, 2), e('medkit', 3), e('party-cell', 1), e('forsazh-stim', 2), e('hollow-mag', 2), e('wet-suit', 1), e('swamp-boots', 1), e('hooked-edge', 1), e('side-pistol', 1)]),
   t('warprom', 'Списанное Военпрома', 2, [15, 45], Q_HIGH, [
     e('bayonet', 3), e('makarych', 3), e('av15', 1), e('sniper-rifle', 1), e('frag-grenade', 3), e('army-medkit', 2),
-    e('smoke-grenade', 3), e('plate-rig', 1), e('compensator', 1), e('tishina-syringe', 1), e('adrenaline-stim', 1)]),
+    e('smoke-grenade', 3), e('plate-rig', 1), e('compensator', 1), e('tishina-syringe', 1), e('adrenaline-stim', 1), e('ap-mag', 1), e('tracer-mag', 2), e('gas-filter', 1), e('reactive-plate', 1), e('riot-shield', 1)]),
   t('aiParty', 'Склад Партии', 2, [20, 50], Q_HIGH, [
     e('shock-baton', 3), e('shock-glove', 2), e('shock-rifle', 1), e('laser-pistol', 1), e('party-cell', 3), e('party-phenazepam', 2),
-    e('calmers', 3), e('flashbang', 2), e('portable-barricade', 2), e('concealed-vest', 1), e('megaphone', 1), e('otlichnik-nootrop', 2)]),
+    e('calmers', 3), e('flashbang', 2), e('portable-barricade', 2), e('concealed-vest', 1), e('megaphone', 1), e('otlichnik-nootrop', 2), e('rubber-mag', 2), e('shock-edge', 1), e('holo-reticle', 1), e('insulator-lining', 1), e('riot-shield', 1)]),
   t('tinBrotherhood', 'Арсенал Братства', 2, [10, 35], Q_HIGH, [
     e('tin-katana', 1), e('tin-warhammer', 1), e('spring-bastard', 2), e('mosin', 2), e('spring-crossbow', 2), e('saw-stars', 3, 3),
-    e('nagan-revolver', 2), e('felt-soles', 2), e('foil-lining', 1), e('emp-grenade', 2), e('medkit', 3), e('bandage', 3, 2)]),
+    e('nagan-revolver', 2), e('felt-soles', 2), e('foil-lining', 1), e('emp-grenade', 2), e('medkit', 3), e('bandage', 3, 2), e('tower-shield', 1), e('grip-spikes', 1), e('quilted-lining', 2), e('trench-knife', 1)]),
   t('renegades', 'Трофеи Отступников', 2, [5, 30], Q_MID, [
     e('rusty-ak', 2), e('sawed-off', 3), e('rebar-spear', 2), e('molotov', 4, 2), e('grenade', 3), e('tripwire', 2),
-    e('smoke-grenade', 2), e('bottle-silencer', 2), e('quilted-jacket', 2), e('medkit', 3), e('bodry-ilyich', 3)]),
+    e('smoke-grenade', 2), e('bottle-silencer', 2), e('quilted-jacket', 2), e('medkit', 3), e('bodry-ilyich', 3), e('incendiary-mag', 1), e('oil-mag', 2), e('fire-blanket', 1), e('spiked-plates', 1)]),
   t('mechanids', 'Детали механидов', 2, [10, 35], Q_MID, [
     e('hydro-fist', 1), e('nailgun', 3), e('conveyor-mg', 1), e('repair-kit', 4, 2), e('krona-battery', 3, 2), e('drone-reactor', 1),
-    e('shock-mat', 2), e('magnet-anchors', 1), e('scrap-plates', 2), e('folded-drone', 1), e('servo-parts', 2)]),
+    e('shock-mat', 2), e('magnet-anchors', 1), e('scrap-plates', 2), e('folded-drone', 1), e('servo-parts', 2), e('mech-bolt', 2), e('shock-edge', 1), e('acid-coat', 1), e('oiled-edge', 2)]),
   t('cringegons', 'Кринж-трофеи', 2, [5, 30], Q_LOW, [
     e('spoons', 3), e('megaphone', 2), e('battle-bayan', 1), e('electro-balalaika', 1), e('cringe-grenade', 4), e('host-jacket', 1),
-    e('valerian', 3, 2), e('calmers', 3), e('anti-cringe-earplugs', 2)]),
+    e('valerian', 3, 2), e('calmers', 3), e('anti-cringe-earplugs', 2), e('cringe-amp', 1), e('laser-pointer', 2)]),
   t('scavengers', 'Хлам со свалок', 3, [2, 20], Q_LOW, [
     e('shiv', 4), e('armatura', 3), e('pipe-smg', 2), e('rebar-crossbow', 2), e('wire-bolas', 2), e('tire-vest', 1), e('sign-plate', 1),
-    e('scrap-magnet', 1), e('electrical-tape', 3), e('krona-battery', 3), e('analgin', 3), e('tushenka', 3, 2), e('servo-parts', 1)]),
+    e('scrap-magnet', 1), e('electrical-tape', 3), e('krona-battery', 3), e('analgin', 3), e('tushenka', 3, 2), e('servo-parts', 1), e('weighted-edge', 2), e('tire-patch', 2), e('door-shield', 2), e('sprint-spikes', 1), e('oiled-edge', 2)]),
   t('tekhonki', 'Прокси-кустарщина', 2, [5, 30], Q_MID, [
     e('proxy-sling', 3), e('proxy-wrench', 2), e('blessed-wrench', 2), e('proxy-can', 3), e('wire-mantle', 1), e('proxy-sharpening', 1),
-    e('blessed-nut', 3), e('rubber-lining', 1), e('krona-battery', 4, 2), e('repair-kit', 2)]),
+    e('blessed-nut', 3), e('rubber-lining', 1), e('krona-battery', 4, 2), e('repair-kit', 2), e('proxy-lens', 1), e('proxy-resonator', 1), e('faraday-cage', 1), e('thermal-edge', 1)]),
   t('neutralVillages', 'Деревенский сундук', 2, [3, 20], Q_LOW, [
     e('hatchet', 3), e('pitchfork', 3), e('hunting-carbine', 1), e('pump-shotgun', 1), e('ski-bow', 1), e('bear-trap', 2),
-    e('bandage', 4, 2), e('valerian', 3), e('pelmeni', 3, 2), e('tushenka', 3, 2), e('medkit', 2)]),
+    e('bandage', 4, 2), e('valerian', 3), e('pelmeni', 3, 2), e('tushenka', 3, 2), e('medkit', 2), e('wrapped-grip', 3), e('buckler-lid', 2), e('quilted-lining', 2), e('pocket-lining', 2), e('poison-edge', 1)]),
   t('agrozone', 'Кладовая Агрозоны', 2, [3, 25], Q_LOW, [
     e('sickle', 3), e('pitchfork', 3), e('potato-cannon', 2), e('shock-glove', 1), e('hazmat-suit', 1), e('molotov', 3),
-    e('antidote', 2), e('calmers', 2), e('tushenka', 3, 2)]),
+    e('antidote', 2), e('calmers', 2), e('tushenka', 3, 2), e('acid-mag', 1), e('acid-edge', 1), e('gas-filter', 1)]),
   t('mutantsPlant', 'Дары корней', 2, [0, 10], Q_MID, [
     e('thorn-bow', 1), e('sickle', 2), e('bark-weave', 1), e('antidote', 4), e('valerian', 4, 2), e('hazmat-suit', 1), e('bandage', 3, 2)]),
   t('cult', 'Реквизит Культа', 2, [10, 40], Q_MID, [
@@ -57,14 +57,14 @@ const LIST = [
     e('molotov', 2), e('grenade', 2), e('calmers', 2), e('soul-shard', 1)]),
   t('mutantsBeast', 'Логово стаи', 2, [0, 15], Q_LOW, [
     e('heavy-cleaver', 2), e('machete', 3), e('lumber-greataxe', 1), e('ski-bow', 2), e('mutant-hide', 1), e('bear-trap', 3),
-    e('bear-blood', 1), e('serrated-edge', 2), e('tushenka', 2, 2)]),
+    e('bear-blood', 1), e('serrated-edge', 2), e('tushenka', 2, 2), e('mutant-tooth', 3), e('poison-edge', 1), e('quiet-soles', 1)]),
 
   // ---------------------------------------------------------------- Типы мест (POI канон-карты)
   t('dungeons', 'Довоенный бункер', 3, [20, 60], Q_HIGH, [
     e('makarych', 2), e('kedrach', 1), e('army-medkit', 2), e('party-cell', 2), e('frag-grenade', 2), e('concealed-vest', 1),
-    e('ceramic-insert', 1), e('pso-scope', 1), e('folded-drone', 1), e('tushenka', 4, 3), e('rare-parts', 1)]),
+    e('ceramic-insert', 1), e('pso-scope', 1), e('folded-drone', 1), e('tushenka', 4, 3), e('rare-parts', 1), e('thermal-scope', 1), e('kevlar-sheet', 1), e('tac-flashlight', 1)]),
   t('lis-vault', 'Хранилище проекта «Лис»', 3, [40, 90], Q_HIGH, [
-    e('lis-3-twin', 2), e('lis-4-sniffer', 2), e('lis-6-core', 1), e('lis-7-chuyo', 1), e('lis-8-hide', 1), e('army-medkit', 3), e('rare-parts', 3), e('servo-parts', 3)]),
+    e('lis-3-twin', 2), e('lis-4-sniffer', 2), e('lis-6-core', 1), e('lis-7-chuyo', 1), e('lis-8-hide', 1), e('army-medkit', 3), e('rare-parts', 3), e('servo-parts', 3), e('cryo-nozzle', 1), e('cryo-edge', 1), e('arc-capacitor', 1), e('hover-pads', 1)]),
   t('wolf-pack', 'Трофеи стаи «Волк»', 2, [20, 60], Q_HIGH, [
     e('wolf-fang', 3), e('wolf-link', 2), e('frag-grenade', 2), e('army-medkit', 2), e('smoke-grenade', 2), e('servo-parts', 3), e('rare-parts', 1)]),
   t('ruins', 'Руины', 2, [5, 30], Q_LOW, [

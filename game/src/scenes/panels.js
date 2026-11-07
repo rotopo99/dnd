@@ -1,4 +1,4 @@
-// Party / Reputation / Journal screens (tabs). createPanelsScene({ tab: 'party'|'rep'|'journal', back, canSwap })
+// Party / Reputation / Journal / Codex screens (tabs). createPanelsScene({ tab: 'party'|'stats'|'gear'|'rep'|'journal'|'codex', back, canSwap })
 // back — scene to resume on Esc. canSwap — combat talent loadout can be changed (on a node with rest).
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
@@ -23,9 +23,10 @@ import { checkInfo } from '../world/checks.js';
 import { STATS, mod } from '../rules/character.js';
 import { weaponTypeName, armorTypeName, tierName } from '../ui/items-ui.js';
 import { openTalentPick, openAsi, openSheet } from './levelup.js';
+import { layoutCodex, clickCodex, updateCodex, renderCodex } from './panel-codex.js';
 
 const BASE_W = 1280, BASE_H = 720;
-const TABS = ['party', 'stats', 'gear', 'rep', 'journal'];
+const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex'];
 
 export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKey = 'hero' }) {
   const S = { tab, buttons: [], hover: null, time: 0, units: null, gearKey, statKey: gearKey, jq: createScroll(), je: createScroll(), sc: createScroll() };
@@ -106,6 +107,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       b.push({ kind: 'ai', label: `${t('party.aiCompanions')}: ${sv.settings.aiCompanions ? t('party.on') : t('party.off')}`, x: ox + 690, y: oy + BASE_H - 110, w: 380, h: 40 });
     }
     if (S.tab === 'gear') layoutGear(game, S, b);
+    if (S.tab === 'codex') layoutCodex(game, S, b);
     if (S.tab === 'stats') {
       const ms = statMembers(sv);
       if (!ms.some((m) => m.key === S.statKey)) S.statKey = 'hero';
@@ -121,6 +123,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'tab') { S.tab = b.id; layout(game); return; }
     if (b.kind === 'statMember') { S.statKey = b.id; S.sc.off = 0; layout(game); return; }
     if (b.kind === 'back') { game.resume(back); return; }
+    if (clickCodex(game, S, b)) { layout(game); return; }
     if (clickGear(game, S, b, (g) => rebuild(g))) { rebuild(game); return; }
     if (b.kind === 'm') {
       if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
@@ -425,6 +428,8 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       if (S.tab === 'journal') {
         const { rows, ev } = journalRows(game);
         used = updateScroll(S.jq, jqView(), rowsH(rows) + 8, inp.mouse) || updateScroll(S.je, jeView(), rowsH(ev) + 8, inp.mouse);
+      } else if (S.tab === 'codex') {
+        used = updateCodex(game, S);
       } else if (S.tab === 'stats') {
         const u = S.units[S.statKey] || S.units.hero;
         if (u) used = updateScroll(S.sc, scView(), rowsH(statsRight(game, u)) + 8, inp.mouse);
@@ -436,6 +441,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else if (inp.wasPressed('KeyC')) { S.tab = 'stats'; layout(game); }
       else if (inp.wasPressed('KeyR')) { S.tab = 'rep'; layout(game); }
       else if (inp.wasPressed('KeyJ')) { S.tab = 'journal'; layout(game); }
+      else if (inp.wasPressed('KeyB')) { S.tab = 'codex'; layout(game); }
     },
     render(game) {
       const { ctx, width: W, height: H } = game;
@@ -444,6 +450,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else if (S.tab === 'gear') renderGear(game, S);
       else if (S.tab === 'stats') renderStats(game);
       else if (S.tab === 'rep') renderRep(game);
+      else if (S.tab === 'codex') renderCodex(game, S);
       else renderJournal(game);
       for (const b of S.buttons) button(ctx, b, S.hover === b);
       if (S.tab === 'gear') renderGearHover(game, S);

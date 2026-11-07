@@ -29,23 +29,23 @@ const A = (name, o) => ({ markup: 1, sellRate: 0.4, buys: ['weapon', 'armor', 'm
 
 export const ARCHETYPES = {
   gunsmith: A('Оружейник (огнестрел)', { buys: ['weapon', 'mod'], staples: ['bottle-silencer'],
-    tiers: { 1: ['samopal-pistol', 'nailgun', 'hunting-carbine', 'pipe-smg', 'ski-bow', 'bottle-silencer'], 2: ['kedrach', 'pump-shotgun', 'shock-rifle', 'compensator'], 3: ['sniper-rifle', 'rpg-tube', 'drum-mag'], 4: ['wolf-fang', 'laser-rifle'], 5: ['lis-7-chuyo', 'lis-3-twin'] } }),
+    tiers: { 1: ['samopal-pistol', 'nailgun', 'hunting-carbine', 'pipe-smg', 'ski-bow', 'bottle-silencer', 'red-dot-pawn', 'flame-hider', 'oil-mag'], 2: ['kedrach', 'pump-shotgun', 'shock-rifle', 'compensator', 'subsonic-barrel', 'hollow-mag', 'tracer-mag', 'rubber-mag', 'laser-pointer'], 3: ['sniper-rifle', 'rpg-tube', 'drum-mag', 'incendiary-mag', 'ap-mag', 'bipod', 'incendiary-muzzle', 'holo-reticle'], 4: ['wolf-fang', 'laser-rifle', 'thermal-scope', 'cryo-nozzle'], 5: ['lis-7-chuyo', 'lis-3-twin'] } }),
   bladesmith: A('Кузнец (холодное)', { buys: ['weapon', 'armor'], staples: ['serrated-edge'],
-    tiers: { 1: ['machete', 'heavy-cleaver', 'hatchet', 'finka', 'bayonet', 'ritual-blade', 'rebar-spear', 'sickle', 'brass-knuckles', 'serrated-edge'], 2: ['fire-axe', 'power-sword'], 3: ['watch-bastard'], 4: ['monofil-katana', 'sleeper-blade'], 5: [] } }),
+    tiers: { 1: ['machete', 'heavy-cleaver', 'hatchet', 'finka', 'bayonet', 'ritual-blade', 'rebar-spear', 'sickle', 'brass-knuckles', 'serrated-edge', 'weighted-edge', 'oiled-edge', 'wrapped-grip', 'mutant-tooth'], 2: ['fire-axe', 'power-sword', 'poison-edge', 'hooked-edge', 'shock-edge', 'trench-knife'], 3: ['watch-bastard', 'thermal-edge', 'acid-edge'], 4: ['monofil-katana', 'sleeper-blade', 'cryo-edge'], 5: [] } }),
   armorer: A('Бронник', { buys: ['armor', 'mod'], staples: ['quilted-jacket'],
-    tiers: { 1: ['quilted-jacket', 'lined-leather', 'duster-coat', 'plated-overall', 'steel-sheet-plate', 'plate-rig', 'mesh-cloak', 'shielded-jacket', 'concert-kosuha', 'cult-robe'], 2: ['hazmat-suit', 'wire-mantle', 'host-jacket', 'tire-vest', 'sign-plate', 'scrap-plates', 'rubber-lining', 'asbestos-lining', 'loader-exo'], 3: ['concealed-vest', 'ceramic-insert', 'foil-lining'], 4: ['wolf-link'], 5: ['kuznechik-walker', 'lis-8-hide', 'wolf-5-frame'] } }),
+    tiers: { 1: ['quilted-jacket', 'lined-leather', 'duster-coat', 'plated-overall', 'steel-sheet-plate', 'plate-rig', 'mesh-cloak', 'shielded-jacket', 'concert-kosuha', 'cult-robe', 'tire-patch', 'buckler-lid', 'door-shield'], 2: ['hazmat-suit', 'wire-mantle', 'host-jacket', 'tire-vest', 'sign-plate', 'scrap-plates', 'rubber-lining', 'asbestos-lining', 'loader-exo', 'quilted-lining', 'wet-suit', 'gas-filter', 'grip-spikes', 'swamp-boots', 'road-sign-shield', 'riot-shield', 'pocket-lining'], 3: ['concealed-vest', 'ceramic-insert', 'foil-lining', 'kevlar-sheet', 'fire-blanket', 'acid-coat', 'quiet-soles', 'tower-shield'], 4: ['wolf-link', 'reactive-plate', 'faraday-cage'], 5: ['kuznechik-walker', 'lis-8-hide', 'wolf-5-frame'] } }),
   medic: A('Аптекарь / медик', { markup: 1.05, buys: ['consumable'], sellRate: 0.45, staples: ['bandage', 'medkit'],
     tiers: { 1: ['bandage', 'medkit', 'calmers', 'analgin', 'valerian'], 2: ['calmers', 'rations'], 3: ['rations'], 4: [], 5: [] } }),
   techmod: A('Техник (моды и детали)', { buys: ['mod', 'weapon', 'consumable'], staples: ['repair-kit', 'electrical-tape'],
-    tiers: { 1: ['electrical-tape', 'serrated-edge', 'loupe-sight', 'repair-kit', 'krona-battery'], 2: ['compensator', 'scrap-plates', 'rubber-lining', 'asbestos-lining', 'servo-parts', 'proxy-can'], 3: ['drum-mag', 'shock-winding', 'ceramic-insert', 'foil-lining', 'magnet-anchors', 'arc-thrower', 'party-cell', 'rare-parts'], 4: ['lis-4-sniffer', 'wolf-link'], 5: ['lis-6-core'] } }),
+    tiers: { 1: ['electrical-tape', 'serrated-edge', 'loupe-sight', 'repair-kit', 'krona-battery', 'mech-bolt', 'wrapped-grip'], 2: ['compensator', 'scrap-plates', 'rubber-lining', 'asbestos-lining', 'servo-parts', 'proxy-can', 'sprint-spikes', 'spiked-plates', 'spare-cell', 'shock-edge', 'pocket-lining', 'tac-flashlight'], 3: ['drum-mag', 'shock-winding', 'ceramic-insert', 'foil-lining', 'magnet-anchors', 'arc-thrower', 'party-cell', 'rare-parts', 'shock-mag', 'acid-mag', 'proxy-lens', 'proxy-resonator', 'mirror-plate', 'insulator-lining', 'holo-reticle'], 4: ['lis-4-sniffer', 'wolf-link', 'arc-capacitor', 'hover-pads', 'cryo-edge', 'thermal-scope'], 5: ['lis-6-core'] } }),
   junk: A('Барахольщик (хлам)', { markup: 0.8, sellRate: 0.3, staples: ['tushenka', 'bandage'],
-    tiers: { 1: ['shiv', 'pipe-smg', 'brass-knuckles', 'bear-trap', 'tushenka', 'electrical-tape', 'bandage', 'molotov', 'wire-bolas', 'throwing-knives', 'quilted-jacket'], 2: ['tire-vest', 'tripwire', 'scrap-plates', 'kedrach', 'fire-axe'], 3: ['shock-mat', 'rare-parts'], 4: ['drum-mag'], 5: [] } }),
+    tiers: { 1: ['shiv', 'pipe-smg', 'brass-knuckles', 'bear-trap', 'tushenka', 'electrical-tape', 'bandage', 'molotov', 'wire-bolas', 'throwing-knives', 'quilted-jacket', 'tire-patch', 'weighted-edge', 'oiled-edge', 'oil-mag', 'door-shield'], 2: ['tire-vest', 'tripwire', 'scrap-plates', 'kedrach', 'fire-axe', 'sprint-spikes', 'swamp-boots', 'side-pistol'], 3: ['shock-mat', 'rare-parts'], 4: ['drum-mag'], 5: [] } }),
   general: A('Лавочник (всякое)', { sellRate: 0.4, staples: ['bandage', 'tushenka'],
-    tiers: { 1: ['bandage', 'tushenka', 'quilted-jacket', 'hatchet', 'machete', 'calmers', 'krona-battery', 'duster-coat'], 2: ['medkit', 'hazmat-suit', 'pump-shotgun', 'portable-barricade'], 3: ['concealed-vest', 'party-cell'], 4: ['lis-4-sniffer'], 5: [] } }),
+    tiers: { 1: ['bandage', 'tushenka', 'quilted-jacket', 'hatchet', 'machete', 'calmers', 'krona-battery', 'duster-coat', 'buckler-lid', 'side-pistol', 'wrapped-grip'], 2: ['medkit', 'hazmat-suit', 'pump-shotgun', 'portable-barricade', 'quilted-lining', 'tac-flashlight'], 3: ['concealed-vest', 'party-cell'], 4: ['lis-4-sniffer'], 5: [] } }),
   chemist: A('Химик (гранаты и ловушки)', { buys: ['consumable'], staples: ['grenade', 'molotov'],
     tiers: { 1: ['grenade', 'molotov', 'bear-trap'], 2: ['frag-grenade', 'proxy-can', 'tripwire', 'portable-barricade'], 3: ['emp-grenade', 'shock-mat'], 4: ['emp-grenade'], 5: ['shock-mat'] } }),
   cyber: A('Кибер-торговец (импланты и энергооружие)', { markup: 1.15, buys: ['weapon', 'mod'], staples: ['krona-battery'],
-    tiers: { 1: ['shock-baton', 'proxy-sling', 'krona-battery'], 2: ['shock-rifle', 'proxy-can'], 3: ['laser-pistol', 'arc-thrower', 'party-cell', 'emp-grenade'], 4: ['laser-rifle', 'lis-3-twin'], 5: ['lis-4-sniffer'] } }),
+    tiers: { 1: ['shock-baton', 'proxy-sling', 'krona-battery'], 2: ['shock-rifle', 'proxy-can'], 3: ['laser-pistol', 'arc-thrower', 'party-cell', 'emp-grenade', 'cringe-amp', 'proxy-resonator', 'arc-capacitor'], 4: ['laser-rifle', 'lis-3-twin', 'hover-pads', 'cryo-nozzle'], 5: ['lis-4-sniffer'] } }),
   scholar: A('Книжник / наставник', { markup: 1.1, buys: ['mod', 'consumable'], sellRate: 0.45, staples: ['calmers', 'valerian'],
     tiers: { 1: ['calmers', 'valerian', 'bandage', 'loupe-sight'], 2: ['megaphone', 'portable-barricade', 'terminal-shard'], 3: ['party-cell', 'terminal-shard'], 4: [], 5: [] } }),
   provisions: A('Харчевник / раздатчик', { markup: 0.9, buys: ['consumable'], sellRate: 0.5, staples: ['tushenka'],
@@ -53,9 +53,9 @@ export const ARCHETYPES = {
   bard: A('Сценический торговец (кринж-инструменты)', { buys: ['weapon', 'consumable'], staples: ['calmers'],
     tiers: { 1: ['mic-cord', 'spoons', 'valerian', 'calmers'], 2: ['megaphone'], 3: ['valerian'], 4: ['valerian'], 5: ['valerian'] } }),
   hunter: A('Охотник (шкуры, луки, капканы)', { buys: ['weapon', 'armor', 'consumable'], staples: ['bear-trap', 'bandage'],
-    tiers: { 1: ['hunting-carbine', 'ski-bow', 'throwing-knives', 'hatchet', 'machete', 'bear-trap', 'duster-coat', 'tushenka', 'bandage'], 2: ['pump-shotgun', 'fire-axe'], 3: ['sniper-rifle'], 4: ['wolf-fang'], 5: [] } }),
+    tiers: { 1: ['hunting-carbine', 'ski-bow', 'throwing-knives', 'hatchet', 'machete', 'bear-trap', 'duster-coat', 'tushenka', 'bandage', 'mutant-tooth', 'poison-edge'], 2: ['pump-shotgun', 'fire-axe', 'swamp-boots', 'quiet-soles'], 3: ['sniper-rifle'], 4: ['wolf-fang'], 5: [] } }),
   fence: A('Скупщик', { markup: 1.1, sellRate: 0.55, buys: ['weapon', 'armor', 'mod', 'consumable'], staples: ['medkit'],
-    tiers: { 1: ['finka', 'machete', 'quilted-jacket', 'medkit', 'grenade', 'electrical-tape'], 2: ['kedrach', 'tire-vest', 'frag-grenade', 'compensator'], 3: ['sniper-rifle', 'concealed-vest', 'drum-mag'], 4: ['laser-rifle', 'sleeper-blade'], 5: ['lis-7-chuyo'] } }),
+    tiers: { 1: ['finka', 'machete', 'quilted-jacket', 'medkit', 'grenade', 'electrical-tape'], 2: ['kedrach', 'tire-vest', 'frag-grenade', 'compensator', 'hollow-mag', 'poison-edge', 'trench-knife'], 3: ['sniper-rifle', 'concealed-vest', 'drum-mag', 'kevlar-sheet', 'incendiary-mag'], 4: ['laser-rifle', 'sleeper-blade'], 5: ['lis-7-chuyo'] } }),
 };
 
 const V = (arch, size, greed, o = {}) => ({ arch, size, greed, restock: ROTATION.defaultRestock, ...o });
@@ -161,7 +161,7 @@ export const VENDORS = {
 
   // ===== Техоньки (ур. 6–9, ступень 3) =====
   'ritualist-iskra': V('cyber', 'M', 0.05, { sig: ['proxy-wrench', 'coil-staff', 'proxy-golem-shell'], loves: ['type:proxy', 'cat:mod'], restock: 5, note: 'Прокси-кустарщина. «Почему взрывается — не спрашивай».' }),
-  'stn-tranzistor': V('techmod', 'M', 0.1, { sig: ['proxy-sharpening', 'overcharge-cell'], loves: ['cat:mod'], note: 'Вероотступник: продаёт схемы и моды без благословения.' }),
+  'stn-tranzistor': V('techmod', 'M', 0.1, { sig: ['proxy-sharpening', 'overcharge-cell', 'proxy-resonator'], loves: ['cat:mod'], note: 'Вероотступник: продаёт схемы и моды без благословения.' }),
   'stn-ogarok': V('bladesmith', 'M', 0, { sig: ['blessed-wrench', 'blessed-nut', 'ritual-breastplate'], loves: ['type:hammer'], note: 'Освящает оружие; вся его сталь «благословлена».' }),
   'stn-nazhdak': V('techmod', 'S', 0.05, { ed: ['shock-winding'], note: 'Торговец ритуальным железом.' }),
   'stn-shpindel': V('techmod', 'M', 0, { ed: ['drum-mag', 'rubber-lining'], note: 'Старший мастер Станка.' }),
@@ -191,7 +191,7 @@ export const VENDORS = {
   'd-lopukh': V('chemist', 'M', -0.05, { ed: [], loves: ['kind:medicine'], note: 'Семена и удобрения: удобрения тоже взрываются.' }),
 
   // ===== Военпром (ур. 11–14, ступень 4) =====
-  'gunsmith-kalibr': V('gunsmith', 'L', 0.05, { sig: ['av15', 'pso-scope', 'extended-mag', 'kosilshik'], loves: ['group:ranged', 'cat:mod'], restock: 6, mentor: true, note: 'Мастер-оружейник: лучшие стволы и обвесы.' }),
+  'gunsmith-kalibr': V('gunsmith', 'L', 0.05, { sig: ['av15', 'pso-scope', 'extended-mag', 'kosilshik', 'thermal-scope'], loves: ['group:ranged', 'cat:mod'], restock: 6, mentor: true, note: 'Мастер-оружейник: лучшие стволы и обвесы.' }),
   'quartermaster-krotova': V('armorer', 'L', 0.05, { sig: ['arbiter-armor', 'army-medkit', 'kremlin-bolter'], loves: ['cat:armor', 'cat:weapon'], restock: 5, note: '«Списано по акту»: армейская броня и аптечки.' }),
   'kr-portyanka': V('armorer', 'M', 0, { sig: ['warprom-assault', 'go-autocamo', 'riot-gear'], loves: ['cat:armor'], restock: 5, note: 'Каптёр: списанная форма.' }),
   'kr-gilza': V('provisions', 'M', 0.1, { sig: ['bolt-pistol', 'bodry-ilyich'], loves: ['kind:stim'], note: 'Хозяйка бара у могилы: болтер на стене и бодрящее.' }),
@@ -213,7 +213,7 @@ export const VENDORS = {
   'd-arlekin': V('bard', 'S', 0.05, { lvl: 12, ed: ['spoons'], note: 'Клоун без цирка: реквизит.' }),
 
   // ===== АИ Партия (ур. 15–19, ступень 5) =====
-  'archivist-nine': V('cyber', 'L', 0.1, { sig: ['ukaz-rifle', 'focus-lens', 'otlichnik-nootrop'], loves: ['cat:mod', 'type:laser'], restock: 6, note: 'Торгует досье и энергооружием. Не берёт кринж и опиаты.' }),
+  'archivist-nine': V('cyber', 'L', 0.1, { sig: ['ukaz-rifle', 'focus-lens', 'otlichnik-nootrop', 'hover-pads'], loves: ['cat:mod', 'type:laser'], restock: 6, note: 'Торгует досье и энергооружием. Не берёт кринж и опиаты.' }),
   'pl-kvota': V('cyber', 'L', 0.05, { sig: ['plasma-pistol', 'plasma-rifle', 'cleaner-carapace'], loves: ['type:plasma', 'cat:armor'], restock: 6, note: 'Госмагазин по талонам: плазма и броня зачистки.' }),
   'pl-kopirka': V('fence', 'M', 0.1, { ed: ['concealed-vest'], note: 'Копии досье и справок; скупает что угодно.' }),
   'pl-loyalov': T('scholar', { note: 'Курсы лояльности: «пособия» (успокоительное).' }),

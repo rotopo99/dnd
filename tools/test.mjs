@@ -1905,5 +1905,75 @@ console.log('combat rework: cover, objects, heights, pushes, archetypes, arenas'
   });
 }
 
+// vendors-bestiary.md: per-NPC vendors and the codex
+{
+  console.log('vendors & codex');
+  const VS = await import('../game/src/world/vendors.js');
+  const CX = await import('../game/src/world/codex.js');
+  const { NPCS } = await import('../game/src/data/npcs.js');
+  const { ITEMS } = await import('../game/src/world/data.js');
+  test('vendors: every trade/train NPC has a profile, all ids exist', () => {
+    const miss = Object.values(NPCS).filter((n) => (n.services || []).some((x) => x === 'trade' || x === 'train') && !VS.VENDORS[n.id]).map((n) => n.id);
+    assert.deepEqual(miss, []);
+    for (const id of Object.keys(VS.VENDORS)) for (const r of VS.vendorStock(id, 1).rows) assert.ok(ITEMS[r.id], `${id}: ${r.id}`);
+  });
+  test('vendors: stock is unique per NPC, exclusives only at the owner', () => {
+    const ids = Object.keys(VS.VENDORS);
+    const shelf = (id, day) => VS.vendorStock(id, day).rows.map((r) => r.id).join();
+    // two vendors of one node / region differ
+    assert.notEqual(shelf('nikola', 1), shelf('paracetamol', 1));
+    assert.notEqual(shelf('pip-junior', 1), shelf('d-vasya', 1)); // same archetype, different shelves
+    for (const id of ids) for (let day = 1; day <= 12; day += 3) for (const r of VS.vendorStock(id, day, 'ally').rows) {
+      if (VS.EXCLUSIVES.has(r.id)) assert.equal(VS.EXCLUSIVES.get(r.id), id, `${r.id} at ${id}`);
+    }
+  });
+  test('vendors: rotation is stable within restock days and changes after', () => {
+    const v = VS.VENDORS['smith-okalina'];
+    const shelf = (day) => VS.vendorStock('smith-okalina', day).rows.map((r) => r.id).join();
+    assert.equal(shelf(1), shelf(v.restock));
+    let changed = false;
+    for (let k = 1; k <= 6 && !changed; k++) changed = shelf(1) !== shelf(1 + k * v.restock);
+    assert.ok(changed);
+    assert.equal(VS.restockIn(v, 1), v.restock);
+    assert.equal(VS.restockIn(v, v.restock), 1);
+  });
+  test('vendors: tier cap, signature gate, bans', () => {
+    for (const id of Object.keys(VS.VENDORS)) {
+      const s = VS.vendorStock(id, 1, 'neutral');
+      for (const r of s.rows) if (r.kind === 'rot' || r.kind === 'staple') assert.ok((ITEMS[r.id].tier || 1) <= Math.max(s.cap, 1) || r.kind === 'staple', `${id} ${r.id}`);
+      for (const r of s.rows) if (r.kind === 'rare') assert.ok((ITEMS[r.id].tier || 1) <= s.cap + 1, `${id} rare ${r.id}`);
+    }
+    const ok = VS.vendorStock('smith-okalina', 1, 'neutral');
+    assert.ok(ok.rows.some((r) => r.id === 'tin-katana' && r.locked === 'friendly'));
+    assert.ok(!VS.vendorStock('smith-okalina', 1, 'friendly').rows.find((r) => r.id === 'tin-katana').locked);
+    for (let d = 1; d < 40; d++) for (const r of VS.vendorStock('smith-okalina', d).rows) assert.ok(!['plasma', 'laser', 'energy', 'cyberblade', 'melta'].includes(ITEMS[r.id].type), r.id);
+    assert.equal(VS.vendorSellRate('nikola', ITEMS['tushenka']), null); // cyber does not buy food
+    assert.ok(VS.vendorSellRate('paracetamol', ITEMS['bandage']) > VS.ARCHETYPES.medic.sellRate); // loves medicine
+  });
+  test('codex: levels seen → beaten → studied, baseId shares records, normalisation', () => {
+    const sv = { flags: {} };
+    assert.equal(CX.codexLevel(sv, 'cultist'), 0);
+    assert.equal(CX.enemyKey('cultist^2.15'), 'cultist');
+    assert.equal(CX.enemyKey('cultist-5'), 'cultist-5'); // own lore record
+    CX.markSeen(sv, ['cultist^2.15', { id: 'acolyte' }]);
+    assert.equal(CX.codexLevel(sv, 'cultist'), 1);
+    CX.markKills(sv, ['cultist', 'cultist^2.24']); // one win per record per battle
+    assert.equal(sv.codex.kills.cultist, 1);
+    assert.equal(CX.codexLevel(sv, 'cultist'), 2);
+    for (let i = 0; i < 3; i++) CX.markKills(sv, ['cultist']);
+    assert.equal(CX.codexLevel(sv, 'cultist'), 2);
+    const toast = CX.markKills(sv, ['cultist']);
+    assert.equal(CX.codexLevel(sv, 'cultist'), 3);
+    assert.equal(toast.length, 1);
+    assert.equal(CX.enemyFinds(sv, 'acolyte').length, 0);
+    sv.flags['cx-acolyte-order'] = true;
+    assert.equal(CX.enemyFinds(sv, 'acolyte').length, 1);
+    assert.ok(CX.markTerm(sv, 'status', 'bleed') && !CX.markTerm(sv, 'status', 'bleed') && !CX.markTerm(sv, 'status', 'nope'));
+    const n = CX.normCodex(JSON.parse(JSON.stringify({ ...sv.codex, seen: { ...sv.codex.seen, ghost: true } })));
+    assert.equal(n.kills.cultist, 5); assert.ok(!n.seen.ghost); assert.ok(n.terms['status:bleed']);
+    assert.deepEqual(CX.normCodex(undefined), CX.emptyCodex());
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
