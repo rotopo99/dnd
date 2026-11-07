@@ -33,6 +33,7 @@ import { runEncounter } from './encounter.js';
 import { hasWorldFlag } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { FIELD_CAMP } from '../world/data.js';
+import { openLevelUp } from './levelup.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
@@ -72,7 +73,11 @@ export function createLocationScene(rawId) {
       const ev = eventsFor(save(g), locId, 'enter')[0];
       if (ev) { runEvent(g, ev, (g2) => again(g2)); return; }
     }
-    pendingChoice(g);
+    if (!pendingChoice(g)) levelUp(g);
+  }
+  // levels-20.md: level-up window (news + ASI choice) when nothing else is on screen
+  function levelUp(g) {
+    if (!g.modals.length) openLevelUp(g, (g2) => { persist(g2); layout(g2); });
   }
 
   // ---------------------------------------------------------------- entry gate (world.md §3)
@@ -634,6 +639,7 @@ export function createLocationScene(rawId) {
     const nav = [['map', 'loc.map', 'M'], ['party', 'panel.party', 'P'], ['rep', 'panel.rep', 'R'], ['journal', 'panel.journal', 'J'], ['menu', 'loc.toMenu', 'Esc']];
     nav.forEach(([id, key, k], i) => btns.push({ kind: 'nav', id, label: t(key), key: k, x: ox + 648 + i * 122, y: oy + BASE_H - 60, w: 116, h: 44 }));
     if (sv.hero.pendingTalents > 0) btns.push({ kind: 'nav', id: 'party', label: t('talent.pending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
+    else if ((sv.hero.pendingAsi || []).length) btns.push({ kind: 'nav', id: 'party', label: t('lvl.asiPending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     S.buttons = btns;
     S.members = members(sv, game.data, { includeDown: true });
   }
@@ -664,7 +670,7 @@ export function createLocationScene(rawId) {
       if (!v.gate && gateCheck(game)) return;
       afterGate(game);
     },
-    resume(game) { layout(game); pendingChoice(game); },
+    resume(game) { layout(game); if (!pendingChoice(game)) levelUp(game); },
     // toasts over the lower part of the actions column (free space), above the bottom bar
     toastAnchor() { return { x: S.ox + 648 + 304, y: S.oy + BASE_H - 120, dir: -1 }; },
     resize(game) { layout(game); },
@@ -690,7 +696,7 @@ export function createLocationScene(rawId) {
       const tier = f ? facTier(game, f) : null;
       const regName = reg?.name && !loc.name.startsWith(reg.name) ? reg.name : '';
       text(ctx, [regName, f ? `${factionName(f)}: ${t(`tier.${tier}`)}` : ''].filter(Boolean).join(' · '), ox + 24, oy + 50, f ? tierColor(tier) : C['4'], FONT);
-      if (!sv.hero.pendingTalents) text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} (${sv.hero.xp} XP)`, ox + BASE_W - 24, oy + 20, C.b, FONT_B, 'right');
+      if (!sv.hero.pendingTalents && !(sv.hero.pendingAsi || []).length) text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} (${sv.hero.xp} XP)`, ox + BASE_W - 24, oy + 20, C.b, FONT_B, 'right');
       textBlock(ctx, loc.desc || '', ox + 24, oy + 72, BASE_W - 300, C['4'], FONT, LINE, 1);
       text(ctx, t('loc.people'), ox + 24, oy + 100, C['4'], FONT_B);
       S.rows.forEach((row) => {

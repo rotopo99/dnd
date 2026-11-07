@@ -2,7 +2,7 @@
 // back — scene to resume on Esc. canSwap — combat talent loadout can be changed (on a node with rest).
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
-import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT, talentsForSlot } from '../data/talents.js';
+import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
 import { drawPortrait, drawHeroPortrait } from '../assets/sprites.js';
 import { heroBuild, wounds } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
@@ -16,6 +16,7 @@ import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
 import { layoutGear, renderGear, renderGearHover, clickGear } from './panel-gear.js';
+import { openTalentPick, openAsi, openSheet } from './levelup.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'gear', 'rep', 'journal'];
@@ -56,18 +57,11 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
 
   function pickTalent(game) {
     const sv = game.save;
-    const u = S.units.hero;
-    const ctx = { race: sv.hero.race, cls: sv.hero.cls, origin: sv.hero.origin, alignment: sv.hero.alignment, stats: u.stats, level: sv.hero.level, weaponRange: u.weapon?.range || 1, tags: u.tags };
-    const pool = ['race', 'job', 'stat'].flatMap((slot) => talentsForSlot(slot, ctx)).filter((x) => !sv.hero.talents.includes(x.id));
-    game.openModal({
-      title: t('talent.pending'), width: 980,
-      lines: [{ text: t('talent.pickLevel'), color: 'a' }],
-      options: pool.slice(0, 16).map((x) => ({ label: `${x.name}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: x.desc, run: (g) => {
-        sv.hero.pendingTalents--;
-        for (const m of learnTalent(sv, x.id, g.data, { force: true })) g.toast(m.text, m.color);
-        saveGame(sv);
-        rebuild(g);
-      } })),
+    openTalentPick(game, (g, id) => {
+      sv.hero.pendingTalents--;
+      for (const m of learnTalent(sv, id, g.data, { force: true })) g.toast(m.text, m.color);
+      saveGame(sv);
+      rebuild(g);
     });
   }
 
@@ -87,11 +81,12 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         const add = (o) => { x -= o.w + 4; b.push({ kind: 'm', member: m.key, x, y: y + 60, h: 28, font: FONT, ...o }); };
         if (m.p && m.p.state !== 'cyberspace') {
           const full = activeCompanions(sv).length >= MAX_PARTY;
-          add(m.p.state === 'active' ? { act: 'wait', label: t('party.toReserve'), w: 120 } : { act: 'join', label: t('party.toActive'), w: 120, disabled: full, reason: t('party.full') });
+          add(m.p.state === 'active' ? { act: 'wait', label: t('party.toReserve'), w: 110 } : { act: 'join', label: t('party.toActive'), w: 110, disabled: full, reason: t('party.full') });
         }
-        add({ act: 'calmers', label: `${ITEMS.calmers.name} ${sv.hero.items.calmers || 0}`, w: 170, disabled: !(sv.hero.items.calmers > 0) });
-        add({ act: 'medkit', label: `${ITEMS.medkit.name} ${sv.hero.items.medkit || 0}`, w: 130, disabled: !(sv.hero.items.medkit > 0) });
-        if (!m.p || m.p.state !== 'cyberspace') add({ act: 'gear', label: t('panel.gear'), w: 120 });
+        add({ act: 'calmers', label: `${ITEMS.calmers.name} ${sv.hero.items.calmers || 0}`, w: 150, disabled: !(sv.hero.items.calmers > 0) });
+        add({ act: 'medkit', label: `${ITEMS.medkit.name} ${sv.hero.items.medkit || 0}`, w: 116, disabled: !(sv.hero.items.medkit > 0) });
+        if (!m.p || m.p.state !== 'cyberspace') add({ act: 'gear', label: t('panel.gear'), w: 104 });
+        add({ act: 'sheet', label: t('lvl.sheet'), w: 104 });
       });
       // talents (hero)
       const tl = sv.hero.talents.map((id) => TALENTS[id]).filter(Boolean);
@@ -101,6 +96,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         b.push({ kind: 'talent', id: x.id, label: on ? '■' : '□', x: ox + 690, y: oy + 108 + i * 24 - 2, w: 24, h: 22, font: FONT_B, disabled: !canSwap });
       });
       if (sv.hero.pendingTalents > 0) b.push({ kind: 'pick', label: t('talent.pending'), x: ox + 690, y: oy + BASE_H - 160, w: 280, h: 40, selected: true });
+      if ((sv.hero.pendingAsi || []).length) b.push({ kind: 'asi', label: t('lvl.asiPending'), x: ox + 980, y: oy + BASE_H - 160, w: 276, h: 40, selected: true });
       b.push({ kind: 'ai', label: `${t('party.aiCompanions')}: ${sv.settings.aiCompanions ? t('party.on') : t('party.off')}`, x: ox + 690, y: oy + BASE_H - 110, w: 380, h: 40 });
     }
     if (S.tab === 'gear') layoutGear(game, S, b);
@@ -117,6 +113,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'm') {
       if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
       if (b.act === 'gear') { S.tab = 'gear'; S.gearKey = b.member; layout(game); return; }
+      if (b.act === 'sheet') return openSheet(game, S.units[b.member], b.member === 'hero' ? sv.hero.name : NPCS[b.member].name);
       const p = sv.party.find((x) => x.npc === b.member);
       if (b.act === 'wait') p.state = 'waiting';
       if (b.act === 'join') p.state = 'active';
@@ -129,6 +126,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else game.toast(t('talent.limit'), 'c');
     }
     if (b.kind === 'pick') return pickTalent(game);
+    if (b.kind === 'asi') return openAsi(game, Math.min(...sv.hero.pendingAsi), (g) => rebuild(g), () => {});
     if (b.kind === 'ai') sv.settings.aiCompanions = !sv.settings.aiCompanions;
     saveGame(sv);
     rebuild(game);
@@ -147,9 +145,9 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       panel(ctx, ox + 24, y, 640, 92, C['1'], isHero ? C.h : C['2']);
       // portraits v2 (native 48 px): live wounds; companions show their mood by approval
       const po = { native: true, ...wounds(u), emotion: m.p ? (m.p.approval >= 50 ? 'happy' : m.p.approval <= -50 ? 'angry' : 'neutral') : 'neutral' };
-      panel(ctx, ox + 34, y + 20, 52, 52, C['0'], C['2']);
-      if (isHero) drawHeroPortrait(ctx, heroBuild(sv.hero), ox + 36, y + 22, 1, po);
-      else drawPortrait(ctx, m.key, ox + 36, y + 22, 1, po);
+      panel(ctx, ox + 34, y + 6, 52, 52, C['0'], C['2']);
+      if (isHero) drawHeroPortrait(ctx, heroBuild(sv.hero), ox + 36, y + 8, 1, po);
+      else drawPortrait(ctx, m.key, ox + 36, y + 8, 1, po);
       const name = isHero ? sv.hero.name : NPCS[m.key].name;
       text(ctx, fit(ctx, name, 220, FONT_B), ox + 104, y + 8, isHero ? C.h : C['5'], FONT_B);
       const cls = game.data.CLASSES[u.classId];

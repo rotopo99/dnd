@@ -258,6 +258,9 @@ const ru = {
   'lvl.asiAuto': 'рост характеристик — автоматически',
   'lvl.cost': 'ЭНР {n}',
   'lvl.uses': '{n}/бой',
+  'lvl.ch.dice': 'кости',
+  'lvl.ch.area': 'зона',
+  'lvl.ch.bonus': 'бонус',
 
   // ---------- v2: menu ----------
   'menu.continue': 'Продолжить',
