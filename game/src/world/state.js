@@ -1,6 +1,6 @@
 // World state helpers over the save object (world.md §8): new game, party members, creatures for battle,
 // experience and levels, rewards (Effects), deeds/approval, discovery, travel and encounters.
-import { buildCreature, isAllowed } from '../rules/character.js';
+import { buildCreature, isAllowed, mod } from '../rules/character.js';
 import { t } from '../data/text/index.js';
 import { talentAllowed } from '../data/talents.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
@@ -15,6 +15,7 @@ import {
   PLAY_DATA as GAME_DATA, resolveLocation, starterKit,
 } from './data.js';
 import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast } from './reputation.js';
+import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
 
 export const MAX_PARTY = 3; // companions besides the hero
@@ -127,16 +128,32 @@ export function buildCompanion(save, p, data = GAME_DATA) {
   const cls = data.CLASSES[n.cls] ? n.cls : 'zabivnoy';
   const path = data.CLASSES[cls].paths.some((x) => x.id === n.path) ? n.path : undefined;
   const talents = safeTalents(p.talents);
+  const equipment = p.equipment || companionKit(n, data) || undefined;
   let u;
   try {
     if (!isAllowed(race, data.CLASSES[cls])) throw new Error('race');
-    u = buildCreature({ race, cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, talents, activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(save.hero.level)) });
+    u = buildCreature({ race, cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment, talents, activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(save.hero.level)) });
   } catch {
-    u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}` });
+    try { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}`, equipment }); } catch { u = buildCreature({ race: 'human', cls, path, level: save.hero.level, name: n.name, data, id: `c-${n.id}` }); }
   }
   restore(u, p.hp, p.mrl);
   if (save.settings.aiCompanions) u.control = 'ai';
   return u;
+}
+
+/** Starter equipment of a companion by class / path (shops.js STARTER_KITS): { weapon, armor, offhand, mods } or null. */
+export function companionKit(n, data = GAME_DATA) {
+  const cls = data.CLASSES[n?.cls] ? n.cls : 'zabivnoy';
+  const k = starterKit(cls, n?.path);
+  return k ? { weapon: k.weapon, armor: k.armor, offhand: null, mods: [] } : null;
+}
+
+/** Equipment holder of a party member key ('hero' or NPC id): the object whose `.equipment` is the gear. */
+export function gearHolder(save, key) {
+  if (key === 'hero') return save.hero;
+  const p = save.party.find((x) => x.npc === key && x.state !== 'left');
+  if (p && !p.equipment) p.equipment = companionKit(NPCS[p.npc]);
+  return p || null;
 }
 
 /** Member descriptors for checks and the party screen: { key, isHero, name, unit, items? }. */
@@ -162,13 +179,37 @@ export function partyUnits(save, data = GAME_DATA) {
   return list;
 }
 
-export function canRecruit(save, npcId) {
+/** CHA modifier of the hero (N2 recruitment). */
+export const heroChaMod = (save, data = GAME_DATA) => mod(buildHero(save, data).stats?.cha ?? 10);
+
+/** N2: the hostile threshold for recruitment is lowered by SR.recruit.repPerMod per hero CHA modifier point. */
+export function canRecruit(save, npcId, data = GAME_DATA) {
   const n = NPCS[npcId];
   if (!n || !n.recruitable) return 'no';
   if (save.party.some((p) => p.npc === npcId && p.state !== 'left')) return 'already';
   const f = normFaction(n.faction);
-  if (f && save.rep[f] != null && repTier(save.rep[f]) === 'hostile') return 'hostile';
+  const bonus = SR.recruit.repPerMod * Math.max(0, heroChaMod(save, data));
+  if (f && save.rep[f] != null && repTier(save.rep[f] + bonus) === 'hostile') return 'hostile';
   return null;
+}
+
+/**
+ * N2: paid hire of a mercenary (NPC with service 'recruit' but no companion data). { price, why } — why: null | 'already' |
+ * 'cha' (hero CHA below SR.recruit.hireCha) | 'rep' (faction tier below SR.recruit.hireTier) | 'money'. tier — rep tier of
+ * the NPC's faction (or of the node's faction for faction-less mercenaries).
+ */
+export function hireInfo(save, npcId, tier, data = GAME_DATA) {
+  const n = NPCS[npcId];
+  const H = SR.recruit;
+  const cha = buildHero(save, data).stats?.cha ?? 10;
+  const price = Math.round(H.hirePricePerLevel * save.hero.level * (1 - H.hireDiscountPerMod * Math.max(0, mod(cha))));
+  let why = null;
+  if (!n || n.recruitable || !(n.services || []).includes('recruit')) why = 'no';
+  else if (save.party.some((p) => p.npc === npcId && p.state !== 'left')) why = 'already';
+  else if (cha < H.hireCha) why = 'cha';
+  else if (tier && !tierAtLeast(tier, H.hireTier)) why = 'rep';
+  else if (save.hero.credits < price) why = 'money';
+  return { price, why };
 }
 
 export function recruit(save, npcId) {
@@ -176,7 +217,7 @@ export function recruit(save, npcId) {
   const old = save.party.find((p) => p.npc === npcId);
   const state = activeCompanions(save).length < MAX_PARTY ? 'active' : 'waiting';
   if (old) Object.assign(old, { state, approval: Math.max(old.approval, -40) });
-  else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: 0, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false });
+  else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: 0, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false, equipment: companionKit(n) });
   save.npcs[npcId] = { ...(save.npcs[npcId] || {}), met: true, recruited: true };
   journal(save, tf('fx.joined', { name: n.name }));
   return state;

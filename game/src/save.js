@@ -50,6 +50,8 @@ export function normalizeSave(s, data) {
     state: ['active', 'waiting', 'cyberspace', 'left'].includes(p.state) ? p.state : 'waiting',
     hp: p.hp == null ? null : Math.max(0, num(p.hp)), mrl: p.mrl == null ? null : Math.max(0, num(p.mrl)),
     approval: num(p.approval), talents: arr(p.talents).filter((id) => TALENTS[id]),
+    // v4: companion gear (old saves — the class starter kit)
+    equipment: normEquipment(p.equipment, data.CLASSES[NPCS[p.npc].cls] ? NPCS[p.npc].cls : 'zabivnoy', NPCS[p.npc].path),
   }));
   // v3: v1.0 ids are aliases on the canon map → stored as their real node (resolveLocation)
   const loc = (id) => (LOCATIONS[id] ? resolveLocation(id) : null);

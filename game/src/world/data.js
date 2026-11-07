@@ -4,6 +4,8 @@
 import { NPCS } from '../data/npcs.js';
 import { QUESTS as QUESTS_V1 } from '../data/world/quests.js';
 import { QUESTS_V3 } from '../data/world/quests-v3.js';
+import { QUESTS_NPC } from '../data/world/quests-npc.js';
+import { LOCATION_LORE } from '../data/world/locations-lore.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
 import { PARTY_EVENTS_TEXT } from '../data/text/party-events.js';
 import { PROLOGUE } from '../data/text/prologue.js';
@@ -26,12 +28,21 @@ export { EVENTS } from '../data/world/events.js';
 export { ORIGINS, originAllowed } from '../data/world/origins.js';
 export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';
+export { SKILL_RULES } from '../data/world/skill-rules.js';
+export { LOCATION_LORE };
 export { NPC_DIALOGUE, PARTY_EVENTS_TEXT };
 
 /** All battles: v1.0 (enemies.js) + v3 (enemies-v3.js), merged in data/index.js. */
 export const ENCOUNTERS = GAME_DATA.ENCOUNTERS;
-/** All quests: v1.0 (quests.js) + v3 (quests-v3.js, story by the writer). */
-export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3 };
+/** All quests: v1.0 (quests.js) + v3 (quests-v3.js, story by the writer) + v4 NPC quests (quests-npc.js, giver = NPC.quest). */
+export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC };
+export const isNpcQuest = (id) => !!QUESTS_NPC[id];
+
+/** Lore of a node (locations-lore.js): { desc, spots, rumor, problem } or null. */
+export const locationLore = (id) => LOCATION_LORE[resolveLocation(id)] || null;
+
+/** Rumors of all lore entries: [{ loc, text }] (shared rumor pool: taverns, road rumors). */
+export const LORE_RUMORS = Object.entries(LOCATION_LORE).filter(([, l]) => l.rumor).map(([loc, l]) => ({ loc, text: l.rumor }));
 
 /** Same place (aliases of v1.0 ids count as their target). */
 export const sameLocation = (a, b) => !!a && !!b && resolveLocation(a) === resolveLocation(b);
@@ -76,9 +87,14 @@ function wantedAt(save, id) {
   return out;
 }
 
+/** NPC id → node whose explicit `npcs` list has it (that node wins over npcs.js `location`). */
+const LISTED_AT = new Map();
+for (const l of Object.values(LOCATIONS)) for (const n of l.npcs || []) if (!LISTED_AT.has(n)) LISTED_AT.set(n, l.id);
+
 /**
- * NPC ids standing on a location: locations.js `npcs` (wins over npcs.js `location`) + v3 NPCs whose home `burg` /
- * `location` resolves here + NPCs with a `burg` here that an active quest waits for (talk goal at this burg).
+ * NPC ids standing on a location: the node's explicit `npcs` list merged with npcs.js NPCs whose `location` resolves
+ * here, NPCs whose home `burg` is here and whose `location` is not a node (unless another node lists them), and NPCs
+ * with a `burg` here that an active quest waits for (talk goal at this burg).
  */
 export function npcsAt(locId, save = null) {
   const id = resolveLocation(locId);
@@ -86,8 +102,12 @@ export function npcsAt(locId, save = null) {
   const out = (loc?.npcs || []).filter((n) => NPCS[n]);
   const wanted = wantedAt(save, id);
   for (const n of Object.values(NPCS)) {
-    if (n.cameo || out.includes(n.id) || !n.burg || resolveLocation(n.burg) !== id) continue;
-    if (resolveLocation(n.location) === id || wanted.has(n.id)) out.push(n.id);
+    if (n.cameo || out.includes(n.id)) continue;
+    const listed = LISTED_AT.get(n.id);
+    const here = resolveLocation(n.location) === id;
+    const burgHere = !!n.burg && resolveLocation(n.burg) === id;
+    if (here || (wanted.has(n.id) && burgHere)) { out.push(n.id); continue; }
+    if (burgHere && !(listed && listed !== id) && !LOCATIONS[resolveLocation(n.location)]) out.push(n.id);
   }
   return out;
 }
