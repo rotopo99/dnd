@@ -33,6 +33,8 @@ export default {
       desc: 'Проверки скрытности — с преимуществом.', op: { advantage: ['stealth'] } },
     { id: 'ghost-deadly', name: 'Смертельные приёмы', level: 5, path: 'ghost',
       desc: 'Критическое попадание на 19–20.', op: { critRange: 19 } },
+    { id: 'veteran-edge', name: 'Закалка вора', level: 8, path: null,
+      desc: 'Опыт улиц: +1 к атаке и +3 к урону оружием.', op: { hit: 1, dmg: { melee: 3 } } },
     { id: 'breaker-stealth', name: 'Улучшенная скрытность', level: 7, path: 'breaker',
       desc: 'Канон ур. 7: +3 к скрытности. В бою — чутьё взломщика: +2 к инициативе.', op: { init: 2 } },
     { id: 'ghost-master', name: 'Мастер скрытности', level: 15, path: 'ghost',

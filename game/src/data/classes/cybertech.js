@@ -25,6 +25,8 @@ export default {
     { id: 'curses', name: 'Путь Проклятий', desc: 'Проклятия Судьи: ослабляет, глушит и метит врагов на смерть.' },
   ],
   passives: [
+    { id: 'overclock', name: 'Разгон ядра', level: 6, path: null,
+      desc: 'Процессор в разгоне: +1 к атаке, +3 к урону способностей, +10 ЭНР.', op: { hit: 1, dmg: { spell: 3 }, maxEnr: 10 } },
     { id: 'soul-eater-unbreakable', name: 'Несокрушимый пожиратель душ', level: 13, path: 'soul-eater',
       desc: 'Канон ур. 13: сопротивление физическому урону.', op: { resist: { slash: 'resist', pierce: 'resist', blunt: 'resist' } } },
     { id: 'cyber-demon-unbreakable', name: 'Несокрушимый кибер-демон', level: 13, path: 'cyber-demon',

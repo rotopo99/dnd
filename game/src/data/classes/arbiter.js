@@ -57,6 +57,8 @@ export default {
     { id: 'judges-fury', name: 'Ярость Судьи', level: 1, path: 'avenger',
       desc: 'Критическое попадание на 19–20.', op: { critRange: 19 } },
     // ---------- Уровни 7–20 ----------
+    { id: 'oath-of-law', name: 'Присяга закона', level: 6, path: null,
+      desc: 'Закон на твоей стороне: +1 к атаке, +2 к урону оружием и способностями.', op: { hit: 1, dmg: { melee: 2, spell: 2 } } },
     { id: 'unbreakable-guard', name: 'Несокрушимый', level: 9, path: 'defender',
       desc: '+15 ЗДР, +1 КБ.', op: { maxHp: 15, kb: 1 } },
     { id: 'final-line', name: 'Финальный рубеж', level: 13, path: 'defender',
