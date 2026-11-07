@@ -80,8 +80,12 @@ import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './cha
 import { UNARMED } from './equipment.js';
 import {
   parseMap, makeArena, chebyshev, lineOfSight, hasCover, reachable, pathTo, walkLine,
-  tileAt, isPassable, inBounds, nearestFree, DIRS8, T_HAZARD, T_EXIT, T_WALL,
+  tileAt, isPassable, inBounds, nearestFree, DIRS8, T_HAZARD, T_EXIT, T_WALL, pathCost, elevAt, inCoverSpot,
 } from './grid.js';
+import {
+  initTerrain, coverBonus, terrainHit, elevRange, meleeElevOk, objectAt, damageObject, damageObjectsIn, terrainOn,
+} from './terrain.js';
+import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath, archHit, archDmg, archKb } from './archetypes.js';
 import {
   initSurfaces, tickSurfaces, surfaceEffect, createSurface, radiusTiles, elementHit, surfacesOn, clearSurfaces,
   gasBetween, surfaceHitBonus, surfaceHarm, surfaceKindsAt, battleLevel, tierFor, breakBarrelsIn, floorAt, cellAt,
@@ -302,7 +306,9 @@ export function getKb(b, u, attacker, ranged) {
   let kb = u.kb + buffSum(u, 'kb') + statusMod(b, u, 'kb');
   const mul = modProduct(b, u, 'armorKbMul');
   if (mul !== 1) kb -= u.armorKb - Math.floor(u.armorKb * mul);
-  if (ranged && attacker && hasCover(b.grid, attacker.x, attacker.y, u.x, u.y)) kb += COVER_KB;
+  if (attacker) kb += coverBonus(b, attacker.x, attacker.y, u.x, u.y, !ranged).kb;
+  if (u.holdPos) kb += b.data.combat?.cover.holdKb ?? 0;
+  if (u.arch) kb += archKb(b, u);
   return kb;
 }
 
@@ -448,6 +454,15 @@ function clearPos(b, u) {
   b.occVersion++;
 }
 
+/** Leave the battle alive (coward fled, …): out of the grid, counts as not defeated (no loot / kill XP). */
+export function removeFromBattle(b, u, reason) {
+  u.removed = true;
+  u.shield = null;
+  clearPos(b, u);
+  emit(b, { type: reason || 'leave', target: u.id, actor: u.id });
+  checkVictory(b);
+}
+
 export const unitAt = (b, x, y) => {
   if (!inBounds(b.grid, x, y)) return null;
   const m = b.occ[y * b.grid.w + x];
@@ -490,6 +505,9 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
   spawn(heroes, grid.starts.P, 'heroes', 'hero');
   spawn(allies || mapDef.allies || [], grid.starts.A.length ? grid.starts.A : grid.starts.P, 'heroes', 'ally');
   spawn(enemyList, grid.starts.E, 'enemies', 'enemy');
+  // combat rework: destructible objects get HP from the battle level, AI archetypes (terrain.js, archetypes.js)
+  initTerrain(b);
+  assignArchetypes(b);
   // opiate withdrawal carried over from earlier battles (aftermath.js): status at battle start
   for (const u of b.units) {
     const nb = u.withdrawal && u.withdrawal.nextBattle;
@@ -547,6 +565,7 @@ function startNextTurn(b) {
 
 function beginTurn(b, u) {
   u.reactionUsed = false;
+  u.holdPos = false;
   b.turn = { unitId: u.id, move: 0, actions: 1, bonus: 1 + (u.extraBonusActions || 0), disengaged: false, lostControl: false, aiMoves: 0, acted: false };
   b.reachCache = null;
   emit(b, { type: 'turnStart', actor: u.id });
@@ -623,6 +642,7 @@ function beginTurn(b, u) {
     emit(b, { type: 'standUp', actor: u.id });
   }
   b.turn.move = speed;
+  if (u.arch) archTurnStart(b, u);
   if (u.lostControl > 0) {
     b.turn.lostControl = true;
     emit(b, { type: 'lostControlTurn', actor: u.id });
@@ -650,6 +670,14 @@ function decTimed(list, onExpire) {
 }
 
 function finishTurn(b, u) {
+  // combat rework §3.1 «Занял позицию»: a sniper that did not move, next to cover — +1 KB until its next turn
+  const C = b.data.combat;
+  if (C && b.turn && b.turn.unitId === u.id && !b.turn.moved && isStanding(u) && (C.cover.holdArch || []).includes(u.arch) && inCoverSpot(b.grid, u.x, u.y)) {
+    u.holdPos = true;
+    emit(b, { type: 'holdPos', actor: u.id });
+  }
+  if (u.arch) archTurnEnd(b, u);
+  if (u.removed) { emit(b, { type: 'turnEnd', actor: u.id }); return; }
   if (isStanding(u)) {
     for (const s of u.statuses.slice()) {
       const d = statusDef(b, s.id);
@@ -738,6 +766,7 @@ function kill(b, u, reason) {
     else if (u.tags.includes('organic') && !floorAt(b, x, y)) createSurface(b, 'blood', [{ x, y }], null, { turns: SR.deathBlood ?? 6 });
   }
   if (!u.deathFired) { u.deathFired = true; deathEffects(b, u, x, y); }
+  if (u.arch || terrainOn(b)) archOnDeath(b, u);
   checkVictory(b);
 }
 
@@ -765,7 +794,7 @@ function deathEffects(b, u, x, y) {
   }
 }
 
-function unsummon(b, u) {
+export function unsummon(b, u) {
   u.removed = true;
   clearPos(b, u);
   emit(b, { type: 'unsummon', target: u.id });
@@ -786,7 +815,7 @@ function proxyFactor(tags) {
 export function dealDamage(b, src, tgt, amount, dmgType, opts) {
   if (!isAlive(tgt)) return 0;
   const crit = !!(opts && opts.crit);
-  let amt = Math.max(0, Math.floor(amount));
+  let amt = Math.max(0, Math.floor(amount * (src && src.archDmgMul && src !== tgt ? src.archDmgMul : 1)));
   let mult = 1;
   if (dmgType === 'proxy') {
     mult = proxyFactor(tgt.tags);
@@ -850,6 +879,7 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
   emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, absorbed, dmgType, resource: 'hp', resist: r, mult, crit, value: Math.max(0, tgt.hp) });
   if (tgt.hp <= 0) zeroHp(b, tgt, src);
   else if (amt > 0) { bigHitCheck(b, tgt); phobiaDamage(b, tgt, dmgType, src); if (opts && opts.phobia) phobiaTrigger(b, tgt, opts.phobia, null); }
+  if (amt > 0 && tgt.arch === 'boss') archOnDamage(b, tgt);
   if (amt > 0 && isAlive(tgt)) damageReactions(b, src, tgt, dmgType, opts);
   if (amt > 0 && isAlive(tgt)) triggerReactions(b, 'allyDamaged', tgt, src);
   if (amt > 0 && (dmgType === 'fire' || dmgType === 'electric') && !(opts && (opts.surface || opts.extra))) elementHit(b, src, tx, ty, dmgType);
@@ -1119,7 +1149,7 @@ function attackRoll(b, att, tgt, bonus, melee, isWeapon, opts) {
   const extraDice = isWeapon ? statusMod(b, att, 'extraWeaponDice') : 0;
   const r = d20(b.rng, attackMode(b, att, tgt, melee, isWeapon));
   const total = r.natural + bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + consumeNextRoll(b, att)
-    + (b.surfaces.size ? surfaceHitBonus(b, att) : 0);
+    + (b.surfaces.size ? surfaceHitBonus(b, att) : 0) + terrainHit(b, att, tgt, melee).total + (att.arch ? archHit(b, att) : 0);
   const arc = isWeapon && !melee && att.weapon && att.weapon.arc;
   const kb = getKb(b, tgt, arc ? null : att, !melee) - apReduction(att, tgt, isWeapon) + ((opts && opts.kbPenalty) || 0);
   let crit = r.natural >= Math.min(20, att.critRange || 20);
@@ -1133,7 +1163,8 @@ function attackRoll(b, att, tgt, bonus, melee, isWeapon, opts) {
 }
 
 function attackDmgBonus(b, att, tgt, kind) {
-  let v = (att.dmgBonus.all || 0) + (att.dmgBonus[kind] || 0) + condBonus(att, tgt, 'dmg') + buffSum(att, 'dmg') + statusMod(b, att, 'dmg') + incomingDmg(b, tgt);
+  let v = (att.dmgBonus.all || 0) + (att.dmgBonus[kind] || 0) + condBonus(att, tgt, 'dmg') + buffSum(att, 'dmg') + statusMod(b, att, 'dmg') + incomingDmg(b, tgt)
+    + (att.arch ? archDmg(b, att) : 0);
   if (kind === 'melee') v += statusMod(b, att, 'dmgMelee', 'meleeDmg');
   return v;
 }
@@ -1251,6 +1282,7 @@ function areaWeaponAttack(b, att, center) {
   const targets = abilityTargets(b, att, weaponAreaAbility(att), center);
   emit(b, { type: 'weaponArea', actor: att.id, x: center.x, y: center.y, shape: w.area.shape, size: w.area.size || 1, targets: targets.map((t) => t.id) });
   if (b.barrels && b.barrels.length) breakBarrelsIn(b, (x, y) => inArea(b, att, weaponAreaAbility(att), center, { x, y }) || (x === center.x && y === center.y), att);
+  if (b.objects && b.objects.size) damageObjectsIn(b, (x, y) => inArea(b, att, weaponAreaAbility(att), center, { x, y }), rollDice(b.rng, w.dice), att, w.dmgType);
   for (const t of targets) {
     if (!isAlive(t)) continue;
     const half = rollSave(b, t, save, dc, att, 'weapon:' + (w.id || w.name));
@@ -1435,6 +1467,7 @@ function walk(b, u, path, noProvoke) {
     seg = [];
     from.x = u.x; from.y = u.y;
   };
+  const sx = u.x, sy = u.y;
   for (const step of path) {
     if (!isStanding(u) || b.winner) break;
     if (!noProvoke && !b.reactionDepth) {
@@ -1459,7 +1492,7 @@ function walk(b, u, path, noProvoke) {
     if (b.drops.length) pickUpCheck(b, u);
   }
   flush();
-  return steps;
+  return pathCost(b.grid, sx, sy, path, steps); // movement spent (rubble / steps up cost more)
 }
 
 function opportunity(b, r, mover) {
@@ -1484,18 +1517,68 @@ function pushUnit(b, src, tgt, tiles) {
   const dx = Math.sign(tgt.x - src.x), dy = Math.sign(tgt.y - src.y);
   if (!dx && !dy) return;
   for (const st of tgt.statuses) tiles += statusDef(b, st.id)?.pushPlus || 0;
+  const C = b.data.combat;
+  // combat rework §3.4: heavy targets (mechanical KB 18+, bosses) are pushed 1 tile less
+  if (C && (tgt.boss || (tgt.tags.includes('mechanical') && tgt.kb >= (C.push.heavyKb ?? 18)))) tiles = Math.max(0, tiles - 1);
   const from = { x: tgt.x, y: tgt.y };
-  let moved = 0;
+  let moved = 0, fall = 0, blocker = null;
   for (let i = 0; i < tiles; i++) {
     const nx = tgt.x + dx, ny = tgt.y + dy;
-    if (!isPassable(b.grid, nx, ny) || unitAt(b, nx, ny)) break;
+    const other = unitAt(b, nx, ny);
+    const up = C && b.grid.elev ? elevAt(b.grid, nx, ny) - elevAt(b.grid, tgt.x, tgt.y) : 0;
+    if (!isPassable(b.grid, nx, ny) || other || up > 0) { blocker = { x: nx, y: ny, unit: other, left: tiles - i }; break; }
+    if (up < 0) fall += -up;
     setPos(b, tgt, nx, ny);
     moved++;
     if (tileAt(b.grid, nx, ny) === T_HAZARD || (b.traps.length && trapAt(b, nx, ny, tgt)) || (b.surfaces.size && surfaceHarm(b, tgt, nx, ny) >= 5)) break;
   }
   emit(b, { type: 'push', actor: src.id, target: tgt.id, from, to: { x: tgt.x, y: tgt.y }, tiles: moved });
+  const srcU = src.id ? b.byId[src.id] : null;
+  if (C && blocker && isAlive(tgt)) {
+    // slammed into a wall / object / unit: die × tier blunt per undelivered tile (a unit — half to both)
+    const tier = tierFor(b, (srcU && srcU.level) || battleLevel(b));
+    let amt = 0;
+    for (let k = 0; k < blocker.left; k++) amt += rollDice(b.rng, C.push.die || '1d4');
+    amt *= tier;
+    emit(b, { type: 'slam', actor: src.id, target: tgt.id, x: blocker.x, y: blocker.y, unit: blocker.unit ? blocker.unit.id : null, amount: amt });
+    if (blocker.unit) {
+      const half = Math.floor(amt / 2);
+      dealDamage(b, srcU, tgt, half, 'blunt');
+      if (isAlive(blocker.unit)) dealDamage(b, srcU, blocker.unit, half, 'blunt');
+    } else {
+      dealDamage(b, srcU, tgt, amt, 'blunt');
+      if (objectAt(b, blocker.x, blocker.y)) damageObject(b, blocker.x, blocker.y, amt, srcU, 'blunt');
+    }
+  }
+  if (C && fall > 0 && isAlive(tgt)) fallDamage(b, srcU, tgt, fall);
   if (moved) { hazardEnter(b, tgt); trapCheck(b, tgt); }
 }
+
+/** combat rework §3.3: falling N levels — die × N × tier blunt; DEX save (Acrobatics) vs 10 + L/2 — half; `fly` — none. */
+export function fallDamage(b, src, u, levels) {
+  const C = b.data.combat;
+  if (!C || levels <= 0 || !isAlive(u) || u.tags.includes('fly') || u.tags.includes('flying')) return 0;
+  const L = battleLevel(b);
+  let amt = rollDice(b.rng, C.elev.fallDie || '1d6') * levels * tierFor(b, L);
+  const half = rollSave(b, u, 'dex', (C.elev.acroDc ?? 10) + Math.floor(L / 2), src, 'fall');
+  if (half) amt = Math.floor(amt / 2);
+  emit(b, { type: 'fall', target: u.id, levels, amount: amt, half });
+  return dealDamage(b, src, u, amt, 'blunt');
+}
+/** Weapon attack roll vs the object's armor; a hit deals full weapon damage (crit doubles the dice). */
+function smashObject(b, u, o) {
+  const w = u.weapon;
+  payWeapon(b, u);
+  const r = d20(b.rng);
+  const total = r.natural + weaponAttackBonus(b, u) + u.hitBonus + buffSum(u, 'hit');
+  const crit = r.natural >= 20;
+  const hit = r.natural !== 1 && (crit || total >= o.armor);
+  emit(b, { type: 'smash', actor: u.id, x: o.x, y: o.y, kind: o.kind, roll: { natural: r.natural, total }, kb: o.armor, hit, crit });
+  if (!hit) return;
+  const amt = rollDice(b.rng, w.dice, crit) + mod(effStat(b, u, w.stat || 'str')) + (w.dmg || 0) + (u.dmgBonus.all || 0);
+  damageObject(b, o.x, o.y, Math.max(1, amt), u, w.dmgType);
+}
+
 /** Push tgt away from a point { id, x, y } (gas explosions). */
 export function pushFrom(b, src, tgt, tiles) { pushUnit(b, src, tgt, tiles); }
 
@@ -1853,7 +1936,7 @@ export function scaleSummon(s, ownerLevel) {
   return s;
 }
 
-function spawnSummon(b, owner, unitId, turns, tile, team) {
+export function spawnSummon(b, owner, unitId, turns, tile, team) {
   const def = b.data.summons[unitId] || b.data.enemies[unitId];
   if (!def) { emit(b, { type: 'summonFail', actor: owner.id, unit: unitId }); return null; }
   let pos = null;
@@ -2159,6 +2242,15 @@ function resolveAbility(b, u, a, spec, asReaction) {
     if (ctx.thorns) applyThorns(b, u, t);
   }
   if (zoneOf(a)) placeZone(b, u, a, abilityCenter(b, u, a, spec));
+  if (a.area && b.objects && b.objects.size) {
+    // combat rework §3.2: area damage hits objects in the area (rolled once)
+    let amt = 0;
+    for (const op of effects) if (op.op === 'damage' && op.dice) amt += rollDice(b.rng, op.dice);
+    if (amt > 0) {
+      const c = abilityCenter(b, u, a, spec);
+      damageObjectsIn(b, (x, y) => inArea(b, u, a, c, { x, y }), amt, u, (effects.find((op) => op.op === 'damage') || {}).dmgType);
+    }
+  }
   if (surfacesOn(b)) {
     const c = abilityCenter(b, u, a, spec);
     if (a.area && effects.some((op) => op.op === 'damage') && b.barrels.length) {
@@ -2259,6 +2351,9 @@ export function getLegalActions(b, unitId, opts) {
       if (canAttack(b, u, e, range)) out.push({ type: 'attack', unit: unitId, target: e.id });
     }
   }
+  if (t.actions > 0 && canUseWeapon(b, u) && terrainOn(b) && !(opts && opts.noSmash)) {
+    for (const o of smashTargets(b, u)) out.push({ type: 'smash', unit: unitId, tile: { x: o.x, y: o.y } });
+  }
   if (t.actions > 0 && canUseWeapon(b, u) && u.weapon.thrown) {
     for (const e of b.units) {
       if (!isAlive(e) || !isHostile(b, u, e)) continue;
@@ -2292,7 +2387,28 @@ function canAttack(b, u, e, range) {
   const ts = tauntSource(b, u);
   if (ts && ts !== e) return false;
   const d = chebyshev(u.x, u.y, e.x, e.y);
+  if (b.grid.elev) {
+    if (d <= 1 && !meleeElevOk(b, u.x, u.y, e.x, e.y)) return false;
+    if (range > 1) range += elevRange(b, u, e.x, e.y);
+  }
   return d <= range && (d <= 1 || !!(u.weapon && u.weapon.arc) || lineOfSight(b.grid, u.x, u.y, e.x, e.y));
+}
+
+/** combat rework §3.2: a deliberate weapon attack on an object (melee — adjacent / reach, ranged — range + LOS). */
+export function smashOk(b, u, x, y) {
+  if (!u.weapon || !objectAt(b, x, y)) return false;
+  const d = chebyshev(u.x, u.y, x, y);
+  if (d < 1) return false;
+  if (isMeleeWeapon(u)) return d <= Math.max(1, weaponRange(u));
+  return d <= weaponRange(u) && (d <= 1 || !!u.weapon.arc || lineOfSight(b.grid, u.x, u.y, x, y));
+}
+/** Objects u can smash now. */
+export function smashTargets(b, u) {
+  const out = [];
+  if (!b.objects) return out;
+  for (const o of b.objects.values()) if (smashOk(b, u, o.x, o.y)) out.push(o);
+  for (const br of b.barrels || []) if (br.hp != null && smashOk(b, u, br.x, br.y)) out.push(br);
+  return out;
 }
 
 /** Thrown weapon: distance 2..weapon.thrown, line of sight. */
@@ -2373,6 +2489,7 @@ export function perform(b, action) {
       if (!approachOk(b, u, action.to.x, action.to.y)) return fail(b, start, 'fear');
       const steps = walk(b, u, movePath(b, u, action.to), t.disengaged);
       t.move = Math.max(0, t.move - steps);
+      if (steps > 0) t.moved = true;
       checkVictory(b);
       break;
     }
@@ -2419,6 +2536,17 @@ export function perform(b, action) {
       if (u.weapon.area) areaWeaponAttack(b, u, { x: tgt.x, y: tgt.y });
       else weaponAttack(b, u, tgt, null);
       selfDamage(b, u);
+      checkVictory(b);
+      break;
+    }
+    case 'smash': {
+      if (t.actions <= 0) return fail(b, start, 'noAction');
+      if (!canUseWeapon(b, u)) return fail(b, start, weaponBlocked(b, u) || 'noWeapon');
+      const o = action.tile ? objectAt(b, action.tile.x, action.tile.y) : null;
+      if (!o || !smashOk(b, u, o.x, o.y)) return fail(b, start, 'badTarget');
+      t.actions--;
+      t.acted = true;
+      smashObject(b, u, o);
       checkVictory(b);
       break;
     }
@@ -2483,8 +2611,10 @@ export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy =
   const m = attackMode(b, att, tgt, melee, isWeapon, fx, fy);
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
   let kb = getKb(b, tgt, null, false) - apReduction(att, tgt, isWeapon);
-  if (!melee && hasCover(b.grid, fx, fy, tgt.x, tgt.y)) kb += COVER_KB;
-  const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + (b.surfaces.size ? surfaceHitBonus(b, att) : 0);
+  const arc = isWeapon && !melee && att.weapon && att.weapon.arc;
+  if (!arc) kb += coverBonus(b, fx, fy, tgt.x, tgt.y, melee).kb;
+  const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + (b.surfaces.size ? surfaceHitBonus(b, att) : 0)
+    + terrainHit(b, att, tgt, melee, fx, fy).total + (att.arch ? archHit(b, att) : 0);
   const critRange = Math.min(20, att.critRange || 20);
   const need = Math.min(kb - total, critRange);
   return { need, mode, chance: chanceD20(need, mode), critChance: chanceD20(critRange, mode) };
