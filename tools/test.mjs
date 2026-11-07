@@ -10,7 +10,7 @@ import { chooseAction, playTurn, evalAction } from '../game/src/rules/ai.js';
 import { applyWithdrawal, clearWithdrawal } from '../game/src/rules/aftermath.js';
 import { skillCheck, skillTier } from '../game/src/rules/skills.js';
 import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS } from '../game/src/rules/progression.js';
-import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL } from '../game/src/rules/combat.js';
+import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL, grantSafePassage, hasSafePassage } from '../game/src/rules/combat.js';
 import { validateBuild } from '../game/src/rules/build.js';
 import { profPoints, proficiencyCost, defaultProficiencies } from '../game/src/rules/equipment.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
@@ -1154,6 +1154,30 @@ test('200 fixture battles without exceptions', () => {
     tally[r.winner] = (tally[r.winner] || 0) + 1;
   }
   console.log(`       results ${JSON.stringify(tally)} in ${Date.now() - t0} ms`);
+});
+
+console.log('v4 acrobatics trick');
+test('safePassage: hazard tiles deal no damage this turn, flag ends with the turn', () => {
+  const HZ = { id: 'hz', grid: ['##########', '#P~~...E.#', '##########'], win: 'killAll' };
+  const { b, H } = duel('thug', hero(), HZ);
+  forceTurn(b, H);
+  assert.equal(grantSafePassage(b, H), true);
+  assert.ok(hasSafePassage(b, H));
+  const hp = H.hp;
+  assert.ok(perform(b, { type: 'move', unit: H.id, to: { x: 4, y: 1 } }).ok);
+  assert.equal(H.hp, hp);
+  assert.ok(events(b, 'hazard').length >= 1 && events(b, 'hazard').every((e) => e.avoided));
+  // without the flag the same walk burns
+  const r = duel('thug', hero(), HZ);
+  forceTurn(r.b, r.H);
+  const hp2 = r.H.hp;
+  perform(r.b, { type: 'move', unit: r.H.id, to: { x: 4, y: 1 } });
+  assert.ok(r.H.hp < hp2);
+  // next turn: no flag; not your turn: cannot grant
+  forceTurn(b, H);
+  assert.ok(!hasSafePassage(b, H));
+  const E = b.units.find((u) => u.team === 'enemies');
+  assert.equal(grantSafePassage(b, E), false);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

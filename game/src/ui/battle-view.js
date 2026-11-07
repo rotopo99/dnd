@@ -1,6 +1,7 @@
 // Battle rendering: cached static map layer, highlights, units, bars, popups, action bar, side panel, log,
 // banner and result overlays. State object S comes from scenes/battle.js.
 import { t } from '../data/text/index.js';
+import { drawUnitPortrait } from './portrait-of.js';
 import { TILE, drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
 import { abilityRange, unitView } from '../rules/combat.js';
 import { pathTo } from '../rules/grid.js';
@@ -137,6 +138,13 @@ export const isHiddenFoe = (u) => !!u && !u.dead && !u.removed && isHidden(u);
 const drawList = [];
 const affected = new Set();
 const byDispY = (S) => (a, c) => S.disp[a.id].y - S.disp[c.id].y;
+
+/** Portraits v2 in battle: live hp/mrl from the display state, event emotion (battle.js emote) or neutral. */
+function battlePortrait(ctx, S, u, x, y, scale) {
+  const d = S.dispOf(u);
+  const emotion = d.emoT > 0 && d.emo ? d.emo : 'neutral';
+  drawUnitPortrait(ctx, u, x, y, scale, { native: true, emotion, hp: u.maxHp ? d.hp / u.maxHp : 1, mrl: u.maxMrl ? d.mrl / u.maxMrl : 1 });
+}
 
 function unitSprite(u) {
   return u.kind === 'hero' ? heroSpriteIds(u.raceId, u.classId, u.look) : enemySpriteIds(u.enemyId);
@@ -343,15 +351,17 @@ function drawUnits(ctx, S, preview, tms) {
     const u = b.byId[bu.id];
     const d = u ? S.dispOf(u) : null;
     if (!u || !d || d.gone || (isHidden(u) && u.team !== 'heroes')) continue;
+    const pw = bu.portrait ? 52 : 0; // story lines carry a 48 px portrait
     const lines = wrap(ctx, bu.text, 240);
-    const bw = Math.min(260, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16);
-    const bh = lines.length * LINE + 10;
+    const bw = Math.min(260, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16) + pw;
+    const bh = Math.max(lines.length * LINE + 10, pw ? 56 : 0);
     let x = Math.round(L.mapX + d.x * L.cell + L.cell / 2 - bw / 2);
     x = Math.max(4, Math.min(L.area.w - bw - 4, x));
     const y = Math.max(TOP_H + 2, Math.round(L.mapY + d.y * L.cell - bh - 14 * L.s / 2 - 10));
     ctx.globalAlpha = bu.t > 2.8 ? Math.max(0, (3.2 - bu.t) / 0.4) : 1;
     panel(ctx, x, y, bw, bh, C['5'], C['0']);
-    lines.forEach((l, i) => text(ctx, l, x + 8, y + 5 + i * LINE, C['0']));
+    if (pw) battlePortrait(ctx, S, u, x + 4, y + 4, 1);
+    lines.forEach((l, i) => text(ctx, l, x + 8 + pw, y + 5 + i * LINE, C['0']));
     ctx.globalAlpha = 1;
   }
 }
@@ -465,10 +475,15 @@ function unitCard(ctx, S, u, x, y, w, odds) {
   const b = S.b;
   const v = unitView(b, u);
   const d = S.dispOf(u);
-  text(ctx, fit(ctx, S.name(u.id), w, FONT_B), x, y, teamColor(u), FONT_B);
+  // portraits v2: 48 px portrait on the left, name and HP/MRL beside it
+  const top = y;
+  battlePortrait(ctx, S, u, x, y, 1);
+  const tx = x + 56, tw = w - 56;
+  text(ctx, fit(ctx, S.name(u.id), tw, FONT_B), tx, y, teamColor(u), FONT_B);
   y += 24;
-  resLine(ctx, x, y, w, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
-  if (v.maxMrl > 0) { resLine(ctx, x, y, w, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
+  resLine(ctx, tx, y, tw, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
+  if (v.maxMrl > 0) { resLine(ctx, tx, y, tw, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
+  y = Math.max(y, top + 52);
   if (v.maxEnr > 0) { resLine(ctx, x, y, w, 'enr', v.enr, v.maxEnr, t('res.enr')); y += 22; }
   let info = `${t('res.kb')} ${v.kb}  ${t('create.speed')} ${v.speed}`;
   if (v.shield) info += `  ${t('battle.shield')} ${v.shield}`;
@@ -523,13 +538,14 @@ function drawPanel(ctx, S, preview) {
   let y = 12;
   // hero card
   const hero = b.byId[S.heroId];
-  panel(ctx, x - 6, y - 4, w + 12, 64, C['2'], C['3']);
-  drawSprite(ctx, heroSpriteIds(hero.raceId, hero.classId, hero.look), x, y + 4, 3, { frame: idleFrame(S.time * 1000) });
+  panel(ctx, x - 6, y - 4, w + 12, 104, C['2'], C['3']);
+  battlePortrait(ctx, S, hero, x - 2, y, 2);
   const raceName = b.data.races[hero.raceId]?.name || '';
   const cls = b.data.classes[hero.classId];
-  text(ctx, fit(ctx, S.name(hero.id), w - 60, FONT_B), x + 58, y + 6, C.h, FONT_B);
-  text(ctx, fit(ctx, `${raceName} · ${cls?.name || ''}`, w - 60), x + 58, y + 30, C['4']);
-  y += 70;
+  text(ctx, fit(ctx, S.name(hero.id), w - 108, FONT_B), x + 106, y + 6, C.h, FONT_B);
+  text(ctx, fit(ctx, raceName, w - 108), x + 106, y + 30, C['4']);
+  text(ctx, fit(ctx, cls?.name || '', w - 108), x + 106, y + 50, C['4']);
+  y += 110;
   resLine(ctx, x, y, w, 'hp', S.dispOf(hero).hp, hero.maxHp, t('res.hp')); y += 22;
   resLine(ctx, x, y, w, 'mrl', S.dispOf(hero).mrl, hero.maxMrl, t('res.mrl')); y += 22;
   resLine(ctx, x, y, w, 'enr', hero.enr, hero.maxEnr, t('res.enr')); y += 24;

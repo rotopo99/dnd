@@ -43,10 +43,10 @@ export function runEvent(game, ev, then) {
   save.flags[`event:${ev.id}`] = true;
   journal(save, `${t('event.title')}: ${storyText(ev.name)}`);
   saveGame(save);
-  const hero = { race: save.hero.race, cls: save.hero.cls };
+  const hero = { race: save.hero.race, cls: save.hero.cls, look: save.hero.look || null, name: save.hero.name };
   const back = game.scene;
   game.setScene(createDialogueScene({
-    title: storyText(ev.name), lines: lines(ev.scene), hero,
+    title: storyText(ev.name), lines: lines(ev.scene), hero, wounds: true,
     onDone: (g) => { g.resume(back); choose(g); },
   }));
 
@@ -76,7 +76,7 @@ export function runEvent(game, ev, then) {
       saveGame(save);
       if (o.text) {
         const ls = lines(o.text);
-        g2.setScene(createDialogueScene({ title: storyText(ev.name), lines: ls, hero, onDone: (g3) => then(g3) }));
+        g2.setScene(createDialogueScene({ title: storyText(ev.name), lines: ls, hero, wounds: true, onDone: (g3) => then(g3) }));
       } else then(g2);
     };
     if (o.battle) {

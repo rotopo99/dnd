@@ -3,7 +3,8 @@
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT, talentsForSlot } from '../data/talents.js';
-import { drawSprite, heroSpriteIds, idleFrame, drawPortrait } from '../assets/sprites.js';
+import { drawPortrait, drawHeroPortrait } from '../assets/sprites.js';
+import { heroBuild, wounds } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, LINE, text, textBlock, fit, panel, button, hitButton, clear, resLine } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS } from '../world/reputation.js';
@@ -144,8 +145,11 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       if (!u) return;
       const isHero = m.key === 'hero';
       panel(ctx, ox + 24, y, 640, 92, C['1'], isHero ? C.h : C['2']);
-      if (isHero) drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls, sv.hero.look), ox + 32, y + 12, 4, { frame: idleFrame(S.time * 1000, i * 0.3) });
-      else drawPortrait(ctx, m.key, ox + 32, y + 14, 2);
+      // portraits v2 (native 48 px): live wounds; companions show their mood by approval
+      const po = { native: true, ...wounds(u), emotion: m.p ? (m.p.approval >= 50 ? 'happy' : m.p.approval <= -50 ? 'angry' : 'neutral') : 'neutral' };
+      panel(ctx, ox + 34, y + 20, 52, 52, C['0'], C['2']);
+      if (isHero) drawHeroPortrait(ctx, heroBuild(sv.hero), ox + 36, y + 22, 1, po);
+      else drawPortrait(ctx, m.key, ox + 36, y + 22, 1, po);
       const name = isHero ? sv.hero.name : NPCS[m.key].name;
       text(ctx, fit(ctx, name, 220, FONT_B), ox + 104, y + 8, isHero ? C.h : C['5'], FONT_B);
       const cls = game.data.CLASSES[u.classId];

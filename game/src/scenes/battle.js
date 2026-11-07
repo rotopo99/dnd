@@ -31,6 +31,9 @@ const AI_TURN_GAP = 0.3; // s before an AI unit starts acting
 const WALK_SPEED = 9; // tiles per second
 const MAX_LOG = 200;
 const MAX_AI_STEPS = 16;
+// v4 N6: tricks not listed in SKILL_RULES.tricks (no numbers): acrobatics -> combat.grantSafePassage
+const EXTRA_TRICKS = ['acrobatics'];
+const EMO_HOLD = 1.5; // s a battle portrait keeps an event emotion (portraits v2), then back to neutral
 
 /** Remove items failing keep() in place (no new array per frame). */
 function compact(arr, keep) {
@@ -357,6 +360,7 @@ export function createBattleScene(opts) {
       case 'medicine': return friends.filter((x) => x.down && x !== u && adj(x));
       case 'athletics': return foes.filter(adj);
       case 'stealth': return b.round <= SKILL_RULES.tricks.stealth.round ? [u] : [];
+      case 'acrobatics': return combat.hasSafePassage(b, u) ? [] : [u];
       default: return [];
     }
   }
@@ -367,7 +371,7 @@ export function createBattleScene(opts) {
     const b = S.b;
     const u = b.byId[S.heroId];
     const used = (S.tricksUsed[u.id] = S.tricksUsed[u.id] || []);
-    const skills = Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc');
+    const skills = [...new Set([...Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc'), ...EXTRA_TRICKS])];
     game.openModal({
       title: t('trick.title'), width: 900,
       options: [...skills.map((sk) => {
@@ -401,6 +405,7 @@ export function createBattleScene(opts) {
       else if (sk === 'medicine') combat.applyOp(b, u, x, { op: 'stabilize' });
       else if (sk === 'athletics') combat.applyOp(b, u, x, { op: 'push', tiles: T.athletics.push });
       else if (sk === 'stealth') combat.applyStatus(b, u, T.stealth.status, T.stealth.turns, u);
+      else if (sk === 'acrobatics') { if (combat.grantSafePassage(b, u)) pushLog([[t('trick.safe'), C.j]]); }
       else if (sk === 'biology') {
         const res = Object.entries(x.resist || {}).filter(([, v]) => v).map(([k, v]) => `${t(`dmg.${k}`)} — ${t(`trick.r.${v}`)}`);
         const imm = (x.immuneStatus || []).map((id) => S.b.data.statuses?.[id]?.name || id);
@@ -472,16 +477,24 @@ export function createBattleScene(opts) {
     S.popups.push({ id: u.id, x: d.x, y: d.y, text, color, t: -stack * 0.25 });
   }
 
-  function bubble(u, text) {
+  function bubble(u, text, portrait = false) {
     compact(S.bubbles, (x) => x.id !== u.id);
-    S.bubbles.push({ id: u.id, text, t: 0 });
+    S.bubbles.push({ id: u.id, text, t: 0, portrait });
   }
+
+  /** Portraits v2: an event emotion on a unit's battle portrait for EMO_HOLD seconds. */
+  function emote(u, emo) {
+    if (!u) return;
+    const d = dispOf(u);
+    d.emo = emo; d.emoT = EMO_HOLD;
+  }
+  const pick2 = (a, b2) => (Math.random() < 0.5 ? a : b2);
 
   function storyBubble(u, key) {
     const lines = storyLine(key, opts.race || opts.hero?.race);
     if (!lines || !lines.length) return;
     const l = lines[(Math.random() * lines.length) | 0];
-    bubble(u, l.text);
+    bubble(u, l.text, true);
   }
   S.storyBubble = storyBubble;
   S.pushLog = pushLog;
@@ -514,15 +527,18 @@ export function createBattleScene(opts) {
           popup(T, `${e.crit ? '!' : ''}−${e.amount}`, col);
         }
         if (e.absorbed) popup(T, `◊${e.absorbed}`, C.f);
+        if (e.amount > 0) emote(T, e.resource === 'mrl' || d.hp < T.maxHp * 0.4 ? 'scared' : 'angry');
+        if (e.crit && A && A !== T) emote(A, pick2('smug', 'happy'));
         break;
       }
-      case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); } break;
+      case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); emote(T, 'happy'); } break;
       case 'shield': if (T) popup(T, `◊${e.value}`, C.f); break;
       case 'nadlom': if (T) popup(T, t('state.strain'), C.n); break;
       case 'breakdown':
         if (T) {
           if (e.value != null) dispOf(T).hp = e.value;
           popup(T, t('state.breakdown'), C.n);
+          emote(T, pick2('cringe', 'scared'));
         }
         break;
       case 'broken': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('battle.broken'), C.n); } break;
@@ -560,6 +576,7 @@ export function createBattleScene(opts) {
     for (const id in S.disp) {
       const d = S.disp[id];
       if (d.flash > 0) d.flash -= dt;
+      if (d.emoT > 0 && (d.emoT -= dt) <= 0) d.emo = null;
       if (d.fade > 0) { d.fade -= dt * 1.4; if (d.fade <= 0) d.gone = true; }
       if (!d.path.length) continue;
       const p = d.path[0];

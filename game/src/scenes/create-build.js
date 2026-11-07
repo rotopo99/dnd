@@ -10,7 +10,8 @@ import { PHOBIA_COMBAT_TRIGGERS, PHOBIA_WORLD_TRIGGERS } from '../rules/combat.j
 import { SKILLS } from '../data/talents.js';
 import { SPECIALIZATIONS } from '../data/skills.js';
 import { ITEMS, WEAPONS, ARMOR, starterKit } from '../world/data.js';
-import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
+import { drawHeroPortrait } from '../assets/sprites.js';
+import { heroBuild } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear } from '../ui/draw.js';
 import { itemStats, soonNote, weaponTypeName, armorTypeName, tierName } from '../ui/items-ui.js';
@@ -209,8 +210,7 @@ export function createBuildScene(hero, back, onNext) {
   function drawRight(ctx) {
     const x = ox + 860, y = oy + 64;
     panel(ctx, x, y, 396, 120, C['1'], C['3']);
-    drawSprite(ctx, ['tile-floor'], x + 8, y + 8, 3);
-    drawSprite(ctx, heroSpriteIds(hero.race, hero.cls, st.look), x + 8, y + 8, 3, { frame: idleFrame(st.time * 1000) });
+    drawHeroPortrait(ctx, heroBuild({ race: hero.race, cls: hero.cls, look: st.look }), x + 10, y + 12, 2, { native: true }); // portraits v2
     text(ctx, fit(ctx, hero.name, 270, FONT_B), x + 120, y + 10, C.h, FONT_B);
     if (built) {
       text(ctx, `${t('res.hp')} ${built.maxHp} · ${t('res.mrl')} ${built.maxMrl} · ${t('res.enr')} ${built.maxEnr}`, x + 120, y + 34, C['5'], SMALL);

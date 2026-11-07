@@ -4,6 +4,7 @@ import { t } from '../data/text/index.js';
 import { line } from '../data/text/prologue.js';
 import { MAPS } from '../data/index.js';
 import { createDialogueScene, toLines } from './dialogue.js';
+import { wounds } from '../ui/portrait-of.js';
 import { createBattleScene } from './battle.js';
 import { menuScene } from './menu.js';
 import { C } from '../ui/draw.js';
@@ -53,8 +54,10 @@ function storyHooks(race) {
 export function startPrologue(game, hero) {
   const flags = {};
   const race = hero.race;
-  const H = { race: hero.race, cls: hero.cls };
-  const dlg = (title, ls, next) => game.setScene(createDialogueScene({ title, lines: ls, hero: H, onDone: next }));
+  const H = { race: hero.race, cls: hero.cls, look: hero.look || null, name: hero.name };
+  const dlg = (title, ls, next, wounds = null) => game.setScene(createDialogueScene({ title, lines: ls, hero: H, wounds, onDone: next }));
+  // portraits v2: hp/mrl of the hero and allies right after a battle ('npc-gans' -> speaker 'gans')
+  const hurtAfter = (S) => Object.fromEntries(S.b.units.filter((u) => u.team !== 'enemies').map((u) => [u.kind === 'hero' && !u.enemyId ? 'hero' : String(baseOf(u)).replace(/^npc-/, ''), wounds(u)]));
   const toMenu = (g) => g.setScene(menuScene);
   const battle = (n, next) => {
     const map = MAPS[`prologue-${n}`];
@@ -75,12 +78,13 @@ export function startPrologue(game, hero) {
       t('s3_title'),
       lines(race, 's3_after', alive ? 's3_gans_alive' : 's3_gans_dead', alive ? 's3_lox_alive' : 's3_lox_dead'),
       epilogue,
+      hurtAfter(S),
     );
   };
   const scene3 = () => dlg(t('s3_title'), lines(race, 's3_before', 's3_race'), () => battle(3, after3));
-  const after2 = () => dlg(t('s2_title'), lines(race, 's2_after', 's2_after_race', 's2_reveal', 's2_reward'), scene3);
+  const after2 = (g, S) => dlg(t('s2_title'), lines(race, 's2_after', 's2_after_race', 's2_reveal', 's2_reward'), scene3, hurtAfter(S));
   const scene2 = () => dlg(t('s2_title'), lines(race, 's2_before', 's2_race'), () => battle(2, after2));
-  const after1 = () => dlg(t('s1_title'), lines(race, 's1_after', 's1_reward'), scene2);
+  const after1 = (g, S) => dlg(t('s1_title'), lines(race, 's1_after', 's1_reward'), scene2, hurtAfter(S));
   const scene1 = () => dlg(t('s1_title'), lines(race, 's1_before', 's1_race', 's1_tip'), () => battle(1, after1));
   dlg(t('intro_title'), lines(race, 'intro_radio', 'intro_paper', 'intro_arrival', 'seer_meet', 'seer_race', 'explosion'), scene1);
 }

@@ -1,10 +1,14 @@
 // Dialogue scene: window with the speaker name and lines, typewriter text.
-// createDialogueScene({ title?, lines: [{ who, text }], hero?: { race, cls }, onDone(game) })
+// createDialogueScene({ title?, lines: [{ who, text, name?, emo? }], hero?: { race, cls, look, name }, wounds?, onDone(game) })
+// Speaker portraits v2 (native, integer scale ×3/×4), emotion per line (ui/emotion.js); who: 'hero' -> drawHeroPortrait.
+// wounds: true -> live hp/mrl of 'hero' and party members from game.save; or a map { [npcId|'hero']: { hp, mrl } }.
 // Click / Space / Enter — next line (first press finishes the typewriter). Esc — skip the whole dialogue.
 import { t } from '../data/text/index.js';
 import { speaker } from '../data/text/prologue.js';
-import { drawSprite, heroSpriteIds, enemySpriteIds, idleFrame, drawPortrait } from '../assets/sprites.js';
-import { NPCS } from '../data/npcs.js';
+import { drawSprite, heroSpriteIds, enemySpriteIds, idleFrame } from '../assets/sprites.js';
+import { lineEmotion } from '../ui/emotion.js';
+import { drawSpeaker, partyWounds, crispScale } from '../ui/portrait-of.js';
+import { members } from '../world/state.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, wrap, panel, clear } from '../ui/draw.js';
 
@@ -28,8 +32,10 @@ export function toLines(v) {
   return v;
 }
 
-export function createDialogueScene({ title = '', lines, hero = null, portraits = null, onDone }) {
+export function createDialogueScene({ title = '', lines, hero = null, portraits = null, wounds = null, onDone }) {
   let i = 0;
+  let emos = [];
+  let hurt = null;
   let shown = 0;
   let time = 0;
   let done = false;
@@ -41,9 +47,12 @@ export function createDialogueScene({ title = '', lines, hero = null, portraits 
   return {
     id: 'dialogue',
     title,
-    enter() {
+    enter(game) {
       i = 0; shown = 0; time = 0; done = false;
       if (!lines.length) lines = [{ who: 'narrator', text: '…' }];
+      emos = lines.map(lineEmotion);
+      hurt = wounds && typeof wounds === 'object' ? wounds : null;
+      if (wounds === true && game?.save) { try { hurt = partyWounds(members(game.save, game.data, { includeDown: true })); } catch { hurt = null; } }
     },
     update(game, dt) {
       time += dt;
@@ -71,17 +80,25 @@ export function createDialogueScene({ title = '', lines, hero = null, portraits 
       const stageY = Math.floor(H / 2) - 120;
       ctx.fillStyle = C['1'];
       ctx.fillRect(0, stageY + 150, W, 2);
-      if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls, hero.look), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
-      const portrait = portraits?.[cur.who] || PORTRAITS[cur.who];
-      if (NPCS[cur.who] && !PORTRAITS[cur.who]) drawPortrait(ctx, cur.who, Math.floor(W / 2) + 120, stageY - 48, 6, { flip: true });
-      else if (portrait) drawSprite(ctx, portrait, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
+      const floor = stageY + 150;
+      const sc = crispScale(floor - 80, 4); // ×4 on normal screens, ×3 when the stage is short
+      const ps = 48 * sc;
+      const emotion = emos[i] || 'neutral';
+      const info = { hero, wounds: hurt };
+      if (hero && cur.who === 'hero') drawSpeaker(ctx, 'hero', Math.floor(W / 2) - 300, floor - ps, sc, { native: true, emotion }, info);
+      else if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls, hero.look), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
+      const custom = portraits?.[cur.who];
+      if (custom) drawSprite(ctx, custom, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
+      else if (cur.who !== 'hero' && !drawSpeaker(ctx, cur.who, Math.floor(W / 2) + 120, floor - ps, sc, { native: true, emotion, flip: true }, info) && PORTRAITS[cur.who]) {
+        drawSprite(ctx, PORTRAITS[cur.who], Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
+      }
       // window
       const w = Math.min(1100, W - 64);
       const h = 196;
       const x = Math.floor((W - w) / 2);
       const y = H - h - 40;
       panel(ctx, x, y, w, h, C['1'], C['3']);
-      const name = cur.name ?? speaker(cur.who);
+      const name = cur.name ?? (cur.who === 'hero' ? hero?.name : speaker(cur.who));
       if (name) {
         ctx.font = FONT_B;
         const nw = ctx.measureText(name).width + 24;

@@ -25,6 +25,7 @@ import {
 import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
+import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
 import { openShop } from './shop.js';
@@ -32,6 +33,8 @@ import { runEncounter } from './encounter.js';
 import { hasWorldFlag } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { FIELD_CAMP } from '../world/data.js';
+
+const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
 const BASE_W = 1280, BASE_H = 720;
 const PAGE = 7;
@@ -230,8 +233,11 @@ export function createLocationScene(rawId) {
         title: npc.name, onCancel: (g2) => finishTalk(g2),
         lines: [{ text: t('loc.topics'), color: 'a' }],
         options: [...topics.map((tp) => ({ label: tp.q, run: (g2) => {
-          g2.openModal({ title: npc.name, lines: [{ text: `— ${tp.q}`, color: '4' }, { text: tp.a }], onCancel: (g3) => askTopics(g3),
-            options: [{ label: t('battle.continue'), run: (g3) => { if (tp.hook && LOCATIONS[tp.hook]) discover(sv, tp.hook); askTopics(g3); } }] });
+          // portraits v2: the hero asks, the NPC answers (emotion by text, ui/emotion.js)
+          g2.setScene(createDialogueScene({
+            title: npc.name, lines: [{ who: 'hero', text: tp.q }, { who: npc.id, name: npc.name, text: tp.a }], hero: heroOf(sv), wounds: true,
+            onDone: (g3) => { g3.resume(self); if (tp.hook && LOCATIONS[tp.hook]) discover(sv, tp.hook); askTopics(g3); },
+          }));
         } })), { label: t('loc.bye'), run: (g2) => finishTalk(g2) }],
       });
     };
@@ -242,7 +248,7 @@ export function createLocationScene(rawId) {
       refresh(g);
     };
     game.setScene(createDialogueScene({
-      title: loc.name, lines: [npcGreeting(npc, tier)], hero: { race: sv.hero.race, cls: sv.hero.cls },
+      title: loc.name, lines: [npcGreeting(npc, tier)], hero: heroOf(sv), wounds: true,
       onDone: (g) => { g.resume(self); askTopics(g); },
     }));
   }
@@ -690,7 +696,7 @@ export function createLocationScene(rawId) {
       S.rows.forEach((row) => {
         const npc = NPCS[row.id];
         panel(ctx, ox + 24, row.y, 600, 60, C['1'], C['2']);
-        drawPortrait(ctx, row.id, ox + 36, row.y + 14, 1);
+        drawPortrait(ctx, row.id, ox + 32, row.y + 6, 1, { native: true });
         const nActs = S.buttons.filter((b) => b.kind === 'npc' && b.npc === row.id).length;
         const tw = 600 - 70 - nActs * 96 - 12;
         text(ctx, fit(ctx, `${npc.name}${row.quest ? ' !' : row.questLocked ? ` · ${t('loc.questLocked')}` : ''}`, tw, FONT_B), ox + 86, row.y + 8, row.quest ? C.a : C['5'], FONT_B);

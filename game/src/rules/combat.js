@@ -62,6 +62,8 @@
 //     tile (saves as usual, no action cost) and are never chosen voluntarily. nextTurnPenalty (op extraAction or
 //     ability): next own turn starts with fewer actions. Opiates (item.withdrawal) queue unit.withdrawalPending;
 //     aftermath.js applies it after the battle. Mech armour shield = permanent shield (turns null) at battle start.
+// 18. v4 N6 Acrobatics trick: grantSafePassage(b, u) sets b.turn.safePassage — hazard tiles (and future damaging
+//     zones) deal no damage to that unit until its turn ends (event 'hazard' with avoided: true). Traps still fire.
 
 import { createRng } from './rng.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
@@ -1145,8 +1147,19 @@ export function smokeBetween(b, ax, ay, tx, ty) {
 
 // ---------------------------------------------------------------- movement
 
+/** v4 N6 Acrobatics trick (decision 18): for the rest of its turn the unit passes hazard tiles (and any zone that
+ * deals damage on entry) without damage. A flag on b.turn, so it ends with the turn. Returns false if not its turn. */
+export function grantSafePassage(b, u) {
+  if (!b.turn || b.turn.unitId !== u.id) return false;
+  b.turn.safePassage = true;
+  emit(b, { type: 'safePassage', actor: u.id });
+  return true;
+}
+export const hasSafePassage = (b, u) => !!(b.turn && b.turn.safePassage && b.turn.unitId === u.id);
+
 function hazardEnter(b, u) {
   if (tileAt(b.grid, u.x, u.y) !== T_HAZARD || !isAlive(u)) return;
+  if (hasSafePassage(b, u)) { emit(b, { type: 'hazard', target: u.id, x: u.x, y: u.y, avoided: true }); return; }
   emit(b, { type: 'hazard', target: u.id, x: u.x, y: u.y });
   phobiaTrigger(b, u, 'hazard', null);
   dealDamage(b, null, u, rollDice(b.rng, '1d6'), 'fire');

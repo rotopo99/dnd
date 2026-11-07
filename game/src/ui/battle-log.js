@@ -93,7 +93,7 @@ export function formatEvent(S, e) {
     case 'disengage': return [a(A), g(`: ${t('battle.disengages')}`)];
     case 'opportunity': return [a(A), g(`: ${t('battle.opportunity')} → `), a(T)];
     case 'reaction': return [a(A), g(`: ${t('battle.reactionEv')}`)];
-    case 'hazard': return [a(T), g(': '), [t('battle.hazard'), C.e]];
+    case 'hazard': return [a(T), g(': '), e.avoided ? [t('battle.hazardAvoided'), C.j] : [t('battle.hazard'), C.e]];
     case 'push': return e.tiles ? [a(T), g(`: ${t('battle.pushed')} (${e.tiles})`)] : null;
     case 'teleport': return [a(A), g(`: ${t('battle.teleport')}`)];
     case 'summon': return [a(A), g(` ${t('battle.summons')} `), a(T)];

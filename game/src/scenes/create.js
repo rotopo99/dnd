@@ -4,7 +4,8 @@
 import { t } from '../data/text/index.js';
 import { buildCreature, isAllowed, mod, STATS } from '../rules/character.js';
 import { PLAYABLE_RACES, CLASS_ORDER } from '../data/index.js';
-import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
+import { drawSprite, heroSpriteIds, idleFrame, drawHeroPortrait } from '../assets/sprites.js';
+import { heroBuild } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, drawIcon } from '../ui/draw.js';
 import { menuScene } from './menu.js';
@@ -105,9 +106,7 @@ export function createCreateScene() {
     // preview on a floor tile
     const px = x + 16, py = y + 16;
     panel(ctx, px, py, 112, 112, C['2'], C['3']);
-    drawSprite(ctx, ['tile-floor'], px + 8, py + 8, 6);
-    drawSprite(ctx, 'ui-marker', px + 8, py + 8, 6, { mono: 'h' });
-    drawSprite(ctx, heroSpriteIds(st.race, st.cls), px + 8, py + 8, 6, { frame: idleFrame(st.time * 1000) });
+    drawHeroPortrait(ctx, heroBuild(st), px + 8, py + 8, 2, { native: true }); // portraits v2
     const race = D.RACES[st.race], cls = D.CLASSES[st.cls];
     const path = cls.paths.find((p) => p.id === st.path);
     const tx = px + 128, tw = w - 160;
