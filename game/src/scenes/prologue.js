@@ -55,7 +55,7 @@ function storyHooks(race) {
 export function startPrologue(game, hero) {
   const flags = {};
   const race = hero.race;
-  const H = { race: hero.race, cls: hero.cls, look: hero.look || null, name: hero.name };
+  const H = { race: hero.race, cls: hero.cls, look: hero.look || null, avatar: hero.avatar || null, name: hero.name };
   const dlg = (title, ls, next, wounds = null) => game.setScene(createDialogueScene({ title, lines: ls, hero: H, wounds, onDone: next }));
   // portraits v2: hp/mrl of the hero and allies right after a battle ('npc-gans' -> speaker 'gans')
   const hurtAfter = (S) => Object.fromEntries(S.b.units.filter((u) => u.team !== 'enemies').map((u) => [u.kind === 'hero' && !u.enemyId ? 'hero' : String(baseOf(u)).replace(/^npc-/, ''), wounds(u)]));

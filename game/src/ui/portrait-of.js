@@ -8,6 +8,7 @@
 //   partyWounds(members)                 members() of world/state.js -> wounds map for drawSpeaker
 //   crispScale(boxPx, max = 4)           largest integer scale with 48*scale <= boxPx (at least 1)
 import { drawPortrait, drawHeroPortrait, PORTRAIT_SIZE } from '../assets/sprites.js';
+import { avatarToPortrait, isLook3d } from './avatar3d.js';
 import { NPCS } from '../data/npcs.js';
 import { ENEMIES } from '../data/enemies.js';
 import { ENEMIES_V3 } from '../data/enemies-v3.js';
@@ -91,6 +92,13 @@ export function drawSpeaker(ctx, who, x, y, scale, opts = {}, info = {}) {
   const o = { ...(key && info.wounds?.[key]), ...opts };
   if (who === 'hero') {
     if (!info.hero) return false;
+    if (isLook3d(info.hero.avatar)) { // 3D avatar (hero.avatar); old saves have none -> 2D portrait
+      const box = (o.native ? PORTRAIT_SIZE : 32) * scale;
+      const ps = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(avatarToPortrait({ ...info.hero.avatar, cloth: info.hero.look || info.hero.avatar.cloth }, 96), x, y, box, box);
+      ctx.imageSmoothingEnabled = ps;
+      return true;
+    }
     drawHeroPortrait(ctx, heroBuild(info.hero), x, y, scale, o);
     return true;
   }

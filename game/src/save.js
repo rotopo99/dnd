@@ -84,6 +84,8 @@ export function normalizeSave(s, data) {
     asi: arr(h.asi).filter((e) => e && Number.isInteger(e.level) && (e.talent ? TALENTS[e.talent] : e.stats && typeof e.stats === 'object')),
     pendingAsi: uniq(arr(h.pendingAsi).filter((l) => Number.isInteger(l))), levelNews: uniq(arr(h.levelNews).filter((l) => Number.isInteger(l))),
     equipment: normEquipment(h.equipment, h.cls, h.path),
+    // 3D avatar (ui/avatar3d.js look object); old saves have none -> 2D portrait
+    avatar: h.avatar && typeof h.avatar === 'object' && h.avatar.v === 1 ? h.avatar : null,
   };
   out.party = arr(s.party).filter((p) => p && NPCS[p.npc]).map((p) => ({
     approval: 0, talents: [], warned: false, ultimatum: false, ...p,

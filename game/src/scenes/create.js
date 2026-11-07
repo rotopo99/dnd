@@ -12,6 +12,7 @@ import { menuScene } from './menu.js';
 import { startPrologue } from './prologue.js';
 import { createTalentsScene } from './create-talents.js';
 import { createBuildScene } from './create-build.js';
+import { createLookScene } from './create-look.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const NAME_MAX = 16;
@@ -90,11 +91,13 @@ export function createCreateScene() {
   function begin(game) {
     const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName') };
     const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { g.hero = full; startPrologue(g, full); });
+    // steps: [build (flex)] -> look (3D avatar) -> talents
+    const look = (h, backTo) => { let lk; lk = createLookScene(h, backTo, (g, full) => g.setScene(talents(full, lk))); return lk; };
     if (st.mode === 'flex') {
       let build;
-      build = createBuildScene(hero, self, (g, full) => g.setScene(talents(full, build)));
+      build = createBuildScene(hero, self, (g, full) => g.setScene(look(full, build)));
       game.setScene(build);
-    } else game.setScene(talents(hero, self));
+    } else game.setScene(look(hero, self));
   }
 
   // ---------------------------------------------------------------- render parts

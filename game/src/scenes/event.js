@@ -44,7 +44,7 @@ export function runEvent(game, ev, then) {
   save.flags[`event:${ev.id}`] = true;
   journal(save, `${t('event.title')}: ${storyText(ev.name)}`);
   saveGame(save);
-  const hero = { race: save.hero.race, cls: save.hero.cls, look: save.hero.look || null, name: save.hero.name };
+  const hero = { race: save.hero.race, cls: save.hero.cls, look: save.hero.look || null, avatar: save.hero.avatar || null, name: save.hero.name };
   const back = game.scene;
   game.setScene(createDialogueScene({
     title: storyText(ev.name), lines: lines(ev.scene), hero, wounds: true,
