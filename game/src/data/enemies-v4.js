@@ -28,7 +28,9 @@ export const hpFor = (L, rank) => (8 + 4.5 * L) * LATE(L) * (RANK_HP[rank] ?? 1)
 // опыт врага: как rules/progression.js enemyXpForLevel (150 на ур. 5, дальше × xpScale) × ранг
 const THRESH = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000];
 const span = (l) => THRESH[Math.max(1, Math.min(19, l))] - THRESH[Math.max(1, Math.min(19, l)) - 1];
-export const enemyXp = (L, rank) => Math.round((L <= 5 ? [20, 38, 60, 90, 150][L - 1] : 150 * (span(L) / span(5))) * (RANK_XP[rank] ?? 1));
+// темп: ближние земли и старые квесты уже ведут к ур. 7–9, поэтому за врагов 6–9 даём меньше, дальше — полный опыт
+export const XP_K = (L) => (L <= 9 ? 0.6 : L <= 14 ? 0.85 : L <= 16 ? 1.1 : 1.3);
+export const enemyXp = (L, rank) => Math.round(XP_K(L) * (L <= 5 ? [20, 38, 60, 90, 150][L - 1] : 150 * (span(L) / span(5))) * (RANK_XP[rank] ?? 1));
 
 const dmgTarget = (L, rank) => DMG_PER_LEVEL * L * LATE(L) * (RANK_DMG[rank] ?? 1);
 function diceFor(avg, faces) { const n = Math.max(1, Math.round(avg / ((faces + 1) / 2))); return `${n}d${faces}`; }
@@ -421,6 +423,7 @@ for (const [b, nm, k] of MONS) for (const L of KEY_LEVELS) lift(b, L, { id: `mon
 const MON = (k, L) => lift(`mon-${{ sun: 'suunarssok', ari: 'aringli', uda: 'udazazagi' }[k]}`, L, { id: `mon-${k}-l${L}`, name: `${{ sun: 'Суунарссок', ari: 'Арингли', uda: 'Удазазаги' }[k]} ${EPI[L] || 'Матёрый'}`, rank: 'boss', boss: true });
 
 // ---------------------------------------------------------------- бои
+const spawn = (L) => lift('fauna-chimera', L, { id: `mon-spawn-l${L}`, name: 'Отпрыск чудища', rank: 'specialist', faction: null });
 const enc = (id, name, level, faction, places, enemies, extra = {}) => ({ id, name, level, faction, places, enemies, ...extra });
 const list = [];
 
@@ -463,9 +466,9 @@ list.push(
   enc('v4-boss-cyber-priest', 'Кибер-Жрец в силе', 19, 'cult', ['sokralnya'], ['boss-cyber-priest-prime', V('cult', 'elite', 19), N('cult-skrilet-prime', 19), N('cult-soul-reaper', 19)]),
   enc('v4-boss-crg-chief', 'Кринж-Вождь', 15, 'cringegons', ['baza-predlozhki'], ['boss-crg-chief', V('crg', 'elite', 15), N('crg-banner-bearer', 15), N('crg-stage-diver', 15), N('crg-stage-diver', 15)]),
   enc('v4-boss-collector', 'Великий Собиратель', 16, 'cringegons', ['vyzhigatel-vayba'], ['boss-great-collector', V('crg', 'elite', 16), N('crg-meme-lord', 16), N('crg-banner-bearer', 16)]),
-  enc('v4-mon-hill', 'Удазазаги, гидра холмов (старая)', 9, null, ['hill-monsters-m20'], [MON('uda', 8)], { scale: 0.6 }),
-  enc('v4-mon-lake', 'Суунарссок, хозяин озёр (матёрый)', 12, null, ['lake-monsters-m18'], [MON('sun', 12)], { scale: 0.6 }),
-  enc('v4-mon-sea', 'Арингли, морской змей (древний)', 16, null, ['sea-monsters-m19'], [MON('ari', 16)], { scale: 0.6 }),
+  enc('v4-mon-hill', 'Удазазаги, гидра холмов (старая)', 9, null, ['hill-monsters-m20'], [MON('uda', 8), spawn(9), spawn(9)], { scale: 0.6 }),
+  enc('v4-mon-lake', 'Суунарссок, хозяин озёр (матёрый)', 12, null, ['lake-monsters-m18'], [MON('sun', 12), spawn(12), spawn(12)], { scale: 0.6 }),
+  enc('v4-mon-sea', 'Арингли, морской змей (древний)', 16, null, ['sea-monsters-m19'], [MON('ari', 16), spawn(16), spawn(16)], { scale: 0.6 }),
   enc('v4-cyber-guard', 'Киберспейс: сторожа Судьи', 18, 'cult', ['kiberspeys'], [N('cult-firewall', 18), N('cult-datawraith', 18), N('cult-datawraith', 18), N('cult-soul-reaper', 18)]),
   // финал Акта III: перекрывает 'w-cc-finale' из enemies.js (reduce — за каждый выключенный терминал)
   { id: 'w-cc-finale', name: 'Главный узел: Третий исход', level: 20, faction: 'cult', places: ['cc-node'],

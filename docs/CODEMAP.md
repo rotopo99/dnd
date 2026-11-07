@@ -111,3 +111,4 @@
 - `tools/sim/balance.mjs --mode v3|gear` — бои v3 партией 4 и вклад предметов; `tools/sim/tune-v3.mjs` — автоподбор `POWER_V3`.
 - `game/src/data/world/travel-skills.js` — 59 дорожных проверок по регионам (3+ навыка из 2+ статов), подключено в `travel.js`; спека полезности навыков — `docs/specs/skills.md`.
 - Лут-таблицы `lis-vault`, `wolf-pack` (`items/loot.js`); проекты «Лис» и «Волк» — `docs/lore/projects-lis-volk.md`.
+- v4 (ур. 6–20): `game/src/data/enemies-v4.js` — `lift/V/N` (версии врагов по уровню), новые типы фракций, эндгейм-боссы, `ENCOUNTERS_V4` (+ перекрывает `w-cc-finale`), `REGION_ENCOUNTERS`; `data/world/battles-v4.js` — бои узлов и таблиц регионов; `regions.js` `levels`/`act`; `tools/sim/merge-power.mjs` (слить правки `POWER_V3` перед `--apply`), `tools/sim/xp-route.mjs` (темп опыта по маршруту). Бонус владения врагов — `profOf` в `enemies-v3.js`.

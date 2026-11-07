@@ -33,10 +33,9 @@ export const NODE_BATTLES_V4 = {
   shtabtsentr: [once('v4-shtab-patrol', R.renegades.patrol)],
   'krushenie-nebesnogo-bazara': [once('v4-bazaar-host', R.renegades.host)],
   'bunker-kuksiusa': [once('v4-kuksius-elite', R.renegades.elite)],
-  'ledyanoy-ring': [once('v4-ring-patrol', R.wilds.patrol)],
+  'ledyanoy-ring': [once('v4-ring-patrol', R.wilds.patrol), once('v4-lake-monster', 'v4-mon-lake')], // озеро у ринга: хозяин озёр в старшей форме
   'dungeons-m15': [once('v4-icebunker-host', R.wilds.host), once('v4-lis-9-full', 'v4-boss-lis-9')],
   'necropolises-m47': [once('v4-icenecro-elite', R.wilds.elite)],
-  'lake-monsters-m18': [once('v4-lake-monster', 'v4-mon-lake')],
   'sea-monsters-m19': [once('v4-sea-monster', 'v4-mon-sea')],
   kreml: [once('v4-kreml-patrol', R.warprom.patrol)],
   'dungeons-m12': [once('v4-kreml-host', R.warprom.host), once('v4-kreml-elite', R.warprom.elite), once('v4-wolf-0-full', 'v4-boss-wolf-0')],
