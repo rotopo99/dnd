@@ -106,8 +106,10 @@ export function createBattleScene(opts) {
     }
     S.queue = [];
     let enemies = opts.enemies;
-    // ambush (world.md §2): enemies get +5 initiative
-    if (opts.ambush && enemies) enemies = enemies.map((e, i) => { const u = buildEnemy(e, { data: game.data, id: `e${i + 1}` }); u.initBonus += 5; return u; });
+    // ambush (world.md §2): enemies get +5 initiative; v4: enemyInit (failed talks, skills.md N3) and heroInit (Military, N6)
+    const eInit = (opts.ambush ? 5 : 0) + (opts.enemyInit || 0);
+    if (eInit && enemies) enemies = enemies.map((e, i) => { const u = buildEnemy(e, { data: game.data, id: `e${i + 1}` }); u.initBonus += eInit; return u; });
+    if (opts.heroInit) for (const u of heroes) u.initBonus = (u.initBonus || 0) + opts.heroInit;
     S.b = createBattle({
       map: typeof opts.map === 'function' ? opts.map(seed) : opts.map, heroes, enemies, allies: opts.allies, data: game.data, seed,
       onEvent: (e) => S.queue.push(e),
