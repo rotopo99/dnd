@@ -31,8 +31,6 @@ const AI_TURN_GAP = 0.3; // s before an AI unit starts acting
 const WALK_SPEED = 9; // tiles per second
 const MAX_LOG = 200;
 const MAX_AI_STEPS = 16;
-// v4 N6: tricks not listed in SKILL_RULES.tricks (no numbers): acrobatics -> combat.grantSafePassage
-const EXTRA_TRICKS = ['acrobatics'];
 const EMO_HOLD = 1.5; // s a battle portrait keeps an event emotion (portraits v2), then back to neutral
 
 /** Remove items failing keep() in place (no new array per frame). */
@@ -371,7 +369,7 @@ export function createBattleScene(opts) {
     const b = S.b;
     const u = b.byId[S.heroId];
     const used = (S.tricksUsed[u.id] = S.tricksUsed[u.id] || []);
-    const skills = [...new Set([...Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc'), ...EXTRA_TRICKS])];
+    const skills = Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc');
     game.openModal({
       title: t('trick.title'), width: 900,
       options: [...skills.map((sk) => {

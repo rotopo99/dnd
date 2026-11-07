@@ -34,6 +34,7 @@ export const SKILL_RULES = {
     athletics: { push: 2 }, // adjacent enemy
     stealth: { status: 'stealth', turns: 1, round: 1 }, // first round only: the next attack with advantage
     biology: {}, // reveal resistances / immunities of a target
+    acrobatics: {}, // pass hazard tiles / damaging zones without damage until the end of the turn (combat.grantSafePassage)
   },
   preBattle: { military: { dc: 12, init: 1 } }, // N6 Military: +1 initiative of the party (best member, before the battle)
   // N7: economy
