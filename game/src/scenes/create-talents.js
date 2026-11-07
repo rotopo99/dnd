@@ -6,7 +6,9 @@ import { TALENTS, CREATION_SLOTS, COMBAT_TALENT_LIMIT, talentsForSlot, isCombatT
 import { buildCreature, STATS } from '../rules/character.js';
 import { ORIGINS, originAllowed, gadgetFor } from '../world/data.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear } from '../ui/draw.js';
+import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear } from '../ui/draw.js';
+import { createDetails, updateDetails, drawDetails as drawDetailsPanel } from '../ui/details.js';
+import { talentTip, abilityTip } from '../ui/tips.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const SLOT_ROWS = 8;
@@ -14,7 +16,7 @@ const SLOT_ROWS = 8;
 /** createTalentsScene(hero {race, cls, path, name}, back scene, onStart(game, fullHero)) */
 export function createTalentsScene(hero, back, onStart) {
   const st = {
-    origin: null, alignment: 'good', anyStat: null, picks: {}, focus: null, time: 0, pages: {}, lists: {},
+    origin: null, alignment: 'good', anyStat: null, picks: {}, focus: null, time: 0, pages: {}, lists: {}, dsc: createDetails(),
   };
   let buttons = [];
   let hover = null;
@@ -99,31 +101,36 @@ export function createTalentsScene(hero, back, onStart) {
     onStart(game, { ...hero, origin: st.origin, alignment: st.alignment, anyStat: st.anyStat, talents });
   }
 
-  function drawDetails(game) {
-    const { ctx: c } = game;
-    const x = ox + 924, y = oy + 100, w = 332;
-    panel(c, x - 8, y - 8, w + 16, 536, C['1'], C['3']);
-    let yy = y;
+  // details panel (ui/details.js): full card of the hovered / focused talent or origin + the class gadget, scrolls
+  const detailRect = () => ({ x: ox + 916, y: oy + 92, w: 348, h: 496 });
+  function detailSpec() {
     const f = st.focus || (hover && (hover.kind === 'talent' || hover.kind === 'origin') ? { kind: hover.kind, id: hover.id } : null);
     const focus = hover && (hover.kind === 'talent' || hover.kind === 'origin') ? { kind: hover.kind, id: hover.id } : f;
-    if (focus?.kind === 'talent') {
-      const tl = TALENTS[focus.id];
-      text(c, fit(c, tl.name, w, FONT_B), x, yy, C.h, FONT_B); yy += 24;
-      text(c, `${isCombatTalent(tl) ? t('talent.combat') : t('talent.world')} · ${String(tl.canon || '').startsWith('вне канона') ? t('talent.new') : t('talent.canon')}`, x, yy, isCombatTalent(tl) ? C.a : C.j); yy += LINE + 4;
-      yy = textBlock(c, tl.desc || '', x, yy, w, C['5'], FONT, LINE, 8) + 8;
-    } else if (focus?.kind === 'origin' || st.origin) {
+    let spec = { lines: [] };
+    let key = null;
+    if (focus?.kind === 'talent' && TALENTS[focus.id]) { spec = talentTip(focus.id); key = `t:${focus.id}`; }
+    else if (focus?.kind === 'origin' || st.origin) {
       const o = ORIGINS[focus?.id || st.origin];
-      text(c, fit(c, o.name, w, FONT_B), x, yy, C.h, FONT_B); yy += 24;
-      yy = textBlock(c, o.desc || '', x, yy, w, C['5'], FONT, LINE, 6) + 8;
+      if (o) { spec = { title: o.name, lines: [o.desc || ''] }; key = `o:${o.id}`; }
     }
     const g = gadgetFor(hero.cls);
+    const lines = [...spec.lines];
     if (g) {
-      yy = Math.max(yy, y + 240);
-      yy = textBlock(c, `${t('create.gadget')}: ${g.name}`, x, yy, w, C.b, FONT_B, LINE, 2) + 4;
-      yy = textBlock(c, g.desc || '', x, yy, w, C['4'], FONT, LINE, 3);
-      for (const a of g.abilities || []) yy = textBlock(c, `${a.name}: ${a.desc}`, x, yy + 4, w, C['5'], FONT, LINE, 4);
+      lines.push({ text: '' }, { text: `${t('create.gadget')}: ${g.name}`, color: 'b', font: FONT_B });
+      if (g.desc) lines.push({ text: g.desc, color: '4' });
+      for (const a of g.abilities || []) {
+        const at = abilityTip(a);
+        lines.push({ text: a.name, color: '5', font: FONT_B }, ...at.lines);
+      }
     }
-    text(c, `${t('talent.combat')}: ${combatCount(null)}/${COMBAT_TALENT_LIMIT(1)}`, x, y + 500, C.a, FONT_B);
+    return { spec: { ...spec, lines }, key };
+  }
+
+  function drawDetails(game) {
+    const { ctx: c } = game;
+    const { spec, key } = detailSpec();
+    drawDetailsPanel(c, st.dsc, detailRect(), spec, key);
+    text(c, `${t('talent.combat')}: ${combatCount(null)}/${COMBAT_TALENT_LIMIT(1)}`, ox + 924, oy + 600, C.a, FONT_B);
   }
 
   self = {
@@ -137,7 +144,8 @@ export function createTalentsScene(hero, back, onStart) {
       const h = hitButton(buttons, m);
       if (h !== hover && h && !h.disabled) play('uiHover');
       hover = h;
-      if (m.clicked && h) click(game, h);
+      const busy = updateDetails(st.dsc, detailRect(), m);
+      if (m.clicked && h && !busy) click(game, h);
       else if (game.input.wasPressed('Enter')) start(game);
       else if (game.input.wasPressed('Escape')) game.resume(back);
     },

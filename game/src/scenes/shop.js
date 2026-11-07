@@ -68,12 +68,12 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
         const it = ITEMS[id];
         const price = Math.max(1, Math.round(it.price * pr.buy));
         const q = appraise && it.slot === 'weapon' && it.tier ? ` · ${t('shop.quality')} ${it.tier}` : '';
-        return { label: `${t('shop.buy')}: ${it.name} — ${price}${q}`, sub: `${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price, tip: tipOf(id, price),
+        return { label: `${t('shop.buy')}: ${it.name} — ${price}${q}`, sub: `${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price),
           run: () => { sv.hero.credits -= price; sv.hero.items[id] = (sv.hero.items[id] || 0) + 1; play('buff'); saveGame(sv); } };
       });
       const sell = Object.entries(sv.hero.items).filter(([id, n]) => n > 0 && ITEMS[id]?.price > 0 && !ITEMS[id].key).map(([id, n]) => {
         const price = Math.max(1, Math.floor(ITEMS[id].price * pr.sell));
-        return { label: `${t('shop.sell')}: ${ITEMS[id].name} ×${n} — ${price}`, keep: true, tip: tipOf(id, price),
+        return { label: `${t('shop.sell')}: ${ITEMS[id].name} ×${n} — ${price}`, keep: true, detail: tipOf(id, price),
           run: () => { sv.hero.items[id]--; sv.hero.credits += price; play('uiClick'); saveGame(sv); } };
       });
       const info = [`${t('world.credits')}: ${sv.hero.credits}`];

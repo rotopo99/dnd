@@ -3,7 +3,7 @@
 import { t } from '../data/text/index.js';
 import { STATUSES } from '../data/effects.js';
 import { SURFACES } from '../data/surfaces.js';
-import { TALENTS } from '../data/talents.js';
+import { TALENTS, WORLD_FLAGS, isCombatTalent } from '../data/talents.js';
 import { C, text, bar, resLine } from './draw.js';
 import { hotspot } from './tooltip.js';
 import { xpProgress } from '../rules/progression.js';
@@ -79,9 +79,30 @@ export function abilityTip(a) {
   return { title: a.name, lines };
 }
 
+/** Talent card: kind, description, abilities in numbers (ЭНР, range, area, uses), world checks and flags, requirements. */
 export function talentTip(id) {
-  const x = TALENTS[id];
-  return x ? { title: x.name, lines: [x.desc || ''] } : null;
+  const x = typeof id === 'object' ? id : TALENTS[id];
+  if (!x) return null;
+  const combat = isCombatTalent(x);
+  const lines = [{ text: `${combat ? t('talent.combat') : t('talent.world')} · ${String(x.canon || '').startsWith('вне канона') ? t('talent.new') : t('talent.canon')}`, color: combat ? 'a' : 'j' }];
+  if (x.desc) lines.push(x.desc);
+  for (const a of x.abilities || []) {
+    const at = abilityTip(a);
+    lines.push({ text: '' }, { text: `${t('talent.ability')}: ${a.name}`, color: 'h' }, ...at.lines.filter((l) => l !== x.desc));
+  }
+  const fx = [];
+  for (const w of x.world || []) {
+    if (w.check) fx.push(`${t(`skill.${w.check}`)} ${w.adv ? t('battle.advantage').toLowerCase() : `+${w.bonus || 0}`}`);
+    else if (w.worldFlag && WORLD_FLAGS[w.worldFlag]) fx.push(WORLD_FLAGS[w.worldFlag].replace(/value/g, w.value != null ? (w.value < 1 ? `${Math.round(w.value * 100)}%` : w.value) : '').replace(/\s+/g, ' ').trim());
+  }
+  if (fx.length) lines.push({ text: '' }, { text: `${t('talent.worldFx')}: ${fx.join('; ')}`, color: 'j' });
+  const r = x.req || {};
+  const req = [];
+  for (const [k, v] of Object.entries(r.stats || {})) req.push(`${t(`stat.${k}`)} ${v}`);
+  if (r.level) req.push(`${t('world.level')} ${r.level}`);
+  if (r.weapon) req.push(t(`talent.weapon.${r.weapon}`));
+  if (req.length) lines.push({ text: `${t('tip.req')}: ${req.join(', ')}`, color: '4' });
+  return { title: x.name, titleColor: combat ? C.a : C.h, lines };
 }
 
 /** Find a term (status / ability name) inside a log segment «…» and return its tip. */

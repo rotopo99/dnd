@@ -227,6 +227,8 @@ const ru = {
   'talent.pickLevel': 'Новый уровень: выбери талант из своих списков.',
   'talent.choice': 'Награда: талант',
   'talent.choiceText': 'Выбери один талант.',
+  'talent.ability': 'Способность', 'talent.worldFx': 'Вне боя',
+  'talent.weapon.melee': 'оружие ближнего боя', 'talent.weapon.ranged': 'дальнобойное оружие',
   'talent.limit': 'Лимит активных боевых талантов',
 
   // ---------- v5: levels 1–20 (docs/specs/levels-20.md) ----------

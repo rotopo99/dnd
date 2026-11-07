@@ -17,6 +17,8 @@ import { simulateBattle } from '../game/src/rules/simulate.js';
 import { createSurface, radiusTiles, floorAt, gasAt, surfaceHarm, surfaceEnterPreview, tierOf } from '../game/src/rules/surfaces.js';
 import { SURFACES, SURFACE_RULES } from '../game/src/data/surfaces.js';
 import { DATA } from './fixtures/rules-data.mjs';
+import { getReachable } from '../game/src/rules/combat.js';
+const getReachable_ = (b, u) => getReachable(b, u.id);
 import { rollLoot } from '../game/src/world/loot.js';
 import { GAME_DATA } from '../game/src/data/index.js';
 import { LOCATIONS as LOCS } from '../game/src/data/world/locations.js';
@@ -1647,6 +1649,177 @@ console.log('stage B: statuses & surfaces');
     const dry = evalAction(b, H, act);
     createSurface(b, 'oil', radiusTiles(b, E0.x, E0.y, 1), null, {});
     assert.ok(evalAction(b, H, act) > dry + 2);
+  });
+}
+
+console.log('combat rework: cover, objects, heights, pushes, archetypes, arenas');
+{
+  const { COMBAT } = await import('../game/src/data/combat.js');
+  const T = await import('../game/src/rules/terrain.js');
+  const AR = await import('../game/src/rules/archetypes.js');
+  const G = await import('../game/src/rules/grid.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const C = await import('../game/src/rules/combat.js');
+  const DC = {
+    ...D31, SURFACES, SURFACE_RULES, COMBAT,
+    STATUSES: { ...D31.STATUSES, ...GAME_DATA.STATUSES },
+  };
+  const cb = (grid, enemies = ['thug'], over = {}, data = DC) => {
+    const b = createBattle({ map: { id: 'tcr', grid, win: 'killAll' }, heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data, ...over })], enemies, data, seed: 5, autoReactions: false });
+    const H = b.units.find((u) => u.team === 'heroes');
+    const E = b.units.filter((u) => u.team === 'enemies');
+    for (const u of E) { u.maxHp = u.hp = 300; }
+    H.maxHp = H.hp = 300;
+    forceTurn(b, H);
+    return { b, H, E, E0: E[0] };
+  };
+
+  test('cover: half +2 KB, full +5 KB vs ranged; full cover blocks LOS; melee only full «around the corner» +2', () => {
+    const { b, H, E0 } = cb(['#########', '#P..c.E.#', '#.......#', '#########']);
+    const base = getKb(b, E0);
+    assert.equal(getKb(b, E0, H, true) - base, 2);
+    const g = G.parseMap({ grid: ['#########', '#P..C.E.#', '#....C..#', '#########'] });
+    assert.equal(G.lineOfSight(g, 1, 1, 6, 1), false);
+    assert.equal(G.coverLevel(g, 1, 2, 6, 1, false), 3);
+    assert.equal(G.coverLevel(g, 6, 2, 5, 1, true), 3, 'diagonal around full cover');
+    assert.equal(G.coverLevel(g, 6, 2, 6, 1, true), 0, 'orthogonal melee: no cover');
+    const { b: b2, H: H2, E0: E2 } = cb(['#########', '#P...CE.#', '#.......#', '#########']);
+    H2.weapon = { ...H2.weapon, range: 10, melee: false };
+    assert.ok(!getLegalActions(b2, H2.id).some((a) => a.type === 'attack'), 'line through full cover: no LOS');
+  });
+  test('flank: target next to cover but not covered from the attacker — no cover, +1 hit', () => {
+    const { b, H, E0 } = cb(['#########', '#.....c.#', '#P....E.#', '#.......#', '#########']);
+    // cover is above the target, attacker shoots from the left: flank
+    const th = T.terrainHit(b, H, E0, false);
+    assert.equal(th.flank, 1);
+    assert.equal(getKb(b, E0, H, true), getKb(b, E0));
+    H.x = 6; H.y = 0; // not used further
+  });
+  test('objects: crate has HP by level, smash breaks it into rubble (cost 2, +1 KB), objectBreak, paths update', () => {
+    const { b, H } = cb(['#######', '#Pc..E#', '#######']);
+    const o = T.objectAt(b, 2, 1);
+    assert.equal(o.kind, 'crate'); assert.equal(o.hp, 12); assert.equal(o.armor, 8);
+    assert.ok(getLegalActions(b, H.id).some((a) => a.type === 'smash'));
+    T.damageObject(b, 2, 1, 50, H, 'blunt');
+    assert.equal(G.tileAt(b.grid, 2, 1), G.T_RUBBLE);
+    assert.ok(b.log.some((e) => e.type === 'objectBreak' && e.kind === 'crate'));
+    const r = getReachable_(b, H);
+    assert.equal(r.dist[1 * b.grid.w + 2], 2, 'rubble costs 2');
+    assert.equal(r.dist[1 * b.grid.w + 3], 3);
+    assert.equal(G.coverLevel(b.grid, 1, 1, 4, 1, false), 1);
+  });
+  test('objects: smash a barrel -> oil surface; generator -> electricity; area damage hits objects', () => {
+    const { b, H } = cb(['########', '#.Pb.G.#', '#.....E#', '########']);
+    for (let i = 0; i < 5 && T.objectAt(b, 3, 1); i++) { forceTurn(b, H); perform(b, { type: 'smash', tile: { x: 3, y: 1 } }); }
+    assert.equal(T.objectAt(b, 3, 1), null);
+    assert.equal(floorAt(b, 3, 1).kind, 'oil');
+    T.damageObjectsIn(b, (x, y) => x === 5 && y === 1, 99, H, 'blunt');
+    assert.ok(b.log.some((e) => e.type === 'objectBreak' && e.kind === 'generator'));
+    assert.equal(floorAt(b, 5, 1).kind, 'electric');
+  });
+  test('without COMBAT data objects are static cover (old behaviour)', () => {
+    const { b, H } = cb(['#######', '#Pc..E#', '#######'], ['thug'], {}, { ...DC, COMBAT: undefined });
+    assert.equal(T.objectAt(b, 2, 1), null);
+    assert.ok(!getLegalActions(b, H.id).some((a) => a.type === 'smash'));
+  });
+  test('height: +1 hit / +1 range from above, −1 from below, no melee across 2 levels, step up costs +1', () => {
+    const { b, H, E0 } = cb(['#########', '#P1.2..E#', '#.......#', '#########']);
+    H.x = 2; H.y = 1; // on height 1
+    E0.x = 6; E0.y = 2;
+    assert.equal(T.terrainHit(b, H, E0, false).elev, 1);
+    assert.equal(T.terrainHit(b, E0, H, false).elev, -1);
+    assert.equal(T.elevRange(b, H, E0.x, E0.y), 1);
+    assert.equal(T.meleeElevOk(b, 4, 1, 5, 1), false);
+    assert.equal(G.stepCost(b.grid, 1 * b.grid.w + 1, 1 * b.grid.w + 2), 2);
+    assert.equal(G.stepCost(b.grid, 1 * b.grid.w + 3, 1 * b.grid.w + 4), 0, 'h0 -> h2: no ramp');
+  });
+  test('push: into a wall — slam damage per undelivered tile; into a unit — half each; off a height — fall', () => {
+    const { b, H, E0 } = cb(['#######', '#P.E#.#', '#.....#', '#######']);
+    H.x = 2; H.y = 1; E0.x = 3; E0.y = 1;
+    const hp = E0.hp;
+    C.pushFrom(b, H, E0, 2);
+    assert.ok(b.log.some((e) => e.type === 'slam'));
+    assert.ok(E0.hp < hp);
+    const r2 = cb(['########', '#P.2...#', '#......#', '########']);
+    r2.H.x = 1; r2.H.y = 1; r2.E0.x = 2; r2.E0.y = 1;
+    C.pushFrom(r2.b, r2.H, r2.E0, 1);
+    assert.ok(r2.b.log.some((e) => e.type === 'slam'), 'push up the height is blocked');
+    const r3 = cb(['########', '#P.2...#', '#......#', '########']);
+    r3.H.x = 2; r3.H.y = 1; r3.b.grid.elev[1 * r3.b.grid.w + 2] = 2; r3.b.grid.elev[1 * r3.b.grid.w + 3] = 2;
+    r3.E0.x = 3; r3.E0.y = 1;
+    C.pushFrom(r3.b, r3.H, r3.E0, 1);
+    const f = r3.b.log.find((e) => e.type === 'fall');
+    assert.ok(f && f.levels === 2 && f.amount >= 0);
+  });
+  test('push into a harmful surface: surfaceEnter (fire)', () => {
+    const { b, H, E0 } = cb(['########', '#P.E~..#', '#......#', '########']);
+    H.x = 2; H.y = 1; E0.x = 3; E0.y = 1;
+    C.pushFrom(b, H, E0, 2);
+    assert.equal(E0.x, 4);
+    assert.ok(b.log.some((e) => (e.type === 'surfaceEnter' || e.type === 'hazard') && e.target === E0.id));
+  });
+  test('archetypes: bindings by id / rank / faction rule / fallback; missing spec ids skipped', () => {
+    const b = createBattle({ map: makeArena({ w: 16, h: 9, heroes: 1, enemies: 8 }), heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 5, data: GAME_DATA })],
+      enemies: ['gang-thug', 'pirate-gunner', 'nv-watchman', 'tek-ritualist', 'scavenger-5', 'mutz-alpha', 'mech-hive-node', 'cyber-priest'], data: GAME_DATA, seed: 3 });
+    const arch = b.units.filter((u) => u.team === 'enemies').map((u) => u.arch);
+    assert.deepEqual(arch, ['assault', 'sniper', 'support', 'controller', 'coward', 'berserk', 'summoner', 'boss']);
+    assert.equal(b.units[0].arch, null, 'player hero has no archetype');
+    for (const id of ['pir-boarder']) assert.ok(!GAME_DATA.ENEMIES[id]);
+  });
+  test('archetypes: coward flees at ≤40% HP and leaves from the edge (event flee, no kill XP)', () => {
+    const b = createBattle({ map: makeArena({ w: 10, h: 7, heroes: 1, enemies: 1 }), heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 5, data: GAME_DATA })],
+      enemies: ['scavenger-5'], data: GAME_DATA, seed: 3 });
+    const E = b.units.find((u) => u.team === 'enemies');
+    E.hp = Math.floor(E.maxHp * 0.3);
+    let guard = 0;
+    while (!E.removed && !b.winner && guard++ < 40) { if (b.turn.unitId === E.id) playTurn(b); else endTurn(b); }
+    assert.ok(E.fled && E.removed);
+    assert.ok(b.log.some((e) => e.type === 'flee'));
+    assert.equal(battleXp(b), Math.round(E.xp * 0.5), 'fled: XP ×0.5');
+  });
+  test('archetypes: summoner calls minions up to the cap; boss phase at 66% / 33%; berserk rage; support heals the wounded', () => {
+    const b = createBattle({ map: makeArena({ w: 16, h: 9, heroes: 1, enemies: 3 }), heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 5, data: GAME_DATA })],
+      enemies: ['mech-hive-node', 'cyber-priest', 'mutz-alpha'], data: GAME_DATA, seed: 3 });
+    const [S, B, R] = b.units.filter((u) => u.team === 'enemies');
+    for (let i = 0; i < 30 && !b.winner; i++) { if (b.turn.unitId === S.id) { playTurn(b); } else endTurn(b); }
+    const mins = b.units.filter((u) => u.summoner === S.id && u.archMinion);
+    assert.ok(mins.length >= 1 && mins.filter((m) => !m.removed && !m.dead).length <= 2);
+    dealDamage(b, null, B, Math.ceil(B.maxHp * 0.4), null);
+    assert.equal(B.phase, 2);
+    dealDamage(b, null, B, Math.ceil(B.maxHp * 0.35), null);
+    assert.equal(B.phase, 3);
+    assert.equal(b.log.filter((e) => e.type === 'phase').length, 2);
+    assert.ok(B.immuneStatus.includes('fear'));
+    dealDamage(b, null, S, 9999, null);
+    assert.ok(R.rage, 'berserk rages when an ally dies');
+    assert.ok(mins.every((m) => m.removed || m.dead), 'summoner death unsummons minions');
+    const heal = { effects: [{ op: 'heal', dice: '1d8' }] };
+    const sup = { arch: 'support', team: 'enemies' };
+    assert.ok(AR.archAbilityMul(b, sup, heal, { team: 'enemies', hp: 3, maxHp: 10 }) > 1);
+    assert.equal(AR.archAbilityMul(b, sup, heal, { team: 'enemies', hp: 9, maxHp: 10 }), 1);
+  });
+  test('intent: enemies forecast melee / ranged with a target and damage', () => {
+    const b = createBattle({ map: makeArena({ w: 12, h: 7, heroes: 1, enemies: 2 }), heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 5, data: GAME_DATA })],
+      enemies: ['gang-thug', 'pirate-gunner'], data: GAME_DATA, seed: 3 });
+    const [a, s] = b.units.filter((u) => u.team === 'enemies');
+    const ia = AR.intentOf(b, a), is = AR.intentOf(b, s);
+    assert.equal(ia.kind, 'melee'); assert.equal(is.kind, 'ranged');
+    assert.equal(ia.target, b.units[0].id); assert.ok(ia.dmg > 0);
+  });
+  test('arenas: every biome map is connected, starts free, heights have ramps', () => {
+    for (const biome of ['wasteland', 'village', 'agro', 'cyber', 'port', 'mutant']) for (let seed = 1; seed <= 15; seed++) {
+      const m = makeWorldMap({ seed, enemies: 6, biome });
+      const g = G.parseMap(m);
+      const all = [...g.starts.P, ...g.starts.E];
+      const r = G.reachable(g, all[0].x, all[0].y, 999, null);
+      assert.ok(all.every((p) => r.dist[p.y * g.w + p.x] >= 0), `${biome} ${seed}`);
+      if (g.elev) for (let i = 0; i < g.w * g.h; i++) if (g.elev[i] === 2) {
+        const x = i % g.w, y = (i / g.w) | 0;
+        assert.ok(G.DIRS8.every(([dx, dy]) => g.elev[(y + dy) * g.w + x + dx] >= 1), 'h2 ringed by h1');
+      }
+    }
+    assert.equal(makeWorldMap({ seed: 1, region: 'pirates' }).biome, 'port');
+    assert.equal(makeWorldMap({ seed: 1, hazard: 'fire' }).biome, 'agro');
   });
 }
 

@@ -16,6 +16,8 @@ import { applyRep, meetFaction } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
 import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
+import { itemTip, itemStats } from '../ui/items-ui.js';
+import { C } from '../ui/draw.js';
 import { saveGame } from '../save.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { tf } from '../world/state.js';
@@ -132,12 +134,16 @@ function battleLoot(game, S) {
   const worn = (eq) => Object.values(eq || {}).flat().forEach((id) => id && owned.add(id));
   worn(save.hero.equipment);
   for (const p of activeCompanions(save)) worn(p.equipment);
-  const beaten = S.b.units.filter((u) => u.team === 'enemies' && (u.dead || u.removed));
-  return rollLoot(beaten, { ...game.data, ENEMIES }, Math.random, { flags, owned });
+  const beaten = S.b.units.filter((u) => u.team === 'enemies' && (u.dead || u.removed) && !u.fled); // a fled coward takes its loot along
+  const loot = rollLoot(beaten, { ...game.data, ENEMIES }, Math.random, { flags, owned });
+  // combat rework §3.2: broken crates rolled «junk» (b.junk) — item from COMBAT.junkItem
+  const junk = game.data.COMBAT?.junkItem;
+  if (S.b.junk && junk && game.data.ITEMS[junk]) loot.items.push({ id: junk, n: S.b.junk });
+  return loot;
 }
 
 /** Battle results: credits and items, «Забрать всё» puts them into the shared backpack (no weight limit in data). */
-function openLoot(game, loot, then) {
+export function openLoot(game, loot, then) {
   if (!loot.credits && !loot.items.length) { then(); return; }
   const take = () => {
     const h = game.save.hero;
@@ -151,10 +157,12 @@ function openLoot(game, loot, then) {
   const lines = [];
   if (loot.credits) lines.push({ text: tf('fx.credits', { n: `+${loot.credits}` }), color: 'b' });
   const label = ({ id, n }) => `${ITEMS[id]?.name || id}${n > 1 ? ` ×${n}` : ''}`;
-  if (loot.items.length > 8) lines.push({ text: loot.items.map(label).join(', ') }); // long lists wrap as one paragraph
-  else for (const x of loot.items) lines.push({ text: `• ${label(x)}`, color: QC[ITEMS[x.id]?.quality] || 'h' });
-  game.openModal({ title: t('loot.title'), lines, onCancel: take, // Esc also takes everything (the modal is already closed)
-    options: [{ label: t('loot.takeAll'), run: take }] });
+  // items — info rows: the full card of the hovered one in the details panel (ui/modal.js `detail`, `inert`)
+  const hero = game.save.hero;
+  const rows = loot.items.filter((x) => ITEMS[x.id]).map((x) => ({ label: label(x), inert: true, sub: itemStats(ITEMS[x.id]), subColor: C[QC[ITEMS[x.id].quality]],
+    detail: () => itemTip(ITEMS[x.id], { have: hero.items[x.id] || 0, equipped: ITEMS[hero.equipment?.[ITEMS[x.id].slot]] }) }));
+  game.openModal({ title: t('loot.title'), lines, onCancel: take, width: 640, // Esc also takes everything (the modal is already closed)
+    options: [...rows, { label: t('loot.takeAll'), run: take }] });
 }
 
 function afterBattle(game, S, o) {

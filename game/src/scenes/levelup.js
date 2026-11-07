@@ -1,7 +1,7 @@
 // Level-up windows (docs/specs/levels-20.md): what the new levels gave (hero + companions), ASI choice
 // (+2 / +1+1 / talent instead), talent pick, character sheet of abilities. All built on game.openModal.
 import { t } from '../data/text/index.js';
-import { xpInfo, abilityTip } from '../ui/tips.js';
+import { xpInfo, abilityTip, talentTip } from '../ui/tips.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, talentsForSlot } from '../data/talents.js';
 import { STATS, ASI_STAT_MAX } from '../rules/character.js';
@@ -135,7 +135,7 @@ export function openTalentPick(game, onPick, onCancel) {
   game.openModal({
     title: t('talent.pending'), width: 980,
     lines: [{ text: t('talent.pickLevel'), color: 'a' }],
-    options: pool.map((x) => ({ label: `${x.name}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: x.desc, run: (g) => {
+    options: pool.map((x) => ({ label: `${x.name}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: x.desc, detail: talentTip(x.id), run: (g) => {
       if (onPick) return onPick(g, x.id);
       sv.hero.pendingTalents--;
       for (const m of learnTalent(sv, x.id, g.data, { force: true })) g.toast(m.text, m.color);

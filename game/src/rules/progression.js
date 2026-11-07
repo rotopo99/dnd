@@ -62,7 +62,8 @@ export function battleXp(battleOrEnemies, data) {
     let xp = 0;
     for (const u of battleOrEnemies.units) {
       if (u.team === 'heroes' || u.kind === 'summon') continue;
-      if (u.dead || u.broken || (battleOrEnemies.winner === 'heroes' && u.down)) xp += u.xp != null ? u.xp : u.kind === 'enemy' ? enemyXpForLevel(u.level) : 0;
+      // combat rework: xpMul — fled coward ×0.5, killed summoner ×1.25 (archetypes.js)
+      if (u.dead || u.broken || u.fled || (battleOrEnemies.winner === 'heroes' && u.down)) xp += Math.round((u.xp != null ? u.xp : u.kind === 'enemy' ? enemyXpForLevel(u.level) : 0) * (u.xpMul ?? 1));
     }
     return xp;
   }

@@ -99,13 +99,13 @@ function minionOf(b, u) {
   return b.data.summons[fb] || b.data.enemies[fb] ? fb : null;
 }
 const minionsOf = (b, u) => b.units.filter((s) => s.summoner === u.id && isAlive(s) && s.archMinion);
-function spawnMinions(b, u, n) {
+function spawnMinions(b, u, n, turns) {
   const id = minionOf(b, u);
   if (!id) return 0;
   const S = A(b, 'summoner');
   let made = 0;
   for (let i = 0; i < n; i++) {
-    const s = spawnSummon(b, u, id, S.turns, null);
+    const s = spawnSummon(b, u, id, turns ?? S.turns, null);
     if (!s) break;
     const hp = Math.max(1, Math.round((8 + 4.5 * (u.level || 1)) * S.hpK));
     s.maxHp = s.hp = hp;
@@ -127,7 +127,7 @@ export function archTurnStart(b, u) {
   if (!u.arch || !cfg(b)) return;
   if (u.arch === 'summoner' && summonDue(b, u)) {
     const cap = summonCap(b, u), have = minionsOf(b, u).length;
-    const n = u.archLast == null ? Math.max(1, Math.ceil(cap / 2)) - have : 1;
+    const n = u.archLast == null ? (A(b, 'summoner').initial ?? Math.ceil(cap / 2)) - have : 1;
     if (n > 0 && spawnMinions(b, u, Math.min(n, cap - have))) emitEvent(b, { type: 'archSummon', actor: u.id });
     u.archLast = b.round;
   }
@@ -171,7 +171,8 @@ export function archOnDamage(b, u) {
         const tiles = radiusTiles(b, u.x, u.y, 2).filter((p) => b.units.some((e) => isStanding(e) && isHostile(b, u, e) && chebyshev(e.x, e.y, p.x, p.y) <= 1));
         if (tiles.length) createSurface(b, kind, tiles, u, {});
       }
-      if ((u.abilities || []).some((a) => (a.effects || []).some((op) => op.op === 'summon'))) spawnMinions(b, u, B.p2Summon || 2);
+      const sop = (u.abilities || []).flatMap((a) => a.effects || []).find((op) => op.op === 'summon');
+      if (sop && B.p2Summon > 0) spawnMinions(b, u, B.p2Summon, sop.turns ?? 3); // the boss's own summon, its own duration
     } else if (u.phase >= 3) {
       u.archDmgMul = B.p3DmgMul || 1.25;
       if (u.statuses.some((s) => s.id === 'fear')) removeStatus(b, u, 'fear');

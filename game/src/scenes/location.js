@@ -20,7 +20,7 @@ import { rollDice } from '../rules/dice.js';
 import { repTier, factionName, normFaction, tierAtLeast, meetFaction } from '../world/reputation.js';
 import { openPauseMenu, openSaveMenu } from '../ui/save-ui.js';
 import { hotspot } from '../ui/tooltip.js';
-import { resTip, xpInfo } from '../ui/tips.js';
+import { resTip, xpInfo, talentTip } from '../ui/tips.js';
 import {
   members, activeCompanions, buildHero, canRecruit, recruit, hireInfo, grant, restParty, restDepartures, journal, tf,
   locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY, requiresOk,
@@ -614,7 +614,7 @@ export function createLocationScene(rawId) {
       return pendingChoice(game);
     }
     game.openModal({ title: t('talent.choice'), width: 900, onCancel: false, lines: [{ text: t('talent.choiceText'), color: 'a' }],
-      options: opts.map((id) => ({ label: TALENTS[id].name, sub: TALENTS[id].desc, run: (g) => { toastAll(g, learnTalent(sv, id, g.data)); refresh(g); pendingChoice(g); } })) });
+      options: opts.map((id) => ({ label: TALENTS[id].name, sub: TALENTS[id].desc, detail: talentTip(id), run: (g) => { toastAll(g, learnTalent(sv, id, g.data)); refresh(g); pendingChoice(g); } })) });
     return true;
   }
 

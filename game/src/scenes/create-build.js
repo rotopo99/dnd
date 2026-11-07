@@ -14,7 +14,8 @@ import { drawHeroPortrait } from '../assets/sprites.js';
 import { heroBuild } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear } from '../ui/draw.js';
-import { itemStats, soonNote, weaponTypeName, armorTypeName, tierName } from '../ui/items-ui.js';
+import { itemStats, soonNote, weaponTypeName, armorTypeName, tierName, itemTip } from '../ui/items-ui.js';
+import { hotspot } from '../ui/tooltip.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const STORY_MAX = 240;
@@ -222,6 +223,7 @@ export function createBuildScene(hero, back, onNext) {
     text(ctx, t('create.kit'), x, oy + 262, C['4'], FONT_B);
     const kitBelt = (opts.kit.belt || []).map((id) => ITEMS[id]?.name || id).join(', ');
     text(ctx, fit(ctx, `${t('create.belt')}: ${kitBelt || '—'}`, 396, SMALL), x, S.armorY - 18, C['4'], SMALL);
+    if (kitBelt) hotspot(x, S.armorY - 18, 396, 16, () => ({ title: t('create.belt'), lines: (opts.kit.belt || []).filter((id) => ITEMS[id]).flatMap((id) => [{ text: ITEMS[id].name, color: 'h' }, itemStats(ITEMS[id])]) }));
     // errors
     const ey = S.armorY + opts.armor.length * 44 + 6;
     const lines = errors.length ? errors.slice(0, 4).map((e) => `• ${e.msg}`) : [t('create.buildOk')];
@@ -283,6 +285,7 @@ export function createBuildScene(hero, back, onNext) {
           text(ctx, fit(ctx, it.name, b.w - 16, FONT_B), b.x + 8, b.y + 3, C['5'], FONT_B);
           const soon = soonNote(it);
           text(ctx, fit(ctx, `${b.sub}${soon ? ` · ${soon}` : ''}`, b.w - 16, SMALL), b.x + 8, b.y + 23, soon ? C.a : C['4'], SMALL);
+          hotspot(b.x, b.y, b.w, b.h, () => itemTip(it, { u: built || undefined, tier: !!built })); // full card on hover
           continue;
         }
         button(ctx, b, hover === b);

@@ -15,6 +15,7 @@ export const COMBAT = {
     generator: { cover: 'half', hp: [10, 2.25], armor: 10, leaves: 'rubble', surface: { kind: 'electric', r: 1, turns: 2 } },
     barrel: { cover: 'half', hp: [5, 0.75], armor: 6 }, // spill — surfaces.js destroyBarrel (oil / toxgas)
   },
+  junkItem: 'servo-parts', // «хлам» from broken crates (objects.crate.junk chance)
   // area hits damage objects by this share of the rolled damage (hit roll is not needed)
   areaObjectMul: 1,
   // §3.3 heights
@@ -29,8 +30,10 @@ export const COMBAT = {
     controller: { ctrlMul: 1.35, controlled: ['stun', 'root', 'frozen'] },
     coward: { fleeBelow: 0.4, woundedBelow: 0.5, woundedMul: 1.6, xpMul: 0.5, share: 0.25 },
     berserk: { rageBelow: 0.5, rageHit: 2, rageKb: -2, allyDeathDmg: 1, surfaceMul: 0.2 },
-    summoner: { every: 2, xpBonus: 0.25, caps: [[5, 2], [15, 3], [20, 4]], hpK: 0.5, turns: 99, fallback: 'skrilet' },
-    boss: { phases: [0.66, 0.33], p2Hit: 2, p3DmgMul: 1.25, p3ExtraEvery: 2, p2Summon: 2 },
+    // balance (sim v3 elite, 2026-11-07): spec numbers (every 2, half cap at once) cost −40..−60 pp win → softened
+    summoner: { every: 3, initial: 1, xpBonus: 0.25, caps: [[5, 2], [15, 3], [20, 4]], hpK: 0.35, turns: 99, fallback: 'skrilet' },
+    // spec: p2 +2 hit, p3 ×1.25 dmg, +1 action every 2 rounds — softened (sim: −25 pp on boss fights)
+    boss: { phases: [0.66, 0.33], p2Hit: 0, p3DmgMul: 1.1, p3ExtraEvery: 3, p2Summon: 0 },
   },
   // §4 bindings: exact base ids (variant suffix `^…` and level `-lN` stripped) or prefixes ending with '*'.
   // Spec ids absent in enemies*.js (skipped): pir-boarder, cult-skr-*, v3-boss-*.
