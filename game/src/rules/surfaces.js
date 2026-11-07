@@ -12,6 +12,7 @@
 //  - surface damage hits a unit at most once per turn per damage type (statuses still refresh).
 
 import { rollDice, avgDice } from './dice.js';
+import { damageObjectsIn } from './terrain.js';
 import { chebyshev, lineOfSight, inBounds, isPassable, walkLine, DIRS8, T_HAZARD, T_WATER, T_BARREL, T_FLOOR } from './grid.js';
 import {
   emitEvent, dealDamage, applyStatus, rollSave, hasStatus, getStatus, isAlive, unitAt, hasSafePassage, pushFrom,
@@ -331,6 +332,7 @@ function explode(b, x, y, src, L, by) {
     if (isAlive(u) && !half && R.push) pushFrom(b, { id: src ? src.id : null, x, y }, u, R.push);
   }
   for (const br of b.barrels.slice()) if (region.some((p) => chebyshev(p.x, p.y, br.x, br.y) <= 1)) destroyBarrel(b, br.x, br.y, src);
+  damageObjectsIn(b, (ox, oy) => region.some((p) => chebyshev(p.x, p.y, ox, oy) <= 1), rollDice(b.rng, R.dice) * tier, src, 'fire');
   createSurface(b, 'fire', [{ x, y }], src, { turns: R.fireTurns ?? 2, level: lvl });
 }
 

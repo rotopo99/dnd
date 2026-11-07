@@ -14,6 +14,7 @@ import { TALENTS, SKILLS, COMBAT_TALENT_LIMIT } from './talents.js';
 import { GADGETS } from './gadgets.js';
 import { SPECIALIZATIONS } from './skills.js';
 import { SURFACES, SURFACE_RULES, FACTION_TAGS, SURFACE_BINDINGS } from './surfaces.js';
+import { COMBAT } from './combat.js';
 import prologue1 from './maps/prologue-1.js';
 import prologue2 from './maps/prologue-2.js';
 import prologue3 from './maps/prologue-3.js';
@@ -58,7 +59,7 @@ for (const c of Object.values(CLASSES)) {
 for (const def of Object.values(ENEMIES)) if (Array.isArray(def.abilities)) bindAbilities(def.abilities, null);
 
 export const GAME_DATA = {
-  ITEMS, SURFACES, SURFACE_RULES,
+  ITEMS, SURFACES, SURFACE_RULES, COMBAT,
   RACES, CLASSES, STATUSES, ENEMIES, ENCOUNTERS, VEIL_TABLE, PROXY_STORM_TABLE,
   TALENTS, GADGETS, SPECIALIZATIONS, SKILLS, COMBAT_TALENT_LIMIT,
 };
