@@ -47,10 +47,15 @@ function performerOptions(members, skill, dc, extraAdv, pick) {
 export function openCheck(game, o) {
   if (!o.skill && o.skills) {
     if (o.skills.length === 1) return openCheck(game, { ...o, skill: o.skills[0] });
+    // v4: «the best rolls» first — the best member with the best skill of the list, then every skill to pick by hand
+    const top = bestPair(o.members, o.skills, o.dc, o.extraAdv);
     game.openModal({
       title: o.title, lines: [...(o.lines || []), { text: `${t('check.pickSkill')} · ${t('battle.dc')} ${o.dc}`, color: 'a' }],
       onCancel: o.cancel ? undefined : false,
-      options: [...o.skills.map((sk) => ({ label: skillName(sk), sub: bestOf(o.members, sk, o.dc, o.extraAdv), run: (g) => openCheck(g, { ...o, skill: sk, cancel: false }) })),
+      options: [
+        ...(top && !game.save?.memo?.[o.memoKey] ? [{ label: `${t('check.bestRoll')}: ${top.m.name} · ${skillName(top.skill)}`, sub: `${Math.round(top.c * 100)}%`,
+          run: (g) => openCheck(g, { ...o, skill: top.skill, cancel: false, auto: top.m }) }] : []),
+        ...o.skills.map((sk) => ({ label: skillName(sk), sub: bestOf(o.members, sk, o.dc, o.extraAdv), run: (g) => openCheck(g, { ...o, skill: sk, cancel: false }) })),
         ...(o.cancel ? [{ label: t('check.cancel'), run: () => {} }] : [])],
     });
     return;
@@ -68,7 +73,7 @@ export function openCheck(game, o) {
       options: [{ label: t('battle.continue'), run: (g2) => finish(g2, memo.success, null, null) }] });
     return;
   }
-  const opts = performerOptions(o.members, o.skill, o.dc, o.extraAdv, (g, m, info) => {
+  const roll = (g, m, info) => {
     const res = rollCheck(m, info, o.dc);
     play(res.success ? 'buff' : 'miss');
     const lines = resultLines(m.name, res);
@@ -77,7 +82,13 @@ export function openCheck(game, o) {
       title: o.title, lines, border: res.success ? 'j' : 'c', onCancel: false,
       options: [{ label: t('battle.continue'), run: (g2) => finish(g2, res.success, res, m) }],
     });
-  });
+  };
+  if (o.auto) return roll(game, o.auto, checkInfo(o.auto, o.skill, o.extraAdv));
+  const opts = performerOptions(o.members, o.skill, o.dc, o.extraAdv, roll);
+  if (o.members.length > 1) {
+    const top = bestPair(o.members, [o.skill], o.dc, o.extraAdv);
+    opts.unshift({ label: `${t('check.bestRoll')}: ${top.m.name}`, sub: `${Math.round(top.c * 100)}%`, run: (g) => roll(g, top.m, checkInfo(top.m, o.skill, o.extraAdv)) });
+  }
   // world flags that replace the roll: bribe (social), break-door (athletics, once per node), silent-pick (lockpicking, once per rest)
   if (save && o.members?.length) {
     const auto = (label, mark) => opts.push({ label, run: (g) => { mark(); play('buff'); g.openModal({ title: o.title, lines: [{ text: label, color: 'j' }, { text: t('check.success'), color: 'j', font: 'bold 24px monospace' }], onCancel: false,
@@ -93,6 +104,22 @@ export function openCheck(game, o) {
     lines: [...(o.lines || []), { text: `${skillName(o.skill)}, ${t('battle.dc')} ${o.dc}. ${t('check.pick')}`, color: 'a' }],
     options: opts, onCancel: o.cancel ? undefined : false,
   });
+}
+
+/** Best (member, skill) pair by success chance: { m, skill, c }. */
+function bestPair(members, skills, dc, extraAdv) {
+  let best = null;
+  for (const skill of skills) for (const m of members) {
+    const c = checkChance(checkInfo(m, skill, extraAdv), dc);
+    if (!best || c > best.c) best = { c, m, skill };
+  }
+  return best;
+}
+
+/** Expected successes of a group check with this skill (sum of chances), for the skill picker. */
+function groupExpect(members, skill, dc, extraAdv) {
+  const e = members.reduce((s, m) => s + checkChance(checkInfo(m, skill, extraAdv), dc), 0);
+  return `${t('check.groupExpect')} ${e.toFixed(1)}/${members.length} · ${bestOf(members, skill, dc, extraAdv)}`;
 }
 
 function bestOf(members, skill, dc, extraAdv) {
@@ -116,7 +143,7 @@ export function openGroupCheck(game, o) {
   if (!o.skill && o.skills) {
     if (o.skills.length === 1) return openGroupCheck(game, { ...o, skill: o.skills[0] });
     game.openModal({ title: o.title, lines: [...(o.lines || []), { text: `${t('check.group')}: ${t('check.pickSkill')} · ${t('battle.dc')} ${o.dc}`, color: 'a' }], onCancel: false,
-      options: o.skills.map((sk) => ({ label: skillName(sk), run: (g) => openGroupCheck(g, { ...o, skill: sk }) })) });
+      options: o.skills.map((sk) => ({ label: skillName(sk), sub: groupExpect(o.members, sk, o.dc, o.extraAdv), run: (g) => openGroupCheck(g, { ...o, skill: sk }) })) });
     return;
   }
   const lines = [];

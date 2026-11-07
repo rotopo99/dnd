@@ -7,8 +7,9 @@ import { drawSprite, heroSpriteIds, idleFrame, drawPortrait } from '../assets/sp
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, LINE, text, textBlock, fit, panel, button, hitButton, clear, resLine } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS } from '../world/reputation.js';
-import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, learnTalent } from '../world/state.js';
-import { QUESTS, gadgetFor, ITEMS } from '../world/data.js';
+import { buildHero, buildCompanion, MAX_PARTY, activeCompanions, learnTalent, members } from '../world/state.js';
+import { QUESTS, gadgetFor, ITEMS, SKILL_RULES } from '../world/data.js';
+import { autoCheck } from '../world/skill-uses.js';
 import { stageOf, currentGoalText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
@@ -18,8 +19,8 @@ import { layoutGear, renderGear, renderGearHover, clickGear } from './panel-gear
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'gear', 'rep', 'journal'];
 
-export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
-  const S = { tab, buttons: [], hover: null, time: 0, units: null };
+export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKey = 'hero' }) {
+  const S = { tab, buttons: [], hover: null, time: 0, units: null, gearKey };
   let self;
 
   function rebuild(game) {
@@ -37,7 +38,13 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     if (!u || !h || !(sv.hero.items[item] > 0)) return;
     sv.hero.items[item]--;
     const entry = key === 'hero' ? sv.hero : sv.party.find((p) => p.npc === key);
-    const v = rollDice(Math.random, h.dice) + (h.bonus || 0);
+    let v = rollDice(Math.random, h.dice) + (h.bonus || 0);
+    // N7 Medicine: a healing item heals 50% more on a check by the best medic of the party
+    if (h.resource !== 'mrl') {
+      const M = SKILL_RULES.economy.medkit;
+      const r = autoCheck(members(sv, game.data), [M.skill], M.dc);
+      if (r.success) { v = Math.round(v * M.mult); game.toast(`${r.member.name}: ${t('skillUse.medkit')}`, 'j'); }
+    }
     if (h.resource === 'mrl') entry.mrl = Math.min(u.maxMrl, u.mrl + v);
     else entry.hp = Math.min(u.maxHp, u.hp + v);
     game.toast(`${it.name}: +${v} ${t(`res.${h.resource === 'mrl' ? 'mrl' : 'hp'}`)}`, h.resource === 'mrl' ? 'f' : 'j');
@@ -83,6 +90,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
         }
         add({ act: 'calmers', label: `${ITEMS.calmers.name} ${sv.hero.items.calmers || 0}`, w: 170, disabled: !(sv.hero.items.calmers > 0) });
         add({ act: 'medkit', label: `${ITEMS.medkit.name} ${sv.hero.items.medkit || 0}`, w: 130, disabled: !(sv.hero.items.medkit > 0) });
+        if (!m.p || m.p.state !== 'cyberspace') add({ act: 'gear', label: t('panel.gear'), w: 120 });
       });
       // talents (hero)
       const tl = sv.hero.talents.map((id) => TALENTS[id]).filter(Boolean);
@@ -104,9 +112,10 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false }) {
     play('uiClick');
     if (b.kind === 'tab') { S.tab = b.id; layout(game); return; }
     if (b.kind === 'back') { game.resume(back); return; }
-    if (clickGear(game, S, b)) { rebuild(game); return; }
+    if (clickGear(game, S, b, (g) => rebuild(g))) { rebuild(game); return; }
     if (b.kind === 'm') {
       if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
+      if (b.act === 'gear') { S.tab = 'gear'; S.gearKey = b.member; layout(game); return; }
       const p = sv.party.find((x) => x.npc === b.member);
       if (b.act === 'wait') p.state = 'waiting';
       if (b.act === 'join') p.state = 'active';
