@@ -15,7 +15,7 @@
 export const TIER_CAP = [[3, 1], [5, 2], [9, 3], [14, 4], [99, 5]]; // [макс. levels[1] региона, потолок tier предметов]
 export const tierCap = (lvl) => TIER_CAP.find(([m]) => lvl <= m)[1];
 
-export const ROTATION = { defaultRestock: 4, sizes: { S: 5, M: 8, L: 11 }, rareChance: 0.3, rareMarkup: 1.3, junkShare: 0.5 };
+export const ROTATION = { defaultRestock: 4, sizes: { S: 5, M: 8, L: 11 }, rareChance: 0.3, rareMarkup: 1.3, junkShare: 0.5, lovesMul: 1.25 };
 
 export const FACTION_BANS = {
   tinBrotherhood: ['plasma', 'laser', 'energy', 'cyberblade', 'melta', 'proxy', 'cringe'],

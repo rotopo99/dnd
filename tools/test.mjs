@@ -1517,8 +1517,88 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
     s.quests[q.id].stage = q.stages[q.stages.length - 1].id;
     qs.onTalk(s, q.giver, GAME_DATA);
     assert.equal(s.quests[q.id].state, 'done');
+    qs.claimTurnin(s, q.id, GAME_DATA); // 'return' turn-in (quest-turnin.js): the reward waits for the NPC
     assert.equal(s.exodus.ext, q.exodus.ext);
     assert.deepEqual(ex.exodusExtend(s, q.id, q.exodus.ext), []);
+  });
+}
+
+// ---------------------------------------------------------------- quest turn-in (data/text/quest-turnin.js)
+{
+  const st = await import('../game/src/world/state.js');
+  const qs = await import('../game/src/world/quests.js');
+  const D = await import('../game/src/world/data.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const mk = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; return s; };
+  test('turn-in return: last goal → «turn in» (no reward), NPC claims it once with outcome lines', () => {
+    const s = mk(); const id = 'sq-galina-hatch';
+    assert.equal(D.QUEST_TURNIN[id].mode, 'return');
+    qs.startQuest(s, id); qs.onTalk(s, 'galina', GAME_DATA);
+    qs.completeSlot(s, qs.slots(s, id)[0], GAME_DATA);
+    const xp0 = s.hero.xp;
+    const out = qs.onTalk(s, 'galina', GAME_DATA);
+    assert.equal(s.quests[id].state, 'done'); assert.equal(s.quests[id].turnin, true);
+    assert.equal(s.hero.xp, xp0, 'no reward yet');
+    assert.ok(out.some((x) => x.text === qs.turninText(s, id)) && /Галин|galina/i.test(qs.turninText(s, id)) || qs.turninText(s, id).startsWith('Вернуться'));
+    assert.deepEqual(qs.pendingTurnins(s, 'galina'), [id]);
+    assert.ok(D.npcsAt(D.npcHome('galina'), s).includes('galina'));
+    qs.claimTurnin(s, id, GAME_DATA);
+    assert.ok(s.hero.xp > xp0 && !s.quests[id].turnin);
+    const xp1 = s.hero.xp; assert.deepEqual(qs.claimTurnin(s, id, GAME_DATA), []); assert.equal(s.hero.xp, xp1, 'once');
+    // survives save normalization
+    const s2 = mk(); qs.startQuest(s2, id); s2.quests[id] = { ...s2.quests[id], state: 'done', turnin: true, outcome: 'default' };
+    assert.equal(normalizeSave(JSON.parse(JSON.stringify(s2))).quests[id].turnin, true);
+  });
+  test('turn-in outcome: id of the chosen option (or end-<key> stage), failed, default', () => {
+    const td = { lines: { default: ['d'], marta: ['m'], light: ['l'], failed: ['f'] } };
+    assert.equal(qs.questOutcome({ state: 'done', path: ['a', 'marta', 'back'] }, td), 'marta');
+    assert.equal(qs.questOutcome({ state: 'done', path: ['choose', 'end-light'] }, td), 'light');
+    assert.equal(qs.questOutcome({ state: 'done', path: [], opt: null, stage: 'x' }, td), 'default');
+    assert.equal(qs.questOutcome({ state: 'failed', path: ['marta'] }, td), 'failed');
+    assert.deepEqual(qs.turninLines('mq-agro-fire', 'truce'), D.QUEST_TURNIN['mq-agro-fire'].lines.truce);
+    assert.deepEqual(qs.turninLines('mq-agro-fire', 'nope'), D.QUEST_TURNIN['mq-agro-fire'].lines.default);
+    // a real run: sq-sector-d, option 'talk' → outcome 'talk'
+    const s = mk(); const id = 'sq-sector-d'; const q = D.QUESTS[id];
+    qs.startQuest(s, id);
+    for (let i = 0; i < 12 && s.quests[id].state === 'active'; i++) {
+      qs.autoProgress(s, GAME_DATA);
+      const sl = qs.slots(s, id)[0]; if (!sl) { qs.onTalk(s, q.stages.find((x) => x.id === s.quests[id].stage)?.goal.npc, GAME_DATA); continue; }
+      if (sl.kind === 'choice') qs.chooseOption(s, sl, sl.choice.options.some((o) => o.id === 'talk') ? 'talk' : sl.choice.options[0].id, GAME_DATA);
+      else if (sl.goal.kind === 'talk') qs.onTalk(s, sl.goal.npc, GAME_DATA);
+      else qs.completeSlot(s, sl, GAME_DATA);
+    }
+    assert.equal(s.quests[id].state, 'done'); assert.equal(s.quests[id].outcome, 'talk');
+  });
+  test('turn-in radio: reward at once, call queued; failed quests get failed lines', () => {
+    const id = Object.keys(D.QUEST_TURNIN).find((k) => D.QUEST_TURNIN[k].mode === 'radio' && D.QUESTS[k] && !D.QUESTS[k].exodus && !D.QUESTS[k].rewards?.exodus);
+    const s = mk(); qs.startQuest(s, id); const q = D.QUESTS[id];
+    s.quests[id].stage = q.stages[q.stages.length - 1].id;
+    const xp0 = s.hero.xp;
+    qs.completeSlot(s, { qid: id, stage: q.stages[q.stages.length - 1], goal: q.stages[q.stages.length - 1].goal }, GAME_DATA);
+    assert.equal(s.quests[id].state, 'done'); assert.ok(s.hero.xp > xp0); assert.ok(!s.quests[id].turnin);
+    assert.deepEqual(s.pendingRadio, [id]);
+    const f = 'sq-cult-mines'; assert.ok(D.QUEST_TURNIN[f].lines.failed);
+    const s2 = mk(); qs.startQuest(s2, f); s2.quests[f].fails = {};
+    const fq = D.QUESTS[f]; const stage = fq.stages.find((x) => x.id === s2.quests[f].stage);
+    const slot = { qid: f, stage, goal: { kind: 'check' } };
+    for (let i = 0; i < 5 && s2.quests[f].state === 'active'; i++) qs.failSlot(s2, slot, GAME_DATA);
+    assert.equal(s2.quests[f].state, 'failed'); assert.equal(s2.quests[f].outcome, 'failed');
+    assert.ok(s2.quests[f].turnin || (s2.pendingRadio || []).includes(f));
+    assert.deepEqual(qs.turninLines(f, 'failed'), D.QUEST_TURNIN[f].lines.failed);
+  });
+  test('turn-in fallback: NPC nowhere → reward at once with a short line; quests without an entry unchanged', () => {
+    const s = mk(); const id = 'sq-galina-hatch'; qs.startQuest(s, id);
+    s.quests[id] = { ...s.quests[id], state: 'done', turnin: true, outcome: 'default' };
+    s.npcs.galina = { dead: true };
+    const xp0 = s.hero.xp;
+    const out = qs.turninFallback(s, GAME_DATA);
+    assert.ok(out[0].text.includes('«') && s.hero.xp > xp0 && !s.quests[id].turnin);
+    const plain = Object.values(D.QUESTS).find((q) => !D.QUEST_TURNIN[q.id] && q.stages.length === 1 && !q.stages[0].goal.goals && q.stages[0].goal.kind !== 'choice');
+    if (plain) {
+      const p = mk(); qs.startQuest(p, plain.id); const x0 = p.hero.xp;
+      qs.completeSlot(p, { qid: plain.id, stage: plain.stages[0], goal: plain.stages[0].goal }, GAME_DATA);
+      assert.equal(p.quests[plain.id].state, 'done'); assert.ok(!p.quests[plain.id].turnin && p.hero.xp > x0);
+    }
   });
 }
 

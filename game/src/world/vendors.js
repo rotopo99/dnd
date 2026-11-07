@@ -132,5 +132,5 @@ export function vendorSellRate(npcId, it) {
   if (!arch || !it || it.quality === 'relic' || banned(it, bansOf(npcId))) return null;
   const lv = loves(v, it);
   if (!lv && !(arch.buys || []).includes(itemCat(it))) return null;
-  return arch.sellRate * (lv ? 1.25 : 1);
+  return arch.sellRate * (lv ? ROTATION.lovesMul ?? 1.25 : 1);
 }
