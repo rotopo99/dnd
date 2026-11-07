@@ -247,6 +247,9 @@ function breakStatuses(b, u, what) {
 
 export const isStanding = (u) => !u.dead && !u.down && !u.removed;
 export const isAlive = (u) => !u.dead && !u.removed;
+/** levels-20: `{op: 'stabilize', revive: true}` also raises a dead ally (not soulless, not a summon) within the battle. */
+export const hasReviveOp = (a) => !!a && (a.effects || []).some((op) => op.op === 'stabilize' && op.revive);
+export const canRevive = (a, t) => !!t && t.dead && !t.removed && !t.soulless && t.kind !== 'summon' && hasReviveOp(a);
 
 export function effStat(b, u, s) {
   return (u.stats[s] ?? 10) + buffSum(u, s) + statusMod(b, u, s);
@@ -289,6 +292,7 @@ export function bonusValue(b, u, bonus, a) {
   if (bonus == null) return 0;
   if (bonus === 'castMod') return castMod(b, u, a);
   if (bonus === 'weaponMod') return u.weapon ? mod(effStat(b, u, u.weapon.stat || 'str')) : 0;
+  if (Array.isArray(bonus)) return bonus.reduce((s, x) => s + bonusValue(b, u, x, a), 0);
   return Number(bonus) || 0;
 }
 
@@ -646,6 +650,18 @@ export function checkVictory(b) {
 }
 
 // ---------------------------------------------------------------- damage, healing, death
+
+/** Raise a dead unit (stabilize + revive): 1 HP on its death tile or the nearest free one, statuses cleared. */
+function reviveUnit(b, caster, t) {
+  if (t.soulless || t.kind === 'summon') { emit(b, { type: 'healBlocked', actor: caster.id, target: t.id }); return; }
+  const free = b.occ[t.y * b.grid.w + t.x] === 0 && isPassable(b.grid, t.x, t.y) ? { x: t.x, y: t.y } : nearestFree(b.grid, t.x, t.y, b.occ);
+  if (!free) return;
+  t.dead = false; t.down = false; t.downTurns = 0; t.hp = 1; t.statuses = [];
+  t.x = free.x; t.y = free.y;
+  b.occ[free.y * b.grid.w + free.x] = b.units.indexOf(t) + 1;
+  b.occVersion++;
+  emit(b, { type: 'stabilize', actor: caster.id, target: t.id, value: t.hp, revive: true });
+}
 
 function kill(b, u, reason) {
   if (u.dead) return;
@@ -1358,7 +1374,7 @@ export function targetValid(b, u, a, spec) {
     return chebyshev(u.x, u.y, spec.x, spec.y) <= range && lineOfSight(b.grid, u.x, u.y, spec.x, spec.y);
   }
   const t = spec && spec.unit ? b.byId[spec.unit] : null;
-  if (!t || !isAlive(t)) return false;
+  if (!t || (!isAlive(t) && !(a.target === 'ally' && canRevive(a, t)))) return false;
   if (a.target === 'enemy') {
     if (!isHostile(b, u, t)) return false;
     const ts = tauntSource(b, u);
@@ -1444,6 +1460,7 @@ export { tagOk };
  * ctx: { crit, half, attacked, tick, ability, dc, dmgBonusUsed }.
  */
 export function applyOp(b, caster, t, op, ctx = {}) {
+  if (op.op === 'stabilize' && op.revive && t.dead && !t.removed) { reviveUnit(b, caster, t); return; }
   if (!isAlive(t)) return;
   if (op.only && op.op !== 'heal' && !tagOk(t, op.only)) { emit(b, { type: 'onlySkip', actor: caster.id, target: t.id, op: op.op, only: op.only }); return; }
   const half = !!ctx.half;
@@ -1861,7 +1878,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
   const targets = abilityTargets(b, u, a, spec);
   let offensive = false;
   for (const t of targets) {
-    if (!isAlive(t)) continue;
+    if (!isAlive(t) && !canRevive(a, t)) continue;
     const hostile = isHostile(b, u, t);
     if (hostile) offensive = true;
     if (!a.area && t !== u && chebyshev(u.x, u.y, t.x, t.y) > reachLimit) {
@@ -2062,7 +2079,7 @@ export function abilitySpecs(b, u, a) {
     return out;
   }
   for (const e of b.units) {
-    if (!isAlive(e)) continue;
+    if (!isAlive(e) && !canRevive(a, e)) continue;
     if (targetValid(b, u, a, { unit: e.id })) out.push({ target: e.id });
   }
   return out;

@@ -5,7 +5,7 @@
 import { avgDice, firstDie, chanceD20 } from './dice.js';
 import { chebyshev, lineOfSight, hasCover, distanceField, tileAt, T_HAZARD } from './grid.js';
 import {
-  getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive,
+  getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive, canRevive,
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
   abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS, itemAbility,
@@ -177,7 +177,7 @@ export function evalAbility(b, u, a, spec) {
   const hasWeapon = effects.some((e) => e.op === 'weapon');
   let v = 0;
   for (const t of targets) {
-    if (!isAlive(t)) continue;
+    if (!isAlive(t) && !canRevive(a, t)) continue;
     const hostile = isHostile(b, u, t);
     let pass = 1, halfP = 0;
     if (hostile && a.roll === 'save' && a.save) {
@@ -235,7 +235,7 @@ export function evalAbility(b, u, a, spec) {
           if (hostile) v += 1 * p;
           break;
         case 'stabilize':
-          if (!hostile && t.down && !t.soulless) v += 20;
+          if (!hostile && (t.down || (op.revive && t.dead)) && !t.soulless) v += t.dead ? 30 : 20;
           break;
         case 'mark':
           if (hostile && !hasStatus(t, op.id || 'marked')) v += (op.value ?? 2) * 2 * p;

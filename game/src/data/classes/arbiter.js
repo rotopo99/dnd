@@ -1,5 +1,24 @@
 // Арбитр (аналог Паладина). Канон: rules/classes.md, rules/class-paths.md, rules/class-roadmap.md, rules/spellcasting.md, rules/spells.md.
 // Расширения схемы: path.role, passives[].level / passives[].path.
+// Компактный конструктор способностей уровней 6+ (поля схемы — как у ручных записей ниже).
+const ab = (id, name, level, path, o) => ({
+  id, name, level, path, cost: 0, action: 'action', trigger: null, range: 0, target: 'self', area: null,
+  roll: 'auto', save: null, onSave: 'none', usesPerBattle: null, effects: [], canon: 'rules/class-roadmap.md', ...o,
+});
+const W = (extraDice, extraType) => ({ op: 'weapon', ...(extraDice && { extraDice }), ...(extraType && { extraType }) });
+const zone = (size) => ({ shape: 'radius', size });
+const AOE = { target: 'tile', roll: 'save', save: 'wil' };
+const HIT = { range: 1, target: 'enemy', roll: 'attack' };
+
+// Улучшения (docs/specs/levels-20.md): `dice` заменяет кости главного эффекта способности.
+const UPGRADES = [
+  { level: 2, ability: 'lay-on-hands', changes: { dice: '2d8' } },
+  { level: 4, ability: 'smite', changes: { dice: '2d8' } },
+  { level: 8, ability: 'healing-light', changes: { dice: '3d6' } },
+  { level: 12, ability: 'blinding-light', changes: { cost: 3 } },
+  { level: 16, ability: 'smite', changes: { dice: '3d8' } },
+];
+
 export default {
   id: 'arbiter', name: 'Арбитр', analog: 'Паладин', icon: 'class_face',
   role: 'tank',
@@ -37,6 +56,23 @@ export default {
       desc: 'Приговоры Судьи бьют сильнее: +2 к урону способностей.', op: { dmg: { spell: 2 } } },
     { id: 'judges-fury', name: 'Ярость Судьи', level: 1, path: 'avenger',
       desc: 'Критическое попадание на 19–20.', op: { critRange: 19 } },
+    // ---------- Уровни 7–20 ----------
+    { id: 'unbreakable-guard', name: 'Несокрушимый', level: 9, path: 'defender',
+      desc: '+15 ЗДР, +1 КБ.', op: { maxHp: 15, kb: 1 } },
+    { id: 'final-line', name: 'Финальный рубеж', level: 13, path: 'defender',
+      desc: '+15 ЗДР.', op: { maxHp: 15 } },
+    { id: 'absolute-arbiter', name: 'Абсолютный Арбитр', level: 15, path: 'defender',
+      desc: '+15 ЗДР, +1 КБ, иммунитет к оглушению.', op: { maxHp: 15, kb: 1, immuneStatus: ['stun'] } },
+    { id: 'avenger-code', name: 'Кодекс Карателя', level: 9, path: 'avenger',
+      desc: 'Крит на 18–20, +3 к урону в ближнем бою.', op: { critRange: 18, dmg: { melee: 3 } } },
+    { id: 'god-of-war', name: 'Бог войны', level: 15, path: 'avenger',
+      desc: '+2 СИЛ, крит на 17–20, +1 к атаке, +2 к урону в ближнем бою.', op: { statBonus: { str: 2 }, critRange: 17, hit: 1, dmg: { melee: 2 } } },
+    { id: 'cyber-phoenix', name: 'Кибер-Феникс', level: 20, path: 'avenger',
+      desc: 'Капстоун: раз за бой встаёт с 1 ЗДР после падения.', op: { deathSave: 1 } },
+    { id: 'verdict-mastery', name: 'Мастер вердикта', level: 11, path: 'judge',
+      desc: '+2 к урону способностей, +1 к атаке.', op: { dmg: { spell: 2 }, hit: 1 } },
+    { id: 'supreme-judge', name: 'Верховный Судья', level: 15, path: 'judge',
+      desc: '+2 ТВД, +3 к урону способностей.', op: { statBonus: { wil: 2 }, dmg: { spell: 3 } } },
   ],
   abilities: [
     // ---------- Общие ----------
@@ -164,7 +200,91 @@ export default {
       desc: 'Луч распада: 2d8 + ТВД энергоурона, оружие цели выведено из строя на 1 ход.',
       canon: 'rules/class-roadmap.md',
     },
+
+    // ---------- Общие, уровни 6–18 ----------
+    ab('aegis-aura', 'Аура защиты', 6, null, { cost: 5, action: 'bonus', area: zone(5), usesPerBattle: 2,
+      effects: [{ op: 'buff', stat: 'kb', value: 2, turns: 3 }],
+      desc: 'Ты и союзники в радиусе 5 клеток: +2 КБ на 3 хода. Дважды за бой.' }),
+    ab('blade-of-law', 'Клинок закона', 10, null, { cost: 7, ...HIT,
+      effects: [W('3d8', 'energy')],
+      desc: 'Оружие +3d8 энергоурона.' }),
+    ab('cyber-priest', 'Кибер-священник', 14, null, { cost: 10, area: zone(6), usesPerBattle: 2,
+      effects: [{ op: 'heal', dice: '4d8', resource: 'hp' }, { op: 'cleanse', count: 1, kind: 'debuff' }],
+      desc: 'Ты и союзники в радиусе 6: лечение 4d8 ЗДР и снятие 1 дебаффа. Дважды за бой.' }),
+    ab('final-verdict', 'Окончательный приговор', 18, null, { cost: 12, ...HIT, usesPerBattle: 1,
+      effects: [W('6d8', 'energy'), { op: 'status', id: 'stun', turns: 1 }],
+      desc: 'Оружие +6d8 энергоурона; при попадании цель оглушена на 1 ход. Раз за бой.' }),
+
+    // ---------- Путь Защитника, 7–20 ----------
+    ab('outpost', 'Форпост', 7, 'defender', { cost: 7, action: 'bonus', area: zone(4), usesPerBattle: 2,
+      effects: [{ op: 'shield', dice: '3d6', turns: 3 }, { op: 'buff', stat: 'kb', value: 2, turns: 3 }],
+      desc: 'Ты и союзники в радиусе 4: щит 3d6 и +2 КБ на 3 хода. Дважды за бой.' }),
+    ab('light-of-creator', 'Свет Создателя', 9, 'defender', { cost: 12, range: 1, target: 'ally', usesPerBattle: 1,
+      effects: [{ op: 'stabilize' }, { op: 'heal', dice: '6d8', resource: 'hp' }],
+      desc: 'Поднимает упавшего союзника и лечит 6d8 ЗДР. Раз за бой.' }),
+    ab('time-warp', 'Искажение времени', 11, 'defender', { cost: 9, action: 'bonus', area: zone(5), usesPerBattle: 1,
+      effects: [{ op: 'buff', stat: 'kb', value: 5, turns: 2 }, { op: 'status', id: 'fortified', turns: 2 }],
+      desc: 'Ты и союзники в радиусе 5: +5 КБ и сопротивление физическому урону на 2 хода. Раз за бой.' }),
+    ab('singularity-zone', 'Сингулярность', 13, 'defender', { ...AOE, cost: 11, range: 10, area: zone(4), usesPerBattle: 1,
+      effects: [{ op: 'status', id: 'silence', turns: 2 }, { op: 'status', id: 'slow', turns: 2 }],
+      desc: 'Зона, где вязнут системы: враги в радиусе 4 после провала спасброска ТВД онемены и замедлены на 2 хода. Раз за бой.' }),
+    ab('god-shield', 'Бог-щит', 15, 'defender', { cost: 12, action: 'bonus', area: zone(5), usesPerBattle: 1,
+      effects: [{ op: 'shield', dice: '8d6', turns: 3 }],
+      desc: 'Ты и союзники в радиусе 5: щит 8d6 на 3 хода. Раз за бой.' }),
+    ab('cyber-legion', 'Кибер-легион', 17, 'defender', { cost: 14, range: 3, target: 'tile', usesPerBattle: 1,
+      effects: [{ op: 'summon', unit: 'drone', turns: 4 }, { op: 'summon', unit: 'drone', turns: 4 }, { op: 'summon', unit: 'turret', turns: 4 }],
+      desc: 'Копии-легионеры: два дрона и турель на 4 хода. Раз за бой.' }),
+    ab('last-redoubt', 'Последний редут', 20, 'defender', { cost: 14, action: 'bonus', area: zone(6), usesPerBattle: 1,
+      effects: [{ op: 'shield', dice: '10d6', turns: 4 }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'cleanse', count: 2, kind: 'any' }, { op: 'status', id: 'fortified', turns: 3 }],
+      desc: 'Капстоун: ты и союзники в радиусе 6: щит 10d6, +3 КБ на 4 хода, снятие 2 статусов, сопротивление физическому на 3. Раз за бой.' }),
+
+    // ---------- Путь Мстителя, 7–20 ----------
+    ab('judge-strike', 'Удар Судьи', 7, 'avenger', { cost: 8, ...HIT, usesPerBattle: 2,
+      effects: [W('4d8'), { op: 'status', id: 'stun', turns: 1 }],
+      desc: 'Оружие +4d8 урона; при попадании цель оглушена на 1 ход. Дважды за бой.' }),
+    ab('blade-whirl', 'Вихрь клинков', 9, 'avenger', { ...AOE, cost: 8, range: 0, area: zone(2), save: 'dex', onSave: 'half',
+      effects: [{ op: 'damage', dice: '4d8', dmgType: 'slash' }],
+      desc: '4d8 рубящего урона всем врагам в радиусе 2 вокруг тебя, спасбросок ЛВК — половина.' }),
+    ab('quantum-rend', 'Квантовый разрыв', 11, 'avenger', { cost: 8, range: 10, target: 'enemy', roll: 'attack',
+      effects: [{ op: 'move', tiles: 8, mode: 'teleport' }, W('3d8')],
+      desc: 'Телепорт к врагу (до 8 клеток) и удар: оружие +3d8 урона.' }),
+    ab('execution-r', 'Казнь', 13, 'avenger', { cost: 10, ...HIT, usesPerBattle: 1,
+      effects: [W('7d8')],
+      desc: 'Оружие +7d8 урона одной цели. Раз за бой.' }),
+    ab('weapon-fusion', 'Слияние с оружием', 15, 'avenger', { cost: 8, action: 'bonus', usesPerBattle: 1,
+      effects: [{ op: 'buff', stat: 'dmg', value: 4, turns: 4 }, { op: 'buff', stat: 'hit', value: 2, turns: 4 }],
+      desc: 'Клинок — часть тела: +4 к урону и +2 к атаке на 4 хода. Раз за бой.' }),
+    ab('phantom-blades', 'Фантомные клинки', 17, 'avenger', { cost: 10, ...HIT, usesPerBattle: 2,
+      effects: [W('2d8', 'energy'), W('2d8', 'energy'), W('2d8', 'energy')],
+      desc: 'Три отдельные атаки оружием, каждая +2d8 энергоурона. Дважды за бой.' }),
+    ab('armageddon', 'Армагеддон', 20, 'avenger', { cost: 14, ...HIT, usesPerBattle: 1,
+      effects: [W('4d8', 'energy'), W('4d8', 'energy'), W('4d8', 'energy'), { op: 'status', id: 'stun', turns: 1 }],
+      desc: 'Капстоун: три атаки оружием, каждая +4d8 энергоурона; при попадании последней — оглушение на 1 ход. Раз за бой.' }),
+
+    // ---------- Путь Судьи, 7–20 ----------
+    ab('judge-execution', 'Казнь Судьи', 7, 'judge', { cost: 6, range: 12, target: 'enemy', roll: 'attack',
+      effects: [{ op: 'damage', dice: '3d10', dmgType: 'energy', bonus: 'castMod' }],
+      desc: '3d10 + ТВД энергоурона.' }),
+    ab('black-screen', 'Чёрный экран', 9, 'judge', { ...AOE, cost: 8, range: 12, area: zone(4),
+      effects: [{ op: 'status', id: 'blind', turns: 2 }],
+      desc: 'Враги в радиусе 4 после провала спасброска ТВД ослеплены на 2 хода.' }),
+    ab('rules-editor', 'Редактор правил', 11, 'judge', { ...AOE, cost: 9, range: 12, area: zone(4), usesPerBattle: 2,
+      effects: [{ op: 'buff', stat: 'hit', value: -3, turns: 3 }, { op: 'buff', stat: 'dmg', value: -3, turns: 3 }],
+      desc: 'Правила боя переписаны: враги в радиусе 4 после провала спасброска ТВД получают −3 к атаке и урону на 3 хода.' }),
+    ab('guardian-summon', 'Призыв Стража', 13, 'judge', { cost: 11, range: 4, target: 'tile', usesPerBattle: 1,
+      effects: [{ op: 'summon', unit: 'cyber-demon', turns: 4 }],
+      desc: 'Робот-исполнитель сражается на твоей стороне 4 хода. Раз за бой.' }),
+    ab('zero-day', 'Нулевой день', 15, 'judge', { ...AOE, cost: 14, range: 14, area: zone(5), usesPerBattle: 1,
+      effects: [{ op: 'status', id: 'stun', turns: 1 }, { op: 'status', id: 'disarm', turns: 2 }, { op: 'status', id: 'silence', turns: 2 }],
+      desc: 'Взлом всего в зоне: враги в радиусе 5 после провала спасброска ТВД оглушены на 1 ход, разоружены и немы на 2. Раз за бой.' }),
+    ab('collective-guilt', 'Коллективная вина', 17, 'judge', { ...AOE, cost: 14, range: 12, area: zone(4), onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '8d8', dmgType: 'energy' }, { op: 'status', id: 'curse', turns: 3 }],
+      desc: '8d8 энергоурона в радиусе 4; спасбросок ТВД — половина; провалившие ещё и прокляты на 3 хода.' }),
+    ab('supreme-verdict', 'Верховный приговор', 20, 'judge', { ...AOE, cost: 18, range: 14, area: zone(5), onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '9d8', dmgType: 'energy' }, { op: 'status', id: 'curse', turns: 3 }, { op: 'status', id: 'stun', turns: 1 }],
+      desc: 'Капстоун: 9d8 энергоурона в радиусе 5; спасбросок ТВД — половина; провалившие прокляты на 3 хода и оглушены на 1. Раз за бой.' }),
   ],
+  upgrades: UPGRADES,
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md', 'rules/spells.md'],
   lore: 'Воины, которые используют технологии для защиты слабых и борьбы с несправедливостью: боевые навыки плюс кибернетические улучшения.',
 };

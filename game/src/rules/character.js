@@ -290,12 +290,12 @@ function upValue(cur, v, negIsDelta = false) {
 
 /**
  * Upgrades (levels-20.md): `cls.upgrades` / `path.upgrades` = [{ level, ability, path?, changes }] with
- * level ≤ hero level are applied in level order to a copy of the ability. changes:
- *   dice  — new dice of the first effect with `dice` (or `extraDice` of a weapon op); `effect: i` picks the effect;
- *   cost  — number = new ENR cost, negative number or '-N' = cheaper by N;
- *   usesPerBattle — number = new value, '+N' = more uses;
+ * level ≤ hero level are applied in level order to a copy of the ability. changes are NEW VALUES (not deltas):
+ *   dice  — dice of the first effect with dice or a `weapon` op (for a `weapon` op it is its `extraDice`);
+ *           `effect: i` picks the effect;
+ *   bonus — new `bonus` of that effect (a number, 'castMod', or an array summed by combat.bonusValue);
+ *   cost, usesPerBattle — new value (tolerated deltas: '+N' / '-N' strings, a negative cost);
  *   area  — number = new area.size, object = merged into area;
- *   bonus — number added to the effect bonus (castMod stays: bonus becomes ['castMod', n]);
  *   anything else (range, turns, …) — replaces the ability field.
  * The ability gets `upgrades: [levels]` (for the character sheet).
  */
@@ -312,11 +312,11 @@ export function applyUpgrades(abilities, upgrades, level, path) {
       for (const [k, v] of Object.entries(ch)) {
         if (k === 'effect') continue;
         if (k === 'dice' || k === 'bonus') {
-          const idx = ch.effect != null ? ch.effect : a.effects.findIndex((e) => e.dice || e.extraDice);
+          const idx = ch.effect != null ? ch.effect : a.effects.findIndex((e) => e.dice || e.extraDice || e.op === 'weapon');
           const e = a.effects[idx];
           if (!e) continue;
-          if (k === 'dice') { if (e.dice || !e.extraDice) e.dice = v; else e.extraDice = v; }
-          else e.bonus = e.bonus == null ? v : typeof e.bonus === 'number' ? e.bonus + v : [].concat(e.bonus, v);
+          if (k === 'dice') { if (e.op === 'weapon') e.extraDice = v; else e.dice = v; }
+          else e.bonus = v;
         } else if (k === 'cost') a.cost = upValue(a.cost, v, true);
         else if (k === 'usesPerBattle') a.usesPerBattle = upValue(a.usesPerBattle, v);
         else if (k === 'area') a.area = typeof v === 'number' ? { ...(a.area || {}), size: v } : { ...(a.area || {}), ...v };

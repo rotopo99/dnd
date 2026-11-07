@@ -708,7 +708,7 @@ test('upgrades: dice, cost, uses, area, bonus, other fields; by level and path; 
   const it = DATA.CLASSES.itishnik;
   const cls = { ...it, id: 'itishnik', upgrades: [
     { level: 2, ability: 'zap', changes: { dice: '2d10' } },
-    { level: 4, ability: 'zap', changes: { cost: -1, bonus: 2, range: 10 } },
+    { level: 4, ability: 'zap', changes: { cost: 1, bonus: ['castMod', 2], range: 10 } },
     { level: 4, ability: 'emp', changes: { area: 2, usesPerBattle: '+1' } },
     { level: 8, ability: 'repair', changes: { dice: '2d8', cost: 1 } },
     { level: 2, ability: 'drone', path: 'hacker', changes: { cost: 0 } },
@@ -734,6 +734,42 @@ test('upgrades: dice, cost, uses, area, bonus, other fields; by level and path; 
   const b = createBattle({ map: { id: 't', grid: ['########', '#P...E.#', '########'], win: 'killAll' }, heroes: [H], enemies: ['thug'], data: D2, seed: 3 });
   const r = perform(b, { type: 'ability', unit: b.units.find((x) => x.team === 'heroes').id, ability: 'zap', target: b.units.find((x) => x.team === 'enemies').id });
   assert.ok(r.ok, r.error);
+  // weapon op: `dice` is the op's extraDice (new value); bonus is a new value
+  const zb = { ...DATA.CLASSES.zabivnoy, upgrades: [{ level: 2, ability: 'steel-fist', changes: { dice: '2d6' } }, { level: 3, ability: 'blood', changes: { bonus: 3, cost: 2 } }] };
+  const D3 = { ...DATA, CLASSES: { ...DATA.CLASSES, zabivnoy: zb } };
+  const zab = Object.fromEntries(buildCreature({ race: 'human', cls: 'zabivnoy', level: 3, data: D3 }).abilities.map((a) => [a.id, a]));
+  assert.equal(zab['steel-fist'].effects[0].extraDice, '2d6'); assert.equal(zab['steel-fist'].effects[0].dice, undefined);
+  assert.equal(zab.blood.effects[0].bonus, 3); assert.equal(zab.blood.cost, 2);
+});
+test('stabilize revive: raises a dead ally (not soulless) on its tile; plain stabilize does not', () => {
+  const raise = { id: 'raise', name: 'Подъём', level: 1, cost: 0, action: 'action', range: 6, target: 'ally', roll: 'auto',
+    effects: [{ op: 'stabilize', revive: true }, { op: 'heal', dice: '2d1', resource: 'hp' }] };
+  const lift = { ...raise, id: 'lift', effects: [{ op: 'stabilize' }] };
+  const it = { ...DATA.CLASSES.itishnik, abilities: [...DATA.CLASSES.itishnik.abilities, raise, lift] };
+  const D4 = { ...DATA, CLASSES: { ...DATA.CLASSES, itishnik: it } };
+  const map = { id: 't', grid: ['#########', '#PP....E#', '#########'], win: 'killAll' };
+  const mk = () => {
+    const H = buildCreature({ race: 'human', cls: 'itishnik', level: 20, data: D4, id: 'H' });
+    const F = buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data: D4, id: 'F' });
+    const b = createBattle({ map, heroes: [H, F], enemies: ['thug'], data: D4, seed: 5 });
+    return { b, H: b.byId.H, F: b.byId.F };
+  };
+  let { b, H, F } = mk();
+  F.deathSavesLeft = 0;
+  dealDamage(b, F, null, 999, 'slash');
+  if (!F.dead) dealDamage(b, F, null, 999, 'slash');
+  assert.ok(F.dead, 'ally is dead');
+  b.turn.unitId = H.id; b.turn.actions = 1; b.order.splice(b.order.indexOf(H.id), 1); b.order.splice(b.turnIndex, 0, H.id);
+  assert.ok(!getLegalActions(b, H.id).some((x) => x.ability === 'lift' && x.target === 'F'), 'plain stabilize cannot target the dead');
+  assert.ok(getLegalActions(b, H.id).some((x) => x.ability === 'raise' && x.target === 'F'));
+  const r = perform(b, { type: 'ability', unit: H.id, ability: 'raise', target: 'F' });
+  assert.ok(r.ok, r.error);
+  assert.ok(!F.dead && !F.down && F.hp === 3, `revived with 1 + 2 HP: ${F.hp}`);
+  assert.ok(F.x >= 0 && b.occ[F.y * b.grid.w + F.x] > 0, 'back on the grid');
+  ({ b, H, F } = mk());
+  F.soulless = true; F.deathSavesLeft = 0;
+  dealDamage(b, F, null, 999, 'slash'); if (!F.dead) dealDamage(b, F, null, 999, 'slash');
+  assert.ok(!getLegalActions(b, H.id).some((x) => x.ability === 'raise' && x.target === 'F'), 'soulless cannot be raised');
 });
 test('XP scale above level 5: enemy and quest fallbacks follow the XP a level needs', () => {
   assert.equal(xpScale(3), 1); assert.equal(xpScale(5), 1);
