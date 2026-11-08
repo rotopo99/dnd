@@ -65,6 +65,7 @@ export const CYBER_TEXT = {
   'cyb.eye': 'Око Судьи открылось.',
   'cyb.spiritPlate': 'ДУХ',
   'cyb.patch': 'Нулевой патч: −2 трассировки',
+  'cyb.doorOpen': 'Замок снят из Сети: проходим без вопросов.',
   // hack mini-game
   'hack.title': 'Взлом',
   'hack.turns': 'Ходы',
@@ -107,6 +108,7 @@ export const CYBER_TEXT = {
   'exp.menu': 'Поручения резерву',
   'exp.menuSub': 'отправить напарника: лут, торговля, разведка, мелкий квест',
   'exp.send': 'Отправить',
+  'exp.days': 'дн.',
   'exp.pickType': 'Что поручить?',
   'exp.pickTarget': 'Куда?',
   'exp.pickMode': 'Как рисковать?',

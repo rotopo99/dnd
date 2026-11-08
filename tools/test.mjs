@@ -3896,5 +3896,148 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
   });
 }
 
+console.log('Cyberspace v2 / errands of the reserve');
+{
+  const st = await import('../game/src/world/state.js');
+  const CY = await import('../game/src/world/cyber.js');
+  const HK = await import('../game/src/world/hack.js');
+  const SP = await import('../game/src/world/spirit.js');
+  const EX = await import('../game/src/world/expeditions.js');
+  const QS = await import('../game/src/world/quests.js');
+  const D = await import('../game/src/world/data.js');
+  const CD = await import('../game/src/data/world/cyberspace.js');
+  const { COMPANIONS } = await import('../game/src/data/companions.js');
+  const { hackActive } = await import('../game/src/world/cs-hacks.js');
+  const { NPCS } = await import('../game/src/data/npcs.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const await_companions = await import('../game/src/world/companions.js');
+  const mk = (lvl = 5) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; s.hero.level = lvl; return s; };
+
+  test('cyberspace data: every id resolves (enemies, encounters, items, quests, npcs, hack points)', () => {
+    for (const z of Object.values(CD.CS_ZONES)) for (const n of z.nodes) if (n.enemies) for (const L of [z.levels[0], z.levels[1], 1, 20]) {
+      for (const id of CY.nodeEnemies({ hero: { level: L } }, Object.keys(CD.CS_ZONES).find((k) => CD.CS_ZONES[k] === z), n.enemies)) assert.ok(GAME_DATA.ENEMIES[id], `enemy ${id}`);
+    }
+    for (const id of Object.keys(CD.CS_ENEMIES)) assert.ok(GAME_DATA.ENEMIES[`${id}-l${CD.CS_ENEMIES[id].level}`], id);
+    for (const id of ['enc-cs-null-walkers', 'enc-cs-scriptlets', 'enc-cs-leech']) for (const e of GAME_DATA.ENCOUNTERS[id].enemies) assert.ok(GAME_DATA.ENEMIES[e], e);
+    for (const id of Object.keys(CD.CS_ITEMS)) assert.ok(GAME_DATA.ITEMS[id], id);
+    for (const q of ['sq-new-body', 'sq-cs-victor', 'sq-cs-voices']) { assert.ok(D.QUESTS[q], q); assert.ok(D.QUEST_TURNIN[q], q); }
+    for (const n of ['cs-nameless', 'cs-victor-echo']) assert.ok(NPCS[n], n);
+    for (const ev of Object.values(CD.CS_EVENTS)) for (const o of ev.options) for (const x of [o.fx, o.win, o.lose]) for (const it of x?.items || []) assert.ok(GAME_DATA.ITEMS[it.id], it.id);
+    for (const t of D.FINALE_TERMINALS || []) assert.ok(CD.HACK_POINTS[t], t);
+    assert.equal(Object.keys(CD.CS_EVENTS).length, 12);
+  });
+
+  test('cyberspace: zones open by requires, escape nodes by level, dive cooldown, node pass clears a zone', () => {
+    const s = mk(3);
+    assert.ok(CY.zoneStatus(s, 'cs-gate').ok && !CY.zoneStatus(s, 'cs-ice').ok && !CY.zoneStatus(s, 'cs-void').ok);
+    assert.ok(!CY.zoneStatus(s, 'cs-ice', 'implant').ok);
+    const nodes = CY.escapeNodes(s, () => 0.3);
+    assert.equal(nodes.length, 3);
+    for (const n of nodes) assert.ok(['battle', 'check', 'hack'].includes(n.kind) && CY.escapeZones(s).includes(n.zone));
+    assert.ok(!CY.diveStatus(s, 'dive').ok, 'no terminal here');
+    const z = CD.CS_ZONES['cs-gate'];
+    for (let i = 0; i < z.nodes.length; i++) CY.passNode(s, 'cs-gate', i, GAME_DATA);
+    assert.ok(CY.zoneCleared(s, 'cs-gate') && CY.zoneStatus(s, 'cs-ice').ok);
+    assert.ok((s.hero.items['cs-ice-pick'] || 0) >= 1, 'zone reward');
+    s.hero.items['cs-neuroport'] = 1;
+    assert.ok(CY.diveStatus(s, 'implant').ok);
+    CY.startDive(s, 'implant');
+    assert.equal(s.cyberspace.mode, 'dive');
+    CY.endDive(s, GAME_DATA, { ejected: true, rng: () => 0.99 });
+    assert.equal(s.cyberspace, null);
+    assert.ok(!CY.diveStatus(s, 'implant').ok, 'cooldown');
+  });
+
+  test('hack board: ≥6 nodes, core reachable; trace cap fails with a battle; ICE fails lock', () => {
+    for (const tier of [1, 2, 3]) {
+      const h = HK.makeHack(tier, { rng: createRng(tier) });
+      assert.ok(h.nodes.length >= 6);
+      const seen = new Set([0]); const q = [0];
+      while (q.length) { const x = q.shift(); for (const y of HK.neighbours(h, x)) if (!seen.has(y)) { seen.add(y); q.push(y); } }
+      assert.ok(seen.has(h.nodes.length - 1), 'core reachable');
+    }
+    const h = HK.makeHack(1, { rng: createRng(5) });
+    // walk to the core, hacking every ICE successfully
+    for (let guard = 0; guard < 30 && !h.done; guard++) {
+      const nb = HK.neighbours(h).sort((a, b) => h.nodes[b].col - h.nodes[a].col)[0];
+      const op = HK.hackOptions(h, nb)[0];
+      HK.hackAct(h, op.act, nb, { roll: () => ({ success: true, total: 20 }) });
+    }
+    assert.equal(h.done, 'win');
+    const f = HK.makeHack(2, { rng: createRng(9), trace: 5 });
+    const ice = f.nodes.find((n) => n.kind === 'ice');
+    f.edges.push([0, ice.id]);
+    HK.hackAct(f, 'hack', ice.id, { roll: () => ({ success: false, total: 1 }) });
+    assert.ok(f.done === 'fail' && f.battle, 'traced → battle');
+  });
+
+  test('real-world hacks: windows only for ours terminals; prices hack ×0.85 window, cooldown, wanted −2', () => {
+    const s = mk(12);
+    s.terminals['term-harmony'] = 'ours';
+    const w = CY.hackWindows(s).find((x) => x.term === 'term-harmony');
+    assert.ok(w.hacks.some((h) => h.eff === 'prices' && h.target === 'alpha-harmony' && h.ok));
+    assert.ok(CY.hackWindows(s).filter((x) => x.state !== 'ours').every((x) => !x.hacks.length));
+    CY.applyHackEffect(s, 'prices', 'alpha-harmony');
+    assert.ok(hackActive(s, 'prices', 'alpha-harmony'));
+    s.day += 4; assert.ok(hackActive(s, 'prices', 'alpha-harmony'));
+    s.day += 1; assert.ok(!hackActive(s, 'prices', 'alpha-harmony'), '5 days');
+    assert.ok(!CY.hackWindows(s).find((x) => x.term === 'term-harmony').hacks.find((h) => h.eff === 'prices').ok, 'cooldown');
+    s.wanted = { cult: { heat: 3, since: 1, bounty: 0 } };
+    CY.applyHackEffect(s, 'wanted', 'cult');
+    assert.equal(s.wanted.cult.heat, 1);
+  });
+
+  test('spirit: race and half HP, no rest off-terminal; sq-new-body «body» clears bodyDestroyed', () => {
+    const s = mk(12);
+    const hp0 = st.buildHero(s, GAME_DATA).maxHp;
+    SP.becomeSpirit(s, 'ritual');
+    const u = st.buildHero(s, GAME_DATA);
+    assert.ok(s.flags.bodyDestroyed && u.maxHp === Math.ceil(hp0 / 2));
+    assert.ok(SP.spiritRestBlock(s, s.location) !== null || D.LOCATIONS[s.location]?.terminal);
+    assert.ok(CY.zoneStatus(s, 'cs-void').ok);
+    QS.startQuest(s, 'sq-new-body');
+    const q = D.QUESTS['sq-new-body'];
+    const stq = s.quests['sq-new-body'];
+    stq.stage = 'choose';
+    const slot = QS.slots(s, 'sq-new-body')[0];
+    QS.chooseOption(s, slot, 'body', GAME_DATA);
+    QS.onTalk(s, 'nikola', GAME_DATA);
+    assert.equal(stq.state, 'done');
+    assert.ok(!s.flags.bodyDestroyed && !s.hero.spirit && q.clearOn === 'body');
+  });
+
+  test('errands: send from the reserve, busy until back, careful never dies, quest ×0.8, save keeps p.exp', () => {
+    const s = mk(6);
+    const id = Object.keys(COMPANIONS).find((n) => NPCS[n]);
+    st.recruit(s, id);
+    const p = s.party.find((x) => x.npc === id);
+    p.state = 'waiting'; p.waitAt = s.location; p.approval = 10;
+    assert.ok(EX.canSend(s, p).ok);
+    const reg = D.LOCATIONS[s.location].region;
+    const plan = EX.expPlan(s, p, 'loot', reg, 'careful');
+    assert.ok(plan.days >= 2 && plan.dc >= 8 && !plan.risk.death);
+    EX.startExp(s, p, plan);
+    assert.ok(!EX.canSend(s, p).ok);
+    const { canRejoin } = await_companions;
+    assert.equal(canRejoin(s, p, GAME_DATA).why, 'busy');
+    const back = normalizeSave(JSON.parse(JSON.stringify(s)), GAME_DATA);
+    assert.ok(back.party.find((x) => x.npc === id).exp);
+    s.day += plan.days;
+    EX.expTick(s, GAME_DATA, () => 0); // natural 1 → worst row, careful + low danger → hurt at worst
+    assert.ok(!p.exp && p.expResult && p.state !== 'cyberspace');
+    for (let m = -30; m < 15; m++) for (const d of [0, 3, 5]) { const o = EX.outcomeFor(m, 10, d, 'careful'); assert.ok(o.id !== 'dead'); if (d < 2) assert.ok(o.id !== 'captured'); }
+    assert.equal(EX.outcomeFor(-40, 10, 5, 'risky').id, 'dead');
+    // quest errand: accepted autoable quest → back stage, reward × 0.8
+    assert.ok(D.QUESTS['dq-antenna'].autoable);
+    QS.startQuest(s, 'dq-antenna');
+    p.expBusy = 0; delete p.expCaptive; p.state = 'waiting';
+    assert.ok(EX.expTargets(s, p, 'quest').some((x) => x.id === 'dq-antenna' && x.ok));
+    p.exp = { type: 'quest', target: 'dq-antenna', start: s.day, days: 0, mode: 'normal', dc: 1, total: 30 };
+    EX.expTick(s, GAME_DATA, () => 0.5);
+    assert.equal(s.quests['dq-antenna'].stage, 'back');
+    assert.equal(s.quests['dq-antenna'].expMul, 0.8);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

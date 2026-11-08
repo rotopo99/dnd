@@ -45,6 +45,13 @@ import { npcFaction, wantedTick, entryThreat, entryCheckOf, guardEnemies, bribeI
 import { CRIME_RULES } from '../data/world/crime.js';
 import { openRestMenu, canCampAt } from './rest.js';
 import { restState } from '../world/rest.js';
+import { hackActive } from '../world/cs-hacks.js';
+import { diveEntries } from '../world/cyber.js';
+import { spiritRestBlock } from '../world/spirit.js';
+import { enterNet } from './cyberspace.js';
+import { rescuesAt, freeCaptive, unseenResults } from '../world/expeditions.js';
+import { openExpeditions, openExpResults } from '../ui/expedition-ui.js';
+import { drawStatusIcon } from '../assets/status-icons.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
@@ -103,6 +110,7 @@ export function createLocationScene(rawId, opts = {}) {
   function gateCheck(game) {
     const e = loc.entry;
     if (!e) return false;
+    if (hackActive(save(game), 'door', locId)) { game.toast(t('cyb.doorOpen'), 'h'); return false; } // cyberspace-v2.md §5: door hacked from the Relay
     const f = e.faction;
     let tier = facTier(game, f);
     const party = ms(game);
@@ -289,6 +297,14 @@ export function createLocationScene(rawId, opts = {}) {
         }
       } else if (state !== 'ritual') out.push({ label: `${t('map.terminal')}: ${t(`term.${state}`)}`, sub: t('loc.termInfo'), disabled: true });
     }
+    // cyberspace-v2.md §2: dive into the Net (terminal 'ours' / Нейропорт / spirit)
+    for (const d of diveEntries(sv)) out.push({ label: t('cyb.dive'), sub: d.ok ? t(`cyb.diveSub.${d.entry}`) : d.why, disabled: !d.ok, reason: d.why,
+      run: (g) => enterNet(g, d.entry) });
+    // expeditions.md: errands of the reserve waiting here; captives of this region
+    const reserve = sv.party.filter((p) => p.state === 'waiting');
+    if (reserve.length) out.push({ label: t('exp.menu'), sub: t('exp.menuSub'), run: (g) => openExpeditions(g, (g2) => refresh(g2)) });
+    for (const r of rescuesAt(sv, locId)) out.push({ label: tf('exp.rescue', { name: NPCS[r.p.npc]?.name || r.p.npc }), sub: `${t('exp.rescueSub')} · ${encounterName(r.encounter)}`,
+      run: (g) => startWorldBattle(g, { encounter: r.encounter, location: locId, onWin: (g2) => { toastAll(g2, freeCaptive(g2.save, r.p)); persist(g2); again(g2); } }) });
     // services
     const svc = loc.services.filter((x) => !serviceOff(sv, loc, x));
     if (canCampAt(locId)) out.push(restAction(sv, svc, tier));
@@ -320,6 +336,8 @@ export function createLocationScene(rawId, opts = {}) {
   function restAction(sv, svc, tier) {
     const lodging = svc.includes('rest') ? { cost: tierAtLeast(tier, 'friendly') ? 0 : SERVICE_PRICES.rest(sv.hero.level) } : null;
     const st = restState(sv);
+    const spiritBlock = spiritRestBlock(sv, locId); // cyberspace-v2.md §7: a spirit rests only at an 'ours' terminal
+    if (spiritBlock) return { label: t('rest.button'), sub: spiritBlock, disabled: true, reason: spiritBlock };
     return { label: t('rest.button'), sub: `${t('rest.buttonSub')} · ${st.short}/${st.max}`,
       run: (g) => openRestMenu(g, { back: home(), locId, lodging, done: (g2) => { S.canSwap = true; refresh(g2); }, again }) };
   }
@@ -704,6 +722,7 @@ export function createLocationScene(rawId, opts = {}) {
   /** Turn-ins / radio / epilogue when nothing is on screen (also called by the free map). → true if something opened. */
   function pump(game) {
     if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return true; }
+    if (V(game).gate && !game.modals.length) { const back = unseenResults(save(game), locId); if (back.length) { openExpResults(game, back, (g) => refresh(g)); return true; } }
     return !!(V(game).gate && pendingEpilogue(game));
   }
 
@@ -794,6 +813,7 @@ export function createLocationScene(rawId, opts = {}) {
         const x = ox + 24 + i * 152, y = oy + BASE_H - 64;
         panel(ctx, x, y, 146, 52, C['1'], m.isHero ? C.h : C['2']);
         text(ctx, fit(ctx, m.name, 130, FONT_B), x + 8, y + 4, m.isHero ? C.h : C['5'], FONT_B);
+        if (m.isHero && sv.hero.spirit) { drawStatusIcon(ctx, 'spirit', x + 124, y + 6, 16); hotspot(x + 120, y + 2, 24, 24, { title: t('spirit.title'), glyph: { icon: 'spirit' }, lines: [t('spirit.tip')] }); }
         bar(ctx, x + 8, y + 28, 130, 6, m.unit.hp, m.unit.maxHp, 'hp');
         bar(ctx, x + 8, y + 39, 130, 6, m.unit.mrl, m.unit.maxMrl, 'mrl');
         hotspot(x + 4, y + 24, 138, 10, resTip('hp'));

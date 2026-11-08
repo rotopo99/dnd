@@ -5,7 +5,7 @@
 import { t } from '../data/text/index.js';
 import { tf } from '../world/state.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, FONT_XL, text, panel, button, hitButton, clear, bar } from '../ui/draw.js';
+import { C, FONT, FONT_B, FONT_L, text, panel, button, hitButton, clear, bar, fit } from '../ui/draw.js';
 import { makeHack, hackOptions, hackAct, neighbours } from '../world/hack.js';
 import { checkInfo, checkChance, rollCheck } from '../world/checks.js';
 import { HACK_RULES } from '../data/world/cyberspace.js';
@@ -17,6 +17,7 @@ const KIND_COL = { entry: 'h', open: '4', ice: 'f', trap: 'c', cache: 'a', core:
 export function openHack(game, o) {
   const save = game.save;
   const h = makeHack(o.tier || 1, { turnsBonus: o.turnsBonus || 0, trapsVisible: !!o.trapsVisible, trace: o.trace || 0 });
+  if (o.dc) h.dc = o.dc; // real-world hacks: HACK_EFFECTS.dc
   const S = { h, sel: null, buttons: [], hover: null, time: 0, pos: [], result: null };
   const hasPick = () => (save.hero.items?.['cs-ice-pick'] || 0) > 0;
   const best = (skills) => skills.map((s) => checkInfo(o.member, s, o.adv || null)).sort((a, b) => checkChance(b, h.dc) - checkChance(a, h.dc))[0];
@@ -76,7 +77,7 @@ export function openHack(game, o) {
       clear(ctx, W, H);
       ctx.fillStyle = C.i;
       for (let y = Math.floor(S.time * 20) % 6; y < H; y += 6) ctx.fillRect(0, y, W, 1);
-      text(ctx, `${t('hack.title')}: ${o.title || ''}`, W / 2, 24, C.h, FONT_XL, 'center');
+      text(ctx, fit(ctx, `${t('hack.title')}: ${o.title || ''}`, W - 80, FONT_L), W / 2, 30, C.h, FONT_L, 'center');
       text(ctx, `${t('hack.turns')}: ${h.turns}/${h.maxTurns}`, 40, 96, C['5'], FONT_B);
       text(ctx, t('hack.trace'), W - 360, 96, C.n, FONT_B);
       bar(ctx, W - 240, 100, 200, 10, Math.min(h.trace, h.cap), h.cap, 'mrl');

@@ -28,7 +28,7 @@ export function slotSummary(x) {
 
 export function startFromSave(game, save) {
   game.save = save;
-  if (save.cyberspace?.pending || (save.cyberspace && !save.cyberspace.nodes)) import('../scenes/cyberspace.js').then((m) => m.startCyberspace(game, save.cyberspace));
+  if (save.cyberspace?.pending || (save.cyberspace && !save.cyberspace.nodes && !save.cyberspace.mode)) import('../scenes/cyberspace.js').then((m) => m.startCyberspace(game, save.cyberspace));
   else if (save.cyberspace) import('../scenes/cyberspace.js').then((m) => game.setScene(m.createCyberspaceScene()));
   else import('../scenes/roam.js').then((m) => game.setScene(m.createNodeScene(save.location)));
 }

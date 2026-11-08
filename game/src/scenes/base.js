@@ -2,6 +2,7 @@
 // materials + days), power indicator, customisation, rest (medbay / quarters), stash (panels «gear»),
 // workbench quality upgrade, radio rumor, defence battle of a pending raid. Logic — world/base.js.
 // createBaseScene(back) — back: the location scene to return to (game.resume) or null (location re-created).
+import { openExpeditions } from '../ui/expedition-ui.js';
 import { t } from '../data/text/index.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear } from '../ui/draw.js';
 import { play } from '../audio/sfx.js';
@@ -139,6 +140,7 @@ export function createBaseScene(back = null) {
       options.push({ label: `${name(p)}: ${t('base.talk')}`, run: (g) => talk(g, p) });
     }
     for (const p of act) options.push({ label: `${name(p)}: ${t('base.leave')}`, run: (g) => { sendToReserve(g.save, p.npc); again(g); } });
+    if (idle.length) options.push({ label: t('exp.menu'), sub: t('exp.menuSub'), run: (g) => openExpeditions(g, (g2) => { persist(g2); layout(g2); }) }); // expeditions.md
     // romance.md: «Поговорить наедине» with anyone at the base
     if (talkCandidates(sv, 'base').length) options.push({ label: t('rom.talk'), run: (g) => openPrivateTalk(g, { where: 'base', back: self, done: (g2) => { persist(g2); layout(g2); } }) });
     options.push({ label: t('loc.close'), run: (g) => layout(g) });
