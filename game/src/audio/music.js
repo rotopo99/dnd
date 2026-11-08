@@ -976,7 +976,7 @@ function softKey(tr, t, midi, dur, peak = 0.05) {
   mod.stop(t + 0.4);
 }
 
-/** Final boss chant: two voices an octave-ish apart, vowels a–o–u–o every two bars, pitch steps up in between. */
+/** Final boss chant: two voices a third apart, vowels a–o–u–o every two bars, pitch steps up in between. */
 function chant(tr, t, b) {
   const x = tr.st;
   const sl = Math.floor(b / 2) % 4;
@@ -1152,6 +1152,116 @@ const TRACKS = {
     },
   },
 
+  // Final boss: 138 BPM, organ pad, a two-voice chant a–o–u on formants, bells, heavy drums.
+  // Intro (organ and chant), lift (kick, snare, bass), climax (rise, hats, metal, full drums), final hits.
+  'boss-final': {
+    init(tr, t) {
+      pad(tr, t, { wave: 'organ', n: 2, peak: 0.05, cut: 1000, lfo: 0.06, depth: 260, attack: 3, chord: FINAL_CH[0] });
+      tr.st.v1 = voxStart(tr, t + 0.05, 0.03, FINAL_CH[0][1] + 12);
+      tr.st.v2 = voxStart(tr, t + 0.05, 0.025, FINAL_CH[0][0] + 12);
+    },
+    gen(tr, t) {
+      const st = S(138, 4);
+      const s = tr.step;
+      const pos = s % 16;
+      const b = barOf(tr, s, 32);
+      const sec = FINAL_SEC(b);
+      if (pos === 0) {
+        if (b % 4 === 0) chordAt(tr, t, FINAL_CH, Math.floor(b / 4) % 4);
+        if (b % 2 === 0) chant(tr, t, b);
+        if (b % 8 === 0) {
+          voxLevel(tr.st.v1, t, [0.6, 0.85, 1, 1][sec]);
+          voxLevel(tr.st.v2, t, [0.5, 0.8, 1, 1][sec]);
+        }
+      }
+      const p = FINAL_P[sec];
+      drumStep(tr, t, pos, st, p, b % 4 === 3);
+      layers(tr, t, pos, b, p, { st });
+      return st;
+    },
+  },
+
+  // Romance date: 70 BPM, warm string pad, soft keys for the melody, quiet vocalise "а-а" with vibrato,
+  // brushes on 2 and 4 (no kick).
+  romance: {
+    init(tr, t) {
+      pad(tr, t, { wave: 'triangle', n: 3, peak: 0.04, cut: 1500, lfo: 0.15, depth: 250, attack: 4, detune: 9, chord: ROM[0] });
+      tr.st.v1 = voxStart(tr, t + 0.05, 0.022, ROM[0][1] + 12);
+      voxLevel(tr.st.v1, t + 0.05, 1);
+    },
+    gen(tr, t) {
+      const st = S(70, 4);
+      const s = tr.step;
+      const pos = s % 16;
+      const b = barOf(tr, s, 16);
+      const bi = b % 4;
+      if (pos === 0) {
+        chordAt(tr, t, ROM, bi);
+        if (b % 2 === 0) pitchTo(tr.st.v1, t, tr.st.chord[1] + 12 + tr.st.shift + (bi === 2 ? 2 : 0), 0.12);
+      }
+      for (const n of ROM_MEL[bi]) {
+        if (n[1] === pos) softKey(tr, t, tr.st.chord[0] + 12 + tr.st.shift + n[0], n[2] * st * 1.6, 0.05);
+      }
+      if (pos === 4 || pos === 12) hiss(tr, t, { type: 'bandpass', f: 4500, q: 0.9, dur: 0.14, peak: 0.01, attack: 0.02, drum: true });
+      return st;
+    },
+  },
+
+  // Farewell and death: 60 BPM, organ pad, cello melody (half-bar steps), lonely voice "о", then a second
+  // voice joins (choir). The track fades out by bar 20 and stops its sources at bar 24 (silence).
+  tragic: {
+    init(tr, t) {
+      pad(tr, t, { wave: 'organ', n: 2, peak: 0.04, cut: 900, lfo: 0.05, depth: 150, attack: 6, detune: 6, chord: TRAG[0] });
+      tr.st.cel = cello(tr, t + 0.05, TRAG[0][0], 0.05);
+      tr.st.v1 = voxStart(tr, t + 0.05, 0.02, TRAG[0][1] + 12);
+      tr.st.v2 = voxStart(tr, t + 0.05, 0.016, TRAG[0][0] + 12);
+      voxVowel(tr.st.v1, t, 'o');
+      voxVowel(tr.st.v2, t, 'o');
+    },
+    gen(tr, t) {
+      const st = S(60, 4);
+      const s = tr.step;
+      const pos = s % 16;
+      const b = Math.floor(s / 16);
+      const x = tr.st;
+      if (b >= 24) {
+        if (!x.done) {
+          x.done = true;
+          tr.drones.forEach((n) => {
+            try {
+              n.stop(t + 0.02);
+            } catch {
+              /* already stopped */
+            }
+          });
+        }
+        return st;
+      }
+      if (pos === 0) {
+        chordAt(tr, t, TRAG, b % 4);
+        if (b % 2 === 0) {
+          const off = TRAG_VOX[Math.floor(b / 2) % 4];
+          pitchTo(x.v1, t, x.chord[1] + 12 + off, 0.15);
+          pitchTo(x.v2, t, x.chord[0] + 12 + off, 0.15);
+        }
+        if (b === 4) voxLevel(x.v1, t, 1);
+        if (b === 8) voxLevel(x.v2, t, 0.8);
+        if (b === 16) {
+          voxLevel(x.v1, t, 1);
+          voxLevel(x.v2, t, 1);
+        }
+        if (b === 20) {
+          voxLevel(x.v1, t, 0);
+          voxLevel(x.v2, t, 0);
+          if (x.cel) x.cel.out.gain.setTargetAtTime(0, t, 2);
+          if (tr.pad) tr.pad.gain.gain.setTargetAtTime(0, t, 2);
+        }
+      }
+      if (x.cel && (pos === 0 || pos === 8)) pitchTo(x.cel, t, x.chord[pos === 0 ? 0 : 2], 0.15);
+      return st;
+    },
+  },
+
   // Digital: triangle arpeggio on a scale picked per 4 bars, glitch bursts, soft pulse. No square.
   cyberspace: {
     init(tr, t) {
@@ -1213,7 +1323,10 @@ export const TRACK_IDS = Object.freeze(Object.keys(TRACKS));
 //   'cyberspace' game/src/scenes/cyberspace.js    createCyberspaceScene enter
 //   'tension'    game/src/scenes/world-map.js and location.js, when exodus mark is 5 (last timer mark;
 //                                                 see game/src/world/exodus.js exodusMark)
+//   'boss-final' game/src/scenes/battle.js    finale fight (w-cc-finale) only
+//   'romance'    game/src/data/romance.js     date scene (romance.date)
+//   'tragic'     romance.js farewell, breakup, death (romance.death) and tragic epilogue
 //   stopMusic(1500): game end (cyberspace defeat, exodus-zero finale, save deletion) and the pause
 //   menu's "В главное меню" (game/src/ui/save-ui.js, onMenu). setMusicVolume(v): settings screen.
 //   Calls before the first user gesture are stored and start on that gesture by themselves.
-//   Audio files: put game/assets/music/<id>.mp3 (paths in MUSIC_FILES); see docs/MUSIC-SUNO.md.
+//   Audio files: put game/assets/music/<id>.mp3 and list the path in MUSIC_FILES (optional; all tracks are procedural).
