@@ -4,7 +4,7 @@ import { TALENTS } from './data/talents.js';
 import { NPCS } from './data/npcs.js';
 import { LOCATIONS, START_LOCATION, START_DISCOVERED, QUESTS, ITEMS, resolveLocation, starterKit } from './world/data.js';
 import { FACTION_IDS, startMet, normFaction } from './world/reputation.js';
-import { locFaction } from './world/state.js';
+import { locFaction, ensureCompanionXp } from './world/state.js';
 import { npcRepFaction } from './world/data.js';
 import { WORLD_RULES as R } from './data/world/rules.js';
 import { MAX_LEVEL } from './rules/progression.js';
@@ -97,7 +97,12 @@ export function normalizeSave(s, data) {
     approval: num(p.approval), talents: arr(p.talents).filter((id) => TALENTS[id]),
     // v4: companion gear (old saves — the class starter kit)
     equipment: normEquipment(p.equipment, data.CLASSES[NPCS[p.npc].cls] ? NPCS[p.npc].cls : 'zabivnoy', NPCS[p.npc].path),
+    // party talents: own combat loadout and unspent level-ups (old saves — migrated by ensureCompanionXp below)
+    ...(Array.isArray(p.activeCombat) ? { activeCombat: p.activeCombat.filter((id) => TALENTS[id]) } : {}),
+    ...(p.pendingAsi != null ? { pendingAsi: uniq(arr(p.pendingAsi).filter((l) => Number.isInteger(l))) } : {}),
+    ...(p.pendingTalents != null ? { pendingTalents: Math.max(0, num(p.pendingTalents)) } : {}),
   }));
+  for (const p of out.party) ensureCompanionXp(out, p, data);
   // v3: v1.0 ids are aliases on the canon map → stored as their real node (resolveLocation)
   const loc = (id) => (LOCATIONS[id] ? resolveLocation(id) : null);
   const locs = (a) => uniq(arr(a).map(loc).filter(Boolean));

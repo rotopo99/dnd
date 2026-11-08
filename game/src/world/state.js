@@ -260,6 +260,7 @@ export function recruit(save, npcId) {
   if (old) Object.assign(old, { state, approval: old.state === 'left' ? CR.loyalty.returnLoyalty : Math.max(old.approval, CR.loyalty.returnLoyalty), warned: false, waitDay: save.day });
   else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: COMPANIONS[npcId]?.loyalty?.start || 0, level: save.hero.level, xp: xpForLevel(save.hero.level), waitDay: save.day, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false, equipment: companionKit(n), bag: null });
   bagOf(save.party.find((p) => p.npc === npcId));
+  ensureCompanionXp(save, save.party.find((p) => p.npc === npcId)); // unspent level-ups up to the join level (picked like the hero's)
   save.npcs[npcId] = { ...(save.npcs[npcId] || {}), met: true, recruited: true };
   journal(save, tf('fx.joined', { name: n.name }));
   return state;
