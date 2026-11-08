@@ -56,6 +56,8 @@ import {
 } from '../world/crime.js';
 import { CRIME_RULES, ATTACK_RULES } from '../data/world/crime.js';
 import { openLoot } from './world-battle.js';
+import { openRestMenu, canCampAt } from './rest.js';
+import { restState } from '../world/rest.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
@@ -447,14 +449,7 @@ export function createLocationScene(rawId) {
     }
     // services
     const svc = loc.services.filter((x) => !serviceOff(sv, loc, x));
-    if (svc.includes('rest')) {
-      const free = tierAtLeast(tier, 'friendly');
-      const cost = free ? 0 : SERVICE_PRICES.rest(sv.hero.level);
-      out.push({ label: t('loc.rest'), sub: cost ? `${cost} ${t('world.credits')} · 100%` : `${t('loc.free')} · 100%`, disabled: sv.hero.credits < cost,
-        run: (g) => { sv.hero.credits -= cost; doRest(g, 1); } });
-    } else if (loc.region !== 'harmony' && loc.kind !== 'boss') {
-      out.push({ label: t('loc.camp'), sub: t('loc.campSub'), run: (g) => doRest(g, FIELD_CAMP.restore, true) });
-    }
+    if (canCampAt(locId)) out.push(restAction(sv, svc, tier));
     if (['town', 'hub'].includes(loc.kind) || (atBase(sv) && baseModActive(sv, 'workbench').ok)) out.push({ label: t('skillUse.disassemble'), sub: t('skillUse.disassembleSub'), run: (g) => openDisassemble(g) });
     if (svc.includes('heal')) out.push({ label: t('loc.heal'), sub: t('loc.healSub'), run: (g) => { restParty(sv, g.data, 1); g.toast(t('loc.healed'), 'j'); refresh(g); } });
     const cyber = sv.party.filter((p) => p.state === 'cyberspace');
@@ -474,50 +469,12 @@ export function createLocationScene(rawId) {
     return out;
   }
 
-  function doRest(game, frac, field) {
-    const sv = save(game);
-    const party = ms(game);
-    const has = (f) => hasWorldFlag(party, f);
-    // rest-heal: a field camp restores everything; rest-mrl: MRL fully
-    restParty(sv, game.data, field && has('rest-heal') ? 1 : frac);
-    // third-exodus.md: a rest costs a day of the Exodus timer
-    const ex = passDays(sv, EXODUS.restDays);
-    toastAll(game, ex.out);
-    toastAll(game, waitingLoyalty(sv)); // companions-scenes.md: waiting on a hub costs loyalty
-    toastAll(game, restLoyalty(sv)); // soft-incompatible pairs at the fire
-    if (ex.zero) { persist(game); startExodusZero(game); return; }
-    if (field && has('rest-mrl') && !has('rest-heal')) { sv.hero.mrl = null; for (const p of activeCompanions(sv)) p.mrl = null; }
-    if (has('free-medkit') || has('herb-medkit') || has('multitool')) sv.hero.items.medkit = (sv.hero.items.medkit || 0) + 1;
-    delete sv.flags['used:disguise'];
-    delete sv.flags['used:silent-pick'];
-    S.canSwap = true;
-    game.toast(frac >= 1 ? t('loc.rested') : t('loc.camped'), 'j');
-    toastAll(game, restDepartures(sv));
-    refresh(game);
-    const ev = eventsFor(sv, locId, 'rest')[0];
-    if (ev) return runEvent(game, ev, (g) => again(g));
-    // N7 Survival: a good camp — rations and no encounter roll
-    if (field) {
-      const CA = SKILL_RULES.economy.camp;
-      const r = autoCheck(party, [CA.skill], CA.dc);
-      if (r.success) {
-        giveItem(sv, CA.item, CA.n);
-        game.toast(`${r.member.name}: ${t('skillUse.camp')}`, 'j');
-        persist(game);
-        return;
-      }
-    }
-    if (field && FIELD_CAMP.encounterRoll) {
-      // as a travel day (world.md §2): d20 ≤ 3 × danger + mod, the encounter through the shared handler
-      const th = encounterThreshold(sv, { to: locId }, game.data);
-      if (!th.need) return;
-      const roll = 1 + Math.floor(Math.random() * 20);
-      game.toast(`${t('world.encounterRoll')}: d20 = ${roll} ${t('map.vs')} ≤ ${th.need}`, roll <= th.need ? 'c' : '4');
-      if (roll <= th.need) {
-        const e = pickEncounter(sv, loc.region);
-        if (e) runEncounter(game, e, loc.region, self, () => { game.resume(self); refresh(game); });
-      }
-    }
+  /** Rest (scenes/rest.js): «Привал» — short / long / lodging (a «rest» service: a night for credits, free when friendly). */
+  function restAction(sv, svc, tier) {
+    const lodging = svc.includes('rest') ? { cost: tierAtLeast(tier, 'friendly') ? 0 : SERVICE_PRICES.rest(sv.hero.level) } : null;
+    const st = restState(sv);
+    return { label: t('rest.button'), sub: `${t('rest.buttonSub')} · ${st.short}/${st.max}`,
+      run: (g) => openRestMenu(g, { back: self, locId, lodging, done: (g2) => { S.canSwap = true; refresh(g2); }, again }) };
   }
 
   function rumor(game) {

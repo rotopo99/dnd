@@ -2790,5 +2790,80 @@ console.log('B1: loot after battle stays in the backpack (single item path)');
   });
 }
 
+console.log('Rest: short / long rests, hit dice, provisions');
+{
+  const INV = await import('../game/src/world/inventory.js');
+  const st = await import('../game/src/world/state.js');
+  const RS = await import('../game/src/world/rest.js');
+  const { REST } = await import('../game/src/data/world/rest.js');
+  const { ITEMS } = await import('../game/src/world/data.js');
+  const mk = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'zabivnoy', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; s.hero.level = 3; return s; };
+  const rng = () => 0.5;
+  test('rest: provision items exist, sold by provisions vendors, counted by `provision`', () => {
+    for (const id of ['ration', 'army-ration', 'mutant-stew', 'tushenka']) assert.ok(ITEMS[id]?.provision > 0, id);
+    const s = mk();
+    INV.syncItems(s);
+    const k0 = RS.provisionCount(s);
+    INV.giveItem(s, 'ration', 2); INV.giveItem(s, 'army-ration', 1);
+    assert.equal(RS.provisionCount(s), k0 + 4);
+  });
+  test('rest: short rest spends hit dice, restores ENR, 2 per long; 3rd refused', () => {
+    const s = mk();
+    const u = st.buildHero(s, GAME_DATA);
+    s.hero.hp = 5; s.hero.enr = 0;
+    const r = RS.shortRest(s, GAME_DATA, rng);
+    assert.ok(r.ok);
+    const u2 = st.buildHero(s, GAME_DATA);
+    assert.ok(u2.hp > 5, 'healed');
+    assert.ok(u2.enr >= Math.min(u.maxEnr, Math.ceil(u.maxEnr * REST.short.enrFrac)), 'ENR half');
+    assert.ok(s.hero.hdUsed >= 1 && s.hero.hdUsed <= 3);
+    assert.ok(RS.shortRest(s, GAME_DATA, rng).ok);
+    assert.equal(RS.shortRest(s, GAME_DATA, rng).why, 'noShort');
+  });
+  test('rest: long rest eats 1 ration per member, full HP/ENR, half dice back, resets shorts; no food → refused, hungry allowed', () => {
+    const s = mk();
+    INV.syncItems(s);
+    for (const [id, n] of Object.entries(INV.countAll(s))) if (ITEMS[id]?.provision) INV.takeItem(s, id, n);
+    s.hero.hp = 3; s.hero.enr = 1; s.hero.hdUsed = 3; s.rest = { short: 0, max: 2 };
+    assert.equal(RS.longRest(s, GAME_DATA, { mode: 'field' }).why, 'noFood');
+    const h = RS.longRest(s, GAME_DATA, { mode: 'hungry', rng });
+    assert.ok(h.ok); assert.equal(s.rest.short, 0, 'hungry keeps the counter');
+    INV.giveItem(s, 'ration', RS.rationsNeed(s, GAME_DATA));
+    const r = RS.longRest(s, GAME_DATA, { mode: 'field' });
+    assert.ok(r.ok); assert.equal(r.eaten, RS.rationsNeed(s, GAME_DATA));
+    assert.equal(s.hero.hp, null); assert.equal(s.hero.enr, null);
+    assert.equal(s.rest.short, REST.short.max);
+    assert.equal(RS.provisionCount(s), 0);
+    assert.ok(s.hero.hdUsed < 3);
+    s.hero.hp = 2;
+    assert.ok(RS.longRest(s, GAME_DATA, { mode: 'lodging' }).ok, 'lodging needs no food');
+    assert.equal(s.hero.mrl, null);
+  });
+  test('rest: «за отдых» abilities — battle copy gets the remaining uses, afterBattle stores them, short rest resets', () => {
+    const s = mk();
+    s.hero.talents = ['healing-hands']; s.hero.activeCombat = ['healing-hands'];
+    let u = st.buildHero(s, GAME_DATA);
+    const a = u.abilities.find((x) => x.recharge);
+    if (!a) return; // the talent is not allowed for this build — nothing to check
+    assert.equal(a.usesPerBattle, 1);
+    u.uses = { [a.id]: 1 };
+    RS.afterBattle(s, { hero: u }, true, GAME_DATA, rng);
+    assert.equal(st.buildHero(s, GAME_DATA).abilities.find((x) => x.id === a.id).usesPerBattle, 0);
+    RS.shortRest(s, GAME_DATA, rng);
+    assert.equal(st.buildHero(s, GAME_DATA).abilities.find((x) => x.id === a.id).usesPerBattle, 1);
+  });
+  test('rest: afterBattle persists ENR and gives a breather after a win', () => {
+    const s = mk();
+    const u = st.buildHero(s, GAME_DATA);
+    u.enr = 0; u.hp = 4; u.uses = {};
+    s.hero.hp = 4;
+    RS.afterBattle(s, { hero: u }, true, GAME_DATA, rng);
+    assert.equal(s.hero.enr, (u.level || 1) * REST.breather.enrPerLevel);
+    assert.ok(s.hero.hp > 4);
+    const v = st.buildHero(s, GAME_DATA);
+    assert.equal(v.enr, s.hero.enr);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -26,6 +26,10 @@ import { hotspot } from '../ui/tooltip.js';
 import { openPauseMenu } from '../ui/save-ui.js';
 import { nodeMark, closedLoc, TONE_COLOR } from '../world/consequences.js';
 import { hunterEncounter, hunterBonus } from '../world/crime.js';
+import { openRestMenu, canCampAt } from './rest.js';
+import { restState, provisionCount } from '../world/rest.js';
+
+const restHud = (sv) => { const st = restState(sv); return tf('rest.hud', { n: st.short, max: st.max, food: provisionCount(sv) }); };
 
 const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
 
@@ -148,6 +152,12 @@ export function createWorldMapScene() {
       tip: none ? { title: t('base.toBase'), lines: [{ text: t('base.noRoute'), color: 'c' }] } : null };
   }
 
+  /** «Привал» (Z): the shared rest window at the current node (scenes/rest.js); grey where a camp is impossible. */
+  function restButton(game) {
+    const no = !canCampAt(game.save.location);
+    return { id: 'rest', label: t('rest.button'), key: 'Z', w: 100, disabled: no, reason: no ? t('rest.notHere') : null };
+  }
+
   function layout(game) {
     const W = game.width, H = game.height;
     S.area = { x: 0, y: TOP, w: W, h: H - TOP - BOTTOM };
@@ -156,6 +166,7 @@ export function createWorldMapScene() {
       { id: 'zoomOut', label: '−', key: '-', w: 44 }, { id: 'zoomIn', label: '+', key: '+', w: 44 }, { id: 'center', label: t('map.center'), key: 'C', w: 110 },
       { id: 'night', label: `${t('map.night')}: ${S.night ? t('party.on') : t('party.off')}`, key: 'N', selected: S.night },
       { id: 'enter', label: t('map.enter'), key: 'Enter' },
+      restButton(game), // rest: «Привал» (Z)
       ...(baseOpen(game.save) ? [baseButton(game)] : []), // world-consequences.md ч.3
       { id: 'party', label: t('panel.party'), key: 'P' },
       { id: 'rep', label: t('panel.rep'), key: 'R' },
@@ -311,6 +322,7 @@ export function createWorldMapScene() {
     if (id === 'center') return centerOn(save(game).location);
     if (id === 'night') { S.night = !S.night; layout(game); return; }
     if (id === 'enter') return enterLocation(game);
+    if (id === 'rest') return S.travel ? undefined : openRestMenu(game, { back: self, done: (g) => layout(g) });
     if (id === 'base') return S.travel ? undefined : startTravel(game, BASE_LOC);
     if (id === 'toMenu') { saveGame(save(game)); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
     if (id === 'menu') { if (S.travel) return; saveGame(save(game)); return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') }); }
@@ -583,6 +595,8 @@ export function createWorldMapScene() {
       if (inp.wasPressed('Minus') || inp.wasPressed('NumpadSubtract')) nav(game, 'zoomOut');
       if (inp.wasPressed('KeyC')) nav(game, 'center');
       for (const b of S.buttons) if (b.id === 'enter' || b.id === 'menu') b.disabled = !!S.travel;
+      const rb = S.buttons.find((b) => b.id === 'rest');
+      if (rb) { rb.disabled = !!S.travel || !canCampAt(sv.location); rb.reason = S.travel ? t('rest.travel') : t('rest.notHere'); }
       S.hover = hitButton(S.buttons, m);
       if (m.clicked && !S.hover && m.y >= S.area.y && m.y < S.area.y + S.area.h) S.drag = { x: m.x, y: m.y, cx: S.cam.x, cy: S.cam.y, moved: false };
       if (S.drag && m.down) {
@@ -612,6 +626,7 @@ export function createWorldMapScene() {
       }
       if (inp.wasPressed('Enter')) nav(game, 'enter');
       else if (inp.wasPressed('KeyN')) nav(game, 'night');
+      else if (inp.wasPressed('KeyZ')) { const b = S.buttons.find((x) => x.id === 'rest'); if (b?.disabled) game.toast(b.reason, 'c'); else nav(game, 'rest'); }
       else if (inp.wasPressed('KeyH') && baseOpen(sv)) { const b = S.buttons.find((x) => x.id === 'base'); if (b?.disabled) game.toast(b.reason, 'c'); else nav(game, 'base'); }
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
@@ -634,8 +649,11 @@ export function createWorldMapScene() {
       // top bar
       ctx.fillStyle = C['0']; ctx.fillRect(0, 0, W, TOP);
       text(ctx, t('map.title'), 24, 12, C.h, FONT_L);
-      const hudLine = `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} · ${t('map.here')}: ${LOCATIONS[sv.location].name}`;
+      const hudPre = `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} · `;
+      const hudLine = `${hudPre}${restHud(sv)} · ${t('map.here')}: ${LOCATIONS[sv.location].name}`;
       text(ctx, hudLine, 220, 8, C.b, FONT_B);
+      ctx.font = FONT_B;
+      hotspot(220 + ctx.measureText(hudPre).width, 8, ctx.measureText(restHud(sv)).width, 18, { title: t('rest.title'), lines: [t('rest.hudTip')] });
       // third-exodus.md: «Исход: N дн.» after the prologue; red at ≤ 30%, blinking at ≤ 5%
       const ex = exodusHud(sv);
       if (ex) {

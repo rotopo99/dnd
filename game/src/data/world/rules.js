@@ -1,7 +1,7 @@
 // Numbers of the world UI rules (world.md §2–§6, talents.md). Owner of balance — game-designer / balance-tester;
 // the world code reads only these constants (no magic numbers in scenes).
 export const WORLD_RULES = {
-  start: { credits: 50, items: { medkit: 1 }, prologueXp: 350 },
+  start: { credits: 50, items: { medkit: 1, ration: 2 }, prologueXp: 350 },
   gate: { sneakDc: 14, talkSkills: ['persuasion', 'deception'], talkDc: 13, toll: 20, parleyDc: 14 },
   prices: { hostile: 1.5, suspicious: 1.25, neutral: 1, friendly: 0.9, ally: 0.8, sell: 0.5 },
   rumorPrice: 10,

@@ -35,6 +35,7 @@ export const REST_TEXT = {
   'rest.travel': 'В пути привал нельзя.',
   'rest.hud': 'Отдых {n}/{max} · Еда {food}',
   'rest.hudTip': 'Короткие отдыхи до длинного и рационы в сумках. Привал — клавиша Z.',
+  'rest.perRest': 'за отдых',
   'rest.perShort': 'за короткий отдых',
   'rest.perLong': 'за длинный отдых',
 };

@@ -71,7 +71,8 @@ export function abilityTip(a) {
   if (a.cost) parts.push(`${a.cost} ${t('battle.cost')}`);
   if (a.range != null) parts.push(a.range === 'weapon' ? `${t('battle.range')}: ${t('tip.weaponRange')}` : a.range ? `${t('battle.range')} ${a.range}` : t('battle.self'));
   if (a.area) parts.push(`${t('battle.area')}: ${t(`area.${a.area.shape}`)} ${a.area.size || 1}`);
-  if (a.usesPerBattle) parts.push(`${t('tip.perBattle')} ${a.usesPerBattle}`);
+  if (a.recharge) parts.push(`${a.usesPerRest ?? a.usesPerBattle ?? 1} ${t(a.recharge === 'long' ? 'rest.perLong' : 'rest.perShort')}`);
+  else if (a.usesPerBattle) parts.push(`${t('tip.perBattle')} ${a.usesPerBattle}`);
   const lines = [];
   if (parts.length) lines.push({ text: parts.join(' · '), color: 'b' });
   if (a.desc) lines.push(a.desc);

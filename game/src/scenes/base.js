@@ -20,6 +20,8 @@ import { EXODUS } from '../data/world/exodus.js';
 import { countAll, addInst, makeInst, syncItems, refreshView, bagKeys, holderOf, bagOf, isGear } from '../world/inventory.js';
 import { openCheck } from '../ui/checks-ui.js';
 import { saveGame } from '../save.js';
+import { openRestMenu } from './rest.js';
+import { restState, provisionCount } from '../world/rest.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const SMALL = '12px monospace';
@@ -71,7 +73,7 @@ export function createBaseScene(back = null) {
     // actions
     const plan = baseRestPlan(sv);
     const acts = [
-      { kind: 'rest', label: t('base.rest'), sub: tf('base.restSub', { pct: Math.round(plan.frac * 100) }), key: 'R' },
+      { kind: 'rest', label: t('base.rest'), sub: tf('rest.hud', { n: restState(sv).short, max: restState(sv).max, food: provisionCount(sv) }), key: 'R' },
       { kind: 'stash', label: t('base.stash'), sub: t('base.stashSub'), key: 'I' },
       { kind: 'bench', label: t('base.bench'), sub: t('base.benchSub'), disabled: !modFx(sv, 'workbench')?.qualityUp, reason: modActive(sv, 'workbench').why },
       { kind: 'rumor', label: t('base.radioRumor'), sub: t('base.radioRumorSub'), disabled: !modFx(sv, 'radio')?.rumorPerDay || sv.flags[`base-rumor:${sv.day}`] },
@@ -112,10 +114,15 @@ export function createBaseScene(back = null) {
     layout(game);
   }
 
+  /** Rest at the base = a long rest through the shared window (scenes/rest.js, mode 'base': rations from the stash count). */
   function rest(game) {
+    openRestMenu(game, { mode: 'base', back: self, afterLong: baseAfterRest, done: (g) => layout(g) });
+  }
+
+  /** Base extras after a 1-day rest: medbay (withdrawal, souls, medkits), quarters loyalty, base time. */
+  function baseAfterRest(game) {
     const sv = game.save;
     const plan = baseRestPlan(sv);
-    restParty(sv, game.data, plan.frac);
     const med = modFx(sv, 'medbay');
     if (med?.withdrawalClear) { delete sv.hero.withdrawal; for (const p of sv.party) delete p.withdrawal; }
     if (plan.revive) {
@@ -126,13 +133,8 @@ export function createBaseScene(back = null) {
     }
     if (plan.medkits) { syncItems(sv); addInst(sv, makeInst('medkit'), plan.medkits); refreshView(sv); game.toast(t('base.medkit'), 'j'); }
     for (const l of plan.loyalty) toastAll(game, addLoyalty(sv, l.npc, l.d));
-    const ex = passDays(sv, EXODUS.restDays);
-    toastAll(game, ex.out);
     toastAll(game, baseTick(sv));
     game.toast(t('base.restDone'), 'j');
-    persist(game);
-    if (ex.zero) return import('./exodus-zero.js').then((m) => m.startExodusZero(game));
-    layout(game);
   }
 
   /** Workbench L3: junk → working → masterwork, Tech check, once per item instance. */

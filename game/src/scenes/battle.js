@@ -229,7 +229,8 @@ export function createBattleScene(opts) {
       if (why === 'action' && a.action === 'bonus') why = 'bonus';
       if (!why && !(S.specs[a.id] || []).length) why = 'noTargets';
       const parts = [a.cost ? `${a.cost} ${t('battle.cost')}` : t('battle.free')];
-      if (a.usesPerBattle) parts.push(`${a.usesPerBattle - (hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
+      if (a.recharge) parts.push(`${Math.max(0, a.usesPerBattle - (hero.uses?.[a.id] || 0))}/${a.usesPerRest} ${t('rest.perRest')}`); // rest: «за отдых»
+      else if (a.usesPerBattle) parts.push(`${a.usesPerBattle - (hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
       btns.push({
         id: `ab:${a.id}`, a, label: a.name, sub: parts.join(' · '), subColor: a.cost ? C.b : undefined,
         key: ABILITY_KEYS[n - 1] || '', disabled: !!why, reason: why === 'bonus' ? t('battle.noBonus') : reasonOf(why),

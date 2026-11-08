@@ -671,7 +671,8 @@ function abilityCard(ctx, S, btn, x, y, w) {
     const r = abilityRange(hero, a);
     parts.push(r ? `${t('battle.range')} ${r}` : t('battle.self'));
     if (a.area) parts.push(`${t('battle.area')}: ${t(`area.${a.area.shape}`)} ${a.area.size}`);
-    if (a.usesPerBattle) parts.push(`${(hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
+    if (a.recharge) parts.push(`${(hero.uses?.[a.id] || 0)}/${a.usesPerBattle} · ${t(a.recharge === 'long' ? 'rest.perLong' : 'rest.perShort')}`);
+    else if (a.usesPerBattle) parts.push(`${(hero.uses?.[a.id] || 0)}/${a.usesPerBattle}`);
     y = textBlock(ctx, parts.join(' · '), x, y, w, C.b, FONT, LINE, 2);
     y = textBlock(ctx, a.desc || '', x, y + 2, w, C['4'], FONT, LINE, 7);
   } else if (btn.id === 'attack' && hero.weapon) {
