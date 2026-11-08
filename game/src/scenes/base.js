@@ -195,7 +195,7 @@ export function createBaseScene(back = null) {
     if (info.cost) {
       const y = r.y + 112;
       text(ctx, `→ ${tf('base.lvl', { n: info.next, max: info.max })}: ${tf('base.cost', { c: info.cost.credits })} · ${tf('base.days', { n: info.cost.days })} · ⚡${info.power}`, r.x + 10, y, sv.hero.credits >= info.cost.credits ? C.a : C.c, SMALL);
-      info.rows.forEach((row, k) => text(ctx, fit(ctx, `${ITEMS[row.id]?.name || row.id} ${row.have}/${row.need}`, r.w - 20, SMALL), r.x + 10 + (k % 2) * 148, y + 16 + Math.floor(k / 2) * 15, row.have >= row.need ? C.j : C.c, SMALL));
+      info.rows.forEach((row, k) => text(ctx, fit(ctx, `${ITEMS[row.id]?.name || row.id} ${row.have}/${row.need}`, r.w - 20, SMALL), r.x + 10, y + 16 + k * 15, row.have >= row.need ? C.j : C.c, SMALL));
     }
   }
 

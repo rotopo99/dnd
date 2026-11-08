@@ -219,7 +219,7 @@ const ru = {
   'base.lvl': 'ур. {n}/{max}', 'base.on': 'работает', 'base.off': 'не построен', 'base.noPower': 'нет питания', 'base.building': 'строится',
   'base.build': 'Построить ур. {n}', 'base.max': 'Максимум', 'base.why.busy': 'идёт другая стройка', 'base.why.lis': 'нужен ИИ «Лис»',
   'base.why.credits': 'мало кредитов', 'base.why.items': 'не хватает материалов', 'base.days': '{n} дн.', 'base.cost': '{c} кр.',
-  'base.custom': 'Обустройство', 'base.owned': 'есть', 'base.rest': 'Отдых', 'base.restSub': '{pct}% ЗДР/МРЛ · 1 день',
+  'base.custom': 'Обустройство', 'base.owned': 'есть', 'base.rest': 'Отдых', 'base.restSub': '{pct}% · 1 дн.',
   'base.stash': 'Схрон', 'base.stashSub': 'общий инвентарь', 'base.bench': 'Верстак', 'base.benchSub': 'улучшить качество',
   'base.radioRumor': 'Слух по рации', 'base.radioRumorSub': 'раз в день', 'base.defend': 'Оборона!', 'base.defendSub': 'бой у шлюза',
   'base.leave': 'В бункер', 'base.built': 'Стройка начата: {name} ур. {n}', 'base.restDone': 'Отдых на базе',

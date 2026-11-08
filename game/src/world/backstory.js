@@ -60,6 +60,6 @@ export function backstoryTip(b) {
   if (st.credits) start.push(tf('bg.credits', { n: st.credits }));
   if (start.length) lines.push({ text: tf('bg.start', { list: start.join('; ') }), color: '5' });
   for (const tp of b.topics || []) lines.push({ text: tf('bg.topic', { text: TOPIC_NOTES[tp] || tp }), color: 'b' });
-  lines.push({ text: tf('bg.drawback', { text: b.drawback?.note || '—' }), color: 'c' });
+  lines.push({ text: tf('bg.drawback', { text: b.drawback?.note || b.drawback?.trust || '—' }), color: 'c' });
   return { title: b.name, lines };
 }

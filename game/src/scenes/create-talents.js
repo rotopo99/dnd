@@ -12,7 +12,7 @@ import { createDetails, updateDetails, drawDetails as drawDetailsPanel } from '.
 import { talentTip, abilityTip } from '../ui/tips.js';
 
 const ALIGNMENTS = ['good', 'neutral', 'evil'];
-const ALIGN_W = { good: 76, neutral: 112, evil: 64 };
+const ALIGN_W = { good: 70, neutral: 128, evil: 54 };
 const BASE_W = 1280, BASE_H = 720;
 const SLOT_ROWS = 8;
 

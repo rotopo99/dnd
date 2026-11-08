@@ -11,7 +11,7 @@ export function openBackstoryPick(game, { race, current, onPick }) {
   const opts = [{ label: t('bg.none'), sub: t('bg.noneSub'), selected: !current, run: (g) => onPick(g, null),
     detail: { title: t('bg.none'), lines: [t('bg.pickHint')] } }];
   for (const b of backstoryList(race)) {
-    opts.push({ label: `${b.id === current ? '● ' : ''}${b.name}`, sub: b.skills.map((s) => `+${s.bonus}`).join(' / ') + ` · ${b.drawback?.note || ''}`,
+    opts.push({ label: `${b.id === current ? '● ' : ''}${b.name}`, sub: b.skills.map((s) => `+${s.bonus}`).join(' / ') + ` · ${b.drawback?.note || b.drawback?.trust || ''}`,
       run: (g) => onPick(g, b.id), detail: backstoryTip(b) });
   }
   game.openModal({ title: t('bg.title'), lines: [t('bg.pickHint')], width: 1000, options: opts });
