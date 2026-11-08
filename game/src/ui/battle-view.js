@@ -14,6 +14,7 @@ import { resLineTip, resTip, statusTip, termTip } from './tips.js';
 import { itemTip } from './items-ui.js';
 import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp } from './battle-terrain.js';
 import { drawPin, intentText } from './unit-pin.js';
+import { drawStatusIcon } from '../assets/status-icons.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -406,19 +407,12 @@ function drawUnits(ctx, S, preview, tms) {
     if (u.maxMrl > 0) bar(ctx, bx, by + bh + 1, bw, bh, d.mrl, u.maxMrl, 'mrl');
     // status icons (Stage B: palette colour per status, max 4, then «+N»)
     let sx = bx;
-    const pip = Math.max(4, L.s * 2);
+    const pip = 14; // pixel icons (assets/status-icons.js), bare 14x14 with outline; 3 fit the bar, then «+N»
     u.statuses.forEach((s, i) => {
-      if (i > 4 || (i === 4 && u.statuses.length > 5)) return;
-      if (i === 4 || sx + pip > bx + bw) {
-        if (i < u.statuses.length) text(ctx, `+${u.statuses.length - i}`, sx, by - pip - 8, C['5'], '10px monospace');
-        sx = bx + bw + 99;
-        return;
-      }
-      const def = b.data.statuses[s.id];
-      ctx.fillStyle = C['0']; ctx.fillRect(sx - 1, by - pip - 3, pip + 2, pip + 2);
-      ctx.fillStyle = def && def.icon ? C[def.icon] : def && def.kind === 'buff' ? C.j : C.a;
-      ctx.fillRect(sx, by - pip - 2, pip, pip);
-      sx += pip + 2;
+      if (i > 3 || sx + pip > bx + bw + 2) return;
+      if (i === 3 && u.statuses.length > 3) { text(ctx, `+${u.statuses.length - 3}`, sx, by - pip - 2, C['5'], '10px monospace'); return; }
+      drawStatusIcon(ctx, s.id, sx, by - pip - 2, pip, { bare: true });
+      sx += pip;
     });
     if (d.down) text(ctx, t('battle.downTag'), px + L.cell - 2, py + 2, C.c, FONT_B, 'right');
   }
@@ -631,10 +625,11 @@ function statusChips(ctx, b, u, x, y, w, maxRows = 3) {
   list.forEach((st, i) => {
     const d = b.data.statuses[st.id];
     const s = `${d?.name || st.id}${st.turns != null ? ` ${st.turns}` : ''}${i < list.length - 1 ? ',' : ''}`;
-    const sw = ctx.measureText(s).width;
+    const sw = ctx.measureText(s).width + 16;
     if (cx + sw > x + w && cx > x) { cx = x; row++; }
     if (row >= maxRows) return;
-    text(ctx, s, cx, y + row * LINE, d?.kind === 'buff' ? C.j : C.a, FONT);
+    drawStatusIcon(ctx, st.id, cx, y + row * LINE, 14, { bare: true });
+    text(ctx, s, cx + 16, y + row * LINE, d?.kind === 'buff' ? C.j : C.a, FONT);
     hotspot(cx, y + row * LINE, sw, LINE, () => statusTip(st.id, b.data.statuses, statusExtra(b, u, st)));
     cx += sw + ctx.measureText(' ').width;
   });

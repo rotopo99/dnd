@@ -3173,5 +3173,17 @@ console.log('melee-aoe: leaps, cones, AI areas');
   });
 }
 
+// pixel icons: every status / surface has a glyph, maps are valid (assets/status-icons.js)
+{
+  const { ICON_IDS, validateStatusIcons } = await import('../game/src/assets/status-icons.js');
+  const { STATUSES } = await import('../game/src/data/effects.js');
+  const { SURFACES } = await import('../game/src/data/surfaces.js');
+  test('status icons: glyphs valid, all statuses and surfaces covered', () => {
+    assert.deepEqual(validateStatusIcons(), []);
+    for (const id of Object.keys(STATUSES)) assert.ok(ICON_IDS.includes(id), `no icon for status ${id}`);
+    for (const id of Object.keys(SURFACES)) assert.ok(ICON_IDS.includes(`surface:${id}`), `no icon for surface ${id}`);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

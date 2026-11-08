@@ -21,6 +21,21 @@ export const EXODUS = {
   encounter: { fromMark: 1, regions: ['cult', 'wilds'], mod: 1 }, // +1 к порогу встречи
   tollMult: { 2: 1.25, 3: 1.25, 4: 1.25, 5: 1.25 }, // пошлины на входах
   priceMult: { 3: 1.2, 4: 1.2, 5: 1.4 }, // цены в лавках
+  // эскалация на дорогах (метки 2–5): бои из data/enemies-exodus.js дописываются в таблицу встреч региона.
+  // cult — отряд культа (size 1 — патруль, 2 — свита с командиром), revenant — материализованные души; w — вес в таблице;
+  // minLevel — только регионы с верхним уровнем levels ≥ minLevel; onlyCult — регионы, где встречи = только эти бои.
+  roads: {
+    2: { cult: { w: 2, size: 1, minLevel: 8 } },
+    3: { cult: { w: 3, size: 1, minLevel: 8 }, revenant: { w: 2 } },
+    4: { cult: { w: 3, size: 2, minLevel: 5 }, revenant: { w: 3 } },
+    5: { cult: { w: 4, size: 2, minLevel: 1 }, revenant: { w: 3 }, onlyCult: ['cult', 'aiParty', 'wilds', 'cringegons', 'warprom', 'renegades'] },
+  },
+  // подтверждение долгого перехода: «Переход займёт N дн., до исхода M дн. Идти?» — от метки fromMark, если дней > days
+  confirm: { fromMark: 3, days: 5 },
+  // реплика NPC про исход (data/text/exodus.js EXODUS_NPC) — раз на NPC на метку, от метки fromMark
+  npcLines: { fromMark: 1 },
+  // слух про исход в таверне вместо обычного — с шансом (от метки 1)
+  tavernChance: 0.5,
   harmony: { mark: 4, flag: 'harmony-fallen', region: 'harmony', servicesOff: ['rest', 'trade', 'train', 'implant', 'recruit'] },
   // ноль: воплощение Судьи
   zero: { flag: 'exodus-zero', location: 'cc-node', encounter: 'w-cc-finale', bossHp: 1.25, winFlag: 'node-destroyed-late' },

@@ -55,6 +55,24 @@ export const COMBAT = {
   aiFallback: { melee: 'assault', ranged: 'sniper', caster: 'controller', support: 'support' },
   // minion per summoner id (else its own summon ability unit, else arch.summoner.fallback)
   minions: { 'cyber-demon': 'skrilet', 'tek-golem': 'skrilet', 'mutr-treant': 'skrilet', 'crg-collector-agent': 'skrilet', 'skrilet-5': 'skrilet' },
+  // §6 (stage 2) optional objectives (rules/objectives.js). reward: xp — share of the battle XP, loot — extra loot rolls,
+  // credits — share of the dropped credits (min creditsMin), rep — with the rescue / binding faction. dc: [base, perL].
+  objectives: {
+    rescue: { rounds: 4, cost: 'bonus', reward: { xp: 0.25, loot: 1, rep: 1 }, failRep: -1 },
+    terminal: { skills: ['tech', 'hacking'], dc: [11, 0.5], need: 2, cost: 'action', reward: { xp: 0.15, loot: 1 } },
+    hold: { rounds: 3, radius: 1, reward: { xp: 0.2, loot: 1 } },
+    assassinate: { fleeRound: 3, reward: { xp: 0.2, loot: 1, credits: 0.25 } },
+    nofire: { cargo: [2, 4], reward: { loot: 1, credits: 0.25 } },
+    speed: { rounds: { normal: 4, elite: 6, boss: 8 }, eliteFrom: 5, reward: { credits: 0.25, loot: 1 } },
+    flawless: { reward: { xp: 0.15 } },
+    creditsMin: 10,
+  },
+  // §6.2 chests on the arena: open = action next to it, best of skills vs dc; trapped (chance) — a failed check fires
+  // the trap (dice × tier, dmgType) at the opener. count: chance of the 1st and the 2nd chest in a world battle.
+  chest: { count: [0.45, 0.15], skills: ['lockpicking', 'tech'], dc: [10, 0.5], trap: { chance: 0.2, dice: '1d6', dmgType: 'fire' }, loot: 1 },
+  // §6.2 retreat through exit tiles 'D' on the heroes' side (an action standing on it); whole party out: XP × xpMul of the
+  // kills so far, no loot, the battle stays undone, +days. Boss arenas: exits open from boss phase `bossPhase`.
+  retreat: { xpMul: 0.25, days: 1, bossPhase: 2, exits: 2 },
 };
 
 // §5 pace of enemy turns (battle.js)

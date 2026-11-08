@@ -5,6 +5,7 @@ import { STATUSES, VEIL_TABLE, PROXY_STORM_TABLE } from './effects.js';
 import { ENEMIES as ENEMIES_V1, ENCOUNTERS as ENCOUNTERS_V1 } from './enemies.js';
 import { ENEMIES_V3, ENCOUNTERS_V3 } from './enemies-v3.js';
 import { ENCOUNTERS_V4 } from './enemies-v4.js'; // v4: враги и бои 6–20; регистрирует врагов в ENEMIES_V3
+import { ENCOUNTERS_EXODUS } from './enemies-exodus.js'; // третий исход: отряды культа и ревенанты на дорогах (метки 2–5)
 import { WEAPONS, CLASS_PROFICIENCY } from './items/weapons.js';
 import { ARMOR } from './items/armor.js';
 import { MODS, QUALITY } from './items/mods.js';
@@ -30,7 +31,7 @@ export const CLASSES = Object.fromEntries(Object.entries(CLASSES_BASE).map(([id,
 
 /** Enemies and battles: v1.0 + v3 (enemies-v3.js) + v4 (enemies-v4.js, ур. 6–20; 'w-cc-finale' v4 перекрывает v1.0). */
 export const ENEMIES = { ...ENEMIES_V1, ...ENEMIES_V3 };
-export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4 };
+export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4, ...ENCOUNTERS_EXODUS };
 /**
  * One item catalogue: v3 gear (items/*) + v1.0 world items (world/locations.js ITEMS). Same id in both
  * (medkit, calmers, grenade) → one record: world fields (use, passives, price, desc) over the v3 battle fields.
