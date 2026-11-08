@@ -54,6 +54,10 @@ export const ROMANCE_RULES = {
     bondPenalty: -6, loyaltyPenalty: -3, once: true,
   },
   uiLabels: { heart: '♥', bond: 'Близость', talk: 'Поговорить наедине', stages: 'Этап' },
+  // Числа для кода (game-programmer, 2026-11-08; источники — спека и ROMANCE_EVENTS.note).
+  passiveNeedsFlirt: true,                           // бой/привал растят близость только после первого флирта
+  conflictNeedsFlirt: true,                          // ревность — только если герой флиртовал с обоими
+  barkChance: { romance: 0.35, romanceHurt: 0.8, romanceJealous: 0.6, romanceParty: 0.15 },
 };
 
 const L = (w, t) => ({ w, t });
@@ -543,9 +547,9 @@ export const ROMANCE_CONFLICTS = {
 // =================================================================== ГИБЕЛЬ И РАЗРЫВ
 export const ROMANCE_EVENTS = {
   // Роман умирает в бою (hp 0 и не воскрешён к концу боя / «Срыв» без исцеления). Сцена запускается ПОСЛЕ боя, трек tragic.
-  death: { music: 'tragic', trigger: 'Напарник-партнёр (bond ≥ 45) погиб в бою или не поднят до его конца.', resultBond: 0, loyaltyOthers: -3, flag: 'romance-lost:<id>', note: 'Герой получает 1 день «Траура»: −1 к проверкам Харизмы, без боёв на привале. Воскрешение (если есть) возможно, сцена тогда меняется на «возвращение» (barks.romance).' },
+  death: { music: 'tragic', minBond: 45, mournDays: 1, mournCha: -1, trigger: 'Напарник-партнёр (bond ≥ 45) погиб в бою или не поднят до его конца.', resultBond: 0, loyaltyOthers: -3, flag: 'romance-lost:<id>', note: 'Герой получает 1 день «Траура»: −1 к проверкам Харизмы, без боёв на привале. Воскрешение (если есть) возможно, сцена тогда меняется на «возвращение» (barks.romance).' },
   // Разрыв: по просьбе героя (в «Поговорить наедине») или если игрок 3 раза подряд отклонил свидание (bond падает).
-  breakup: { music: 'tragic', trigger: 'Игрок выбрал «Расстаться» ИЛИ crisis-выбор -8 ИЛИ bond < 25 после стадии «Отношения».', resultBond: -30, loyalty: -10, leave: false, note: 'Напарник остаётся в партии, если loyalty ≥ −19, иначе — уходит. Роман закрывается; новый — через 7 дней с другим.' },
+  breakup: { music: 'tragic', bondBelow: 25, stayLoyalty: -19, cooldownDays: 7, trigger: 'Игрок выбрал «Расстаться» ИЛИ crisis-выбор -8 ИЛИ bond < 25 после стадии «Отношения».', resultBond: -30, loyalty: -10, leave: false, note: 'Напарник остаётся в партии, если loyalty ≥ −19, иначе — уходит. Роман закрывается; новый — через 7 дней с другим.' },
   // Реакции партии на роман (одно short-bark на привале, шанс 15%).
   partyBarks: [
     'Эй, голубки. Костёр один — делитесь.', 'Вы так мило молчите вместе. Прямо как супруги.', 'Только не при мне. Или при мне, но тихо.',

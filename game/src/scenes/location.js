@@ -2,63 +2,45 @@
 // (talk, trade, train/implant, recruit, quest), location actions (rest, heal, revive, trade, rumors, terminal, battles,
 // caches, quest goals, field camp), entry gate by reputation, unique events on enter/rest,
 // bottom bar: map / party / reputation / journal / menu. Every change is autosaved.
-import { giveItem, dropItem, countAll } from '../world/inventory.js';
+import { dropItem, countAll } from '../world/inventory.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
-import { TALENTS, talentAllowed, isCombatTalent } from '../data/talents.js';
+import { TALENTS } from '../data/talents.js';
 import { drawPortrait } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, bar, flowButtons } from '../ui/draw.js';
 import { openCheck, openGroupCheck, openChallenge } from '../ui/checks-ui.js';
-import {
-  LOCATIONS, REGIONS, ITEMS, SHOP_STOCK, TERMINAL_ACTIONS, SERVICE_PRICES, QUESTS, ENCOUNTER_TABLES,
-  npcsAt, npcGreeting, npcTopics, npcRepFaction, TRAINER_ALIAS, encounterName, resolveLocation, factionStock,
-  locationLore, LORE_RUMORS, SKILL_RULES, QUEST_TURNIN,
-} from '../world/data.js';
-import { autoCheck, disassembleDc, disassembleParts } from '../world/skill-uses.js';
+import { LOCATIONS, REGIONS, ITEMS, TERMINAL_ACTIONS, SERVICE_PRICES, QUESTS, ENCOUNTER_TABLES, npcsAt, npcRepFaction, encounterName, resolveLocation, locationLore, LORE_RUMORS, SKILL_RULES, QUEST_TURNIN } from '../world/data.js';
+import { disassembleDc, disassembleParts } from '../world/skill-uses.js';
 import { isGear } from './panel-gear.js';
 import { rollDice } from '../rules/dice.js';
-import { repTier, factionName, normFaction, tierAtLeast, meetFaction } from '../world/reputation.js';
+import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputation.js';
 import { openPauseMenu, openSaveMenu } from '../ui/save-ui.js';
 import { hotspot } from '../ui/tooltip.js';
 import { resTip, xpInfo, talentTip } from '../ui/tips.js';
-import {
-  members, activeCompanions, buildHero, canRecruit, recruit, hireInfo, grant, restParty, restDepartures, journal, tf,
-  locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY, squadFree, requiresOk,
-} from '../world/state.js';
-import { exodusSync, passDays, serviceOff, tollMult, exodusRumor, exodusNpcLine } from '../world/exodus.js';
+import { members, activeCompanions, grant, restParty, journal, tf, locFaction, hasFlagInParty, effectiveRep, learnTalent, talentOk, openHidden, squadFree, requiresOk } from '../world/state.js';
+import { exodusSync, passDays, serviceOff, tollMult, exodusRumor } from '../world/exodus.js';
 import { EXODUS_UI } from '../data/text/exodus.js';
-import { backstoryTopics, useBackstoryTopic } from '../world/backstory.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
-import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc,
-  pendingTurnins, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
+import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, pendingTurnins, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
-import { openShop } from './shop.js';
-import { VENDORS } from '../world/vendors.js';
-import { runEncounter } from './encounter.js';
+import { createNpcActions, isTrialQuest } from '../world/npc-actions.js';
 import { hasWorldFlag } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
-import { FIELD_CAMP } from '../world/data.js';
 import { openLevelUp } from './levelup.js';
 import { openCheckScene } from './check-scene.js';
 import { questScene, stageXp } from '../world/check-run.js';
-import { openRecruit } from '../ui/recruit-ui.js';
-import { recruitStatus, restLoyalty, waitingLoyalty, giftOptions, giveGift, lovedTypes, companionRequest, refuseRequest, acceptRequest } from '../world/companions.js';
+import { waitingLoyalty, giftOptions, giveGift, lovedTypes, companionRequest, refuseRequest, acceptRequest } from '../world/companions.js';
 import { syncBase, baseTick, atBase, modActive as baseModActive, radioTurnin } from '../world/base.js';
-import { nodeMark, worldRumors, shopClosed, closedLoc, TONE_COLOR, isDispute } from '../world/consequences.js';
+import { nodeMark, worldRumors, closedLoc, TONE_COLOR, isDispute } from '../world/consequences.js';
 import { openEpilogue } from './epilogue.js';
-import {
-  npcFaction, npcRole, attackBlock, attackHeatText, attackSetup, attackFailed, killNpc, theftPlaces, theftDc, theftLoot, theftTried, theftCap,
-  resolveTheft, payFine, fineFor, serviceBlocked, wantedTick, entryThreat, entryCheckOf, guardEnemies, bribeInfo, applyBribe, heatOf, crimeRumors, isOfficial,
-  amnestiesAt, amnestyInfo, applyAmnesty, amnestyFailed,
-} from '../world/crime.js';
-import { CRIME_RULES, ATTACK_RULES } from '../data/world/crime.js';
-import { openLoot } from './world-battle.js';
+import { npcFaction, wantedTick, entryThreat, entryCheckOf, guardEnemies, bribeInfo, applyBribe, heatOf, crimeRumors, isOfficial, amnestiesAt, amnestyInfo, applyAmnesty, amnestyFailed } from '../world/crime.js';
+import { CRIME_RULES } from '../data/world/crime.js';
 import { openRestMenu, canCampAt } from './rest.js';
 import { restState } from '../world/rest.js';
 
@@ -72,22 +54,27 @@ const MAX_ACTIONS = 9;
 const TIER_COL = { hostile: 'c', suspicious: 'a', neutral: '4', friendly: 'j', ally: 'h' };
 export const tierColor = (tier) => C[TIER_COL[tier] || '4'];
 
-export function createLocationScene(rawId) {
+/**
+ * opts.roam — the free node map (scenes/roam.js) this menu belongs to: dialogues / shops / panels return there
+ * (unless the menu view is on screen, S.inMenu), battles re-create the free map.
+ */
+export function createLocationScene(rawId, opts = {}) {
   const locId = resolveLocation(rawId);
-  const S = { page: 0, apage: 0, buttons: [], hover: null, time: 0, gate: false, visit: {} };
+  const S = { page: 0, apage: 0, buttons: [], hover: null, time: 0, gate: false, visit: {}, roam: opts.roam || null, inMenu: false };
   let self;
+  const home = () => (S.roam && !S.inMenu ? S.roam : self);
   const loc = LOCATIONS[locId];
   const save = (game) => game.save;
   const toastAll = (game, list) => { for (const x of list) game.toast(x.text, x.color); };
   const persist = (game) => saveGame(game.save);
   // v3.1: gear stigma shifts how the faction sees the party (effectiveRep)
   const facTier = (game, f) => (f ? repTier(effectiveRep(game.save, f, game.data)) : 'neutral');
-  const back = (game) => { game.resume(self); refresh(game); };
+  const back = (game) => { game.resume(home()); refresh(game); };
   const refresh = (game) => { S.turnin = true; toastAll(game, autoProgress(save(game), game.data)); toastAll(game, exodusSync(save(game)).out); toastAll(game, syncBase(save(game))); toastAll(game, baseTick(save(game))); persist(game); layout(game); };
   const ms = (game) => members(save(game), game.data);
   const homeTier = (game) => facTier(game, locFaction(locId) || (loc.region === 'harmony' ? 'technikums' : null));
-  const toMap = (g) => { g.visit = null; import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene())); };
-  const again = (g) => g.setScene(createLocationScene(locId));
+  const toMap = (g) => { g.visit = null; if (g.save) g.save.roam = null; import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene())); };
+  const again = (g) => (S.roam ? S.roam.again(g) : g.setScene(createLocationScene(locId)));
   /** Visit state lives in game.visit (survives scene re-creation after battles), reset when leaving to the map. */
   const V = (g) => (g.visit && g.visit.loc === locId ? g.visit : (g.visit = { loc: locId, gate: false, gig: false, enterEvents: false }));
   /** After the gate is passed: entry events, then talent choices. */
@@ -167,184 +154,9 @@ export function createLocationScene(rawId) {
     return false;
   }
 
-  // ---------------------------------------------------------------- NPC actions
-  function heroCtx(game) {
-    const sv = save(game);
-    const hu = buildHero(sv, game.data);
-    return { race: sv.hero.race, cls: sv.hero.cls, origin: sv.hero.origin, alignment: sv.hero.alignment, stats: hu.stats, level: sv.hero.level, weaponRange: hu.weapon?.range || 1, tags: hu.tags };
-  }
-
-  function trainerTalents(game, npc) {
-    const keys = new Set([normFaction(npc.faction), npc.id]);
-    for (const [k, ids] of Object.entries(TRAINER_ALIAS)) if (ids.includes(npc.id)) keys.add(k);
-    const implants = loc.services.includes('implant');
-    const ctx = heroCtx(game);
-    return Object.values(TALENTS).filter((x) => ((x.source?.kind === 'trainer' && keys.has(x.source.trainer)) || (implants && x.source?.kind === 'implant'))
-      && talentAllowed(x, { ...ctx, level: 5 }));
-  }
-
-  /**
-   * Quests an NPC offers under the reputation rules (world.md §3): hostile — none; suspicious — only «trial» ones
-   * (side quests sq-* without key); bribe (social check replaced by a bribe) lifts the suspicious limit.
-   */
-  function offeredBy(game, npc) {
-    const sv = save(game);
-    const tier = facTier(game, npcRepFaction(npc));
-    const list = questsOffered(sv, npc.id);
-    if (tier === 'hostile') return [];
-    if (tier === 'suspicious' && !hasFlagInParty(sv, game.data, 'bribe')) return list.filter((q) => isTrialQuest(q));
-    return list;
-  }
-
-  /** Trade under the reputation rules: hostile — closed, except black-market (always) and bribe (pay to trade). */
-  function tradeAccess(game, npc) {
-    const sv = save(game);
-    if (facTier(game, npcRepFaction(npc)) !== 'hostile') return { ok: true };
-    if (hasFlagInParty(sv, game.data, 'black-market')) return { ok: true };
-    if (hasFlagInParty(sv, game.data, 'bribe')) return { ok: true, bribe: WORLD_RULES.bribePerLevel * sv.hero.level };
-    return { ok: false, reason: t('loc.closedHostile') };
-  }
-
-  /** Rep tier that gates a mercenary: their faction, or the node's faction for faction-less ones (null — no gate). */
-  function hireTier(game, npc) {
-    const f = normFaction(npcRepFaction(npc));
-    if (f && f !== 'none' && game.save.rep[f] != null) return facTier(game, f);
-    const lf = locFaction(locId);
-    return lf ? facTier(game, lf) : null;
-  }
-
-  function npcActions(game, npc) {
-    const sv = (npc.services || []).filter((x) => !serviceOff(save(game), loc, x));
-    const acts = [{ id: 'talk', label: t('loc.talk') }];
-    if (sv.includes('trade')) {
-      const ta = tradeAccess(game, npc);
-      acts.push({ id: 'trade', label: ta.bribe ? `${t('loc.trade')} ${ta.bribe}` : t('loc.trade'), disabled: !ta.ok || (ta.bribe && save(game).hero.credits < ta.bribe), reason: ta.reason || (ta.bribe ? t('loc.noMoney') : null) });
-    }
-    if (sv.includes('train') && trainerTalents(game, npc).length) acts.push({ id: 'train', label: loc.services.includes('implant') ? t('loc.implant') : t('loc.train') });
-    if (!sv.includes('trade') && sv.includes('train') && VENDORS[npc.id]?.mentor) acts.push({ id: 'trade', label: t('shop.mentorBuy') }); // vendors-bestiary.md: mentor shop
-    if (npc.recruitable) {
-      // companions-scenes.md: the button opens the recruitment dialogue with conditions; reasons are shown there
-      const rs = recruitStatus(save(game), npc.id);
-      if (!rs.already) acts.push({ id: 'recruit', label: rs.left ? t('comp.apologize') : t('loc.recruit'), reason: rs.paths.some((x) => x.ready) ? null : rs.paths[0]?.why || null });
-    } else if (sv.includes('recruit')) {
-      // N2: mercenaries — paid hire (hero CHA 14+, «friendly»), price lowered by CHA
-      const h = hireInfo(save(game), npc.id, hireTier(game, npc), game.data);
-      if (h.why !== 'already' && h.why !== 'no') acts.push({ id: 'hire', label: `${t('loc.hire')} ${h.price}`, disabled: !!h.why, reason: h.why ? t(`loc.hire.${h.why}`) : null });
-    }
-    return worldActs(game, npc, acts);
-  }
-
-  function doNpc(game, npc, act) {
-    const sv = save(game);
-    const tier = facTier(game, npcRepFaction(npc));
-    if (act === 'talk') return talk(game, npc, tier);
-    if (act === 'trade') {
-      const ta = tradeAccess(game, npc);
-      if (!ta.ok) return;
-      if (ta.bribe) { sv.hero.credits -= ta.bribe; game.toast(`${t('check.bribe')}: −${ta.bribe}`, 'b'); }
-      return openShopHere(game, npc.name, tier, null, npc);
-    }
-    if (act === 'steal') return openTheft(game, npc);
-    if (act === 'attack') return openAttack(game, npc);
-    if (act === 'train') return openTrain(game, npc);
-    if (act === 'recruit') return openRecruit(game, npc, (g) => refresh(g));
-    if (act === 'hire') {
-      const h = hireInfo(sv, npc.id, hireTier(game, npc), game.data);
-      if (h.why) return;
-      sv.hero.credits -= h.price;
-      const state = recruit(sv, npc.id);
-      game.toast(`${npc.name}: ${t('loc.hired')} · ${t(state === 'active' ? 'loc.joined' : 'loc.waiting')}`, 'j');
-      return refresh(game);
-    }
-  }
-
-  function talk(game, npc, tier) {
-    const sv = save(game);
-    sv.npcs[npc.id] = { ...(sv.npcs[npc.id] || {}), met: true };
-    meetFaction(sv, npcRepFaction(npc));
-    const askTopics = (g) => {
-      // world-consequences.md ч.4: backstory questions (TOPIC_TALK) join the NPC's own topics
-      const bfac = npcFaction(npc) || normFaction(npcRepFaction(npc));
-      const topics = [...npcTopics(npc), ...backstoryTopics(sv, npc.id, bfac).map((x) => ({ q: `✦ ${x.q}`, a: x.a, bg: x.id }))];
-      if (!topics.length || tier === 'hostile') return finishTalk(g);
-      g.openModal({
-        title: npc.name, onCancel: (g2) => finishTalk(g2),
-        lines: [{ text: t('loc.topics'), color: 'a' }],
-        options: [...topics.map((tp) => ({ label: tp.q, run: (g2) => {
-          // portraits v2: the hero asks, the NPC answers (emotion by text, ui/emotion.js)
-          g2.setScene(createDialogueScene({
-            title: npc.name, lines: [{ who: 'hero', text: tp.q }, { who: npc.id, name: npc.name, text: tp.a }], hero: heroOf(sv), wounds: true,
-            onDone: (g3) => {
-              g3.resume(self);
-              if (tp.hook && LOCATIONS[tp.hook]) discover(sv, tp.hook);
-              const fx = tp.bg ? useBackstoryTopic(sv, npc.id, tp.bg) : null;
-              if (fx) { toastAll(g3, grant(sv, { xp: fx.xp, credits: fx.credits }, g3.data)); if (fx.hook && LOCATIONS[fx.hook]) discover(sv, fx.hook); }
-              askTopics(g3);
-            },
-          }));
-        } })), { label: t('loc.bye'), run: (g2) => finishTalk(g2) }],
-      });
-    };
-    const finishTalk = (g) => {
-      toastAll(g, onTalk(sv, npc.id, g.data));
-      const offered = offeredBy(g, npc);
-      if (offered.length) offerQuest(g, offered[0], npc.id);
-      refresh(g);
-    };
-    // third-exodus.md: once per mark the NPC mentions the Exodus (a line by faction)
-    const xl = tier !== 'hostile' ? exodusNpcLine(sv, npc.id, npcFaction(npc) || normFaction(npcRepFaction(npc))) : null;
-    game.setScene(createDialogueScene({
-      title: loc.name, lines: [npcGreeting(npc, tier), ...(xl ? [{ who: npc.id, name: npc.name, text: xl }] : [])], hero: heroOf(sv), wounds: true,
-      onDone: (g) => { g.resume(self); askTopics(g); },
-    }));
-  }
-
-  function offerQuest(game, q, npcId) {
-    game.openModal({
-      title: `${t('loc.questOffer')}: ${q.name}`, width: 900,
-      lines: [{ text: q.summary || '' }, { text: q.stages[0].text, color: 'a' }, ...(q.key ? [{ text: t('journal.key'), color: 'a' }] : [])],
-      options: [
-        { label: t('loc.questTake'), run: (g) => { const sv = save(g); toastAll(g, startQuest(sv, q.id)); if (npcId) toastAll(g, onTalk(sv, npcId, g.data)); refresh(g); } },
-        { label: t('loc.questLater'), run: () => {} },
-      ],
-    });
-  }
-
-  function openShopHere(game, who, tier, stock, npc = null) {
-    // vendors-bestiary.md: an NPC with a VENDORS profile — his own shelf (world/vendors.js); else the old faction shop
-    if (npc && VENDORS[npc.id]) return openShop(game, { title: `${t('loc.trade')}: ${who}`, vendor: npc.id, tier, faction: normFaction(npcRepFaction(npc)), onClose: (g) => back(g) });
-    // v3: the faction's shop (items/shops.js) plus the basic v1.0 goods
-    if (!stock) stock = [...new Set([...(factionStock(locFaction(locId), tier) || []), ...SHOP_STOCK])];
-    openShop(game, { title: `${t('loc.trade')}: ${who}`, stock, tier, faction: locFaction(locId), onClose: (g) => back(g) });
-  }
-
-  function openTrain(game, npc) {
-    const list = trainerTalents(game, npc);
-    game.openModal({
-      width: 980,
-      build: (g) => {
-        const sv = save(g);
-        const ctx = heroCtx(g);
-        return {
-          title: `${t('loc.train')}: ${npc.name}`,
-          lines: [{ text: `${t('world.credits')}: ${sv.hero.credits}`, color: 'b' }],
-          options: [
-            ...list.map((x) => {
-              const cost = x.source.cost || 100;
-              const owned = sv.hero.talents.includes(x.id);
-              const needRep = x.source.rep && !tierAtLeast(facTier(g, x.source.trainer in ORIGIN_FACTIONS ? x.source.trainer : npc.faction), x.source.rep);
-              const needItem = x.source.item && !(sv.hero.items[x.source.item] > 0);
-              const needLvl = !talentAllowed(x, ctx);
-              const why = owned ? t('loc.owned') : needRep ? t('loc.needRep') : needItem ? `${t('loc.needItem')}: ${ITEMS[x.source.item]?.name}` : needLvl ? t('loc.needLevel') : sv.hero.credits < cost ? t('loc.noMoney') : null;
-              return { label: `${x.name} — ${cost}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: why || x.desc, disabled: !!why, keep: true,
-                run: (g2) => { sv.hero.credits -= cost; toastAll(g2, learnTalent(sv, x.id, g2.data, { force: true })); play('buff'); persist(g2); } };
-            }),
-            { label: t('loc.close'), run: (g2) => back(g2) },
-          ],
-        };
-      },
-    });
-  }
+  // ---------------------------------------------------------------- NPC actions (world/npc-actions.js, shared with the free map)
+  const NA = createNpcActions({ locId, loc, home: () => home(), refresh: (g) => refresh(g), back: (g) => back(g), again: (g) => again(g), V: (g) => V(g), toMap: (g) => toMap(g) });
+  const { npcActions, doNpc, offerQuest, openShopHere, offeredBy, guardFight, runAway } = NA;
 
   /** «Холодная голова» (cool-head): social approaches get advantage in a quest that is a dispute of two sides. */
   function coolHeadScene(game, s, scene) {
@@ -414,7 +226,7 @@ export function createLocationScene(rawId) {
     const out = [];
     const tier = homeTier(game);
     // world-consequences.md ч.3: the base panel (bunker after sq-galina-hatch)
-    if (atBase(sv)) out.push({ label: t('base.enter'), sub: t('base.enterSub'), run: (g) => import('./base.js').then((m) => g.setScene(m.createBaseScene(self))) });
+    if (atBase(sv)) out.push({ label: t('base.enter'), sub: t('base.enterSub'), run: (g) => import('./base.js').then((m) => g.setScene(m.createBaseScene(home()))) });
     const lore = locationLore(locId);
     const mark = nodeMark(sv, locId); // world-consequences.md: the node changed after a quest
     if (lore || mark) out.push({ label: t('lore.look'), sub: mark ? mark.descs.at(-1) : lore.problem ? `${t('lore.problem')}: ${lore.problem}` : t('lore.lookSub'), run: (g) => openLore(g) });
@@ -500,7 +312,7 @@ export function createLocationScene(rawId) {
     const lodging = svc.includes('rest') ? { cost: tierAtLeast(tier, 'friendly') ? 0 : SERVICE_PRICES.rest(sv.hero.level) } : null;
     const st = restState(sv);
     return { label: t('rest.button'), sub: `${t('rest.buttonSub')} · ${st.short}/${st.max}`,
-      run: (g) => openRestMenu(g, { back: self, locId, lodging, done: (g2) => { S.canSwap = true; refresh(g2); }, again }) };
+      run: (g) => openRestMenu(g, { back: home(), locId, lodging, done: (g2) => { S.canSwap = true; refresh(g2); }, again }) };
   }
 
   function rumor(game) {
@@ -656,7 +468,7 @@ export function createLocationScene(rawId) {
       title: tf('q.turninTitle', { name: QUESTS[qid].name }),
       lines: turninLines(qid, st.outcome).slice(0, 3).map((text) => ({ who: npc.id, name: npc.name, text })), hero: heroOf(sv), wounds: true,
       onDone: (g) => {
-        g.resume(self);
+        g.resume(home());
         const got = claimTurnin(sv, qid, g.data);
         persist(g);
         showReward(g, QUESTS[qid].name, got);
@@ -701,114 +513,7 @@ export function createLocationScene(rawId) {
     return true;
   }
 
-  // ---------------------------------------------------------------- world-consequences.md: crime, wanted, world changes
-  /** NPC buttons under world changes: closed shop, services closed by the wanted level, «Украсть» / «Напасть». */
-  function worldActs(game, npc, acts) {
-    const sv = save(game);
-    const f = npcFaction(npc);
-    for (const a of acts) {
-      if (a.id === 'trade' && VENDORS[npc.id] && shopClosed(sv, npc.id)) { a.disabled = true; a.reason = t('cq.shopClosed'); }
-      const svc = { trade: 'trade', train: 'training', recruit: 'recruit', hire: 'recruit' }[a.id];
-      if (svc && f && serviceBlocked(sv, f, svc)) { a.disabled = true; a.reason = t('wanted.service'); }
-    }
-    if (sv.party.some((p) => p.npc === npc.id && p.state !== 'left')) return acts;
-    acts.push({ id: 'steal', label: t('crime.steal'), crime: true, disabled: theftTried(sv, npc.id), reason: t('crime.tooSoon') });
-    const why = attackBlock(sv, npc.id);
-    acts.push({ id: 'attack', label: t('crime.attack'), crime: true, disabled: !!why, reason: why });
-    return acts;
-  }
-
-  function openTheft(game, npc) {
-    const sv = save(game);
-    game.openModal({
-      title: tf('crime.stealTitle', { name: npc.name }), lines: [{ text: t('crime.stealLines'), color: 'a' }],
-      options: [...theftPlaces(sv, npc, loc).map((pl) => {
-        const dc = theftDc(sv, npc, pl);
-        return { label: t(`crime.place.${pl}`), sub: tf('crime.placeSub', { dc, cap: theftCap(sv) }), run: (g) => stealRoll(g, npc, pl, dc) };
-      }), { label: t('check.cancel'), run: () => {} }],
-    });
-  }
-
-  function stealRoll(game, npc, place, dc) {
-    const sv = save(game);
-    const loot = theftLoot(sv, npc, place);
-    openCheck(game, { title: tf('crime.stealTitle', { name: npc.name }), skills: CRIME_RULES.theft.skills, dc, members: ms(game), cancel: true,
-      memoKey: `theft:${npc.id}:${sv.day}`,
-      onDone: (g, ok, res) => {
-        const r = resolveTheft(sv, npc, loot, { ok, gap: res ? dc - res.total : 4, natural: res?.natural || 0, place });
-        toastAll(g, r.toasts);
-        persist(g);
-        if (r.ok) { refresh(g); return; }
-        theftFail(g, npc, r, loot);
-      } });
-  }
-
-  function theftFail(game, npc, r, loot) {
-    const sv = save(game);
-    const f = npcFaction(npc) || locFaction(locId);
-    const fine = r.fail.id === 'caught' ? fineFor(loot.value) : CRIME_RULES.fine.min;
-    const opts = [];
-    for (const a of r.ask) {
-      if (a === 'return') opts.push({ label: t('crime.return'), run: (g) => refresh(g) });
-      if (a === 'fine') opts.push({ label: tf('crime.fine', { n: fine }), run: (g) => { toastAll(g, payFine(sv, fine)); refresh(g); } });
-      if (a === 'fight') opts.push({ label: t('crime.fight'), sub: encounterName(guardEnemies(sv, f).encounter), run: (g) => guardFight(g, f) });
-      if (a === 'run') opts.push({ label: t('crime.run'), sub: tf('crime.runSub', { dc: CRIME_RULES.run.dc }), run: (g) => runAway(g, f) });
-    }
-    game.openModal({ title: r.fail.text, border: 'c', onCancel: false, lines: [{ text: npc.name, color: 'a' }], options: opts });
-  }
-
-  /** Fight the node's guards (theft alarm, wanted at the gate). The win counts as passing the gate. */
-  function guardFight(game, f) {
-    const sv = save(game);
-    const ge = guardEnemies(sv, f);
-    V(game).gate = true;
-    startWorldBattle(game, { enemies: ge.enemies, faction: f, title: tf('crime.guardsTitle', { faction: f ? factionName(f) : loc.name }), onWin: again });
-  }
-
-  /** Escape: Acrobatics / Athletics / Stealth; success — to the previous node, failure — the guards. */
-  function runAway(game, f) {
-    const R = CRIME_RULES.run;
-    openCheck(game, { title: t('crime.run'), skills: R.skill.split('|'), dc: R.dc, members: ms(game), memoKey: `run:${locId}:${save(game).day}`,
-      onDone: (g, ok) => {
-        if (!ok) return guardFight(g, f);
-        const sv = save(g);
-        g.toast(t('crime.ranAway'), 'j');
-        if (sv.prevLocation && LOCATIONS[sv.prevLocation] && sv.prevLocation !== locId) sv.location = sv.prevLocation;
-        persist(g);
-        toMap(g);
-      } });
-  }
-
-  function openAttack(game, npc) {
-    const sv = save(game);
-    const why = attackBlock(sv, npc.id);
-    if (why) { game.toast(why, 'c'); return; }
-    const A = ATTACK_RULES, f = npcFaction(npc);
-    const fill = (s) => s.replace(/\{(\w+)\}/g, (_, k) => ({ name: npc.name, role: t(`crime.role.${npcRole(npc)}`), faction: f ? factionName(f) : t('crime.noFaction'), heat: attackHeatText(sv, npc) }[k] ?? ''));
-    const S2 = A.surprise;
-    game.openModal({
-      title: fill(A.confirm.title), border: 'c', width: 820,
-      lines: A.confirm.lines.map((l) => ({ text: fill(l), color: 'a' })),
-      options: [
-        { label: t('crime.attackSure'), run: (g) => attackFight(g, npc, 0) },
-        { label: tf('crime.surprise', { dc: S2.dc }), sub: tf('crime.surpriseSub', { n: S2.init }),
-          run: (g) => openCheck(g, { title: fill(A.confirm.title), skill: S2.skill, dc: S2.dc, members: ms(g), memoKey: `surprise:${npc.id}:${sv.day}`,
-            onDone: (g2, ok) => { if (ok) g2.toast(tf('crime.surpriseOk', { n: S2.init }), 'j'); attackFight(g2, npc, ok ? S2.init : 0); } }) },
-        { label: A.confirm.cancel, run: () => {} },
-      ],
-    });
-  }
-
-  function attackFight(game, npc, init) {
-    const sv = save(game);
-    const st = attackSetup(sv, npc, npcsAt(locId, sv));
-    V(game).gate = true;
-    startWorldBattle(game, {
-      enemies: st.enemies, faction: st.faction, title: tf('crime.attackTitle', { name: npc.name }), heroInit: init,
-      onWin: (g) => { const k = killNpc(sv, npc.id); toastAll(g, k.toasts); persist(g); openLoot(g, k.loot, () => { persist(g); again(g); }); },
-      onFlee: (g) => { toastAll(g, attackFailed(sv, npc)); },
-    });
-  }
+  // ---------------------------------------------------------------- world-consequences.md: wanted, world changes
 
   /** Wanted / closed access at the entry (before the reputation gate). → true if a modal was opened. */
   function wantedGate(game) {
@@ -920,7 +625,7 @@ export function createLocationScene(rawId) {
     sv.pendingEpilogue = false;
     sv.flags['epilogue-seen'] = true;
     persist(game);
-    openEpilogue(game, { onDone: (g) => g.resume(self) });
+    openEpilogue(game, { onDone: (g) => g.resume(home()) });
     return true;
   }
 
@@ -960,6 +665,7 @@ export function createLocationScene(rawId) {
     }
     const nav = [['map', 'loc.map', 'M'], ['party', 'panel.party', 'P'], ['rep', 'panel.rep', 'R'], ['journal', 'panel.journal', 'J'], ['save', 'save.save', 'S'], ['menu', 'loc.toMenu', 'Esc']];
     nav.forEach(([id, key, k], i) => btns.push({ kind: 'nav', id, label: t(key), key: k, x: ox + 648 + i * 102, y: oy + BASE_H - 60, w: 98, h: 44 }));
+    if (S.roam) btns.push({ kind: 'nav', id: 'roam', label: t('roam.toMap'), key: 'Tab', x: ox + 930, y: oy + 94, w: 230, h: 24 });
     if (sv.hero.pendingTalents > 0) btns.push({ kind: 'nav', id: 'party', label: t('talent.pending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     else if ((sv.hero.pendingAsi || []).length) btns.push({ kind: 'nav', id: 'party', label: t('lvl.asiPending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     S.buttons = btns;
@@ -971,7 +677,7 @@ export function createLocationScene(rawId) {
     if (id === 'toMenu') { persist(game); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
     if (id === 'menu') return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') });
     if (id === 'save') { persist(game); return openSaveMenu(game); }
-    return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: self, canSwap: !!S.canSwap || loc.services.includes('rest') })));
+    return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: home(), canSwap: !!S.canSwap || loc.services.includes('rest') })));
   }
 
   function click(game, b) {
@@ -981,12 +687,26 @@ export function createLocationScene(rawId) {
     else if (b.kind === 'act') b.run(game);
     else if (b.kind === 'page') { S.page += b.dir; layout(game); }
     else if (b.kind === 'apage') { S.apage += b.dir; layout(game); }
+    else if (b.kind === 'nav' && b.id === 'roam') toRoam(game);
     else if (b.kind === 'nav') nav(game, b.id);
   }
+
+  /** Turn-ins / radio / epilogue when nothing is on screen (also called by the free map). → true if something opened. */
+  function pump(game) {
+    if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return true; }
+    return !!(V(game).gate && pendingEpilogue(game));
+  }
+
+  /** Back to the free node map (opts.roam) from the menu view. */
+  function toRoam(game) { S.inMenu = false; game.resume(S.roam); }
 
   self = {
     id: 'location', locId,
     S,
+    // shared with the free node map (scenes/roam.js): the same actions as the menu
+    npc: NA, actions: (g) => actions(g), searchCache: (g, c) => searchCache(g, c), openDisassemble: (g) => openDisassemble(g),
+    restAction: (g) => { const sv = save(g); return restAction(sv, loc.services.filter((x) => !serviceOff(sv, loc, x)), homeTier(g)); },
+    pump, refresh: (g) => refresh(g), toMap: (g) => toMap(g), nav: (g, id) => nav(g, id), V: (g) => V(g),
     enter(game) {
       S.time = 0;
       layout(game);
@@ -1008,10 +728,10 @@ export function createLocationScene(rawId) {
     update(game, dt) {
       S.time += dt;
       const inp = game.input;
-      if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return; }
-      if (V(game).gate && pendingEpilogue(game)) return;
+      if (pump(game)) return;
       S.hover = hitButton(S.buttons, inp.mouse);
       if (inp.mouse.clicked && S.hover) click(game, S.hover);
+      else if (S.roam && inp.wasPressed('Tab')) toRoam(game);
       else if (inp.wasPressed('KeyM')) nav(game, 'map');
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
@@ -1079,8 +799,3 @@ export function createLocationScene(rawId) {
 
 /** N5: skills of a cache check — check.skills (several, the best roll or a pick) or check.skill. */
 const cacheSkills = (c) => (c.check?.skills?.length ? c.check.skills : [c.check?.skill || 'perception']);
-
-/** «Trial» quests for suspicious factions: side quests (sq-*) without key (no explicit mark in the data). */
-const isTrialQuest = (q) => !q.key && (q.trial ?? q.id.startsWith('sq-'));
-
-const ORIGIN_FACTIONS = { tinBrotherhood: 1, pirates: 1, neutralVillages: 1, technikums: 1 };

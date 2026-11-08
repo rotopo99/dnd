@@ -5,6 +5,8 @@ import { COMPANION_TEXT } from './companions.js';
 import { WORLD_TEXT } from './world.js';
 import { REST_TEXT } from './rest.js';
 import { OBJECTIVE_TEXT } from './objectives.js';
+import { ROAM_TEXT } from './roam.js';
+import { ROMANCE_TEXT } from './romance.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -796,5 +798,7 @@ Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
 Object.assign(ru, WORLD_TEXT); // world-consequences.md: consequences, epilogue, crime
 Object.assign(ru, REST_TEXT); // rest: short / long rests, provisions
 Object.assign(ru, OBJECTIVE_TEXT); // combat-rework §6: battle objectives, chests, retreat, jam
+Object.assign(ru, ROAM_TEXT); // free-roam.md: the free node map
+Object.assign(ru, ROMANCE_TEXT); // romance.md: romances with companions
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;
