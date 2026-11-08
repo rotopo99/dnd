@@ -13,6 +13,7 @@ import { normCodex } from './world/codex.js';
 import { normalizeInventory, syncItems } from './world/inventory.js';
 import { defaultLook } from './ui/avatar3d.js';
 import { normalizeRomance } from './world/romance.js';
+import { normClashes } from './world/clashes.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -142,6 +143,7 @@ export function normalizeSave(s, data) {
   out.roam = rm && typeof rm.loc === 'string' && Number.isInteger(rm.x) && Number.isInteger(rm.y)
     ? { loc: rm.loc, x: rm.x, y: rm.y, party: arr(rm.party).filter((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isInteger)) } : null;
   out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
+  out.clashes = normClashes(s.clashes); // skirmishes.md: active map markers (broken template / enemy ids dropped)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)
   const ex = obj(s.exodus);
   out.exodus = s.exodus && typeof s.exodus === 'object'

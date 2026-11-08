@@ -15,10 +15,16 @@ const enemyKey = (e) => String(typeof e === 'string' ? e : e?.enemyId || e?.id |
 
 /**
  * makeWorldMap({ seed, enemies (count), enemyIds?, hazard, biome, region, faction, id, kind? (location kind), ambush?, day?,
- *                template? (force), weather?, tod? })
+ *                template? (force), weather?, tod?, sides? (3 — skirmish: 'F' starts for `rivals` count) })
  */
-export function makeWorldMap({ seed = 1, enemies = 4, enemyIds = [], hazard = null, biome = null, region = null, faction = null, id = 'world',
-  kind = null, ambush = false, day = 1, template = null, weather = null, tod = null } = {}) {
+export function makeWorldMap(o = {}) {
+  const def = makeWorldMap0(o);
+  // skirmishes.md: a third side — starts 'F' far from the party and from 'E'
+  return o.sides === 3 && !def.starts?.E ? addThirdSide(def, Math.max(1, o.rivals || 4)) : def;
+}
+
+function makeWorldMap0({ seed = 1, enemies = 4, enemyIds = [], hazard = null, biome = null, region = null, faction = null, id = 'world',
+  kind = null, ambush = false, day = 1, template = null, weather = null, tod = null, sides = 2 } = {}) {
   const bi = enemyIds.findIndex((e) => BOSS_ARENAS[enemyKey(e)]);
   if (bi >= 0) {
     const boss = enemyKey(enemyIds[bi]);
@@ -35,15 +41,15 @@ export function makeWorldMap({ seed = 1, enemies = 4, enemyIds = [], hazard = nu
   }
   const bio = biomeOf({ biome, region, faction, hazard });
   for (let attempt = 0; attempt < 5; attempt++) {
-    const g = build(seed + attempt * 7919, enemies, hazard, bio, true);
+    const g = build(seed + attempt * 7919, enemies, hazard, bio, true, sides);
     const paint = paintProcedural(g, { biome: tile, seed: seed + attempt, day, weather, tod });
     if (connected(g)) return finish(g, id, tile, paint);
   }
-  const g = build(seed, enemies, hazard, bio, false);
+  const g = build(seed, enemies, hazard, bio, false, sides);
   return finish(g, id, tile, paintProcedural(g, { biome: tile, seed, day, weather, tod }));
 }
 
-function build(seed, enemies, hazard, bio, withObjects) {
+function build(seed, enemies, hazard, bio, withObjects, sides = 2) {
   let s = seed >>> 0 || 1;
   const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
   const ri = (r) => (r ? r[0] + Math.floor(rnd() * (r[1] - r[0] + 1)) : 0);
@@ -104,7 +110,9 @@ function build(seed, enemies, hazard, bio, withObjects) {
   for (const [x, y] of ps) g[y][x] = 'P';
   const n = Math.max(4, enemies);
   const es = [];
-  for (let y = 2; y <= 9 && es.length < n; y++) for (const x of [W - 3, W - 5]) if (es.length < n) es.push([x, y + (x === W - 5 ? 1 : 0)]);
+  // three sides: 'E' in the top-right corner, the bottom-right stays free for 'F' (addThirdSide)
+  if (sides === 3) for (let y = 1; y <= 5 && es.length < n; y++) for (const x of [W - 3, W - 5, W - 4]) { if (es.length < n) es.push([x, y]); }
+  else for (let y = 2; y <= 9 && es.length < n; y++) for (const x of [W - 3, W - 5]) if (es.length < n) es.push([x, y + (x === W - 5 ? 1 : 0)]);
   for (const [x, y] of es) if (y > 0 && y < H - 1) g[y][x] = 'E';
   return g;
 }
@@ -112,9 +120,38 @@ function build(seed, enemies, hazard, bio, withObjects) {
 const connected = (g) => connectedDef({ grid: g.map((r) => r.join('')) });
 function connectedDef(def) {
   const grid = parseMap(def);
-  const all = [...grid.starts.P, ...grid.starts.A, ...grid.starts.E];
+  const all = [...grid.starts.P, ...grid.starts.A, ...grid.starts.E, ...grid.starts.F];
   const r = reachable(grid, all[0].x, all[0].y, 999, null);
   return all.every((p) => r.dist[p.y * grid.w + p.x] >= 0);
+}
+
+/**
+ * skirmishes.md: n starts 'F' (team 'rivals') — around the reachable floor tile farthest from 'P'/'A' and the first
+ * `E` starts (≥ THIRD_MIN cells when the map allows), preferring the right half; the grid rows are rewritten.
+ */
+const THIRD_MIN = 6;
+export function addThirdSide(def, n) {
+  const g = parseMap(def);
+  const own = [...g.starts.P, ...g.starts.A];
+  const foes = g.starts.E;
+  if (!own.length) return def;
+  const reach = reachable(g, own[0].x, own[0].y, 999, null);
+  const rows = def.grid.map((r) => [...r]);
+  const cand = [];
+  for (let y = 1; y < g.h - 1; y++) for (let x = 1; x < g.w - 1; x++) {
+    const ch = rows[y][x];
+    if ('PEAF'.includes(ch) || g.tiles[y * g.w + x] !== 0 || reach.dist[y * g.w + x] < 0 || g.elev?.[y * g.w + x]) continue;
+    const dist = (list) => list.reduce((m, p) => Math.min(m, Math.max(Math.abs(p.x - x), Math.abs(p.y - y))), 99);
+    const dp = dist(own), de = dist(foes);
+    cand.push({ x, y, s: Math.min(dp, de) + (x >= g.w / 2 ? 0.5 : 0), ok: dp >= THIRD_MIN && de >= THIRD_MIN });
+  }
+  if (!cand.length) return def;
+  const anchor = cand.reduce((a, c) => (c.s > a.s ? c : a));
+  const near = (c) => Math.max(Math.abs(c.x - anchor.x), Math.abs(c.y - anchor.y));
+  const pool = cand.filter((c) => c.ok).length >= n ? cand.filter((c) => c.ok) : cand;
+  pool.sort((a, c) => near(a) - near(c) || a.y - c.y || a.x - c.x);
+  for (const c of pool.slice(0, n)) rows[c.y][c.x] = 'F';
+  return { ...def, grid: rows.map((r) => r.join('')) };
 }
 
 function finish(g, id, biome, paint = {}) {

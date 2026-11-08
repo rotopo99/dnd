@@ -31,11 +31,15 @@ import { nodeMark, closedLoc, TONE_COLOR } from '../world/consequences.js';
 import { hunterEncounter, hunterBonus } from '../world/crime.js';
 import { openRestMenu, canCampAt } from './rest.js';
 import { restState, provisionCount } from '../world/rest.js';
+import { clashAt, clashOnRoute, roadClash, clashName, daysLeft, clashWhere } from '../world/clashes.js';
+import { SPAWN as CLASH_SPAWN } from '../data/world/skirmishes.js';
+import { openClash, clashLines } from './clash.js';
 
 const restHud = (sv) => { const st = restState(sv); return tf('rest.hud', { n: st.short, max: st.max, food: provisionCount(sv) }); };
 
 const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
 
+const ROAD_CLASH = new Set(['road', 'trail', 'wild']); // skirmishes.md: «впереди бой» only on land roads
 const TRAVEL_DAY_S = 0.22; // was 0.55: travel felt too long (human feedback 2026-11-08)
 const MAP_IMG = new URL('../../assets/world-map.jpg', import.meta.url).href;
 const ZOOM_MAX = 4;
@@ -256,10 +260,17 @@ export function createWorldMapScene() {
       tr.day++;
       const ex = passDays(save(game), 1);
       for (const x of ex.out) log(x.text, x.color);
+      if (ex.out.some((x) => x.clash)) play('enemyTurn'); // skirmishes.md: «Слышны выстрелы»
       if (ex.zero && !save(game).cyberspace) { S.paused = true; saveGame(save(game)); startExodusZero(game); return; }
       if (ex.marks?.length) { S.paused = true; openExodusRadio(game, ex.marks, () => { S.paused = false; }); return; }
       const ev = travelEvents(save(game), LOCATIONS[hop.to].region)[0];
       if (ev) { S.paused = true; runEvent(game, ev, (g) => { g.resume(self); S.paused = false; }); return; }
+    }
+    // skirmishes.md: a marker on this route — the party runs into the fight half way
+    if (!tr.clashSeen && tr.t >= dur / 2) {
+      tr.clashSeen = true;
+      const c = clashOnRoute(save(game), hop.r.from, hop.r.to);
+      if (c) { S.paused = true; openClash(game, c, { back: self, done: () => { S.paused = false; } }); return; }
     }
     // encounter rolls: route.rolls per hop, spread along the way (world.md §2.1)
     const rolls = hop.r.rolls || 0;
@@ -286,9 +297,15 @@ export function createWorldMapScene() {
     if (!hit) return false;
     const reg = hop.r.region === 'sea' ? 'sea' : LOCATIONS[hop.to].region;
     // world-consequences.md §2: bounty hunters (wanted ≥ 3) come first
-    const e = hunterEncounter(sv) || pickEncounter(sv, reg) || pickEncounter(sv, LOCATIONS[hop.to].region);
+    const hunter = hunterEncounter(sv);
+    const e = hunter || pickEncounter(sv, reg) || pickEncounter(sv, LOCATIONS[hop.to].region);
     if (!e) return false;
     S.paused = true;
+    // skirmishes.md: «Впереди бой» — a road battle becomes a one-off skirmish (no marker)
+    if (!hunter && e.kind === 'battle' && !e.exodus && ROAD_CLASH.has(hop.r.kind) && Math.random() < CLASH_SPAWN.roadChance) {
+      const c = roadClash(sv, LOCATIONS[hop.to].region);
+      if (c) { openClash(game, c, { back: self, done: () => { S.paused = false; } }); return true; }
+    }
     runEncounter(game, e, LOCATIONS[hop.to].region, self, () => { S.paused = false; });
     return true;
   }
@@ -299,12 +316,16 @@ export function createWorldMapScene() {
     const hop = tr.hops[tr.i];
     visit(sv, hop.to);
     findHidden(game, hop.to);
-    tr.i++; tr.t = 0; tr.day = 0; tr.roll = 0;
+    tr.i++; tr.t = 0; tr.day = 0; tr.roll = 0; tr.clashSeen = false;
     for (const x of onArrive(sv, hop.to, game.data)) game.toast(x.text, x.color);
     saveGame(sv);
     if (tr.i >= tr.hops.length) {
       if (tr.forage) for (const x of grant(sv, { items: [{ item: tr.forage, n: 1 }] }, game.data)) game.toast(x.text, x.color);
-      S.travel = null; enterLocation(game); return;
+      S.travel = null;
+      // skirmishes.md: a fight at the node we came to — choose before entering (or leave it be)
+      const c = clashAt(sv, hop.to);
+      if (c) { openClash(game, c, { back: self, cancel: true, done: (g) => enterLocation(g) }); return; }
+      enterLocation(game); return;
     }
     payHop(game);
   }
@@ -542,6 +563,62 @@ export function createWorldMapScene() {
     return { capital: 50, city: 40, town: 30, village: 20, hamlet: 10 }[l.tier] ?? (S.ringOf[id] ? 45 : l.poi === 'author' ? 15 : 5);
   }
 
+  /** skirmishes.md: screen position of a visible clash marker (node: offset up-right; route: the middle) or null. */
+  function clashPos(sv, c) {
+    if (c.loc) {
+      if (!sv.discovered.includes(c.loc)) return null;
+      const p = nodePos(c.loc);
+      return { x: p.x + 14, y: p.y - 14 };
+    }
+    if (!c.route || !c.route.every((id) => sv.discovered.includes(id))) return null;
+    const a = nodePos(c.route[0]), b = nodePos(c.route[1]);
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  function clashAtMouse(sv, mx, my) {
+    for (const c of sv.clashes || []) {
+      const p = clashPos(sv, c);
+      if (p && (p.x - mx) ** 2 + (p.y - my) ** 2 <= 12 * 12) return c;
+    }
+    return null;
+  }
+  function drawClashes(ctx, sv) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(S.area.x, S.area.y, S.area.w, S.area.h); ctx.clip();
+    for (const c of sv.clashes || []) {
+      const p = clashPos(sv, c);
+      if (!p) continue;
+      const blink = daysLeft(sv, c) <= 1 && Math.floor(S.time * 3) % 2 === 0;
+      ctx.fillStyle = 'rgba(16,16,24,0.92)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = blink ? C['5'] : C.c; ctx.lineWidth = S.hoverClash === c ? 3 : 2; ctx.stroke();
+      text(ctx, '⚔', p.x, p.y - 8, blink ? C['5'] : C.c, 'bold 14px monospace', 'center');
+    }
+    ctx.restore();
+  }
+  function drawClashCard(ctx, sv, W, H) {
+    const c = S.hoverClash;
+    const p = clashPos(sv, c);
+    if (!p) return;
+    const here = c.loc === sv.location || c.route?.includes(sv.location);
+    const lines = [
+      { text: `⚔ ${clashName(c)}`, color: C.c, font: FONT_B },
+      ...clashLines(sv, c).map((l) => ({ text: l.text, color: C[l.color] || C['5'] })),
+      { text: c.loc ? tf('skirm.atNode', { loc: clashWhere(c) }) : tf('skirm.onRoute', { a: LOCATIONS[c.route[0]].name, b: LOCATIONS[c.route[1]].name }), color: C['4'] },
+      { text: here ? t('skirm.clickHere') : t('skirm.clickGo'), color: here ? C.j : C['3'] },
+    ];
+    const w = 460, h = 16 + lines.length * LINE;
+    const x = Math.min(W - w - 8, p.x + 20), y = Math.min(H - BOTTOM - h - 4, Math.max(TOP + 4, p.y - 20));
+    panel(ctx, x, y, w, h, C['0'], C.c);
+    let ly = y + 8;
+    for (const ln of lines) { text(ctx, fit(ctx, ln.text, w - 20, ln.font || FONT), x + 10, ly, ln.color, ln.font || FONT); ly += LINE; }
+  }
+  /** Click on a marker: here — the choice window; elsewhere — travel there (route: to its nearer end). */
+  function clickClash(game, c) {
+    const sv = save(game);
+    if (c.loc === sv.location || c.route?.includes(sv.location)) { openClash(game, c, { back: self, cancel: true, done: (g) => layout(g) }); return; }
+    startTravel(game, c.loc || c.route[0]);
+  }
+
   function drawCard(ctx, sv, W, H) {
     const id = S.hoverNode;
     const l = LOCATIONS[id];
@@ -605,6 +682,8 @@ export function createWorldMapScene() {
       // test hooks (playwright scenarios): travel by id, node screen position
       S.travelTo = (id) => startTravel(game, id);
       S.pos = (id) => nodePos(id);
+      S.clashPos = (id) => { const c = (save(game).clashes || []).find((x) => x.id === id); return c ? clashPos(save(game), c) : null; };
+      S.openClash = (id) => { const c = (save(game).clashes || []).find((x) => x.id === id); if (c) clickClash(game, c); };
     },
     resume(game) { layout(game); },
     resize(game) { S.fogCanvas = null; layout(game); },
@@ -643,13 +722,19 @@ export function createWorldMapScene() {
         if (!S.paused) stepTravel(game, dt);
         return;
       }
-      S.hoverNode = !S.hover && m.inside && m.y >= S.area.y && m.y < S.area.y + S.area.h ? nodeAt(sv, m.x, m.y) : null;
+      const inMap = !S.hover && m.inside && m.y >= S.area.y && m.y < S.area.y + S.area.h;
+      S.hoverClash = inMap ? clashAtMouse(sv, m.x, m.y) : null;
+      S.hoverNode = inMap && !S.hoverClash ? nodeAt(sv, m.x, m.y) : null;
       if (m.clicked && S.hover) { S.drag = null; if (S.hover.disabled) { if (S.hover.reason) game.toast(S.hover.reason, 'c'); return; } play('uiClick'); nav(game, S.hover.id); return; }
       // click on a node = pointer released without dragging (a quick click may release within the same step)
       const release = m.released || (S.drag && !m.down);
       if (release && S.drag) {
         const d = S.drag; S.drag = null;
-        if (!d.moved) { const id = nodeAt(sv, d.x, d.y); if (id) { startTravel(game, id); return; } }
+        if (!d.moved) {
+          const c = clashAtMouse(sv, d.x, d.y);
+          if (c) { clickClash(game, c); return; }
+          const id = nodeAt(sv, d.x, d.y); if (id) { startTravel(game, id); return; }
+        }
       }
       if (inp.wasPressed('Enter')) nav(game, 'enter');
       else if (inp.wasPressed('KeyN')) nav(game, 'night');
@@ -673,6 +758,7 @@ export function createWorldMapScene() {
       else if (S.hoverNode && S.hoverRoute?.id === S.hoverNode) path = S.hoverRoute.hops;
       drawRoutes(ctx, sv, new Set((path || []).map((h) => h.r)));
       drawNodes(ctx, sv, game);
+      drawClashes(ctx, sv);
       // top bar
       ctx.fillStyle = C['0']; ctx.fillRect(0, 0, W, TOP);
       text(ctx, t('map.title'), 24, 12, C.h, FONT_L);
@@ -691,6 +777,7 @@ export function createWorldMapScene() {
       }
       drawLegend(ctx, W);
       if (S.hoverNode && !S.travel) drawCard(ctx, sv, W, H);
+      else if (S.hoverClash && !S.travel) drawClashCard(ctx, sv, W, H);
       // bottom: log + buttons
       ctx.fillStyle = C['0']; ctx.fillRect(0, H - BOTTOM, W, BOTTOM);
       panel(ctx, 16, H - BOTTOM + 6, S.logW, 108, C['1'], C['2']);

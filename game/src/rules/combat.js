@@ -488,7 +488,7 @@ export const unitAt = (b, x, y) => {
  * The list defines the side ('heroes' / 'enemies'). Units are cloned: callers' objects are not mutated.
  * Start points 'P' / 'E' / 'A' are taken row by row, left to right.
  */
-export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null } = {}) {
+export function createBattle({ map, heroes = [], enemies, allies, rivals = null, partyLose = false, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null } = {}) {
   const D = normalizeData(data);
   const enemyList = enemies || (map && map.enemies) || [];
   const mapDef = map || makeArena({ heroes: heroes.length, enemies: enemyList.length });
@@ -499,17 +499,24 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
     log: log ? [] : null, onEvent, winner: null, occ: new Int32Array(grid.w * grid.h), occVersion: 0,
     summonCount: 0, reactionDepth: 0, statusCache: {}, autoReactions, reachCache: null,
     traps: [], trapCount: 0, drops: [], zones: [], zoneCount: 0,
+    partyLose: !!partyLose, // skirmishes.md: every party member down — defeat, even with NPC allies / rivals standing
   };
   initSurfaces(b);
-  const spawn = (list, starts, team, kind) => {
-    list.forEach((item, i) => {
+  // skirmishes.md: an element may be { enemy: id, hpPct?, mrlPct? } (survivors of a fight we waited out)
+  const spawn = (list, starts, team, kind, prefix = kind[0]) => {
+    list.forEach((item0, i) => {
+      const wrap = item0 && typeof item0 === 'object' && typeof item0.enemy === 'string' ? item0 : null;
+      const item = wrap ? wrap.enemy : item0;
       let u;
       if (isUnitObject(item)) u = initUnit(item);
       else if (typeof item === 'string' || (item && item.hp != null && !item.race)) {
-        u = initUnit(buildEnemy(item, { data: D, team, kind: kind === 'enemy' ? 'enemy' : 'ally', id: `${kind[0]}${i + 1}` }));
-      } else u = initUnit(buildCreature({ ...item, data: D, team, id: item.id || `${kind[0]}${i + 1}` }));
+        u = initUnit(buildEnemy(item, { data: D, team, kind: kind === 'enemy' ? 'enemy' : 'ally', id: `${prefix}${i + 1}` }));
+      } else u = initUnit(buildCreature({ ...item, data: D, team, id: item.id || `${prefix}${i + 1}` }));
       if (kind === 'ally' && u.kind !== 'hero') u.kind = 'ally';
       u.team = team;
+      const hpPct = wrap?.hpPct ?? item0?.hpPct, mrlPct = wrap?.mrlPct ?? item0?.mrlPct;
+      if (hpPct != null && hpPct < 1) u.hp = Math.max(1, Math.round(u.maxHp * hpPct));
+      if (mrlPct != null && mrlPct < 1 && u.maxMrl > 0) u.mrl = Math.max(1, Math.round(u.maxMrl * mrlPct));
       const pos = starts[i] || starts[starts.length - 1] || { x: 1, y: 1 };
       addUnit(b, u, pos);
     });
@@ -517,6 +524,12 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
   spawn(heroes, grid.starts.P, 'heroes', 'hero');
   spawn(allies || mapDef.allies || [], grid.starts.A.length ? grid.starts.A : grid.starts.P, 'heroes', 'ally');
   spawn(enemyList, grid.starts.E, 'enemies', 'enemy');
+  // skirmishes.md: the third side — hostile to the party and to 'enemies'; starts 'F', else the unused tail of 'E'
+  if (rivals && rivals.length) {
+    const tail = grid.starts.E.slice(enemyList.length);
+    const fs = grid.starts.F?.length ? grid.starts.F : tail.length ? tail : [...grid.starts.E].reverse();
+    spawn(rivals, fs, 'rivals', 'enemy', 'r');
+  }
   // combat rework: destructible objects get HP from the battle level, AI archetypes (terrain.js, archetypes.js)
   initTerrain(b);
   assignArchetypes(b);
@@ -745,6 +758,8 @@ export function checkVictory(b) {
   if (!winner && b.map.lose === 'heroDown') {
     for (const u of b.units) if (u.kind === 'hero' && u.team === 'heroes' && !isStanding(u)) { winner = 'enemies'; break; }
   }
+  // skirmishes.md: with three sides the party loses as soon as none of its own (not NPC allies / summons) stands
+  if (!winner && b.partyLose && !b.units.some((u) => u.team === 'heroes' && u.kind !== 'summon' && u.kind !== 'ally' && !u.removed && isStanding(u))) winner = 'enemies';
   if (!winner && teams === 0) winner = 'draw';
   if (!winner && teams > 0 && standing.size <= 1) winner = standing.size ? [...standing][0] : 'draw';
   // combat rework §6.2: no one of the party is standing on the field, someone retreated — the battle ends as a retreat

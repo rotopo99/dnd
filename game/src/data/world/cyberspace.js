@@ -181,7 +181,7 @@ export const HACK_EFFECTS = {
   door:    { name: 'Открыть дверь', dc: 14, tier: 1, days: 3, desc: 'Снимает `entry`/`hidden`-замок узла, не вызывая тревоги. Флаг `cs-hack:door:<loc>` — вход без проверки.', cooldown: 7 },
   turrets: { name: 'Отключить турели', dc: 15, tier: 2, days: 2, desc: 'Следующий бой охраны узла: −2 врага (`reduce` +2), турели базы/узла не стреляют.', cooldown: 5 },
   cameras: { name: 'Заглушить камеры', dc: 13, tier: 1, days: 3, desc: 'Кража/нападение: розыск +0, СЛ скрытности −3.', cooldown: 5 },
-  prices:  { name: 'Сбить цены', dc: 13, tier: 1, days: 5, desc: 'Цены фракции узла ×0.85, `wantedPriceMult` игнорируется.', cooldown: 10 },
+  prices:  { name: 'Сбить цены', dc: 13, tier: 1, days: 5, mult: 0.85, desc: 'Цены фракции узла ×0.85, `wantedPriceMult` игнорируется.', cooldown: 10 },
   wanted:  { name: 'Стереть розыск', dc: 16, tier: 3, days: 0, desc: 'Розыск фракции узла −2 (dropHeat). Раз на фракцию в 10 дней. Нужна Кибердека.', cooldown: 10, needsItem: 'cs-deck' },
 };
 

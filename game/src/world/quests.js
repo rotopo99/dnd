@@ -29,6 +29,8 @@ import { exodusActive, exodusLeft, exodusExtend } from './exodus.js';
 import { personalStage, personalQuestDone } from './companions.js';
 import { applyConsequences, markFinale } from './consequences.js';
 import { ATTACK_RULES } from '../data/world/crime.js';
+import { SPIRIT } from '../data/world/cyberspace.js';
+import { restoreBody } from './spirit.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -83,6 +85,9 @@ function reward(save, qid, data) {
   r.xp = questXp(q);
   // world-consequences.md §2: a quest passed to the dead giver's heir pays less
   if (save.heirs?.[qid]) { const k = HEIR_MULT; r.xp = Math.round(r.xp * k); if (r.credits) r.credits = Math.round(r.credits * k); }
+  // expeditions.md: a reserve companion closed the quest — reward × EXP_TYPES.quest.reward.questRewardMul (st.expMul)
+  const em = save.quests[qid]?.expMul;
+  if (em) { r.xp = Math.round(r.xp * em); if (r.credits) r.credits = Math.round(r.credits * em); }
   const out = grant(save, r, data, { keyChoice: q.key });
   // third-exodus.md: rewards.exodus { ext } — the Exodus deadline moves once (flag exo-ext:<quest id>)
   const ext = (q.rewards?.exodus || q.exodus)?.ext;
@@ -252,6 +257,11 @@ function finish(save, qid, end, data) {
   }
   journal(save, tf('q.done', { name: q.name }));
   out.push({ text: tf('q.done', { name: q.name }), color: 'j' });
+  // cyberspace-v2.md §7: quest extra { clearFlag, clearOn } — the outcome (option id) clears a flag; bodyDestroyed → the new body
+  if (q.clearFlag && (!q.clearOn || st.outcome === q.clearOn || (st.path || []).includes(q.clearOn))) {
+    if (q.clearFlag === SPIRIT.return.clearFlag) out.push(...restoreBody(save, data));
+    else delete save.flags[q.clearFlag];
+  }
   if (td) {
     out.push(...deliver(save, qid, td));
     if (st.turnin) return out;

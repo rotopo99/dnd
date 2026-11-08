@@ -2430,7 +2430,7 @@ console.log('inventory v7: grid, quick slots, mods, off-hand, migration');
     // every mod fits at least one item of the catalogue
     const hosts = Object.values(ITEMS).filter((it) => ['weapon', 'armor'].includes(it.slot)).map((it) => ({ item: it.id, q: 'masterwork', mods: [] }));
     for (const m of Object.values(MODS)) assert.ok(hosts.some((h) => INV.modFitProblem(m, h) === null || INV.modFitProblem(m, { ...h, q: 'junk' }) === null), `mod ${m.id} fits something`);
-    assert.equal(Object.keys(MODS).length, 75);
+    assert.equal(Object.keys(MODS).length, 76); // +cs-echo-coil (cyberspace-v2)
     for (const id of Object.keys(OFFHAND)) assert.ok(ITEMS[id], id);
     assert.equal(Object.keys(OFFHAND).length, 8);
     // req: failed check → not installed
@@ -3793,6 +3793,106 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
     applyOp(b, b.units[0], foe, { op: 'reveal', turns: 1 });
     assert.ok(!foe.statuses.some((x) => x.id === 'stealth'));
     assert.ok(foe.revealedUntil >= b.round);
+  });
+}
+
+// ---------------------------------------------------------------- skirmishes.md: three sides, clashes on the map
+{
+  const { checkVictory: cv, isHostile: hostile } = await import('../game/src/rules/combat.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const CL = await import('../game/src/world/clashes.js');
+  const hero = () => buildCreature({ race: 'human', cls: 'ranger', level: 3, data: GAME_DATA });
+  const MAP3 = { grid: ['##########', '#P...E...#', '#........#', '#A...F...#', '##########'] };
+  test('skirmish: three teams — allies with the party, rivals hostile to both', () => {
+    const b = createBattle({ map: MAP3, heroes: [hero()], allies: ['nv-militia'], enemies: ['pir-deckhand'], rivals: ['mutz-sniffer'], data: GAME_DATA, seed: 3, partyLose: true });
+    const by = (team) => b.units.find((u) => u.team === team);
+    const H = b.byId.hero || by('heroes'), A = b.units.find((u) => u.kind === 'ally'), E = by('enemies'), R = by('rivals');
+    assert.ok(A && E && R, 'all sides spawned');
+    assert.equal(R.kind, 'enemy');
+    assert.ok(R.id.startsWith('r'), 'rival ids do not clash with enemy ids');
+    assert.deepEqual([R.x, R.y], [5, 3], 'rivals start on F');
+    assert.ok(!hostile(b, A, H) && hostile(b, R, E) && hostile(b, R, H) && hostile(b, E, R) && hostile(b, A, R));
+  });
+  test('skirmish: AI — allies never hit the party, rivals hit both sides', () => {
+    let rivalVsEnemy = 0, rivalVsParty = 0, allyVsParty = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const map = makeWorldMap({ seed, enemies: 3, sides: 3, rivals: 3 });
+      const b = createBattle({ map, heroes: [hero(), hero()], allies: ['nv-militia', 'nv-hunter'], enemies: ['pir-deckhand', 'pir-knifer', 'pir-deckhand'], rivals: ['mutz-sniffer', 'mutz-hunter', 'mutz-sniffer'], data: GAME_DATA, seed, partyLose: true });
+      for (const u of b.units) u.control = 'ai';
+      let guard = 0;
+      while (!b.winner && b.turn && b.round <= 6 && guard++ < 600) playTurn(b);
+      for (const e of b.log) {
+        if (e.type !== 'attack' || !b.byId[e.actor] || !b.byId[e.target]) continue;
+        const a = b.byId[e.actor], t = b.byId[e.target];
+        if (a.kind === 'ally' && t.team === 'heroes') allyVsParty++;
+        if (a.team === 'rivals' && t.team === 'enemies') rivalVsEnemy++;
+        if (a.team === 'rivals' && t.team === 'heroes') rivalVsParty++;
+      }
+    }
+    assert.equal(allyVsParty, 0);
+    assert.ok(rivalVsEnemy > 0, `rivals attack enemies (${rivalVsEnemy})`);
+    assert.ok(rivalVsParty > 0, `rivals attack the party (${rivalVsParty})`);
+  });
+  test('skirmish: partyLose — party down is a defeat even with allies / rivals up; only the party standing wins', () => {
+    const b = createBattle({ map: MAP3, heroes: [hero()], allies: ['nv-militia'], enemies: ['pir-deckhand'], rivals: ['mutz-sniffer'], data: GAME_DATA, seed: 3, partyLose: true });
+    const H = b.units.find((u) => u.kind === 'hero');
+    H.dead = true; H.hp = 0; b.winner = null;
+    assert.equal(cv(b), 'enemies');
+    const b2 = createBattle({ map: MAP3, heroes: [hero()], allies: ['nv-militia'], enemies: ['pir-deckhand'], rivals: ['mutz-sniffer'], data: GAME_DATA, seed: 3, partyLose: true });
+    for (const u of b2.units) if (u.team !== 'heroes') { u.dead = true; u.hp = 0; }
+    b2.winner = null;
+    assert.equal(cv(b2), 'heroes');
+    const b3 = createBattle({ map: MAP3, heroes: [hero()], enemies: ['pir-deckhand'], rivals: ['mutz-sniffer'], data: GAME_DATA, seed: 3, partyLose: true });
+    b3.units.find((u) => u.team === 'enemies').dead = true; b3.winner = null;
+    assert.equal(cv(b3), null, 'party and rivals still fight');
+  });
+  test('skirmish: hpPct of waited-out survivors, F starts of a 3-side world map', () => {
+    const b = createBattle({ map: MAP3, heroes: [hero()], enemies: [{ enemy: 'pir-deckhand', hpPct: 0.4 }], data: GAME_DATA, seed: 1 });
+    const E = b.units.find((u) => u.team === 'enemies');
+    assert.equal(E.hp, Math.round(E.maxHp * 0.4));
+    for (let seed = 1; seed <= 20; seed++) {
+      const m = makeWorldMap({ seed, enemies: 4, sides: 3, rivals: 4 });
+      const g = parseMap(m);
+      assert.ok(g.starts.F.length >= 4, `F starts (seed ${seed})`);
+    }
+  });
+  test('skirmish: evalAction — rivals prefer each other (+2), the party side gets no bonus', () => {
+    const b = createBattle({ map: { grid: ['#######', '#P.E.F#', '#######'] }, heroes: [hero()], enemies: ['pir-deckhand'], rivals: ['pir-deckhand'], data: GAME_DATA, seed: 2 });
+    const E = b.units.find((u) => u.team === 'enemies'), R = b.units.find((u) => u.team === 'rivals'), H = b.units.find((u) => u.kind === 'hero');
+    b.turn = { ...b.turn, unitId: E.id };
+    const vR = evalAction(b, E, { type: 'attack', target: R.id });
+    assert.ok(vR > 0);
+    assert.ok(Math.abs(vR - evalAction(b, E, { type: 'attack', target: H.id }) - 2) < 3, 'bonus is small');
+  });
+  test('skirmish: clashes — templates, spawn rules, save round trip, wait survivors', () => {
+    for (const tpl of CL.CLASH_TEMPLATES) for (const L of [1, 5, 9, 13, 17, 20]) for (const k of ['a', 'b']) {
+      for (const r of 'gsem') assert.ok(GAME_DATA.ENEMIES[CL.enemyFor(tpl[k].r, r, L)], `${tpl.id} ${k} ${r} L${L}`);
+    }
+    const discovered = Object.keys(LOCS);
+    const save = { day: 1, hero: { level: 5 }, companions: [], party: [], rep: {}, flags: {}, journal: [], discovered, location: discovered[0], clashes: [] };
+    let maxActive = 0, seen = 0;
+    const rng = createRng(7);
+    for (let d = 0; d < 40; d++) {
+      save.day++;
+      const out = CL.clashTick(save, 1, rng);
+      seen += out.filter((x) => x.clash).length;
+      maxActive = Math.max(maxActive, save.clashes.length);
+      const regs = save.clashes.map((c) => c.region);
+      assert.equal(new Set(regs).size, regs.length, 'one per region');
+      for (const c of save.clashes) { assert.ok(save.day - c.born <= c.ttl); assert.ok(c.loc !== save.location); }
+    }
+    assert.ok(seen >= 1 && maxActive <= 3, `spawned ${seen}, max ${maxActive}`);
+    const c = CL.makeClash(save, { tpl: CL.clashTpl('bandits-caravan'), region: 'neutralVillages', place: { loc: discovered[1] }, rng });
+    const back = CL.normClashes(JSON.parse(JSON.stringify([c, { tpl: 'nope' }])));
+    assert.equal(back.length, 1);
+    assert.deepEqual(back[0].sides, c.sides);
+    let hurt = 0;
+    for (let s = 1; s <= 10; s++) {
+      const w = CL.waitOutcome({ ...c, seed: s }, GAME_DATA);
+      for (const k of ['a', 'b']) for (const x of w.survivors[k]) assert.ok(x.hpPct >= 0.15 && x.hpPct <= 1);
+      if (w.winner && w.survivors[w.winner].some((x) => x.hpPct < 1)) hurt++;
+    }
+    assert.ok(hurt >= 1);
   });
 }
 

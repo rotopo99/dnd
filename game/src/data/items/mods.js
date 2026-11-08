@@ -208,6 +208,9 @@ const LIST = [
     tier: 3, price: 210, factions: ['neutralVillages', 'mutantsBeast'], desc: 'Броня не мешает скрытности, шум −1.' }),
   m({ id: 'hover-pads', name: 'Антиграв-подушки', slot: 'sole', fits: {}, add: { immuneSurface: ['fire', 'acid', 'electric', 'toxgas'], immuneStatus: ['prone'] },
     tier: 4, price: 520, factions: ['aiParty'], req: { skill: 'tech', dc: 15 }, desc: 'Над полом: поверхности (огонь, кислота, ток, газ) не действуют, не сбивают с ног.' }),
+  // --- Киберспейс v2 (CS_ITEMS, data/world/cyberspace.js): награда зоны «Хор поглощённых»
+  m({ id: 'cs-echo-coil', name: 'Эхо-катушка', slot: 'core', fits: {}, add: { extra: { dice: '1d4', dmgType: 'cyber' }, onHit: [{ op: 'status', id: 'glitch', turns: 1, chance: 0.2, save: 'int' }] },
+    tier: 4, price: 380, factions: [], desc: 'Кибер-урон +1d4 и 20% «Глитч». Ячейка энерго/прокси-оружия.' }),
 ];
 
 export const MODS = Object.fromEntries(LIST.map((it) => [it.id, it]));

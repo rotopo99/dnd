@@ -8,6 +8,7 @@ import { OBJECTIVE_TEXT } from './objectives.js';
 import { ROAM_TEXT } from './roam.js';
 import { FIELDS_TEXT } from './fields.js';
 import { ROMANCE_TEXT } from './romance.js';
+import { SKIRM_TEXT } from './skirmishes.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -802,5 +803,6 @@ Object.assign(ru, FIELDS_TEXT); // battlefields.md weather, skills-v3.md node ac
 Object.assign(ru, OBJECTIVE_TEXT); // combat-rework §6: battle objectives, chests, retreat, jam
 Object.assign(ru, ROAM_TEXT); // free-roam.md: the free node map
 Object.assign(ru, ROMANCE_TEXT); // romance.md: romances with companions
+Object.assign(ru, SKIRM_TEXT); // skirmishes.md: fights on the world map
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

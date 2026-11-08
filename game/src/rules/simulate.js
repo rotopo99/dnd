@@ -4,19 +4,19 @@ import { createBattle } from './combat.js';
 import { playTurn } from './ai.js';
 
 /**
- * simulateBattle({ map, heroes, enemies, allies, data, seed, maxRounds, log })
+ * simulateBattle({ map, heroes, enemies, allies, rivals?, data, seed, maxRounds, log })
  * Every unit is AI-controlled. Returns { winner: team | 'draw', rounds, survivors, log? }.
  * 'draw' — nobody won within maxRounds (or the turn loop stalled).
  */
-export function simulateBattle({ map, heroes, enemies, allies, data, seed = 1, maxRounds = 30, log = false } = {}) {
-  const b = createBattle({ map, heroes, enemies, allies, data, seed, log });
+export function simulateBattle({ map, heroes, enemies, allies, rivals, data, seed = 1, maxRounds = 30, log = false } = {}) {
+  const b = createBattle({ map, heroes, enemies, allies, rivals, data, seed, log });
   for (const u of b.units) u.control = 'ai';
   let guard = 0;
   const maxSteps = maxRounds * (b.units.length + 8) * 4;
   while (!b.winner && b.turn && b.round <= maxRounds && guard++ < maxSteps) {
     playTurn(b);
   }
-  const survivors = b.units.filter((u) => !u.dead && !u.down && !u.removed).map((u) => ({ id: u.id, team: u.team, hp: u.hp, maxHp: u.maxHp, mrl: u.mrl }));
+  const survivors = b.units.filter((u) => !u.dead && !u.down && !u.removed).map((u) => ({ id: u.id, enemyId: u.enemyId, team: u.team, hp: u.hp, maxHp: u.maxHp, mrl: u.mrl, maxMrl: u.maxMrl }));
   const out = { winner: b.winner || 'draw', rounds: Math.min(b.round, maxRounds), survivors };
   if (log) out.log = b.log;
   return out;

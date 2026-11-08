@@ -55,7 +55,7 @@ export const PALETTE = [
   '#b9a39e', // p pale flesh: crawler, wounds
 ];
 
-export const TEAM_COLORS = { player: 'h', enemy: 'c', ally: 'j' };
+export const TEAM_COLORS = { player: 'h', enemy: 'c', ally: 'j', rival: 'a' }; // rival — skirmishes.md third side
 
 // ---------------------------------------------------------------------------
 // Sprite definitions
@@ -1389,7 +1389,7 @@ export function enemySpriteIds(enemyId) {
   const id = `mob-${enemyId}`;
   if (SPRITES[id]) return [id];
   // Level variants ('cultist-5', 'junk-mech-5') reuse the base look.
-  const base = String(enemyId).replace(/-\d+$/, '');
+  const base = String(enemyId).replace(/-l?\d+$/, ''); // 'cs-null-walker-l12' (v4 level versions) too
   if (base !== enemyId) return enemySpriteIds(base);
   return ['mob-cultist'];
 }
@@ -1543,7 +1543,7 @@ export function drawSprite(ctx, id, x, y, scale = 3, opts = {}) {
 }
 
 export function drawTeamMarker(ctx, team, x, y, scale = 3) {
-  drawSprite(ctx, team === 'enemy' ? 'ui-marker-enemy' : 'ui-marker', x, y, scale, { mono: TEAM_COLORS[team] ?? team });
+  drawSprite(ctx, team === 'enemy' || team === 'rival' ? 'ui-marker-enemy' : 'ui-marker', x, y, scale, { mono: TEAM_COLORS[team] ?? team });
 }
 
 // ===========================================================================

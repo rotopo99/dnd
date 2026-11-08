@@ -19,6 +19,7 @@
 
 import { DENSITY_NPCS } from './world/density-npcs.js';
 import { COMPANION_NPCS, COMPANIONS } from './companions.js';
+import { NPCS_CYBER_NEW } from './world/quests-cyber.js';
 
 export const EXTRA_FACTIONS = {
   predlozhka: { name: 'Предложка' },
@@ -2086,8 +2087,11 @@ const LORE_V1 = {
   'cyber-priest': 'Заместитель Судьи, строящий для него дом. Хочет заслужить место рядом. Тайна: он сомневается, что Судья его вообще помнит.',
 };
 for (const n of LIST) if (!n.lore && LORE_V1[n.id]) n.lore = LORE_V1[n.id];
-for (const n of [...LIST_V3, ...LIST_V4]) n.burg = n.location;
-LIST.push(...LIST_V3, ...LIST_V4);
+// cyberspace-v2.md: spirits of the cyber zones (location — a CS_ZONES id, met in scenes/cyberspace.js; quests-cyber.js NPCS_CYBER_NEW)
+const LIST_CYBER = Object.entries(NPCS_CYBER_NEW).map(([id, n]) => v3(id, n.name, n.faction, n.race, n.location, n.desc.split('.')[0], ['quest'],
+  n.desc, id === 'cs-nameless' ? 'Шёпотом, с извинениями.' : 'Громко, обрывками.', id === 'cs-nameless' ? 'Эй, вы… Это не мне. Это вам.' : 'К.! Это я. Почти я.', '', { cyber: true }));
+for (const n of [...LIST_V3, ...LIST_V4, ...LIST_CYBER]) n.burg = n.location;
+LIST.push(...LIST_V3, ...LIST_V4, ...LIST_CYBER);
 // third-exodus.md §3: world density NPCs (id `d-*`), placed by location like v3/v4
 for (const n of DENSITY_NPCS) n.burg = n.location;
 LIST.push(...DENSITY_NPCS);

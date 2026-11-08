@@ -352,6 +352,36 @@ nt('wild-ice-golem', 13, { name: 'Ледяной голем', faction: null, rol
   abilities: (L) => [ability({ id: 'wild-ice-slam', name: 'Ледяной удар', range: 1, usesPerBattle: 3, effects: [{ op: 'weapon' }, { op: 'status', id: 'slow', turns: 2 }, { op: 'push', tiles: 2 }], desc: 'Замедляет и толкает.' })],
   desc: 'Кто-то зачем-то слепил его из ледника.' });
 
+// ---- Киберспейс v2 (docs/specs/cyberspace-v2.md, CS_ENEMIES в data/world/cyberspace.js): цифровые, ур. 6–16; версии под героя — data/enemies-cyber.js
+const CS_RES = (o) => ({ cyber: 'resist', toxin: 'immune', proxy: 'vuln', ...o });
+nt('cs-glitch-hound', 6, { name: 'Глитч-гончая', faction: 'cult', role: 'skirmisher', rank: 'grunt', tags: ['digital'], speed: 8, loot: 'cyberspace', immune: ['poison', 'bleed'], resist: CS_RES(),
+  weapon: { name: 'Глитч-клыки', dmgType: 'cyber' },
+  abilities: (L) => [ability({ id: 'cs-lag-dash', name: 'Рывок-«лаг»', range: 4, usesPerBattle: 2, effects: [{ op: 'weapon' }, { op: 'status', id: 'glitch', turns: 1 }], desc: 'Бросок на 4 клетки: удар и «Глитч» на ход.' })],
+  desc: 'Гончая из битых пакетов. Догоняет раньше, чем срывается с места.' });
+nt('cs-ice-warden', 9, { name: 'Страж-ICE', faction: 'cult', role: 'tank', tags: ['digital'], loot: 'cyberspace', immune: ['poison', 'bleed'], resist: { cyber: 'resist', fire: 'vuln', pierce: 'resist' },
+  weapon: { name: 'Ледяной шлюз-кулак', dmgType: 'blunt', stat: 'str' },
+  abilities: (L) => [ability({ id: 'cs-ice-barrier', name: 'Барьер', action: 'bonus', range: 6, target: 'ally', area: { shape: 'radius', size: 2 }, roll: 'auto', usesPerBattle: 2,
+    effects: [{ op: 'buff', stat: 'kb', value: 2, turns: 2 }], desc: 'Союзники рядом: +2 КБ на 2 хода.' })],
+  desc: 'Защита Судьи от «лишних душ». Замёрз в одном бите и доволен.' });
+nt('cs-echo-wail', 8, { name: 'Эхо-плакальщик', faction: null, role: 'caster', tags: ['digital'], cast: 'wil', loot: 'cyberspace', immune: ['poison', 'bleed'], resist: { cyber: 'resist', psychic: 'vuln', cringe: 'vuln' },
+  weapon: { name: 'Всхлип', dmgType: 'psychic', range: 6, stat: 'wil' },
+  abilities: (L) => [aoe({ id: 'cs-wail', name: 'Плач', save: 'wil', range: 8, usesPerBattle: 2, effects: [D(L, 1.0, 'psychic')], desc: 'Пси по МРЛ (радиус 2).' })],
+  desc: 'Поёт колыбельную. Не враждебен — просто плохо умеет по-другому.' });
+nt('cs-leech-daemon', 11, { name: 'Демон-пиявка', faction: 'cult', role: 'support', rank: 'elite', tags: ['digital'], cast: 'int', loot: 'cyberspace', immune: ['poison', 'bleed'], resist: CS_RES(),
+  weapon: { name: 'Присоски', dmgType: 'cyber', range: 1, stat: 'str' },
+  abilities: (L) => [ability({ id: 'cs-leech', name: 'Высасывание', range: 6, usesPerBattle: 3, effects: [{ op: 'drain', dice: X6(L, 2), dmgType: 'cyber', to: 'hp', ratio: 0.5 }], desc: 'Кибер-урон, пиявка лечится.' }),
+    summonA({ id: 'cs-leech-call', name: 'Призыв кибер-демона', usesPerBattle: 1, effects: [{ op: 'summon', unit: 'cyber-demon', turns: 3 }], desc: 'Кибер-демон на 3 хода.' })],
+  desc: 'Посредник Рынка душ. Берёт комиссию прямо из тебя.' });
+nt('cs-null-walker', 13, { name: 'Нуль-ходок', faction: 'cult', role: 'skirmisher', rank: 'elite', tags: ['digital'], loot: 'cyberspace', immune: ['poison', 'bleed'], resist: { cyber: 'immune', pierce: 'resist', proxy: 'vuln' },
+  weapon: { name: 'Стирающая ладонь', dmgType: 'cyber' },
+  abilities: (L) => [ability({ id: 'cs-erase', name: 'Стирание', range: 1, usesPerBattle: 2, effects: [{ op: 'weapon', extraDice: X6(L) }, { op: 'status', id: 'stun', turns: 1 }], desc: 'Доп. урон, цель пропускает ход.' })],
+  desc: 'То, что стёрто, иногда ходит. Тихо и без имени.' });
+nt('cs-judge-eye', 16, { name: 'Око Судьи', faction: 'cult', role: 'caster', rank: 'miniboss', tags: ['digital'], cast: 'wil', loot: 'cyberspace', immune: ['poison', 'bleed', 'fear'], resist: { cyber: 'immune', psychic: 'resist', proxy: 'vuln' },
+  weapon: { name: 'Взгляд', dmgType: 'cyber', range: 10, stat: 'wil' },
+  abilities: (L) => [sv({ id: 'cs-eye-mark', name: 'Метка взгляда', range: 10, save: 'wil', onSave: 'none', usesPerBattle: 2, effects: [{ op: 'status', id: 'marked', turns: 3 }], desc: 'Метка на цель.' }),
+    aoe({ id: 'cs-eye-verdict', name: 'Приговор', save: 'wil', range: 10, usesPerBattle: 2, effects: [D(L, 1.6, 'cyber')], desc: 'Большой кибер-урон (радиус 2).' })],
+  desc: 'Судья не смотрит. Смотрит Око. Разница — для протокола.' });
+
 for (const [id, L] of Object.entries(native)) N(id, L);
 
 // ---------------------------------------------------------------- эндгейм-боссы

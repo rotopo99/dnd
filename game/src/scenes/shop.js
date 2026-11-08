@@ -8,6 +8,10 @@
 // old `stock` list. Seen rotation period — save.flags `vstock:<npcId>` (toast «Новый товар» after a change).
 import { t } from '../data/text/index.js';
 import { priceMult as exodusPrice } from '../world/exodus.js';
+import { THANKS } from '../data/world/skirmishes.js';
+
+/** skirmishes.md: `skirm-favor:<faction>` — the next purchase in the faction's shop is cheaper. */
+export const favorKey = (faction) => `skirm-favor:${faction}`;
 import { play } from '../audio/sfx.js';
 import { ITEMS, SKILL_RULES } from '../world/data.js';
 import { itemStats, soonNote, itemTip } from '../ui/items-ui.js';
@@ -20,6 +24,8 @@ import { saveGame } from '../save.js';
 import { C } from '../ui/draw.js';
 import { vendorStock, vendorSellRate } from '../world/vendors.js';
 import { wantedPriceMult } from '../world/crime.js';
+import { hackActive } from '../world/cs-hacks.js';
+import { SPIRIT, HACK_EFFECTS } from '../data/world/cyberspace.js';
 import { QUALITY } from '../data/items/mods.js';
 import { syncItems, receive, makeInst, instValue, bagKeys, contOf, holderOf, mutate, isGear } from '../world/inventory.js';
 
@@ -41,7 +47,10 @@ export function shopPrices(game, tier, faction, key = null) {
   buy *= cha.buy * (st.haggle === 'ok' ? 1 - T.haggle.discount : 1);
   buy *= ritualDiscount(ms, faction); // world-consequences.md ч.5: Religion «Знаток обрядов» (tekhonki)
   buy *= exodusPrice(game.save); // third-exodus.md: marks 3+ raise prices
-  buy *= wantedPriceMult(game.save, faction); // world-consequences.md §2: wanted levels raise prices
+  // cyberspace-v2.md §5: prices hacked from the Relay — ×0.85 on this node, the wanted surcharge is ignored
+  if (hackActive(game.save, 'prices', game.save.location)) buy *= HACK_EFFECTS.prices.mult;
+  else buy *= wantedPriceMult(game.save, faction); // world-consequences.md §2: wanted levels raise prices
+  if (faction && game.save.flags[favorKey(faction)]) buy *= 1 - THANKS.favorDiscount; // skirmishes.md: thanks of a side we helped
   const sellMul = (1 + sellBonus) * cha.sell;
   const sell = st.junk === 'ok' ? T.junk.sellRate : R.prices.sell * sellMul;
   return { buy, sell, sellMul, cha: cha.mod, haggled: st.haggle === 'ok', junk: st.junk === 'ok' };
@@ -55,6 +64,10 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
     const per = vendorStock(vendor, sv.day, tier, sv).period, fk = `vstock:${vendor}`;
     if (sv.flags[fk] != null && sv.flags[fk] !== per) game.toast(t('shop.newStock'), 'b');
     sv.flags[fk] = per;
+  }
+  if (sv.hero.spirit && !SPIRIT.limits.shops) { // cyberspace-v2.md §7: nobody trades with a spirit
+    game.openModal({ title, lines: [{ text: t('spirit.noShop'), color: 'h' }], onCancel: (g) => onClose?.(g), options: [{ label: t('loc.close'), run: (g) => onClose?.(g) }] });
+    return;
   }
   if (shopState(sv, key).closed) {
     game.openModal({ title, lines: [{ text: t('shop.closed'), color: 'c' }], onCancel: (g) => onClose?.(g), options: [{ label: t('loc.close'), run: (g) => onClose?.(g) }] });
@@ -99,7 +112,9 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
             // v7: an instance of the shelf quality → hero's backpack, then companions; no room — no sale
             const left = receive(sv, makeInst(id, r.q), 1).left; // inventory.js: the single item path (keeps hero.items in step)
             if (left) { g.toast(t('inv.noRoom'), 'c'); return; }
-            sv.hero.credits -= price; play('buff'); saveGame(sv);
+            sv.hero.credits -= price; play('buff');
+            if (faction && sv.flags[favorKey(faction)]) delete sv.flags[favorKey(faction)]; // the skirmish favour is one purchase
+            saveGame(sv);
           } };
       });
       const sellRate = (it) => {

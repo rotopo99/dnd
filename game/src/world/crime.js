@@ -3,6 +3,7 @@
 // State: save.wanted[faction] = { heat 0..5, since: day of the last crime / cooling step, bounty };
 //        save.npcs[id].dead / theftDay; save.heirs[qid] = npc (quests passed to an heir); save.crimeRumors [{ text, until }].
 // UI — scenes/location.js (buttons «Украсть» / «Напасть», bribe, entry check), world-map.js (bounty hunters), shop prices.
+import { hackActive } from './cs-hacks.js';
 import { CRIME_RULES, GUARDS, GUARD_ELITE, GUARD_FALLBACK, ATTACK_RULES, WANTED, CRIME_RUMORS, CRIME_TOASTS } from '../data/world/crime.js';
 import { NPCS } from '../data/npcs.js';
 import { RELATIONS } from '../data/factions.js';
@@ -86,6 +87,7 @@ function heatToast(save, f, w) {
 /** Raise the faction's wanted level. Spread to allies at ≥ 3, companions of the faction leave at 5. → toasts. */
 export function addHeat(save, f, n, { spread = true } = {}) {
   if (!f || !(n > 0)) return [];
+  if (hackActive(save, 'cameras', save.location)) return []; // cyberspace-v2.md §5: cameras jammed from the Relay — no heat here
   save.wanted = save.wanted || {};
   const w = (save.wanted[f] = { heat: 0, since: save.day, bounty: 0, ...save.wanted[f] });
   const was = w.heat;
@@ -178,7 +180,8 @@ export function guardEnemies(save, f, extraHeat = 0) {
   const A = CRIME_RULES.alarmFight;
   const encId = (heat >= A.eliteFrom && GUARD_ELITE[f]) || GUARDS[f] || GUARD_FALLBACK;
   const base = ENCOUNTERS[encId]?.enemies || ENCOUNTERS[GUARD_FALLBACK]?.enemies || ['scavenger'];
-  const n = A.guardCountByHeat[Math.max(0, Math.min(A.guardCountByHeat.length - 1, heat))];
+  let n = A.guardCountByHeat[Math.max(0, Math.min(A.guardCountByHeat.length - 1, heat))];
+  if (hackActive(save, 'turrets', save.location)) n = Math.max(1, n - 2); // cyberspace-v2.md §5: turrets off — −2 guards
   const enemies = Array.from({ length: n }, (_, i) => base[i % base.length]);
   return { encounter: encId, enemies };
 }
@@ -218,7 +221,8 @@ export function theftPlaces(save, npc, loc) {
 /** DC = base + attention of the role + place + noise of a big party. */
 export function theftDc(save, npc, place) {
   const comp = (save.party || []).filter((p) => p.state === 'active').length;
-  return TH.baseDc + (TH.alert[npcRole(npc)] ?? 0) + (TH.place[place] ?? 0) + TH.partyPenalty * Math.max(0, comp - 2);
+  const cams = hackActive(save, 'cameras', save.location) ? -3 : 0; // cyberspace-v2.md §5: cameras jammed — stealth DC −3
+  return TH.baseDc + (TH.alert[npcRole(npc)] ?? 0) + (TH.place[place] ?? 0) + TH.partyPenalty * Math.max(0, comp - 2) + cams;
 }
 
 const creditsRoll = (save, role, rng) => {

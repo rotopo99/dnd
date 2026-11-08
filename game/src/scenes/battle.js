@@ -5,7 +5,8 @@
 //   opts: { hero: { race, cls, path, name }, map?, enemies?, allies?, seed?, title, intro?, hint?,
 //           winText?, defeatLines?: [{who,text}], barks?: { [enemyId]: key }, onEvent?(S, e),
 //           onWin(game, S), onExit(game), objectives?: {goal, chests, retreat, exitLock} (rules/objectives.js),
-//           onRetreatExit?(game, S) — the whole party left through exits 'D' }
+//           onRetreatExit?(game, S) — the whole party left through exits 'D',
+//           rivals?, partyLose? — skirmishes.md: third team 'rivals' (hostile to all), defeat when the party is down }
 // Events from the engine are queued and replayed one by one: a 'move' blocks the queue until the
 // walk animation ends, so popups / sounds / log lines appear in order and at the right place.
 import { t } from '../data/text/index.js';
@@ -141,10 +142,20 @@ export function createBattleScene(opts) {
     let enemies = opts.enemies;
     // ambush (world.md §2): enemies get +5 initiative; v4: enemyInit (failed talks, skills.md N3) and heroInit (Military, N6)
     const eInit = (opts.ambush ? 5 : 0) + (opts.enemyInit || 0);
-    if (eInit && enemies) enemies = enemies.map((e, i) => { const u = buildEnemy(e, { data: game.data, id: `e${i + 1}` }); u.initBonus += eInit; return u; });
+    // skirmishes.md: { enemy, hpPct?, mrlPct? } elements keep their wrapper (combat.js spawn reads the fields)
+    const boost = (list, pre, team) => list && list.map((e, i) => {
+      const w = e && typeof e === 'object' && typeof e.enemy === 'string' ? e : null;
+      const u = buildEnemy(w ? w.enemy : e, { data: game.data, id: `${pre}${i + 1}`, team });
+      u.initBonus += eInit;
+      if (w) { u.hpPct = w.hpPct; u.mrlPct = w.mrlPct; }
+      return u;
+    });
+    let rivals = opts.rivals || null;
+    if (eInit && enemies) { enemies = boost(enemies, 'e', 'enemies'); rivals = boost(rivals, 'r', 'rivals'); }
     if (opts.heroInit) for (const u of heroes) u.initBonus = (u.initBonus || 0) + opts.heroInit;
     S.b = createBattle({
       map: typeof opts.map === 'function' ? opts.map(seed) : opts.map, heroes, enemies, allies: opts.allies, data: game.data, seed,
+      rivals, partyLose: !!opts.partyLose, // skirmishes.md: the third side (team 'rivals'), lose when the party is down
       onEvent: (e) => S.queue.push(e),
       objectives: opts.objectives || null, // combat rework §6: optional objective, chests, exits
     });
@@ -332,7 +343,7 @@ export function createBattleScene(opts) {
     // combat rework §5: intent icons — forecast at the player's turn, kept while enemies act
     if (S.playerTurn) {
       S.intents = {};
-      for (const u of b.units) if (u.team === 'enemies' && isStanding(u) && !isHiddenFoe(u)) S.intents[u.id] = intentOf(b, u);
+      for (const u of b.units) if (u.team !== 'heroes' && isStanding(u) && !isHiddenFoe(u)) S.intents[u.id] = intentOf(b, u);
     }
   }
 
@@ -540,7 +551,7 @@ export function createBattleScene(opts) {
         const lvlOk = (x) => bt.maxLevelDelta == null || (x.level || 1) <= (u.level || 1) + bt.maxLevelDelta;
         if (bt.target === 'foe') return foes.filter(lvlOk);
         if (bt.target === 'foeNoDeaf') return foes.filter((x) => lvlOk(x) && listens(String(x.enemyId || '').split('^')[0]));
-        if (bt.target === 'foeHidden') return b.units.filter((x) => x.team === 'enemies' && combat.isAlive(x) && isHiddenFoe(x));
+        if (bt.target === 'foeHidden') return b.units.filter((x) => x.team !== 'heroes' && combat.isAlive(x) && isHiddenFoe(x));
         if (bt.target === 'ally') return friends.filter((x) => !x.down && (!bt.op.cleanse || x.statuses.some((st) => bt.op.cleanse.includes(st.id))));
         if (bt.target === 'self') return [u];
         return [];
@@ -569,7 +580,7 @@ export function createBattleScene(opts) {
     });
   }
   const battleTrick = (sk) => (SKILL_RULES.tricks[sk] || TRICKS2[sk] ? null : BATTLE_SKILL_TRICKS.find((x) => x.skill === sk) || null);
-  const trickDc = (sk, x) => (SKILL_RULES.tricks[sk] ? SKILL_RULES.tricks.dc : trick2(sk)?.dc ?? battleTrick(sk)?.dc ?? SKILL_RULES.tricks.dc) + (x.team === 'enemies' ? Math.floor((x.level || 0) / 2) : 0);
+  const trickDc = (sk, x) => (SKILL_RULES.tricks[sk] ? SKILL_RULES.tricks.dc : trick2(sk)?.dc ?? battleTrick(sk)?.dc ?? SKILL_RULES.tricks.dc) + (x.team !== 'heroes' ? Math.floor((x.level || 0) / 2) : 0);
 
   function doTrick(sk, u, x) {
     const b = S.b;
@@ -822,7 +833,7 @@ export function createBattleScene(opts) {
       case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? C.j : C.a); break;
       case 'turnStart': {
         const bk = A && opts.barks ? opts.barks[String(A.enemyId || '').split('^')[0]] : null;
-        if (A && A.team === 'enemies' && bk && Math.random() < 0.35) storyBubble(A, bk);
+        if (A && A.team !== 'heroes' && bk && Math.random() < 0.35) storyBubble(A, bk);
         break;
       }
       default: break;

@@ -11,6 +11,9 @@ import { LOCATION_LORE } from '../data/world/locations-lore.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
 import { PARTY_EVENTS_TEXT } from '../data/text/party-events.js';
 import { QUEST_TURNIN } from '../data/text/quest-turnin.js';
+import { QUEST_TURNIN_CYBER } from '../data/text/quest-turnin-cyber.js';
+import { QUESTS_CYBER } from '../data/world/quests-cyber.js';
+import { AUTOABLE_QUESTS } from '../data/world/expeditions.js';
 import { CONSEQUENCES } from '../data/world/consequences.js';
 import { PROLOGUE } from '../data/text/prologue.js';
 import { LOCATIONS, ITEMS as WORLD_ITEMS, resolveLocation } from '../data/world/locations.js';
@@ -63,7 +66,10 @@ export function personalQuest(pq) {
   return { id: pq.id, name: pq.name, giver: pq.npc, summary: stages[0]?.text || '', personal: { npc: pq.npc, loyalty, altPath: !!unlockAltPath }, stages, rewards };
 }
 export const QUESTS_PERSONAL = Object.fromEntries(Object.values(PERSONAL_QUESTS).map((q) => [q.id, personalQuest(q)]));
-export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL };
+export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER };
+// cyberspace-v2.md: turn-in lines of the cyber quests; expeditions.md: mini quests a reserve companion can close (autoable)
+Object.assign(QUEST_TURNIN, QUEST_TURNIN_CYBER);
+for (const id of Object.keys(AUTOABLE_QUESTS)) if (QUESTS[id]) QUESTS[id].autoable = true;
 export const isNpcQuest = (id) => !!QUESTS_NPC[id] || !!QUESTS_D[id];
 
 /** Lore of a node (locations-lore.js): { desc, spots, rumor, problem } or null. */

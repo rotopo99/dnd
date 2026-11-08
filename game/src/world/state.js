@@ -1,5 +1,6 @@
 // World state helpers over the save object (world.md §8): new game, party members, creatures for battle,
 // experience and levels, rewards (Effects), deeds/approval, discovery, travel and encounters.
+import { SPIRIT } from '../data/world/cyberspace.js';
 import { buildCreature, isAllowed, mod, asiLevelsFor } from '../rules/character.js';
 import { t } from '../data/text/index.js';
 import { talentAllowed } from '../data/talents.js';
@@ -132,7 +133,8 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const G = gadgetWithItems(save, data);
   const talents = safeTalents(h.talents);
   const activeCombat = safeTalents(h.activeCombat).filter((id) => talents.includes(id)).slice(0, COMBAT_TALENT_LIMIT(h.level));
-  const spec = { race: race || h.race, cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined,
+  // cyberspace-v2.md §7: the body is destroyed — the hero fights as a Cyberspace spirit (SPIRIT.race, half max HP)
+  const spec = { race: race || (h.spirit ? SPIRIT.race : h.race), cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined,
     stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined,
     asi: Array.isArray(h.asi) && h.asi.length ? h.asi : undefined };
   // v7: battle items — quick slots (unit.inventory) and the rest of the bag (unit.backpack, «Порыться»)
@@ -145,6 +147,7 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   }
   const marks = h.judgeMarks || 0;
   if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
+  if (h.spirit) { u.maxHp = Math.max(1, Math.ceil(u.maxHp * SPIRIT.stats.hpFrac)); u.hp = Math.min(u.hp, u.maxHp); u.spirit = true; }
   restore(u, h.hp, h.mrl);
   restoreRest(u, h);
   u.look = h.look || null; u.avatar = h.avatar || null;

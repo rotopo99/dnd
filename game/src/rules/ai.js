@@ -369,7 +369,21 @@ function zoneValue(b, u, a, z, spec) {
   return v;
 }
 
+/**
+ * skirmishes.md: with three sides the non-party teams prefer each other a bit (+RIVAL_BONUS to a positive score),
+ * so A and B start fighting at once instead of both waiting for the party.
+ */
+const RIVAL_BONUS = 2;
 export function evalAction(b, u, act) {
+  const v = evalAction0(b, u, act);
+  if (v > 0 && act.target && u.team !== 'heroes') {
+    const t = b.byId[act.target];
+    if (t && t.team !== 'heroes' && t.team !== u.team && isHostile(b, u, t)) return v + RIVAL_BONUS;
+  }
+  return v;
+}
+
+function evalAction0(b, u, act) {
   switch (act.type) {
     case 'attack': {
       if (u.weapon && u.weapon.area) {

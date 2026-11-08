@@ -171,7 +171,7 @@ function buildMapLayer(S) {
   S.gridV = b.gridVersion || 0;
 }
 
-const isHidden = (u) => u.team === 'enemies' && (!!u.fogHidden || u.statuses.some((s) => s.id === 'invisible' || s.id === 'stealth'));
+const isHidden = (u) => u.team !== 'heroes' && (!!u.fogHidden || u.statuses.some((s) => s.id === 'invisible' || s.id === 'stealth'));
 /** Enemy the player cannot see (invisible / stealth): not drawn, not highlighted, not clickable. */
 export const isHiddenFoe = (u) => !!u && !u.dead && !u.removed && isHidden(u);
 const drawList = [];
@@ -188,7 +188,8 @@ function battlePortrait(ctx, S, u, x, y, scale) {
 function unitSprite(u) {
   return u.kind === 'hero' ? heroSpriteIds(u.raceId, u.classId, u.look) : enemySpriteIds(u.enemyId);
 }
-const markerTeam = (u) => (u.team === 'heroes' ? (u.kind === 'hero' ? 'player' : 'ally') : u.team === 'enemies' ? 'enemy' : 'a');
+// skirmishes.md: NPC allies — green ring, the third side ('rivals') — the enemy ring in amber
+const markerTeam = (u) => (u.team === 'heroes' ? (u.kind === 'hero' ? 'player' : 'ally') : u.team === 'enemies' ? 'enemy' : 'rival');
 
 // ---------------------------------------------------------------- main render
 export function renderBattle(game, S) {
@@ -405,11 +406,11 @@ function drawUnits(ctx, S, preview, tms) {
     ctx.globalAlpha = alpha;
     if (!(u.dead || u.removed)) drawTeamMarker(ctx, markerTeam(u), px, py, L.s);
     let tint = null;
-    if (u.id === cur && !(u.dead || u.removed)) tint = own ? (u.kind === 'hero' ? 'h' : 'j') : 'c';
+    if (u.id === cur && !(u.dead || u.removed)) tint = own ? (u.kind === 'hero' ? 'h' : 'j') : u.team === 'rivals' ? 'a' : 'c';
     if ((preview.target === u) || affected.has(u.id)) tint = 'a';
     const moving = d.path.length > 0;
     drawSprite(ctx, unitSprite(u), px, py, L.s, {
-      frame: d.down ? 0 : moving ? 1 : idleFrame(tms, d.phase), flip: u.team === 'enemies', tint, mono: d.flash > 0 ? '5' : null,
+      frame: d.down ? 0 : moving ? 1 : idleFrame(tms, d.phase), flip: u.team !== 'heroes', tint, mono: d.flash > 0 ? '5' : null,
     });
     ctx.globalAlpha = 1;
     if (u.dead || u.removed) continue;

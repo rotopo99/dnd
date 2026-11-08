@@ -31,15 +31,15 @@ export const COVER_NAMES = ['none', 'rubble', 'half', 'full'];
 export const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /**
- * parseMap(def) -> { w, h, tiles, starts: { P, E, A }, exits, def }
- * Unknown characters are floor. 'P' / 'E' / 'A' are floor tiles with a start marker.
+ * parseMap(def) -> { w, h, tiles, starts: { P, E, A, F }, exits, def }
+ * Unknown characters are floor. 'P' / 'E' / 'A' / 'F' are floor tiles with a start marker.
  */
 export function parseMap(def) {
   const rows = def.grid;
   const h = rows.length;
   const w = rows.reduce((m, r) => Math.max(m, r.length), 0);
   const tiles = new Uint8Array(w * h);
-  const starts = { P: [], E: [], A: [] };
+  const starts = { P: [], E: [], A: [], F: [] }; // F — the third side (skirmishes.md: team 'rivals')
   const exits = [];
   const barrels = [];
   const objects = [];
@@ -49,7 +49,7 @@ export function parseMap(def) {
       const ch = rows[y][x] ?? '#';
       const t = CHAR_TILE[ch] ?? T_FLOOR;
       tiles[y * w + x] = t;
-      if (ch === 'P' || ch === 'E' || ch === 'A') starts[ch].push({ x, y });
+      if (ch === 'P' || ch === 'E' || ch === 'A' || ch === 'F') starts[ch].push({ x, y });
       if (t === T_EXIT) exits.push({ x, y });
       if (t === T_BARREL) barrels.push({ x, y, kind: ch === 'g' ? 'toxgas' : 'oil' });
       if (OBJECT_CHARS[ch]) objects.push({ x, y, kind: OBJECT_CHARS[ch] });

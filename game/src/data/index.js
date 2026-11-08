@@ -6,6 +6,8 @@ import { ENEMIES as ENEMIES_V1, ENCOUNTERS as ENCOUNTERS_V1 } from './enemies.js
 import { ENEMIES_V3, ENCOUNTERS_V3 } from './enemies-v3.js';
 import { ENCOUNTERS_V4 } from './enemies-v4.js'; // v4: враги и бои 6–20; регистрирует врагов в ENEMIES_V3
 import { ENCOUNTERS_EXODUS } from './enemies-exodus.js'; // третий исход: отряды культа и ревенанты на дорогах (метки 2–5)
+import { ENCOUNTERS_CYBER } from './enemies-cyber.js'; // киберспейс v2: враги зон «под героя», бои enc-cs-*
+import { CS_ITEMS } from './world/cyberspace.js';
 import { WEAPONS, CLASS_PROFICIENCY } from './items/weapons.js';
 import { ARMOR } from './items/armor.js';
 import { MODS, QUALITY } from './items/mods.js';
@@ -31,13 +33,15 @@ export const CLASSES = Object.fromEntries(Object.entries(CLASSES_BASE).map(([id,
 
 /** Enemies and battles: v1.0 + v3 (enemies-v3.js) + v4 (enemies-v4.js, ур. 6–20; 'w-cc-finale' v4 перекрывает v1.0). */
 export const ENEMIES = { ...ENEMIES_V1, ...ENEMIES_V3 };
-export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4, ...ENCOUNTERS_EXODUS };
+export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4, ...ENCOUNTERS_EXODUS, ...ENCOUNTERS_CYBER };
 /**
  * One item catalogue: v3 gear (items/*) + v1.0 world items (world/locations.js ITEMS). Same id in both
  * (medkit, calmers, grenade) → one record: world fields (use, passives, price, desc) over the v3 battle fields.
  */
 export const ITEMS = { ...WEAPONS, ...ARMOR, ...OFFHAND, ...MODS, ...CONSUMABLES, ...PACKS };
 for (const [id, it] of Object.entries(WORLD_ITEMS)) ITEMS[id] = { ...(ITEMS[id] || {}), ...it };
+// киберспейс v2: предметы CS_ITEMS (мод «Эхо-катушка» — в items/mods.js); эффекты — world/cyber.js
+for (const [id, it] of Object.entries(CS_ITEMS)) if (!ITEMS[id]) ITEMS[id] = { id, name: it.name, price: it.price, desc: it.desc, cyber: it.slot, ...(it.slot === 'quest' ? { key: true } : {}) };
 
 // Этап B: теги фракций (plant, proxy, beast…) и привязки поверхностей/статусов к способностям (data/surfaces.js).
 for (const def of Object.values(ENEMIES)) {

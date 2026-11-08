@@ -3,6 +3,7 @@
 import { EXODUS as X } from '../data/world/exodus.js';
 import { t } from '../data/text/index.js';
 import { journal, tf } from './state.js';
+import { clashTick } from './clashes.js';
 import { EXODUS_RADIO, EXODUS_RUMORS, EXODUS_NPC } from '../data/text/exodus.js';
 
 /** Timer stopped for good (mq-exodus closed / node destroyed). */
@@ -81,7 +82,9 @@ export function exodusSync(save) {
 /** Days pass (travel / rest): save.day += n, then exodusSync. */
 export function passDays(save, n = 1) {
   save.day += n;
-  return exodusSync(save);
+  const r = exodusSync(save);
+  r.out.push(...clashTick(save, n)); // skirmishes.md: markers appear / resolve with the days
+  return r;
 }
 
 /** A service of a node is off: Harmony fell (rest / trade / trainers). */

@@ -50,7 +50,11 @@ export function encounterSetup(save, encId) {
   return { enemies: encounterEnemies(encId, partySize(save), { reduce }), allies };
 }
 
-const enemyDef = (e) => ENEMIES[String(typeof e === 'string' ? e : e?.enemyId || e?.id || '').split('^')[0]];
+const enemyDef = (e) => ENEMIES[String(typeof e === 'string' ? e : e?.enemy || e?.enemyId || e?.id || '').split('^')[0]];
+/** skirmishes.md: id of a battle list element (id string, `{ enemy, hpPct }` wrapper, enemy def). */
+const elemId = (e) => (typeof e === 'string' ? e : e?.enemy || e?.id);
+/** Units of the beaten sides: every team but the party ('enemies' and the skirmish third side 'rivals'). */
+const isFoeTeam = (u) => u.team !== 'heroes';
 const isBossDef = (d) => !!d && (d.boss || d.rank === 'boss' || d.rank === 'miniboss');
 
 /**
@@ -76,6 +80,8 @@ export function objectiveSpec(save, o, enemies, rng = Math.random) {
 /**
  * startWorldBattle(game, { encounter?, enemies?, allies?, map?, location?, title?, faction?, hazard?, ambush?, id?,
  *                          objective? (id | null — override the binding / random), chests?, noObjectives?, noRetreat?,
+ *                          rivals? (skirmishes.md: third side, hostile to all; the party loses when it is down), xpMul?,
+ *                          extraLoot? ({ credits, items } added to the loot window), afterLoot?(game, loot, notes, S),
  *                          onWin(game), onLose?(game) })
  */
 export function startWorldBattle(game, o) {
@@ -83,6 +89,10 @@ export function startWorldBattle(game, o) {
   const data = game.data;
   const setup = o.encounter ? encounterSetup(save, o.encounter) : { enemies: o.enemies, allies: [] };
   const allies = [...setup.allies, ...(o.allies || [])];
+  // skirmishes.md «благодарность»: a commander of a side we helped walks with the party for one battle
+  const escort = save.flags?.['skirm-escort'];
+  if (escort && ENEMIES[escort] && o.encounter !== FINALE_ENCOUNTER) { allies.push(escort); delete save.flags['skirm-escort']; game.toast(tf('skirm.escortJoins', { name: ENEMIES[escort].name }), 'j'); }
+  const rivals = o.rivals?.length ? o.rivals : null;
   if (o.encounter === FINALE_ENCOUNTER && !exodusZeroFinale(save) && partySize(save) + allies.length < FINALE_MIN_PARTY) {
     game.openModal({ title: t('world.finaleLockedTitle'), border: 'a', titleColor: 'a',
       lines: [{ text: t('world.finaleLocked').replace('{n}', partySize(save) + allies.length).replace('{min}', FINALE_MIN_PARTY) }],
@@ -92,9 +102,10 @@ export function startWorldBattle(game, o) {
   syncItems(save); // v7: quick slots / backpack must reflect old-style hero.items edits before units are built
   // a fight introduces the factions involved (reputation screen stops hiding them)
   if (o.faction) meetFaction(save, o.faction);
-  for (const e of setup.enemies || []) { const id = typeof e === 'string' ? e : e?.id; if (ENEMIES[String(id).split('^')[0]]?.faction) meetFaction(save, ENEMIES[String(id).split('^')[0]].faction); }
+  const foeIds = [...(setup.enemies || []), ...(rivals || [])].map(elemId);
+  for (const id of foeIds) { if (ENEMIES[String(id).split('^')[0]]?.faction) meetFaction(save, ENEMIES[String(id).split('^')[0]].faction); }
   // codex (vendors-bestiary.md): every enemy of the battle is «seen»
-  for (const x of markSeen(save, setup.enemies).slice(0, 3)) game.toast(x.text, x.color);
+  for (const x of markSeen(save, foeIds).slice(0, 3)) game.toast(x.text, x.color);
   const loc = LOCATIONS[o.location || save.location];
   // N6 Military: the best member reads the ground — the party gets +1 initiative
   const MIL = SKILL_RULES.preBattle.military;
@@ -105,8 +116,8 @@ export function startWorldBattle(game, o) {
   const scene = createBattleScene({
     heroes: () => partyUnits(save, data),
     enemies: setup.enemies,
-    allies,
-    map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies, hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }),
+    allies, rivals, partyLose: !!rivals,
+    map: fixed && !rivals ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies.map(elemId), ...(rivals ? { sides: 3, rivals: rivals.length } : {}), hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)
@@ -124,6 +135,8 @@ export function startWorldBattle(game, o) {
       const extra = objectiveRewards(g, S, o, notes);
       const loot = battleLoot(g, S, extra.rolls);
       if (extra.credits) loot.credits += Math.max(COMBAT.objectives?.creditsMin ?? 10, Math.round(loot.credits * extra.credits));
+      if (o.extraLoot) { loot.credits += o.extraLoot.credits || 0; addItems(loot.items, o.extraLoot.items || []); } // skirmishes.md: the dead of a waited-out fight
+      o.afterLoot?.(g, loot, notes, S); // skirmishes.md: reputation, «благодарность»
       loot.notes = notes;
       openLoot(g, loot, () => afterBattle(g, S, o));
     },
@@ -186,7 +199,7 @@ function battleLoot(game, S, extraRolls = 0) {
   const worn = (eq) => Object.values(eq || {}).flat().forEach((id) => id && owned.add(id));
   worn(save.hero.equipment);
   for (const p of activeCompanions(save)) worn(p.equipment);
-  const beaten = S.b.units.filter((u) => u.team === 'enemies' && (u.dead || u.removed) && !u.fled); // a fled coward takes its loot along
+  const beaten = S.b.units.filter((u) => isFoeTeam(u) && (u.dead || u.removed) && !u.fled); // a fled coward takes its loot along
   const loot = rollLoot(beaten, { ...game.data, ENEMIES }, Math.random, { flags, owned });
   // combat rework §3.2: broken crates rolled «junk» (b.junk) — item from COMBAT.junkItem
   const junk = game.data.COMBAT?.junkItem;
@@ -195,12 +208,18 @@ function battleLoot(game, S, extraRolls = 0) {
   if (extraRolls > 0) {
     const ex = rollLoot(beaten, { ...game.data, ENEMIES }, Math.random, { flags, owned, extraRolls, onlyExtra: true });
     loot.credits += ex.credits;
-    for (const it of ex.items) {
-      const same = loot.items.find((x) => x.id === it.id && (x.q || null) === (it.q || null));
-      if (same) same.n += it.n; else loot.items.push(it);
-    }
+    addItems(loot.items, ex.items);
   }
   return loot;
+}
+
+/** Merge item stacks { id, n, q? } into a loot list. */
+export function addItems(list, items) {
+  for (const it of items) {
+    const same = list.find((x) => x.id === it.id && (x.q || null) === (it.q || null));
+    if (same) same.n += it.n; else list.push({ ...it });
+  }
+  return list;
 }
 
 /**
@@ -216,7 +235,7 @@ function objectiveRewards(game, S, o, notes) {
   if (!g) return out;
   const name = t(`obj.${g.id}.name`);
   // reputation: the binding's faction, else the node's faction unless it is the enemy side, else the villages
-  const foe = o.faction || enemyDef(S.b.units.find((u) => u.team === 'enemies')?.enemyId)?.faction;
+  const foe = o.faction || enemyDef(S.b.units.find(isFoeTeam)?.enemyId)?.faction;
   const lf = locFaction(o.location || save.location);
   const fac = g.rep || (lf && lf !== foe ? lf : 'neutralVillages');
   if (g.state === 'done') {
@@ -373,13 +392,13 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
   if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
   if (won) {
     out.push(...battleLoyalty(save, b.units, S.revived)); // companions-scenes.md: downed / raised / clean wins
-    out.push(...gainXp(save, battleXp(b, game.data), game.data));
-    const killed = b.units.filter((u) => u.team === 'enemies' && u.kind !== 'summon' && (u.dead || u.removed)).length;
+    out.push(...gainXp(save, Math.round(battleXp(b, game.data) * (o.xpMul ?? 1)), game.data)); // skirmishes.md: choice XP multiplier
+    const killed = b.units.filter((u) => isFoeTeam(u) && u.kind !== 'summon' && (u.dead || u.removed)).length;
     if (o.faction && killed) out.push(...repToasts(applyRep(save, o.faction, Math.max(R.killRep.maxPerBattle, R.killRep.perKill * killed))));
     if (o.id && !save.battlesDone.includes(o.id)) save.battlesDone.push(o.id);
     // N7 Biology: samples of beaten mutants sell for credits
     const SM = SKILL_RULES.economy.samples;
-    const beaten = b.units.filter((u) => u.team === 'enemies' && u.kind !== 'summon' && (u.dead || u.removed)).map((u) => u.enemyId);
+    const beaten = b.units.filter((u) => isFoeTeam(u) && u.kind !== 'summon' && (u.dead || u.removed)).map((u) => u.enemyId);
     out.push(...markKills(save, beaten.filter(Boolean))); // codex: +1 win per record per battle
     if (mutantsIn(beaten, game.data)) {
       const r = autoCheck(members(save, game.data), [SM.skill], SM.dc);
