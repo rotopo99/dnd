@@ -4,6 +4,7 @@
 import { BLOCKS } from '../data/maps/roam/blocks.js';
 import { ROAM, ROAM_SIZE, ROAM_TYPES, roamTypeOf } from '../data/world/roam.js';
 import { parseMap, reachable, T_WALL, T_COVER, T_WATER } from '../rules/grid.js';
+import { tileBiomeOf, propsFor } from './battlefields.js';
 
 export function hashSeed(str) {
   let h = 2166136261 >>> 0;
@@ -36,13 +37,34 @@ export function generateRoam(locId, loc, type = roamTypeOf(loc)) {
   let last = null;
   for (let a = 0; a < ROAM.genTries; a++) {
     last = tryGen(locId, type, hashSeed(`${locId}#${a}`));
-    if (last.ok) return last.map;
+    if (last.ok) return dress(last.map, loc);
   }
   // repair: keep only what is reachable
   const m = last.map;
   m.objects = m.objects.filter((o) => !last.bad.has(o.id));
   m.spots = m.spots.filter((p) => !last.badSpots.has(`${p[0]},${p[1]}`));
-  return m;
+  return dress(m, loc);
+}
+
+/**
+ * battlefields.md: the node's tile biome (region table, seed = node id; bunkers — bunker-interior) and props on decor cells:
+ * c → a half-cover prop of the biome, C → a full one, x (inner city fence) → fence. Rules keep the chars (they block anyway).
+ */
+function dress(map, loc) {
+  const biome = loc?.biome || (map.type === 'bunker' ? 'bunker-interior' : tileBiomeOf({ region: loc?.region, seed: map.id }));
+  const rnd = seeded(hashSeed(`${map.id}:props`));
+  const props = [];
+  map.grid.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === 'x') { props.push({ id: 'fence', x, y, w: 1, h: 1, cover: null, blocks: true }); return; }
+    if (ch !== 'c' && ch !== 'C') return;
+    const list = propsFor(biome, ch === 'c' ? 'half' : 'full');
+    if (!list.length || rnd() < 0.3) return;
+    const id = list[Math.floor(rnd() * list.length)];
+    props.push({ id, x, y, w: 1, h: 1, cover: ch === 'c' ? 'half' : 'full', blocks: true });
+  }));
+  map.biome = biome;
+  map.props = props;
+  return map;
 }
 
 function tryGen(locId, type, seed) {

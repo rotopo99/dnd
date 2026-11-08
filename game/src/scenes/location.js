@@ -2,6 +2,8 @@
 // (talk, trade, train/implant, recruit, quest), location actions (rest, heal, revive, trade, rumors, terminal, battles,
 // caches, quest goals, field camp), entry gate by reputation, unique events on enter/rest,
 // bottom bar: map / party / reputation / journal / menu. Every change is autosaved.
+import { skillActionsAt, hintSkillsOf, npcHintSkills } from '../world/node-actions.js';
+import { openSkillActions, drawHintBadges } from '../ui/skill-ui.js';
 import { dropItem, countAll } from '../world/inventory.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
@@ -257,6 +259,13 @@ export function createLocationScene(rawId, opts = {}) {
     for (const c of loc.caches) {
       if (sv.caches.includes(c.id)) continue;
       out.push({ label: t('loc.search'), sub: c.check ? `${cacheSkills(c).map((x) => t(`skill.${x}`)).join(' / ')} ${t('battle.dc')} ${c.check.dc}` : t('loc.free'), run: (g) => searchCache(g, c) });
+    }
+    // skills-v3.md: the node's skill actions — one entry opens the «Навыки» list
+    const sk = skillActionsAt(sv, locId, loc);
+    if (sk.length) {
+      const open = sk.filter((x) => !x.done);
+      out.push({ label: `${t('nsa.group')} (${open.length}/${sk.length})`, sub: [...new Set(open.map((x) => skillName(x.skill)))].slice(0, 6).join(', ') || t('nsa.done'),
+        skills: [...new Set(open.map((x) => x.skill))].slice(0, 3), run: (g) => openSkillActions(g, locId, (g2) => refresh(g2)) });
     }
     // N7 Athletics: crates on the node (once per node)
     const CR = SKILL_RULES.economy.crates;
@@ -670,6 +679,7 @@ export function createLocationScene(rawId, opts = {}) {
     else if ((sv.hero.pendingAsi || []).length) btns.push({ kind: 'nav', id: 'party', label: t('lvl.asiPending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     S.buttons = btns;
     S.members = members(sv, game.data, { includeDown: true });
+    S.hints = hintSkillsOf(sv, locId, loc);
   }
 
   function nav(game, id) {
@@ -756,6 +766,7 @@ export function createLocationScene(rawId, opts = {}) {
       const mark = nodeMark(sv, locId); // world-consequences.md: the latest change of the node replaces its line
       textBlock(ctx, mark ? mark.descs.at(-1) : loc.desc || '', ox + 24, oy + 72, BASE_W - 300, mark ? C[TONE_COLOR[mark.tone] || '4'] : C['4'], FONT, LINE, 1);
       text(ctx, t('loc.people'), ox + 24, oy + 100, C['4'], FONT_B);
+      drawHintBadges(ctx, sv, S.hints || [], ox + 624, oy + 94, 22, 'right'); // skills-v3.md: «здесь пригодится»
       S.rows.forEach((row) => {
         const npc = NPCS[row.id];
         panel(ctx, ox + 24, row.y, 600, 60, C['1'], C['2']);
@@ -766,6 +777,7 @@ export function createLocationScene(rawId, opts = {}) {
         const role = fit(ctx, npc.role || '', tw, '12px monospace');
         text(ctx, role, ox + 86, row.y + 34, row.tier ? tierColor(row.tier) : C['4'], '12px monospace');
         if (role !== (npc.role || '')) hotspot(ox + 86, row.y + 30, tw, 20, { title: npc.name, lines: [npc.role] });
+        drawHintBadges(ctx, sv, npcHintSkills(row.id), ox + 30, row.y + 40, 16); // skills-v3.md: NPC hints over the portrait corner
       });
       if (!S.npcs.length) text(ctx, t('loc.nobody'), ox + 24, oy + 130, C['3']);
       text(ctx, t('loc.actions'), ox + 648, oy + 100, C['4'], FONT_B);
@@ -774,7 +786,8 @@ export function createLocationScene(rawId, opts = {}) {
           const hv = S.hover === b;
           panel(ctx, b.x, b.y, b.w, b.h, hv && !b.disabled ? C['3'] : C['2'], hv ? C['4'] : C['3']);
           text(ctx, fit(ctx, b.label, b.w - 24, FONT_B), b.x + 12, b.y + 5, b.disabled ? C['3'] : C['5'], FONT_B);
-          if (b.sub) text(ctx, fit(ctx, b.sub, b.w - 24, '12px monospace'), b.x + 12, b.y + 27, b.disabled ? C['3'] : C['4'], '12px monospace');
+          if (b.sub) text(ctx, fit(ctx, b.sub, b.w - 24 - (b.skills ? 80 : 0), '12px monospace'), b.x + 12, b.y + 27, b.disabled ? C['3'] : C['4'], '12px monospace');
+          if (b.skills) drawHintBadges(ctx, sv, b.skills, b.x + b.w - 8, b.y + 22, 20, 'right');
         } else button(ctx, b, S.hover === b);
       }
       S.members.forEach((m, i) => {

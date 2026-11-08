@@ -12,6 +12,7 @@ import { beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
 import { hotspot } from './tooltip.js';
 import { resLineTip, resTip, statusTip, termTip } from './tips.js';
 import { itemTip } from './items-ui.js';
+import { fieldBiome, drawFieldCell, drawFieldProps, propCells, drawWeather } from './field-view.js';
 import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp } from './battle-terrain.js';
 import { drawObjectiveMarkers, drawObjectivePanel } from './battle-objectives.js';
 import { drawPin, intentText } from './unit-pin.js';
@@ -140,7 +141,17 @@ function buildMapLayer(S) {
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
   S.fireTiles = [];
-  for (let y = 0; y < g.h; y++) {
+  const biome = fieldBiome(b.map);
+  if (biome) { // battlefields.md: biome tiles + props
+    const under = propCells(b.map.props, g.w);
+    for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+      const ch = rows[y][x] ?? '#';
+      const i = y * g.w + x;
+      if (drawFieldCell(c, biome, liveChar(b, ch, x, y), g.tiles[i], x, y, x * L.cell, y * L.cell, L.cell, under.has(i))) S.fireTiles.push(x, y);
+      drawTileExtra(c, b, ch, x, y, L.cell, { field: true });
+    }
+    drawFieldProps(c, b.map.props, L.cell, (p) => !p.destructible || !p.blocks || !!b.objects?.get(p.y * g.w + p.x));
+  } else for (let y = 0; y < g.h; y++) {
     for (let x = 0; x < g.w; x++) {
       const ch = rows[y][x] ?? '#';
       let ids = tileSpriteIds(liveChar(b, ch, x, y), x, y);
@@ -160,7 +171,7 @@ function buildMapLayer(S) {
   S.gridV = b.gridVersion || 0;
 }
 
-const isHidden = (u) => u.team === 'enemies' && u.statuses.some((s) => s.id === 'invisible' || s.id === 'stealth');
+const isHidden = (u) => u.team === 'enemies' && (!!u.fogHidden || u.statuses.some((s) => s.id === 'invisible' || s.id === 'stealth'));
 /** Enemy the player cannot see (invisible / stealth): not drawn, not highlighted, not clickable. */
 export const isHiddenFoe = (u) => !!u && !u.dead && !u.removed && isHidden(u);
 const drawList = [];
@@ -234,6 +245,7 @@ export function renderBattle(game, S) {
   drawUnits(ctx, S, preview, tms);
   drawIntents(ctx, S);
   drawSurfaces(ctx, S, tms, 'gas');
+  drawWeather(ctx, S, tms); // battlefields.md §4: time of day / weather, night light holes
   {
     const hc = S.hover.cell;
     const inReach = !!(hc && S.playerTurn && !S.sel && S.reach && S.reach.dist[hc.y * b.grid.w + hc.x] > 0);

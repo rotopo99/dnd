@@ -11,6 +11,7 @@ import { C, FONT, FONT_B, text, fit, panel, button, hitButton, clear } from '../
 import { hotspot } from '../ui/tooltip.js';
 import { TILE, drawSprite, heroSpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
 import { drawTileExtra } from '../ui/battle-terrain.js';
+import { fieldBiome, drawFieldCell, drawFieldProps, propCells } from '../ui/field-view.js';
 import { T_RUBBLE, T_EXIT, isPassable, chebyshev } from '../rules/grid.js';
 import { rollDice } from '../rules/dice.js';
 import { activeCompanions, grant } from '../world/state.js';
@@ -311,9 +312,18 @@ export function createRoamScene(rawId) {
     const x2 = cv.getContext('2d');
     x2.imageSmoothingEnabled = false;
     const b = { grid: { ...grid, tiles: roamGrid({ grid: map.grid, objects: [] }).tiles } };
+    const biome = fieldBiome(map); // battlefields.md: the node's biome tiles and props
+    const under = propCells(map.props, W);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const ch = map.grid[y][x];
       const px = x * c, py = y * c;
+      if (biome) {
+        drawFieldCell(x2, biome, ch === '"' ? '.' : ch, b.grid.tiles[y * W + x], x, y, px, py, c, under.has(y * W + x));
+        if (ch === '"') { x2.fillStyle = rgba(C.k, 0.45); x2.fillRect(px, py, c, c); x2.fillStyle = C.l; for (let k = 0; k < 3; k++) x2.fillRect(px + 4 + k * 10, py + 6 + (k % 2) * 10, 3, 9); }
+        if (grid.tiles[y * W + x] === T_EXIT) { x2.fillStyle = rgba(C.a, 0.35); x2.fillRect(px, py, c, c); }
+        drawTileExtra(x2, b, ch, x, y, c, { field: true });
+        continue;
+      }
       if (ch === 'w') { x2.fillStyle = C.g; x2.fillRect(px, py, c, c); x2.fillStyle = rgba(C.f, 0.35); if ((x + y * 3) % 4 === 0) x2.fillRect(px + 6, py + 12, 14, 2); continue; }
       drawSprite(x2, tileSpriteIds(ch === '=' || ch === '"' ? '.' : ch, x, y), px, py, s);
       if (ch === '=') { x2.fillStyle = C['8']; x2.fillRect(px, py, c, c); x2.fillStyle = C['6']; for (let k = 0; k < 4; k++) x2.fillRect(px, py + k * 8 + 7, c, 1); }
@@ -321,6 +331,7 @@ export function createRoamScene(rawId) {
       if (grid.tiles[y * W + x] === T_EXIT) { x2.fillStyle = rgba(C.a, 0.35); x2.fillRect(px, py, c, c); }
       drawTileExtra(x2, b, ch, x, y, c);
     }
+    if (biome) drawFieldProps(x2, map.props, c);
     for (const o of S.objs) drawObject(x2, o, o.x * c, o.y * c, c, s);
     x2.strokeStyle = rgba(C['0'], 0.18);
     x2.beginPath();

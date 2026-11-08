@@ -1,6 +1,7 @@
 // Stage B: drawing battle surfaces (fire, current, water, oil, acid, gas…) and the tile hover tip.
 // Colours — palette keys from data/surfaces.js (docs/STYLE.md). Animations: fire flickers (3 frames × 0.15 s), current
 // arcs, water/oil/ice/blood shine, acid bubbles, cringe pulses, proxy stripes; gas is fog drawn over units.
+import { drawProp } from '../assets/props.js';
 import { C } from './draw.js';
 import { hotspot } from './tooltip.js';
 import { surfaceTip } from './tips.js';
@@ -123,6 +124,7 @@ export function drawBarrels(ctx, S) {
   const L = S.L, c = L.cell;
   for (const br of b.barrels) {
     const px = L.mapX + br.x * c, py = L.mapY + br.y * c;
+    if (b.map?.biome) { drawProp(ctx, br.kind === 'toxgas' ? 'barrel-toxic' : 'barrel', px, py, c / 16); continue; } // battlefields.md props
     ctx.fillStyle = C['0']; ctx.fillRect(px + c * 0.22, py + c * 0.12, c * 0.56, c * 0.8);
     ctx.fillStyle = br.kind === 'toxgas' ? C.k : C['7']; ctx.fillRect(px + c * 0.26, py + c * 0.16, c * 0.48, c * 0.72);
     ctx.fillStyle = C['6']; ctx.fillRect(px + c * 0.26, py + c * 0.32, c * 0.48, Math.max(2, c * 0.06)); ctx.fillRect(px + c * 0.26, py + c * 0.66, c * 0.48, Math.max(2, c * 0.06));

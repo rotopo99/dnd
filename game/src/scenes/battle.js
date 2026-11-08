@@ -33,8 +33,10 @@ import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
 import { SKILL_RULES } from '../data/world/skill-rules.js';
-import { TRICKS2, trick2 } from '../world/skill-uses.js';
+import { TRICKS2, trick2, listens } from '../world/skill-uses.js';
 import { interactions, retreatWhy } from '../rules/objectives.js';
+import { fogHiddenIds } from '../world/battlefields.js';
+import { BATTLE_SKILL_TRICKS } from '../data/world/node-skill-actions.js';
 
 /** v7: quick slots on 1–6, abilities on letters (inventory-mods.md §2). */
 const QUICK_KEYS = 6;
@@ -198,9 +200,16 @@ export function createBattleScene(opts) {
   S.dispOf = dispOf;
 
   // ---------------------------------------------------------------- derived state (rebuilt when dirty)
+  /** battlefields.md §4: enemies out of sight in fog / night / rain (isHiddenFoe reads u.fogHidden). */
+  function vision() {
+    const hid = fogHiddenIds(S.b);
+    for (const u of S.b.units) u.fogHidden = hid.has(u.id);
+  }
+
   function refresh() {
     S.dirty = false;
     const b = S.b;
+    vision();
     const cu = currentUnit(b);
     if (cu && !b.winner && cu.team === 'heroes' && cu.kind === 'hero' && !isAiTurn(b) && isStanding(cu)) S.heroId = cu.id;
     S.playerTurn = !!cu && !b.winner && cu.id === S.heroId && !isAiTurn(b);
@@ -525,7 +534,17 @@ export function createBattleScene(opts) {
       case 'meditation': return [u];
       case 'judge': return foes.filter((x) => /skrilet|soul|ghost/.test(x.baseId || x.id) || (x.tags || []).includes('soul'));
       case 'lockpicking': { const ids = trick2('lockpicking').fx.cleanse; return friends.filter((x) => adj(x) && x.statuses.some((st) => ids.includes(st.id))); }
-      default: return [];
+      default: { // skills-v3.md: BATTLE_SKILL_TRICKS
+        const bt = battleTrick(skill);
+        if (!bt) return [];
+        const lvlOk = (x) => bt.maxLevelDelta == null || (x.level || 1) <= (u.level || 1) + bt.maxLevelDelta;
+        if (bt.target === 'foe') return foes.filter(lvlOk);
+        if (bt.target === 'foeNoDeaf') return foes.filter((x) => lvlOk(x) && listens(String(x.enemyId || '').split('^')[0]));
+        if (bt.target === 'foeHidden') return b.units.filter((x) => x.team === 'enemies' && combat.isAlive(x) && isHiddenFoe(x));
+        if (bt.target === 'ally') return friends.filter((x) => !x.down && (!bt.op.cleanse || x.statuses.some((st) => bt.op.cleanse.includes(st.id))));
+        if (bt.target === 'self') return [u];
+        return [];
+      }
     }
   }
 
@@ -535,12 +554,12 @@ export function createBattleScene(opts) {
     const b = S.b;
     const u = b.byId[S.heroId];
     const used = (S.tricksUsed[u.id] = S.tricksUsed[u.id] || []);
-    const skills = [...new Set([...Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc'), ...Object.keys(TRICKS2)])];
+    const skills = [...new Set([...Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc'), ...Object.keys(TRICKS2), ...BATTLE_SKILL_TRICKS.map((x) => x.skill)])];
     game.openModal({
       title: t('trick.title'), width: 900,
       options: [...skills.map((sk) => {
         const tg = trickTargets(sk, u);
-        const why = used.includes(sk) ? t('trick.used') : !tg.length ? (sk === 'stealth' ? t('trick.firstRound') : t('trick.noTargets')) : null;
+        const why = used.includes(sk) ? t('trick.used') : !tg.length ? (sk === 'stealth' ? t('trick.firstRound') : battleTrick(sk)?.target === 'foeHidden' ? t('trick.noHidden') : t('trick.noTargets')) : null;
         return { label: `${t(`skill.${sk}`)}: ${t(`trick.${sk}`)}`, sub: why || '', disabled: !!why,
           run: (g) => {
             if (tg.length === 1) return doTrick(sk, u, tg[0]);
@@ -549,7 +568,8 @@ export function createBattleScene(opts) {
       }), { label: t('loc.close'), run: () => {} }],
     });
   }
-  const trickDc = (sk, x) => (SKILL_RULES.tricks[sk] ? SKILL_RULES.tricks.dc : trick2(sk)?.dc ?? SKILL_RULES.tricks.dc) + (x.team === 'enemies' ? Math.floor((x.level || 0) / 2) : 0);
+  const battleTrick = (sk) => (SKILL_RULES.tricks[sk] || TRICKS2[sk] ? null : BATTLE_SKILL_TRICKS.find((x) => x.skill === sk) || null);
+  const trickDc = (sk, x) => (SKILL_RULES.tricks[sk] ? SKILL_RULES.tricks.dc : trick2(sk)?.dc ?? battleTrick(sk)?.dc ?? SKILL_RULES.tricks.dc) + (x.team === 'enemies' ? Math.floor((x.level || 0) / 2) : 0);
 
   function doTrick(sk, u, x) {
     const b = S.b;
@@ -582,7 +602,13 @@ export function createBattleScene(opts) {
         if (buff) combat.removeStatus(b, x, buff.id);
         combat.dealDamage(b, u, x, trick2('judge').fx.mrlDmg, 'psychic');
       }
-      else if (sk === 'biology') {
+      else if (battleTrick(sk)) { // skills-v3.md: status / cleanse / reveal
+        const op = battleTrick(sk).op;
+        if (op.reveal) combat.applyOp(b, u, x, { op: 'reveal', turns: op.turns || 1 });
+        if (op.status) combat.applyStatus(b, x, op.status, op.turns || 1, u);
+        if (op.cleanse) combat.applyOp(b, u, x, { op: 'cleanse', ids: op.cleanse });
+        vision();
+      } else if (sk === 'biology') {
         const res = Object.entries(x.resist || {}).filter(([, v]) => v).map(([k, v]) => `${t(`dmg.${k}`)} — ${t(`trick.r.${v}`)}`);
         const imm = (x.immuneStatus || []).map((id) => S.b.data.statuses?.[id]?.name || id);
         say(`${S.name(x.id)}: ${[res.length ? `${t('trick.resists')}: ${res.join(', ')}` : '', imm.length ? `${t('trick.immune')}: ${imm.join(', ')}` : ''].filter(Boolean).join(' · ') || t('trick.nothing')}`);
@@ -941,6 +967,7 @@ export function createBattleScene(opts) {
       if (S.shake > 0) S.shake -= dt;
       animate(dt * k);
       processQueue();
+      vision();
       if (S.dirty) refresh();
       handleInput(game);
       if (S.dirty) refresh();

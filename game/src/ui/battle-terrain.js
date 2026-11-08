@@ -8,6 +8,8 @@ import { T_COVER, T_FULL, T_RUBBLE, T_BARREL, OBJECT_CHARS, elevAt } from '../ru
 import { objectAt } from '../rules/terrain.js';
 import { intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
+import { PROPS } from '../assets/props.js';
+import { weatherLine } from './field-view.js';
 
 const rgba = (hex, a) => {
   const n = parseInt(hex.slice(1), 16);
@@ -22,7 +24,7 @@ export function liveChar(b, ch, x, y) {
 }
 
 /** Extra drawing of a tile on the static map layer (heights, new objects, rubble). */
-export function drawTileExtra(c, b, ch, x, y, cell) {
+export function drawTileExtra(c, b, ch, x, y, cell, opts = {}) {
   const g = b.grid;
   const px = x * cell, py = y * cell;
   const e = elevAt(g, x, y);
@@ -42,6 +44,7 @@ export function drawTileExtra(c, b, ch, x, y, cell) {
   }
   const tl = g.tiles[y * g.w + x];
   const k = cell / 16;
+  if (opts.field && (tl === T_RUBBLE || ch === 'c' || ch === 'C' || ch === 'x')) return; // battlefields.md: biome tiles / props
   if (tl === T_RUBBLE) {
     c.fillStyle = C['3'];
     for (const [ox, oy, w] of [[3, 4, 3], [9, 3, 2], [6, 9, 4], [11, 10, 3], [2, 12, 2]]) c.fillRect(px + ox * k, py + oy * k, w * k, w * k * 0.7);
@@ -72,7 +75,7 @@ export function drawTileExtra(c, b, ch, x, y, cell) {
 export function drawObjects(ctx, S) {
   const b = S.b, L = S.L;
   if (!b.objects) return;
-  const list = [...b.objects.values(), ...(b.barrels || []).filter((r) => r.hp != null).map((r) => ({ ...r, kind: 'barrel' }))];
+  const list = [...new Set(b.objects.values()), ...(b.barrels || []).filter((r) => r.hp != null).map((r) => ({ ...r, kind: 'barrel' }))];
   for (const o of list) {
     if (o.hp >= o.maxHp) continue;
     bar(ctx, L.mapX + o.x * L.cell + 3, L.mapY + o.y * L.cell + L.cell - 6, L.cell - 6, Math.max(2, L.s + 1), o.hp, o.maxHp, 'hp');
@@ -97,7 +100,7 @@ export function drawObjects(ctx, S) {
     ];
     if (o.cover === 'full') lines.push(t('cover.fullHint'));
     lines.push({ text: t('obj.smashHint'), color: '4' });
-    return { title: t(`obj.${o.kind}`), lines };
+    return { title: o.name || (o.prop && PROPS[o.prop]?.name) || t(`obj.${o.kind}`), lines };
   });
 }
 
@@ -151,6 +154,8 @@ export function drawHelp(ctx, S) {
   const L = S.L;
   const y = L.area.y + L.area.h - 20;
   if (S.sel && S.playerTurn) return; // the selection hint lives there
-  const s = S.skip ? t('battle.skipping') : S.fast ? `${t('battle.fastOn')} · ${t('battle.help')}` : t('battle.help');
+  const wx = weatherLine(S.b.map); // battlefields.md §4: time of day / weather / sight range
+  const s0 = S.skip ? t('battle.skipping') : S.fast ? `${t('battle.fastOn')} · ${t('battle.help')}` : t('battle.help');
+  const s = wx ? `${wx} · ${s0}` : s0;
   text(ctx, fit(ctx, s, L.area.w - 24), L.area.w / 2, y, S.fast || S.skip ? C.a : C['3'], FONT, 'center');
 }

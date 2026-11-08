@@ -1933,8 +1933,9 @@ console.log('combat rework: cover, objects, heights, pushes, archetypes, arenas'
         assert.ok(G.DIRS8.every(([dx, dy]) => g.elev[(y + dy) * g.w + x + dx] >= 1), 'h2 ringed by h1');
       }
     }
-    assert.equal(makeWorldMap({ seed: 1, region: 'pirates' }).biome, 'port');
-    assert.equal(makeWorldMap({ seed: 1, hazard: 'fire' }).biome, 'agro');
+    // battlefields.md: tile biomes (9 ids) — region main or its variant, hazard fallback
+    assert.ok(['port', 'swamp'].includes(makeWorldMap({ seed: 1, region: 'pirates' }).biome));
+    assert.equal(makeWorldMap({ seed: 1, hazard: 'fire' }).biome, 'mutant-forest');
   });
 }
 
