@@ -54,5 +54,5 @@ export const ROMANCE_TEXT = {
   'rom.epi.together': '{name}: вместе',
   'rom.epi.parted': '{name}: врозь',
   'rom.epi.tragedy': '{name}: память',
-  'rom.narr': '',
+  'rom.chkNote': '{skill}: {total} против СЛ {dc} — {res}',
 };

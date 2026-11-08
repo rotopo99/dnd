@@ -21,6 +21,8 @@ import { eventsFor, runEvent } from './event.js';
 import { runEncounter } from './encounter.js';
 import { startExodusZero, openExodusRadio } from './exodus-zero.js';
 import { saveGame } from '../save.js';
+import { romanceRest, talkCandidates } from '../world/romance.js';
+import { openPrivateTalk } from './romance-scene.js';
 
 const toastAll = (game, list) => { for (const x of list || []) game.toast(x.text, x.color); };
 
@@ -67,6 +69,9 @@ export function openRestMenu(game, o = {}) {
       run: (g) => { sv.hero.credits -= cost; dayRest(g, o, { risky: false }, 'lodging'); } });
   }
   if (food < need) opts.push({ label: t('rest.hungry'), sub: tf('rest.hungrySub', { pct: Math.round(REST.hungry.mrlLoss * 100) }), run: (g) => dayRest(g, o, risk, 'hungry') });
+  // romance.md: «Поговорить наедине» at the camp / base
+  const where = mode === 'base' ? 'base' : 'camp';
+  if (talkCandidates(sv, where).length) opts.push({ label: t('rom.talk'), sub: t('rom.talkWho'), run: (g) => openPrivateTalk(g, { where, done: (g2) => openRestMenu(g2, o) }) });
   opts.push({ label: t('rest.cancel'), run: () => {} });
   game.openModal({ title: t('rest.title'), lines, options: opts, width: 760 });
 }
@@ -122,6 +127,7 @@ function dayRest(game, o, risk, mode) {
   toastAll(game, ex.out);
   toastAll(game, waitingLoyalty(sv)); // companions-scenes.md: waiting on a hub costs loyalty
   toastAll(game, restLoyalty(sv)); // soft-incompatible pairs at the fire
+  toastAll(game, romanceRest(sv)); // romance.md: a night together / waiting apart
   if (o.afterLong) o.afterLong(game);
   toastAll(game, restDepartures(sv));
   saveGame(sv);

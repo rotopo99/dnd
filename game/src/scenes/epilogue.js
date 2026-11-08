@@ -7,6 +7,7 @@ import { C, FONT, FONT_B, FONT_XL, text, textBlock, clear } from '../ui/draw.js'
 import { epilogueSlides } from '../world/consequences.js';
 import { tf } from '../world/state.js';
 import { play } from '../audio/sfx.js';
+import { playTrack, getMusicState } from '../audio/music.js';
 
 const ART = new Map();
 function artOf(src) {
@@ -20,16 +21,18 @@ export function createEpilogueScene({ save, extra = [], onDone }) {
   const list = epilogueSlides(save);
   // extra slides (e.g. the Exodus zero) go right after the intro
   const slides = [list[0], ...extra, ...list.slice(1)].filter(Boolean);
-  const S = { i: 0, t: 0 };
-  const done = (game) => { S.over = true; onDone?.(game); };
+  const S = { i: 0, t: 0, prev: null };
+  // romance.md: romance slides carry their track (romance / tragic); other slides — the track before them
+  const music = () => { const m = slides[S.i]?.music || S.prev; if (m) playTrack(m); };
+  const done = (game) => { S.over = true; if (S.prev) playTrack(S.prev); onDone?.(game); };
   const next = (game) => {
     play('uiClick');
     if (S.i >= slides.length - 1) return done(game);
-    S.i++; S.t = 0;
+    S.i++; S.t = 0; music();
   };
   return {
     id: 'epilogue', S, slides,
-    enter() { S.t = 0; },
+    enter() { S.t = 0; S.prev = getMusicState().track; music(); },
     update(game, dt) {
       if (S.over) return;
       S.t += dt;

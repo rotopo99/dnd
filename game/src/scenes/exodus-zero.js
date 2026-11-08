@@ -56,8 +56,8 @@ function fight(game) {
         options: [
           // world-consequences.md: the epilogue at the Exodus zero (the late win), then the Main node
           { label: t('epi.title'), run: (g2) => openEpilogue(g2, { extra: [{ title: t('exodus.lateWinTitle'), text: t('exodus.lateWin') }],
-            onDone: (g3) => import('./location.js').then((m) => g3.setScene(m.createLocationScene(Z.location))) }) },
-          { label: t('battle.continue'), run: (g2) => import('./location.js').then((m) => g2.setScene(m.createLocationScene(Z.location))) },
+            onDone: (g3) => import('./roam.js').then((m) => g3.setScene(m.createNodeScene(Z.location))) }) },
+          { label: t('battle.continue'), run: (g2) => import('./roam.js').then((m) => g2.setScene(m.createNodeScene(Z.location))) },
           { label: t('menu.back'), run: (g2) => import('./menu.js').then((m) => g2.setScene(m.menuScene)) },
         ] });
     },

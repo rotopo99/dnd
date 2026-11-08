@@ -18,7 +18,8 @@ import {
 import { onArrive, questTargets } from '../world/quests.js';
 import { runEvent, travelEvents } from './event.js';
 import { runEncounter } from './encounter.js';
-import { createLocationScene, tierColor } from './location.js';
+import { tierColor } from './location.js';
+import { createNodeScene } from './roam.js';
 import { saveGame } from '../save.js';
 import { passDays, exodusHud, travelWarning } from '../world/exodus.js';
 import { startExodusZero, openExodusRadio } from './exodus-zero.js';
@@ -333,7 +334,7 @@ export function createWorldMapScene() {
   }
 
   function enterLocation(game) {
-    game.setScene(createLocationScene(save(game).location));
+    game.setScene(createNodeScene(save(game).location));
   }
 
   function nav(game, id) {

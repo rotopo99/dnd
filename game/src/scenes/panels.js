@@ -8,7 +8,7 @@ import { TALENTS, SKILLS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/ta
 import { drawPortrait } from '../assets/sprites.js';
 import { heroBuild, wounds, drawHeroPic } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, LINE, text, textBlock, fit, wrap, panel, button, hitButton, clear } from '../ui/draw.js';
+import { C, FONT, FONT_B, LINE, text, textBlock, fit, wrap, panel, button, hitButton, clear, bar } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS, isMet } from '../world/reputation.js';
 import { buildHero, buildCompanion, members, tf, memberPending, toggleActiveTalent, squadInfo, ensureCompanionXp } from '../world/state.js';
 import { QUESTS, gadgetFor, ITEMS, SKILL_RULES } from '../world/data.js';
@@ -32,6 +32,8 @@ import { COMPANIONS } from '../data/companions.js';
 import { consequenceLog } from '../world/consequences.js';
 import { heatOf, wantedOf, wantedLevel } from '../world/crime.js';
 import { openEpilogue } from './epilogue.js';
+import { peekRomance, partnerOf, stageFor, nextHint, isRomanceable } from '../world/romance.js';
+import { ROMANCE_RULES } from '../data/romance.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex'];
@@ -176,6 +178,13 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     const pend = memberPending(sv, key);
     if (pend.any) rows.push({ kind: 'text', h: LINE, text: `▲ ${pendingText(pend)}`, color: C.a });
     rows.push({ kind: 'gap', h: 6 });
+    // romance.md: «Близость» — bar, stage, what is next
+    const re = key !== 'hero' && isRomanceable(key) ? peekRomance(sv, key) : null;
+    if (re) {
+      rows.push({ kind: 'bond', h: 22, bond: re.bond, text: `${partnerOf(sv) === key ? '♥ ' : ''}${t('rom.bond')}: ${re.bond}/${ROMANCE_RULES.max} · ${stageFor(re).name}` });
+      rows.push({ kind: 'text', h: LINE, text: nextHint(sv, key), color: C['4'], font: '12px monospace' });
+      rows.push({ kind: 'gap', h: 6 });
+    }
     // talents: active combat / «в рюкзаке» / world
     const ids = (e?.talents || []).filter((id) => TALENTS[id]);
     const active = (u.activeTalents || []).filter((id) => ids.includes(id) || TALENTS[id]);
@@ -298,6 +307,14 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         const ap = m.p.approval;
         // companions-scenes.md: loyalty band (COMPANION_RULES.loyalty.bands)
         text(ctx, fit(ctx, `${st} · ${t('comp.loyalty')}: ${loyaltyBand(ap).name} ${ap > 0 ? '+' : ''}${ap}`, 240, '12px monospace'), ox + 104, y + 44, ap <= -50 ? C.c : ap >= 50 ? C.j : C['4'], '12px monospace');
+        // romance.md: ♥ partner, ♡ interest (bond ≥ 15), a thin bond bar under the loyalty line
+        const re = peekRomance(sv, m.key);
+        if (re && (re.bond > 0 || re.dates.length)) {
+          const heart = partnerOf(sv) === m.key ? '♥' : re.bond >= ROMANCE_RULES.stages[1].min && !re.broken && !re.lost ? '♡' : '';
+          ctx.font = FONT_B;
+          if (heart) text(ctx, heart, ox + 104 + Math.min(220, ctx.measureText(name).width) + 8, y + 8, C.f, FONT_B);
+          bar(ctx, ox + 104, y + 58, 120, 3, re.bond, ROMANCE_RULES.max, 'mrl');
+        }
       } else text(ctx, `${t('world.credits')} ${sv.hero.credits} · ${t('party.marks')} ${sv.hero.judgeMarks || 0}/3`, ox + 104, y + 44, C['4'], '12px monospace');
       resLineTip(ctx, ox + 356, y + 8, 296, 'hp', u.hp, u.maxHp, t('res.hp'));
       resLineTip(ctx, ox + 356, y + 30, 296, 'mrl', u.mrl, u.maxMrl, t('res.mrl'));
@@ -319,6 +336,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         else if (r.kind === 'head') text(ctx, fit(ctx, r.text, w, FONT_B), rv.x, y + 2, C['4'], FONT_B);
         else if (r.kind === 'text') { text(ctx, fit(ctx, r.text, w, r.font || FONT), rv.x, y, r.color, r.font || FONT); if (r.tip && inView(rv, y, r.h)) hotspot(rv.x, y, w, r.h, r.tip); }
         else if (r.kind === 'xp') { if (inView(rv, y, r.h)) xpLine(ctx, rv.x, y, w, r.xp, r.level); }
+        else if (r.kind === 'bond') { text(ctx, fit(ctx, r.text, w - 170, FONT), rv.x, y, C.f, FONT); bar(ctx, rv.x + w - 160, y + 6, 160, 6, r.bond, ROMANCE_RULES.max, 'mrl'); }
         else if (r.kind === 'talent') {
           const tl = TALENTS[r.id];
           const tx = r.world ? rv.x + 8 : rv.x + 32;

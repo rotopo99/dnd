@@ -24,6 +24,7 @@ import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast, 
 import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
 import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from './inventory.js';
+import { romanceDeed } from './romance.js';
 
 export const MAX_PARTY = 3; // legacy default: companions besides the hero (real limit — squadMax(save) − 1)
 export { levelForXp };
@@ -638,6 +639,7 @@ export function deed(save, tag, key) {
     out.push({ text: tf(d > 0 ? 'fx.approves' : 'fx.disapproves', { name: n.name, n: `${d > 0 ? '+' : ''}${d}` }), color: d > 0 ? 'j' : 'c' });
     if (p.state === 'active') queueBark(d > 0 ? 'likeDeed' : 'dislikeDeed', p.npc);
     out.push(...adjustApproval(save, p, d, { quiet: true }));
+    out.push(...romanceDeed(save, p.npc, likes.includes(tag) ? 1 : dislikes.includes(tag) ? -1 : 0)); // romance.md
     if (p.state === 'left') continue;
     const teaches = n.companion?.teaches || (n.companion?.talents || [])[0];
     if (p.approval >= A.teach && !p.taught && teaches && TALENTS[teaches]) {

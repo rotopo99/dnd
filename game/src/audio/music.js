@@ -56,12 +56,9 @@ const MUSIC_FILES = {
   // boss: 'assets/music/boss.mp3',
   // cyberspace: 'assets/music/cyberspace.mp3',
   // tension: 'assets/music/tension.mp3',
-  // boss-final: 'assets/music/boss-final.mp3',   // vocals ok (choir/chant)
-  // romance: 'assets/music/romance.mp3',         // vocals ok
-  // tragic: 'assets/music/tragic.mp3',           // vocals ok
 };
-// Tracks that exist only as files: until the file is there, play this procedural track instead.
-const ALIAS = { 'boss-final': 'boss', romance: 'town', tragic: 'menu' };
+// Track id -> another procedural track to play instead. Empty: boss-final, romance and tragic are procedural.
+const ALIAS = {};
 
 // Chords as MIDI notes, kept above ~110 Hz (no sub drone). Each chord lasts 8–16 s.
 const DORIAN = [
@@ -90,6 +87,12 @@ const TENSE = [
 const VOWELS = {
   a: [800, 1150, 2800],
   o: [500, 900, 2500],
+};
+// Vocal formants for the vocalise voices (voxStart): a, o, u.
+const VOX = {
+  a: [800, 1150, 2900],
+  o: [450, 800, 2830],
+  u: [325, 700, 2530],
 };
 
 // Motifs: [offset in semitones from the chord root + 12, start step in the bar (16ths), length in steps].

@@ -12,6 +12,7 @@ import { EXODUS } from './data/world/exodus.js';
 import { normCodex } from './world/codex.js';
 import { normalizeInventory, syncItems } from './world/inventory.js';
 import { defaultLook } from './ui/avatar3d.js';
+import { normalizeRomance } from './world/romance.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -90,6 +91,7 @@ export function normalizeSave(s, data) {
     // 3D avatar (ui/avatar3d.js look object); old saves have none -> generated from race / name (everyone has a 3D hero)
     avatar: h.avatar && typeof h.avatar === 'object' && h.avatar.v === 1 ? h.avatar : { ...defaultLook(typeof h.race === 'string' ? h.race : 'human', 'x', String(h.name || h.cls || 'hero')), cloth: typeof h.look === 'string' ? h.look : null },
   };
+  out.romance = normalizeRomance(s.romance); // romance.md
   out.party = arr(s.party).filter((p) => p && NPCS[p.npc]).map((p) => ({
     approval: 0, talents: [], warned: false, ultimatum: false, ...p,
     state: ['active', 'waiting', 'cyberspace', 'left'].includes(p.state) ? p.state : 'waiting',
@@ -135,6 +137,10 @@ export function normalizeSave(s, data) {
     .map(([f, w]) => [f, { heat: Math.max(0, Math.min(5, num(w.heat))), since: num(w.since, out.day), bounty: num(w.bounty) }]));
   out.heirs = obj(s.heirs); out.crimeRumors = arr(s.crimeRumors).filter((r) => r && typeof r.text === 'string');
   out.codex = normCodex(s.codex); // vendors-bestiary.md: bestiary progress (old saves — empty)
+  // free-roam.md: position on the free node map (old saves — none, the party starts at the entry)
+  const rm = s.roam && typeof s.roam === 'object' ? s.roam : null;
+  out.roam = rm && typeof rm.loc === 'string' && Number.isInteger(rm.x) && Number.isInteger(rm.y)
+    ? { loc: rm.loc, x: rm.x, y: rm.y, party: arr(rm.party).filter((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isInteger)) } : null;
   out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)
   const ex = obj(s.exodus);

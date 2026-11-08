@@ -2,6 +2,7 @@ import { createInput } from './input.js';
 import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture } from './audio/sfx.js';
 import { playTrack } from './audio/music.js';
+import { romanceInterrupt } from './scenes/romance-scene.js';
 import { exodusMark } from './world/exodus.js';
 import { PLAY_DATA as GAME_DATA } from './world/data.js';
 import { setSaveErrorHandler } from './save.js';
@@ -36,6 +37,7 @@ const game = {
     this.modals.length = 0;
     scene.enter?.(this);
     syncMusic(this);
+    romanceInterrupt(this, scene); // romance.md: queued farewell / breakup / jealousy on a calm scene
   },
   /** Return to an already entered scene without resetting it. */
   resume(scene) {
@@ -82,7 +84,7 @@ function syncMusic(g) {
     let tr = null;
     if (sc === menuScene || id === 'menu') tr = 'menu';
     else if (id === 'worldmap') tr = tense ? 'tension' : 'world';
-    else if (id === 'location') tr = tense ? 'tension' : 'town';
+    else if (id === 'location' || id === 'roam') tr = tense ? 'tension' : 'town';
     else if (id === 'cyberspace') tr = 'cyberspace';
     else if (id === 'battle') tr = sc.S?.b?.units?.some((u) => u.boss && u.team !== 'heroes') ? 'boss' : 'battle';
     if (tr) playTrack(tr);

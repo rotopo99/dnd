@@ -30,7 +30,7 @@ export function startFromSave(game, save) {
   game.save = save;
   if (save.cyberspace?.pending || (save.cyberspace && !save.cyberspace.nodes)) import('../scenes/cyberspace.js').then((m) => m.startCyberspace(game, save.cyberspace));
   else if (save.cyberspace) import('../scenes/cyberspace.js').then((m) => game.setScene(m.createCyberspaceScene()));
-  else import('../scenes/location.js').then((m) => game.setScene(m.createLocationScene(save.location)));
+  else import('../scenes/roam.js').then((m) => game.setScene(m.createNodeScene(save.location)));
 }
 
 /** Load the most recent slot («Продолжить»). Returns false if there is nothing to load. */

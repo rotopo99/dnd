@@ -162,7 +162,7 @@ export function createCyberspaceScene() {
     saveGame(save);
     game.openModal({
       title: ok ? t('cyber.escapedTitle') : t('cyber.failedTitle'), titleColor: ok ? 'j' : 'n', border: ok ? 'j' : 'n', onCancel: false, lines,
-      options: [{ label: t('battle.continue'), run: (g) => import('./location.js').then((m) => g.setScene(m.createLocationScene(to))) }],
+      options: [{ label: t('battle.continue'), run: (g) => import('./roam.js').then((m) => g.setScene(m.createNodeScene(to))) }],
     });
   }
 

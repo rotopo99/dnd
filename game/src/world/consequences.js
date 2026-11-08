@@ -9,6 +9,7 @@ import { NPCS } from '../data/npcs.js';
 import { LOCATIONS, resolveLocation, ROUTES, QUESTS } from './data.js';
 import { applyRep, factionName } from './reputation.js';
 import { journal, tf, repToasts } from './state.js';
+import { romanceEpilogue } from './romance.js';
 
 export { CQ_FLAG };
 export const EPI_MAX = 12;           // spec: no more than 12 slides by prio (intro and outro always)
@@ -172,5 +173,9 @@ export function epilogueSlides(save, max = EPI_MAX) {
   const ok = (w = {}) => (!w.all || w.all.every((x) => f[x])) && (!w.any || w.any.some((x) => f[x])) && (!w.not || !w.not.some((x) => f[x]));
   const fixed = EPILOGUE.filter((s) => s.id === 'epi-intro' || s.id === 'epi-outro');
   const pool = EPILOGUE.filter((s) => !fixed.includes(s) && ok(s.when)).sort((a, b) => b.prio - a.prio).slice(0, Math.max(0, max - fixed.length));
-  return [...fixed, ...pool].sort((a, b) => a.order - b.order);
+  const list = [...fixed, ...pool].sort((a, b) => a.order - b.order);
+  // romance.md: the partner's 3 slides (together / parted / tragedy, with music) right before the outro
+  const rom = romanceEpilogue(save)?.slides || [];
+  if (rom.length) { const k = list.findIndex((s) => s.id === 'epi-outro'); list.splice(k < 0 ? list.length : k, 0, ...rom); }
+  return list;
 }

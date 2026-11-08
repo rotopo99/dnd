@@ -25,6 +25,7 @@ import { tf } from '../world/state.js';
 import { incarnate, exodusZeroFinale } from '../world/exodus.js';
 import { markSeen, markKills, markTerm } from '../world/codex.js';
 import { battleLoyalty } from '../world/companions.js';
+import { romanceDeath, partnerOf } from '../world/romance.js';
 import { queueBark } from '../world/barks.js';
 import { afterBattle as restAfterBattle } from '../world/rest.js';
 import { BATTLE_OBJECTIVES } from '../data/world/battle-objectives.js';
@@ -111,7 +112,7 @@ export function startWorldBattle(game, o) {
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)
     onEvent: (S, e) => {
       if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind);
-      companionEvent(S, e); // companions-scenes.md: barks and revives
+      companionEvent(S, e, save); // companions-scenes.md: barks and revives
     },
     objectives: objectiveSpec(save, o, setup.enemies),
     onRetreatExit: (g, S) => retreatExit(g, S, o),
@@ -316,11 +317,15 @@ function usedItems(u) {
 }
 
 /** Battle events for companions: barks (battle start, crit, ally down) and revives by the hero (loyalty). */
-function companionEvent(S, e) {
+function companionEvent(S, e, save) {
   const isComp = (id) => typeof id === 'string' && id.startsWith('c-');
   if (e.type === 'battleStart') queueBark('battleStart');
   else if (e.type === 'attack' && e.crit && (e.actor === 'hero' || isComp(e.actor))) queueBark('critHit');
-  else if (e.type === 'down' && (e.target === 'hero' || isComp(e.target))) queueBark('allyDown');
+  else if (e.type === 'down' && (e.target === 'hero' || isComp(e.target))) {
+    queueBark('allyDown');
+    const pt = e.target === 'hero' && partnerOf(save);
+    if (pt) queueBark('romanceHurt', pt); // romance.md: the partner's cry
+  }
   else if (e.type === 'stabilize' && e.actor === 'hero' && isComp(e.target)) (S.revived = S.revived || new Set()).add(e.target.slice(2));
 }
 
@@ -355,6 +360,7 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
       const msg = t('world.companionCyber').replace('{name}', u.name);
       journal(save, msg);
       out.push({ text: msg, color: 'n' });
+      out.push(...romanceDeath(save, p.npc)); // romance.md: the partner died → farewell scene
       continue;
     }
     const r = after(u);

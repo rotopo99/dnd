@@ -51,7 +51,7 @@ export const ROMANCE_RULES = {
   // Пол героя не ограничивает: все шестеро открыты к любому герою. У каждого свои «вкусы» (taste) — только на выбор темы флирта.
   orientation: 'any',
   conflict: { // при двух партнёрах ≥ 30
-    bondPenalty: -6, loyaltyPenalty: -3, once: true,
+    threshold: 30, bondPenalty: -6, loyaltyPenalty: -3, once: true,
   },
   uiLabels: { heart: '♥', bond: 'Близость', talk: 'Поговорить наедине', stages: 'Этап' },
   // Числа для кода (game-programmer, 2026-11-08; источники — спека и ROMANCE_EVENTS.note).

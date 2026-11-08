@@ -12,7 +12,7 @@ import { C } from '../ui/draw.js';
 import { newSave, gainXp, journal } from '../world/state.js';
 import { LOCATIONS, START_LOCATION } from '../world/data.js';
 import { saveGame } from '../save.js';
-import { createLocationScene } from './location.js';
+import { createNodeScene } from './roam.js';
 
 /** Collect dialogue lines for keys (race-aware via line()). */
 function lines(race, ...keys) {
@@ -100,5 +100,5 @@ export function startWorld(game, hero, flags = {}) {
   for (const x of gainXp(save, 350, game.data)) game.toast(x.text, x.color);
   journal(save, `${t('world.arrived')}: ${LOCATIONS[START_LOCATION].name}`);
   saveGame(save);
-  game.setScene(createLocationScene(START_LOCATION));
+  game.setScene(createNodeScene(START_LOCATION));
 }

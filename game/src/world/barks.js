@@ -2,6 +2,17 @@
 // World logic queues a situation (queueBark) without knowing about the game object; ui/bark.js pumps the queue each step,
 // picks a line (pickBark) and shows it as a bubble with a portrait. The queue is runtime-only (never saved).
 import { COMPANIONS, COMPANION_RULES, BARKS_GENERIC } from '../data/companions.js';
+import { ROMANCE, ROMANCE_RULES, ROMANCE_EVENTS } from '../data/romance.js';
+
+/** Romance situations (romance.md): romance / romanceHurt (partner), romanceJealous (rival), romanceParty (anyone). */
+function romancePool(npc, situation) {
+  const R = ROMANCE[npc];
+  if (situation === 'romance') return R?.barks?.romance || [];
+  if (situation === 'romanceHurt') return R?.barks?.hurt || [];
+  if (situation === 'romanceJealous') { const l = R?.jealousy?.line; return l ? [l.replace(/^[^«]*«/, '').replace(/»\s*$/, '')] : []; }
+  if (situation === 'romanceParty') return ROMANCE_EVENTS.partyBarks;
+  return null;
+}
 
 const B = COMPANION_RULES.barks;
 const queue = [];
@@ -31,9 +42,9 @@ export function pickBark(st, now, situation, cands, { rng = Math.random, scene =
   if (now - (st.perSit[situation] ?? -1e9) < B.perSituationCooldownSec) return null;
   const list = cands.filter((c) => (!npc || c.npc === npc) && now - (st.perNpc[c.npc] ?? -1e9) >= B.perCompanionCooldownSec);
   if (!list.length) return null;
-  if (rng() >= (B.chance[situation] ?? 0.2)) return null;
+  if (rng() >= (B.chance[situation] ?? ROMANCE_RULES.barkChance?.[situation] ?? 0.2)) return null;
   const who = list[Math.floor(rng() * list.length) % list.length];
-  const own = COMPANIONS[who.npc]?.barks?.[situation] || [];
+  const own = romancePool(who.npc, situation) ?? COMPANIONS[who.npc]?.barks?.[situation] ?? [];
   const pool = own.length ? own : BARKS_GENERIC[situation] || [];
   if (!pool.length) return null;
   const text = pool[Math.floor(rng() * pool.length) % pool.length].replace(/\{name\}/g, who.name);

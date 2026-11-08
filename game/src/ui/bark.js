@@ -6,6 +6,7 @@ import { activeCompanions } from '../world/state.js';
 import { NPCS } from '../data/npcs.js';
 import { C, FONT, FONT_B, text, wrap, panel } from './draw.js';
 import { drawSpeaker } from './portrait-of.js';
+import { genderize, heroGender } from '../world/romance.js';
 
 export function updateBarks(game, dt) {
   if (game.bark) { game.bark.t += dt; if (game.bark.t >= COMPANION_RULES.barks.durationSec) game.bark = null; }
@@ -15,7 +16,7 @@ export function updateBarks(game, dt) {
   const cands = activeCompanions(game.save).filter((p) => p.hp !== 0 && NPCS[p.npc]).map((p) => ({ npc: p.npc, name: NPCS[p.npc].name }));
   for (const r of reqs) {
     const b = pickBark(game.barks, game.time, r.situation, cands, { scene: game.scene, npc: r.npc, dialogue: game.scene?.id === 'dialogue' });
-    if (b) { game.bark = { ...b, t: 0 }; break; }
+    if (b) { game.bark = { ...b, text: genderize(b.text, heroGender(game.save)), t: 0 }; break; }
   }
 }
 

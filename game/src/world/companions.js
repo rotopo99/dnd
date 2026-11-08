@@ -10,6 +10,7 @@ import { t } from '../data/text/index.js';
 import { repTier, tierAtLeast, normFaction, factionName, TIER_NAMES } from './reputation.js';
 import { recruit, journal, tf, adjustApproval, effectiveRep, ensureCompanionXp, squadFree, squadInfo } from './state.js';
 import { queueBark } from './barks.js';
+import { romanceGift, romanceQuest, romanceBattle } from './romance.js';
 
 const E = CR.loyalty.events;
 export const companionSpec = (id) => COMPANIONS[id] || null;
@@ -141,14 +142,14 @@ export function addLoyalty(save, npcId, d) {
 export function personalStage(save, q) {
   if (!q?.personal) return [];
   if (partyEntry(save, q.personal.npc)?.state === 'active') queueBark('questStageDone', q.personal.npc);
-  return addLoyalty(save, q.personal.npc, E.questStage);
+  return [...addLoyalty(save, q.personal.npc, E.questStage), ...romanceQuest(save, q.personal.npc, false)];
 }
 
 /** Personal quest done: +loyalty (rewards.loyalty / questDone), the alternative path unlocks. → toasts. */
 export function personalQuestDone(save, q) {
   if (!q?.personal) return [];
   const npc = q.personal.npc;
-  const out = addLoyalty(save, npc, q.personal.loyalty ?? E.questDone);
+  const out = [...addLoyalty(save, npc, q.personal.loyalty ?? E.questDone), ...romanceQuest(save, npc, true)];
   const p = partyEntry(save, npc);
   const alt = COMPANIONS[npc]?.altPath;
   if (q.personal.altPath && alt && p) {
@@ -193,6 +194,7 @@ export function battleLoyalty(save, units, revived = new Set()) {
       if (p.cleanWins >= 3) { p.cleanWins = 0; out.push(...adjustApproval(save, p, E.sharedVictory)); }
     }
   }
+  out.push(...romanceBattle(save, units)); // romance.md: a battle together
   return out;
 }
 
@@ -305,7 +307,8 @@ export function giveGift(save, npcId, itemId, takeFn) {
   takeFn?.(save, itemId, 1);
   p.gifts = [...(p.gifts || []), itemId];
   journal(save, tf('comp.giftJournal', { name: NPCS[npcId]?.name || npcId, item: ITEMS[itemId]?.name || itemId }));
-  return [{ text: tf('comp.gift', { name: NPCS[npcId]?.name || npcId, item: ITEMS[itemId]?.name || itemId }), color: 'j' }, ...addLoyalty(save, npcId, E.giftRare)];
+  return [{ text: tf('comp.gift', { name: NPCS[npcId]?.name || npcId, item: ITEMS[itemId]?.name || itemId }), color: 'j' }, ...addLoyalty(save, npcId, E.giftRare),
+    ...romanceGift(save, npcId, lovedTypes(npcId).includes(giftType(ITEMS[itemId])))];
 }
 
 /** A companion's request: the current stage of the personal quest (active, not refused at this stage). → { qid, stage, text } | null. */

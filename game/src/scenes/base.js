@@ -21,6 +21,8 @@ import { countAll, addInst, makeInst, syncItems, refreshView, bagKeys, holderOf,
 import { openCheck } from '../ui/checks-ui.js';
 import { saveGame } from '../save.js';
 import { openRestMenu } from './rest.js';
+import { talkCandidates } from '../world/romance.js';
+import { openPrivateTalk } from './romance-scene.js';
 import { restState, provisionCount } from '../world/rest.js';
 
 const BASE_W = 1280, BASE_H = 720;
@@ -35,7 +37,7 @@ export function createBaseScene(back = null) {
   const persist = (g) => saveGame(g.save);
   const leave = (g) => {
     if (back) { g.resume(back); return; }
-    import('./location.js').then((m) => g.setScene(m.createLocationScene(BASE_LOCATION)));
+    import('./roam.js').then((m) => g.setScene(m.createNodeScene(BASE_LOCATION)));
   };
   const cardRect = (i) => ({ x: ox + 16 + (i % 4) * 314, y: oy + 80 + Math.floor(i / 4) * 214, w: 306, h: 206 });
 
@@ -137,6 +139,8 @@ export function createBaseScene(back = null) {
       options.push({ label: `${name(p)}: ${t('base.talk')}`, run: (g) => talk(g, p) });
     }
     for (const p of act) options.push({ label: `${name(p)}: ${t('base.leave')}`, run: (g) => { sendToReserve(g.save, p.npc); again(g); } });
+    // romance.md: «Поговорить наедине» with anyone at the base
+    if (talkCandidates(sv, 'base').length) options.push({ label: t('rom.talk'), run: (g) => openPrivateTalk(g, { where: 'base', back: self, done: (g2) => { persist(g2); layout(g2); } }) });
     options.push({ label: t('loc.close'), run: (g) => layout(g) });
     const lines = [{ text: tf('party.squad', { n: 1 + act.length, m: squadInfo(sv).max }), color: 'a' }];
     if (!idle.length) lines.push({ text: t('base.idleNone'), color: '4' });
