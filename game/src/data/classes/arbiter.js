@@ -17,6 +17,8 @@ const UPGRADES = [
   { level: 8, ability: 'healing-light', changes: { dice: '3d6' } },
   { level: 12, ability: 'blinding-light', changes: { cost: 3 } },
   { level: 16, ability: 'smite', changes: { dice: '3d8' } },
+  { level: 8, ability: 'sword-arc', changes: { dice: '3d6' } },
+  { level: 16, ability: 'sacred-leap', changes: { dice: '5d8' } },
 ];
 
 export default {
@@ -285,6 +287,20 @@ export default {
     ab('supreme-verdict', 'Верховный приговор', 20, 'judge', { ...AOE, cost: 18, range: 14, area: zone(5), onSave: 'half', usesPerBattle: 1,
       effects: [{ op: 'damage', dice: '9d8', dmgType: 'energy' }, { op: 'status', id: 'curse', turns: 3 }, { op: 'status', id: 'stun', turns: 1 }],
       desc: 'Капстоун: 9d8 энергоурона в радиусе 5; спасбросок ТВД — половина; провалившие прокляты на 3 хода и оглушены на 1. Раз за бой.' }),
+
+    // ---------- Ближние площадные навыки Мстителя (docs/specs/melee-aoe.md) ----------
+    ab('sword-arc', 'Дуга меча', 5, 'avenger', { cost: 4, range: 3, target: 'tile', area: { shape: 'cone', size: 3 },
+      roll: 'save', save: 'dex', castStat: 'str', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'slash' }, { op: 'status', id: 'bleed', turns: 2 }],
+      desc: 'Силовой клинок рассекает конус 3 клетки: 2d6 рубящего урона, кровотечение на 2 хода (спасбросок ЛВК — половина и без кровотечения). Дважды за бой.' }),
+    ab('sacred-leap', 'Священный прыжок', 13, 'avenger', { cost: 8, range: 5, target: 'tile', area: zone(1),
+      roll: 'save', save: 'dex', castStat: 'str', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '4d8', dmgType: 'energy' }, { op: 'move', tiles: 5, mode: 'teleport' }, { op: 'status', id: 'dazed', turns: 1 }],
+      desc: 'Прыжок на 5 клеток и удар по приземлению: 4d8 энергоурона врагам вокруг точки и дизбаланс на 1 ход (спасбросок ЛВК — половина и без него). Раз за бой.' }),
+    ab('verdict-wave', 'Волна приговора', 18, 'avenger', { cost: 10, range: 6, target: 'tile', area: { shape: 'line', size: 6 },
+      roll: 'save', save: 'dex', castStat: 'str', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '6d8', dmgType: 'energy' }, { op: 'push', tiles: 2 }],
+      desc: 'Энерговолна по линии длиной 6: 6d8 энергоурона и толчок на 2 клетки (спасбросок ЛВК — половина и без толчка). Раз за бой.' })
   ],
   upgrades: UPGRADES,
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md', 'rules/spells.md'],

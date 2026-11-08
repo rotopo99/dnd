@@ -16,6 +16,9 @@ const UPGRADES = [
   { level: 8, ability: 'acid-spit', changes: { dice: '3d6' } },
   { level: 12, ability: 'rage', changes: { usesPerBattle: 2 } },
   { level: 16, ability: 'beast-claws', changes: { dice: '2d6' } },
+  { level: 8, ability: 'claw-cone', changes: { dice: '3d6' } },
+  { level: 12, ability: 'tremor', changes: { dice: '4d6' } },
+  { level: 16, ability: 'pounce-horde', changes: { dice: '5d6' } },
 ];
 
 export default {
@@ -194,6 +197,24 @@ export default {
     ab('unkillable', 'Неукротимый', 18, null, { cost: 7, action: 'bonus', usesPerBattle: 1,
       effects: [{ op: 'extraAction', kind: 'action' }, { op: 'heal', dice: '6d8', resource: 'hp' }, { op: 'buff', stat: 'dmg', value: 3, turns: 3 }],
       desc: 'Боль подпитывает: дополнительное действие, лечит 6d8 ЗДР и +3 к урону на 3 хода. Раз за бой.' }),
+
+    // ---------- Ближние площадные навыки (docs/specs/melee-aoe.md) ----------
+    ab('claw-cone', 'Рассекающий взмах', 5, 'beast', { cost: 4, range: 3, target: 'tile', area: { shape: 'cone', size: 3 },
+      roll: 'save', save: 'dex', castStat: 'str', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'slash' }, { op: 'status', id: 'bleed', turns: 2 }],
+      desc: 'Когтистый веер в конусе 3 клетки: 2d6 рубящего урона, кровотечение на 2 хода (спасбросок ЛВК — половина и без кровотечения). Дважды за бой.' }),
+    ab('tremor', 'Топот титана', 8, 'titan', { cost: 6, range: 0, target: 'tile', area: zone(2),
+      roll: 'save', save: 'str', castStat: 'str', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '3d6', dmgType: 'blunt' }, { op: 'push', tiles: 1 }, { op: 'clearSurface', kinds: ['ice'], size: 2 }],
+      desc: 'Сотрясение земли: 3d6 дробящего урона врагам в радиусе 2, толчок на 1 клетку (спасбросок СИЛ — половина и без толчка). Разбивает лёд. Дважды за бой.' }),
+    ab('pounce-horde', 'Прыжок в стаю', 12, 'predator', { cost: 7, range: 5, target: 'tile', area: zone(1),
+      roll: 'save', save: 'dex', castStat: 'str', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '4d6', dmgType: 'slash' }, { op: 'move', tiles: 5, mode: 'teleport' }, { op: 'status', id: 'bleed', turns: 3 }],
+      desc: 'Прыжок на 5 клеток и удар по приземлению: 4d6 рубящего урона врагам вокруг точки, кровотечение на 3 хода (спасбросок ЛВК — половина и без него). Раз за бой.' }),
+    ab('frenzy-whirl', 'Вихрь ярости', 16, null, { cost: 8, range: 0, target: 'tile', area: zone(1),
+      roll: 'save', save: 'dex', castStat: 'str', onSave: 'half', usesPerBattle: 1,
+      effects: [{ op: 'damage', dice: '5d6', dmgType: 'slash' }, { op: 'status', id: 'bleed', turns: 3 }],
+      desc: 'Бешеное вращение: 5d6 рубящего урона врагам вплотную, кровотечение на 3 хода (спасбросок ЛВК — половина и без него). Раз за бой.' }),
   ],
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md'],
   lore: 'Существа, чьи тела изменены мутациями: невероятно сильные и выносливые, впадают в ярость, увеличивая мощь в бою.',

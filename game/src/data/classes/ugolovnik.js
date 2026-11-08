@@ -250,6 +250,18 @@ export default {
       effects: [{ op: 'damage', dice: '8d8', dmgType: 'psychic', bonus: 'castMod' }, { op: 'status', id: 'hallucination', turns: 3 }, { op: 'status', id: 'fear', turns: 2 }],
       desc: 'Капстоун: вся площадка верит в чужую реальность. Зона 7×7: 8d8 + ИНТ пси, галлюцинации на 3 хода и страх на 2. Спасбросок ТВД — половина, без статусов. Раз за бой.',
       canon: 'rules/class-paths.md' }),
+
+    // ---------- Ближние площадные навыки (docs/specs/melee-aoe.md) ----------
+    A({ id: 'knife-fan', name: 'Веер ножей', level: 6, path: null, cost: 4, action: 'action',
+      range: 3, target: 'tile', area: { shape: 'cone', size: 3 }, roll: 'save', save: 'dex', castStat: 'dex', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'pierce' }, { op: 'status', id: 'bleed', turns: 2 }],
+      desc: 'Веер метательных ножей в конусе 3 клетки: 2d6 колющего урона, кровотечение на 2 хода (спасбросок ЛВК — половина и без кровотечения). Дважды за бой.',
+      canon: 'rules/class-roadmap.md' }),
+    A({ id: 'blade-dance', name: 'Танец клинков', level: 12, path: null, cost: 6, action: 'action',
+      range: 0, target: 'tile', area: { shape: 'radius', size: 1 }, roll: 'save', save: 'dex', castStat: 'dex', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '3d6', dmgType: 'slash' }, { op: 'status', id: 'bleed', turns: 3 }],
+      desc: 'Круговой выпад: 3d6 рубящего урона врагам вплотную, кровотечение на 3 хода (спасбросок ЛВК — половина и без него). Дважды за бой.',
+      canon: 'rules/class-roadmap.md' }),
   ],
   // Улучшения (levels-20.md): changes — новые значения поля (dice у `weapon` — это extraDice).
   upgrades: [
@@ -258,6 +270,8 @@ export default {
     { level: 8, ability: 'sneak-strike', changes: { dice: '3d8', cost: 5 } },
     { level: 12, ability: 'extra-attack', changes: { usesPerBattle: 3 } },
     { level: 16, ability: 'backstab', changes: { dice: '3d6', cost: 3 } },
+    { level: 10, ability: 'knife-fan', changes: { dice: '3d6' } },
+    { level: 16, ability: 'blade-dance', changes: { dice: '4d6' } },
   ],
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md',
     'extra/specialties.md', 'extra/reactions.md', 'characters/party.md'],

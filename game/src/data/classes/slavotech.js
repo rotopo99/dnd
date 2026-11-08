@@ -243,6 +243,18 @@ export default {
       range: 10, target: 'tile', area: { shape: 'radius', size: 3 }, roll: 'save', save: 'con', onSave: 'half', usesPerBattle: 1,
       effects: [{ op: 'damage', dice: '10d8', dmgType: 'proxy' }, { op: 'status', id: 'corrosion', turns: 4 }, { op: 'status', id: 'stun', turns: 1 }],
       desc: 'Капстоун: прокси-буря в полную силу. Зона 7×7: 10d8 прокси (механизмы ×1.5, живые ×0.5), коррозия на 4 хода и оглушение. Спасбросок ТЕЛ — половина, без статусов. Раз за бой.', canon: 'rules/class-paths.md' }),
+
+    // ---------- Ближние площадные навыки (docs/specs/melee-aoe.md) ----------
+    A({ id: 'wrench-sweep', name: 'Гаечный разворот', level: 6, path: 'proxy-master', cost: 4, action: 'action',
+      range: 0, target: 'tile', area: { shape: 'radius', size: 1 }, roll: 'save', save: 'str', castStat: 'str', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '2d6', dmgType: 'blunt' }, { op: 'push', tiles: 1 }],
+      desc: 'Освящённый ключ по кругу: 2d6 дробящего урона врагам вплотную и толчок на 1 клетку (спасбросок СИЛ — половина и без толчка). Дважды за бой.',
+      canon: 'rules/class-roadmap.md' }),
+    A({ id: 'proxy-shockwave', name: 'Прокси-волна', level: 14, path: 'proxy-master', cost: 8, action: 'action',
+      range: 5, target: 'tile', area: { shape: 'line', size: 5 }, roll: 'save', save: 'con', castStat: 'str', onSave: 'half', usesPerBattle: 2,
+      effects: [{ op: 'damage', dice: '5d6', dmgType: 'proxy' }, { op: 'status', id: 'dazed', turns: 1 }],
+      desc: 'Удар ключом выпускает прокси-волну по линии длиной 5: 5d6 прокси (механизмы ×1.5) и дизбаланс на 1 ход (спасбросок ТЕЛ — половина и без дизбаланса). Дважды за бой.',
+      canon: 'rules/class-roadmap.md' }),
   ],
   // Улучшения (levels-20.md): changes — новые значения поля.
   upgrades: [
@@ -253,6 +265,8 @@ export default {
     { level: 12, ability: 'extra-attack', changes: { usesPerBattle: 2 } },
     { level: 16, ability: 'healing-wave', changes: { dice: '4d6', cost: 5 } },
     { level: 16, ability: 'holy-iron', changes: { dice: '3d8' } },
+    { level: 8, ability: 'wrench-sweep', changes: { dice: '3d6' } },
+    { level: 16, ability: 'proxy-shockwave', changes: { dice: '6d6' } },
   ],
   canon: ['rules/classes.md', 'rules/class-paths.md', 'rules/class-roadmap.md', 'rules/spellcasting.md',
     'rules/spells.md'],
