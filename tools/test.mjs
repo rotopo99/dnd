@@ -3601,5 +3601,69 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
   });
 }
 
+// ---------------------------------------------------------------- free-roam.md этап 1: node maps
+{
+  const rg = await import('../game/src/world/roam-gen.js');
+  const rm = await import('../game/src/world/roam.js');
+  const { roamTypeOf } = await import('../game/src/data/world/roam.js');
+  const { npcsAt } = await import('../game/src/world/data.js');
+  const nodes = Object.values(LOCS).filter((l) => !l.alias && roamTypeOf(l));
+  test('roam: every node map is generated deterministically, exits / objects / spots reachable from the entry', () => {
+    assert.ok(nodes.length > 50);
+    for (const l of nodes) {
+      const m = rg.generateRoam(l.id, l);
+      assert.deepEqual(rg.generateRoam(l.id, l).grid, m.grid, `${l.id}: deterministic`);
+      const g = rm.roamGrid(m);
+      const [sx, sy] = m.spawn.world;
+      const r = reachable(g, sx, sy, 99999, null);
+      const at = (x, y) => x >= 0 && y >= 0 && x < g.w && y < g.h && r.dist[y * g.w + x] >= 0;
+      const near = (x, y) => [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => at(x + dx, y + dy)));
+      assert.ok(m.objects.some((o) => o.type === 'exit'), `${l.id}: has an exit`);
+      for (const o of m.objects) assert.ok((o.cells || [[o.x, o.y]]).some(([x, y]) => near(x, y)), `${l.id}: ${o.id} reachable`);
+      for (const [x, y] of m.spots) assert.ok(at(x, y), `${l.id}: spot ${x},${y}`);
+      // every NPC of the node gets a reachable cell, traders stand at stalls when there are stalls
+      const objs = rm.liveObjects(m, l.id, { caches: [], flags: {} });
+      const ps = rm.placeNpcs(m, g, npcsAt(l.id), objs);
+      for (const p of ps) assert.ok(at(p.x, p.y), `${l.id}: npc ${p.id} at ${p.x},${p.y}`);
+      assert.equal(m.size[0], m.grid[0].length);
+    }
+  });
+  test('roam: A* path goes around walls, 8 directions, no corner cutting; approach cell is next to the target', () => {
+    const m = { grid: ['#######', '#.....#', '#.###.#', '#.#K#.#', '#.....#', '#######'], objects: [{ id: 'k', type: 'stash', x: 3, y: 3, solid: true }] };
+    const g = rm.roamGrid(m);
+    const p = rm.roamPath(g, 1, 1, 5, 4);
+    assert.ok(p && p.length >= 4);
+    let px = 1, py = 1;
+    for (const s of p) { assert.ok(Math.abs(s.x - px) <= 1 && Math.abs(s.y - py) <= 1 && g.tiles[s.y * g.w + s.x] !== 1); px = s.x; py = s.y; }
+    const a = rm.approachCell(g, 1, 1, 3, 3);
+    assert.ok(a && Math.max(Math.abs(a.x - 3), Math.abs(a.y - 3)) === 1 && a.y === 4, `approach ${JSON.stringify(a)}`);
+    assert.equal(rm.roamPath(g, 1, 1, 3, 3), null); // the crate itself blocks
+  });
+  test('roam: interactions map to the menu actions (stall → trade of its NPC, node cache → searchCache, bed → rest, exit)', () => {
+    const l = LOCS['alpha-harmony'];
+    const m = rg.generateRoam(l.id, l);
+    const objs = rm.liveObjects(m, l.id, { caches: [], flags: {} });
+    rm.placeNpcs(m, rm.roamGrid(m), npcsAt(l.id), objs);
+    const st = objs.find((o) => o.type === 'stall' && o.npc);
+    assert.ok(st && rm.isTrader(GAME_DATA.NPCS?.[st.npc] || { services: ['trade'], id: st.npc }));
+    assert.deepEqual(rm.objectAction(st), { kind: 'trade', npc: st.npc });
+    assert.equal(rm.objectAction({ type: 'bed' }).kind, 'rest');
+    assert.equal(rm.objectAction({ type: 'exit', to: 'world' }).kind, 'exit');
+    const withCache = Object.values(LOCS).find((x) => !x.alias && roamTypeOf(x) && (x.caches || []).length);
+    const m2 = rg.generateRoam(withCache.id, withCache);
+    const o2 = rm.liveObjects(m2, withCache.id, { caches: [], flags: {} }).find((o) => o.cache);
+    if (o2) assert.equal(rm.objectAction(o2).kind, 'cache');
+    const s2 = { caches: [], flags: { [rm.stashKey('alpha-harmony', 'stash1')]: true } };
+    const op = rm.liveObjects(m, 'alpha-harmony', s2).find((o) => o.id === 'stash1');
+    if (op && !op.cache) assert.equal(rm.objectAction(op).kind, 'empty');
+    // save.roam restores only a walkable cell
+    const g = rm.roamGrid(m);
+    const [sx, sy] = m.spawn.world;
+    assert.deepEqual(rm.restorePos(g, { roam: { loc: l.id, x: sx, y: sy, party: [[sx, sy]] } }, l.id), { x: sx, y: sy, party: [[sx, sy]] });
+    assert.equal(rm.restorePos(g, { roam: { loc: l.id, x: 0, y: 0, party: [] } }, l.id), null);
+    assert.equal(rm.restorePos(g, { roam: { loc: 'other', x: sx, y: sy } }, l.id), null);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
