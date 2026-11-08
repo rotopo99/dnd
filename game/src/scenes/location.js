@@ -32,7 +32,7 @@ import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
 import { createNpcActions, isTrialQuest } from '../world/npc-actions.js';
-import { hasWorldFlag } from '../world/checks.js';
+import { hasWorldFlag, skillName } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { openLevelUp } from './levelup.js';
 import { openCheckScene } from './check-scene.js';

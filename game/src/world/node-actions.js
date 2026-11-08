@@ -113,9 +113,14 @@ export function hintSkillsOf(save, locId, loc = LOCATIONS[resolveLocation(locId)
 /** Skills an NPC's topics can be solved with (≤ 3). */
 export const npcHintSkills = (npcId) => (NPC_HINTS[npcId] || []).slice(0, HINT_MAX);
 
-/** Who in the party has the skill (specialisation / related): names. */
+/** Who in the party has the skill (specialisation / related): names. Cached per party make-up (UI calls it every frame). */
+const ownersCache = new WeakMap();
 export function skillOwners(save, skill, data = GAME_DATA) {
-  return members(save, data).filter((m) => checkInfo(m, skill).kind !== 'other').map((m) => m.name);
+  const sig = JSON.stringify([save.hero.level, save.hero.cls, save.hero.skills, save.hero.talents, save.party.filter((p) => p.state === 'active').map((p) => [p.npc, p.level, p.hp > 0])]);
+  let c = ownersCache.get(save);
+  if (!c || c.sig !== sig) { c = { sig, map: new Map(), ms: members(save, data) }; ownersCache.set(save, c); }
+  if (!c.map.has(skill)) c.map.set(skill, c.ms.filter((m) => checkInfo(m, skill).kind !== 'other').map((m) => m.name));
+  return c.map.get(skill);
 }
 
 /** Tip lines «Здесь пригодится: Навык (есть у: имя)» for a list of skills. */
