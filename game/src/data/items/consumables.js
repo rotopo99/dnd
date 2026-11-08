@@ -225,7 +225,7 @@ const LIST = [
   c({ id: 'army-ration', name: 'Армейский рацион', kind: 'food', stack: 3, provision: 2, size: [1, 2],
     tier: 2, price: 14, factions: ['warprom', 'aiParty'], desc: 'ИРП Варпрома: хватает на двоих. Срок годности — «до победы».' }),
   c({ id: 'mutant-stew', name: 'Мутантская похлёбка', kind: 'food', stack: 4, provision: 1, field: { heal: { dice: '1d4', resource: 'hp' } },
-    tier: 1, price: 3, factions: ['mutants', 'scavengers'], desc: 'Рацион на ночь. Что-то в ней плавает и смотрит в ответ.' }),
+    tier: 1, price: 3, factions: ['mutantsPlant', 'mutantsBeast', 'scavengers'], desc: 'Рацион на ночь. Что-то в ней плавает и смотрит в ответ.' }),
 ];
 
 export const CONSUMABLES = Object.fromEntries(LIST.map((it) => [it.id, it]));

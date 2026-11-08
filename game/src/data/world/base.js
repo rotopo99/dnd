@@ -68,7 +68,7 @@ export const BASE_MODULES = {
 export const BASE_CUSTOM = [
   { id: 'poster-cringe', name: 'Плакат «Кринж — сила»', cost: 30, fx: { mrl: 'партия +1 МРЛ в начале боя на базе (бой обороны)' } },
   { id: 'poster-ai', name: 'Плакат Партии', cost: 30, fx: { rep: { aiParty: 1 }, everyDays: 14, note: 'раз в 14 дней: +1 репутация АИ при визите' } },
-  { id: 'garden', name: 'Грядки Галины', cost: 80, fx: { food: 'раз в 5 дней +1 рацион в схрон', item: 'rations', everyDays: 5 } },
+  { id: 'garden', name: 'Грядки Галины', cost: 80, fx: { food: 'раз в 5 дней +1 рацион в схрон', item: 'ration', everyDays: 5 } },
   { id: 'vinyl', name: 'Патефон и пластинки', cost: 60, fx: { restLoyalty: 1 } },
   { id: 'trophy-wall', name: 'Стена трофеев', cost: 100, fx: { note: 'показывает убитых боссов; +1 к Запугиванию на базе', check: 'intimidation', bonus: 1 } },
   { id: 'lis-voice', name: 'Голос «Лиса»', cost: 0, needsFlag: 'lis-online', fx: { choices: ['Бодрый диктор', 'Усталый сержант', 'Заботливая бабушка'], note: 'озвучка фраз базы' } },

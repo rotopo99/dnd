@@ -40,16 +40,16 @@ const LIST = [
     e('valerian', 3, 2), e('calmers', 3), e('anti-cringe-earplugs', 2), e('cringe-amp', 1), e('laser-pointer', 2)]),
   t('scavengers', 'Хлам со свалок', 3, [2, 20], Q_LOW, [
     e('shiv', 4), e('armatura', 3), e('pipe-smg', 2), e('rebar-crossbow', 2), e('wire-bolas', 2), e('tire-vest', 1), e('sign-plate', 1),
-    e('scrap-magnet', 1), e('electrical-tape', 3), e('krona-battery', 3), e('analgin', 3), e('tushenka', 3, 2), e('servo-parts', 1), e('weighted-edge', 2), e('tire-patch', 2), e('door-shield', 2), e('sprint-spikes', 1), e('oiled-edge', 2)]),
+    e('scrap-magnet', 1), e('electrical-tape', 3), e('krona-battery', 3), e('analgin', 3), e('tushenka', 3, 2), e('ration', 2, 2), e('servo-parts', 1), e('weighted-edge', 2), e('tire-patch', 2), e('door-shield', 2), e('sprint-spikes', 1), e('oiled-edge', 2)]),
   t('tekhonki', 'Прокси-кустарщина', 2, [5, 30], Q_MID, [
     e('proxy-sling', 3), e('proxy-wrench', 2), e('blessed-wrench', 2), e('proxy-can', 3), e('wire-mantle', 1), e('proxy-sharpening', 1),
     e('blessed-nut', 3), e('rubber-lining', 1), e('krona-battery', 4, 2), e('repair-kit', 2), e('proxy-lens', 1), e('proxy-resonator', 1), e('faraday-cage', 1), e('thermal-edge', 1)]),
   t('neutralVillages', 'Деревенский сундук', 2, [3, 20], Q_LOW, [
     e('hatchet', 3), e('pitchfork', 3), e('hunting-carbine', 1), e('pump-shotgun', 1), e('ski-bow', 1), e('bear-trap', 2),
-    e('bandage', 4, 2), e('valerian', 3), e('pelmeni', 3, 2), e('tushenka', 3, 2), e('medkit', 2), e('wrapped-grip', 3), e('buckler-lid', 2), e('quilted-lining', 2), e('pocket-lining', 2), e('poison-edge', 1)]),
+    e('bandage', 4, 2), e('valerian', 3), e('pelmeni', 3, 2), e('tushenka', 3, 2), e('ration', 2, 2), e('medkit', 2), e('wrapped-grip', 3), e('buckler-lid', 2), e('quilted-lining', 2), e('pocket-lining', 2), e('poison-edge', 1)]),
   t('agrozone', 'Кладовая Агрозоны', 2, [3, 25], Q_LOW, [
     e('sickle', 3), e('pitchfork', 3), e('potato-cannon', 2), e('shock-glove', 1), e('hazmat-suit', 1), e('molotov', 3),
-    e('antidote', 2), e('calmers', 2), e('tushenka', 3, 2), e('acid-mag', 1), e('acid-edge', 1), e('gas-filter', 1)]),
+    e('antidote', 2), e('calmers', 2), e('tushenka', 3, 2), e('ration', 2, 2), e('acid-mag', 1), e('acid-edge', 1), e('gas-filter', 1)]),
   t('mutantsPlant', 'Дары корней', 2, [0, 10], Q_MID, [
     e('thorn-bow', 1), e('sickle', 2), e('bark-weave', 1), e('antidote', 4), e('valerian', 4, 2), e('hazmat-suit', 1), e('bandage', 3, 2)]),
   t('cult', 'Реквизит Культа', 2, [10, 40], Q_MID, [
@@ -62,14 +62,14 @@ const LIST = [
   // ---------------------------------------------------------------- Типы мест (POI канон-карты)
   t('dungeons', 'Довоенный бункер', 3, [20, 60], Q_HIGH, [
     e('makarych', 2), e('kedrach', 1), e('army-medkit', 2), e('party-cell', 2), e('frag-grenade', 2), e('concealed-vest', 1),
-    e('ceramic-insert', 1), e('pso-scope', 1), e('folded-drone', 1), e('tushenka', 4, 3), e('rare-parts', 1), e('thermal-scope', 1), e('kevlar-sheet', 1), e('tac-flashlight', 1)]),
+    e('ceramic-insert', 1), e('pso-scope', 1), e('folded-drone', 1), e('tushenka', 4, 3), e('army-ration', 2), e('rare-parts', 1), e('thermal-scope', 1), e('kevlar-sheet', 1), e('tac-flashlight', 1)]),
   t('lis-vault', 'Хранилище проекта «Лис»', 3, [40, 90], Q_HIGH, [
     e('lis-pack', 1), // v7: рюкзак «Лис» (реликт, уникальный)
     e('lis-3-twin', 2), e('lis-4-sniffer', 2), e('lis-6-core', 1), e('lis-7-chuyo', 1), e('lis-8-hide', 1), e('army-medkit', 3), e('rare-parts', 3), e('servo-parts', 3), e('cryo-nozzle', 1), e('cryo-edge', 1), e('arc-capacitor', 1), e('hover-pads', 1)]),
   t('wolf-pack', 'Трофеи стаи «Волк»', 2, [20, 60], Q_HIGH, [
     e('wolf-fang', 3), e('wolf-link', 2), e('frag-grenade', 2), e('army-medkit', 2), e('smoke-grenade', 2), e('servo-parts', 3), e('rare-parts', 1)]),
   t('ruins', 'Руины', 2, [5, 30], Q_LOW, [
-    e('fire-axe', 2), e('samopal-pistol', 2), e('loupe-sight', 2), e('analgin', 3), e('krona-battery', 3), e('servo-parts', 2), e('tushenka', 3, 2)]),
+    e('fire-axe', 2), e('samopal-pistol', 2), e('loupe-sight', 2), e('analgin', 3), e('krona-battery', 3), e('servo-parts', 2), e('tushenka', 3, 2), e('ration', 2, 2)]),
   t('necropolises', 'Некрополь', 2, [10, 40], Q_MID, [
     e('ritual-blade', 2), e('blessed-nut', 3), e('foil-lining', 1), e('calmers', 3), e('valerian', 3), e('soul-shard', 2), e('black-morphine', 1)]),
   t('battlefields', 'Поле битвы', 3, [5, 30], Q_LOW, [
