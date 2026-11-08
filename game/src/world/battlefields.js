@@ -282,3 +282,41 @@ function finishDef(g, extra) {
 
 /** Legacy BIOMES key for the procedural object counts of a tile biome (when no region / old id is known). */
 export const legacyOf = (biome) => Object.entries(BF.legacy).find(([, v]) => v === biome)?.[0] || (BIOMES[biome] ? biome : 'wasteland');
+
+/** Props that light the night (radius WEATHER.tod.night.light + 1). */
+export const LIGHT_PROPS = ['lamp', 'campfire', 'server', 'hologram-pillar', 'data-pylon', 'glitch-cube', 'kiosk'];
+
+/**
+ * Weather vision of a battle (§4): ids of enemies the player cannot see — farther than `vis` (Chebyshev) from every standing
+ * hero-side unit, outside the light of fires / lamps / own units at night, not revealed (`u.revealedUntil` ≥ round).
+ */
+export function fogHiddenIds(b) {
+  const out = new Set();
+  const v = visionOf(b.map);
+  if (!v.vis) return out;
+  const own = b.units.filter((u) => u.team === 'heroes' && !u.dead && !u.removed);
+  const lights = [];
+  if (v.dark) {
+    for (const p of b.map.props || []) if (LIGHT_PROPS.includes(p.id)) lights.push([p.x, p.y, v.light + 1]);
+    for (const [k, c] of b.surfaces || []) if (c.floor && (c.floor.kind === 'fire' || c.floor.kind === 'electric')) { const [x, y] = k.split(',').map(Number); lights.push([x, y, 1]); }
+  }
+  for (const u of b.units) {
+    if (u.team !== 'enemies' || u.dead || u.removed) continue;
+    if ((u.revealedUntil || 0) >= b.round) continue;
+    const d = Math.min(99, ...own.map((o) => Math.max(Math.abs(o.x - u.x), Math.abs(o.y - u.y))));
+    if (d <= v.vis) continue;
+    if (lights.some(([x, y, r]) => Math.max(Math.abs(x - u.x), Math.abs(y - u.y)) <= r)) continue;
+    out.add(u.id);
+  }
+  return out;
+}
+
+/** Light sources for the night overlay: [x, y, radius] (own units, fires, lamps). */
+export function lightSources(b) {
+  const v = visionOf(b.map);
+  const out = [];
+  for (const u of b.units) if (u.team === 'heroes' && !u.dead && !u.removed) out.push([u.x, u.y, v.light || 3]);
+  for (const p of b.map.props || []) if (LIGHT_PROPS.includes(p.id)) out.push([p.x, p.y, (v.light || 3) + 1]);
+  for (const [k, c] of b.surfaces || []) if (c.floor && (c.floor.kind === 'fire' || c.floor.kind === 'electric')) { const [x, y] = k.split(',').map(Number); out.push([x, y, 1.5]); }
+  return out;
+}
