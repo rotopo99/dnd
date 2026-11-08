@@ -1211,6 +1211,103 @@ SPRITES['mob-acolyte'] = unit(ACOLYTE, { h: 24, bob: 3 });
 
 for (const [id, rows] of Object.entries(V2_MOBS)) SPRITES[`mob-${id}`] = unit(rows);
 for (const [id, rows] of Object.entries(V2_LAYERS)) SPRITES[`layer-${id}`] = layer(rows);
+// Cyberspace enemies (CS_ENEMIES, data/world/cyberspace.js): digital = cyan/teal/pink glitch, no skin tones.
+const CS_MOBS = {
+  'cs-glitch-hound': [ // lag-hound: low quadruped, pink glitch tear across the body
+    '', '', '', '', '', '', '',
+    '.........hh',
+    '........hhhh',
+    '..h..hhhhh5hh',
+    '.hhhhhhhhhhhhh',
+    '.nnnnnnnhhhhc',
+    '..hhhhhhhh.hh',
+    '..hh.hh.hh',
+    '..h..h..h',
+  ],
+  'cs-ice-warden': [ // ICE guard: heavy teal plates, frosty shield
+    '', '',
+    '....hhhh',
+    '...hiiiih',
+    '...hi55ih',
+    '...hiiiih',
+    '..ffhhhhff',
+    '.fhhiiiihhf',
+    '.fhiihhiihf',
+    '.fhiihhiihf',
+    '..fhiiiihf',
+    '...hh..hh',
+    '...ii..ii',
+    '...ii..ii',
+    '..hhh..hhh',
+  ],
+  'cs-echo-wail': [ // echo wailer: hooded wisp, open mouth, trailing echo rings
+    '', '',
+    '.....hhh',
+    '....hhhhh',
+    '...hh000hh',
+    '...hh0n0hh',
+    '...hh000hh',
+    '..hhhhhhhhh',
+    '.h.hhhhhhh.h',
+    'h..hhhhhhh..h',
+    '...hhhhhhh',
+    '....hhhhh',
+    '.....hhh',
+    '......h',
+    '.......h',
+  ],
+  'cs-leech-daemon': [ // leech: purple bloated body, red maw, drain tendrils
+    '', '',
+    '....oo..oo',
+    '...oooooooo',
+    '..oo5oooo5oo',
+    '..oooooooooo',
+    '..ooccccccoo',
+    '..oooocccooo',
+    '.hoooooooooh',
+    'h.oononnoo.h',
+    'h..oooooo..h',
+    '.h.oo..oo.h',
+    '...oo..oo',
+    '..hh....hh',
+    '',
+  ],
+  'cs-null-walker': [ // null walker: erased man, mostly void with a cut-out silhouette and one cold eye
+    '', '',
+    '.....hhhh',
+    '....h0000h',
+    '....h0050h',
+    '....h0000h',
+    '.....hhhh',
+    '...h.0000.h',
+    '..h.00000.h',
+    '....00000',
+    '....00000',
+    '....0h.h0',
+    '....0..0',
+    '....h..h',
+    '',
+  ],
+  'cs-judge-eye': [ // Judge's eye: giant floating eyeball, red iris, purple lids, cyan halo
+    '',
+    '..h...hhhh...h',
+    '...hooooooooh',
+    '..oo555555oo',
+    '.oo55cccc55oo',
+    '.o55cc00cc55o',
+    '.o55cc00cc55o',
+    '.oo55cccc55oo',
+    '..oo555555oo',
+    '...hoooooooh',
+    '..h...hh...h',
+    '.....h..h',
+    '....h....h',
+    '',
+    '',
+  ],
+};
+for (const [id, rows] of Object.entries(CS_MOBS)) SPRITES[`mob-${id}`] = unit(rows);
+for (const id of ['cs-echo-wail', 'cs-judge-eye', 'cs-leech-daemon', 'cs-null-walker']) SPRITES[`mob-${id}`].bob = 0; // hover
 SPRITES['mob-materialized-soul'].bob = 0;
 SPRITES['mob-scriptlet'].bob = 0;
 SPRITES['mob-cyber-priest'] = unit(CYBER_PRIEST, { h: 24, bob: 3 });
@@ -1237,7 +1334,8 @@ export const ENEMY_IDS = ['cultist', 'cultist-gunner', 'skrilet', 'acolyte', 'sc
 export const NPC_IDS = ['npc-gans', 'npc-party-victor', 'npc-party-artyom'];
 export const WORLD_ENEMY_IDS = ['rioter', 'cleaner', 'cleaner-captain', 'cleaner-5', 'rebel', 'rebel-gunner', 'rebel-veteran',
   'cultist-3', 'materialized-soul', 'scriptlet', 'cyber-priest', 'cringe-beacon', 'cringe-warrior', 'scavenger-gunner',
-  'scavenger-hunter', 'pirate', 'pirate-gunner', 'pirate-hacker'];
+  'scavenger-hunter', 'pirate', 'pirate-gunner', 'pirate-hacker',
+  'cs-glitch-hound', 'cs-ice-warden', 'cs-echo-wail', 'cs-leech-daemon', 'cs-null-walker', 'cs-judge-eye'];
 export const SUMMON_IDS = ['drone', 'turret', 'beast-wolf', 'cyber-demon', 'gang-thug', 'biomass', 'spirit', 'hologram'];
 
 // ---------------------------------------------------------------------------

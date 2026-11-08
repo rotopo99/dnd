@@ -94,8 +94,72 @@ export function heroAvatarFrame(h, box = 96, o = {}) {
   return cv;
 }
 
-/** Draws the animated portrait into the box x box square at (x, y). */
+// ---- spirit variant (docs/specs/cyberspace-v2.md §8): translucent cyan glitch silhouette, scanlines, RGB-split echoes, noise decay
+export const isSpirit = (h, o = {}) => !!(o.spirit || h?.spirit === true || h?.isSpirit || h?.race === 'cyber-spirit' || h?.raceId === 'cyber-spirit');
+const spiritCache = new Map();
+const tintOf = (src, size, key, a) => {
+  const cv = makeCanvas(size, size), c = cv.getContext('2d');
+  c.drawImage(src, 0, 0); c.globalCompositeOperation = 'source-atop'; c.globalAlpha = a; c.fillStyle = pc(key); c.fillRect(0, 0, size, size);
+  return cv;
+};
+function spiritFrame(h, box, o) {
+  const ms = o.time ?? nowMs();
+  const ph = Math.floor(ms / 150) % 3;           // 0 normal / 1 slice / 2 echo
+  const seed = Math.floor(ms / 250) % 8;
+  const base = heroAvatarFrame(h, box, { ...o, bg: false, spirit: false, hurtAt: o.hurtAt });
+  const size = base.width;
+  const key = `${heroLook3d(h).key.length}${heroLook3d(h).key}|${size}|${ph}|${seed % 4}|${o.bg === false ? 0 : 1}|${o.hp ?? 1}|${o.emotion || ''}|${Math.floor((o.time ?? nowMs()) / 66)}`;
+  let cv = spiritCache.get(key);
+  if (cv) return cv;
+  cv = makeCanvas(size, size);
+  const c = cv.getContext('2d');
+  const u = Math.max(2, Math.round(size / 48)), r = rngOf(`sp${seed}${ph}`);
+  if (o.bg !== false) { c.fillStyle = pc('1'); c.fillRect(0, 0, size, size); c.fillStyle = pc('i'); c.globalAlpha = 0.5; c.fillRect(0, size * 0.72, size, size * 0.28); c.globalAlpha = 1; }
+  const body = tintOf(base, size, 'h', 0.55);
+  if (ph === 2) { // RGB echo: pink left, cyan right
+    c.globalAlpha = 0.4; c.drawImage(tintOf(base, size, 'n', 0.8), -u * 2, 0); c.drawImage(tintOf(base, size, 'h', 0.9), u * 2, 0);
+  } else { c.globalAlpha = 0.18; c.drawImage(tintOf(base, size, 'n', 0.8), -u, 0); }
+  c.globalAlpha = 0.72;
+  if (ph === 1) { // horizontal row slices shifted +-3 units
+    let y0 = 0;
+    while (y0 < size) {
+      const hh = Math.round(size * (0.03 + r() * 0.08)), slice = r() < 0.35;
+      const dx = slice ? (r() < 0.5 ? -1 : 1) * u * (1 + Math.floor(r() * 2)) : 0;
+      c.drawImage(body, 0, y0, size, hh, dx, y0, size, hh);
+      y0 += hh;
+    }
+  } else c.drawImage(body, 0, 0);
+  c.globalAlpha = 1;
+  // lower third decays into noise: erase random cells (denser lower) and drop falling pixels
+  const top = size * 0.62;
+  for (let yy = top; yy < size; yy += u) for (let xx = 0; xx < size; xx += u) {
+    const p = (yy - top) / (size - top);
+    const q = r();
+    if (q < p * 0.85) { c.clearRect(xx, yy, u, u); if (q < p * 0.12) { c.fillStyle = pc(r() < 0.2 ? '5' : 'h'); c.globalAlpha = 0.8; c.fillRect(xx, yy + u, u, u); c.globalAlpha = 1; } }
+  }
+  c.fillStyle = pc('0'); c.globalAlpha = 0.38;
+  for (let yy = 0; yy < size; yy += u * 3 / 2 | 0 || 3) c.fillRect(0, yy, size, Math.max(1, u / 2 | 0));
+  c.globalAlpha = 1;
+  if (ph === 1 && r() < 0.5) { c.fillStyle = pc('n'); c.fillRect(0, Math.floor(r() * size / u) * u, size, u / 2); } // pink glitch line
+  if (spiritCache.size > 300) spiritCache.clear();
+  spiritCache.set(key, cv);
+  return cv;
+}
+
+/** Spirit portrait: the hero avatar as a flickering cyberspace ghost. Same signature as drawHeroAvatar. */
+export function drawSpiritPortrait(ctx, h, x, y, box, o = {}) {
+  const cv = spiritFrame(h, box, o);
+  const prev = ctx.imageSmoothingEnabled, ga = ctx.globalAlpha;
+  ctx.imageSmoothingEnabled = false;
+  const ms = o.time ?? nowMs();
+  ctx.globalAlpha = ga * (o.alpha ?? 1) * (Math.floor(ms / 90) % 11 === 0 ? 0.6 : 1); // rare brightness flicker
+  ctx.drawImage(cv, x, y, box, box);
+  ctx.globalAlpha = ga; ctx.imageSmoothingEnabled = prev;
+}
+
+/** Draws the animated portrait into the box x box square at (x, y). Spirit heroes (hero.spirit / opts.spirit) -> drawSpiritPortrait. */
 export function drawHeroAvatar(ctx, h, x, y, box, o = {}) {
+  if (o.spirit !== false && isSpirit(h, o) && !o._spiritBase) return drawSpiritPortrait(ctx, h, x, y, box, o);
   const cv = heroAvatarFrame(h, box, o);
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;

@@ -14,6 +14,8 @@ export const COMBAT = {
     wall: { cover: 'full', hp: [15, 4.25], armor: 10, leaves: 'floor' },
     generator: { cover: 'half', hp: [10, 2.25], armor: 10, leaves: 'rubble', surface: { kind: 'electric', r: 1, turns: 2 } },
     barrel: { cover: 'half', hp: [5, 0.75], armor: 6 }, // spill — surfaces.js destroyBarrel (oil / toxgas)
+    // battlefields.md: props (assets/props.js) — hp = prop.hp + perL × L, debris surface on the footprint for `turns`
+    prop: { perL: 1, armor: 8, leaves: 'rubble', turns: 3 },
   },
   junkItem: 'servo-parts', // «хлам» from broken crates (objects.crate.junk chance)
   // area hits damage objects by this share of the rolled damage (hit roll is not needed)
@@ -100,3 +102,66 @@ export function biomeOf({ biome, region, faction, hazard } = {}) {
   if (biome && BIOMES[biome]) return biome;
   return BIOMES.regionBiome[region] || BIOMES.regionBiome[faction] || BIOMES.hazardBiome[hazard] || 'wasteland';
 }
+
+// battlefields.md §1–§4: tile biomes (assets/tilesets.js), templates (data/maps/fields/layouts.js), weather / time of day.
+export const BATTLEFIELD = {
+  templateChance: 0.65, // world battles without a fixed map: a template, else the procedural arena (both painted by the biome)
+  mirrorChance: 0.5,
+  plainCover: 0.35, // a c / C slot stays a plain half / full tile (no prop)
+  dropCover: 0.08, // a c slot is cleared (variety)
+  decal: 0.06, // share of floor cells with a decal (variants 2–3)
+  mainWeight: 0.7, // §3: the main biome of a region, the rest share the variants
+  // region -> [main, ...variants]
+  regions: {
+    neutralVillages: ['ruins-city', 'swamp', 'snow'], tinBrotherhood: ['wasteland', 'factory'], scavengers: ['wasteland', 'ruins-city'],
+    renegades: ['wasteland', 'ruins-city'], warprom: ['factory', 'wasteland', 'bunker-interior'], pirates: ['port', 'swamp'],
+    mutantsBeast: ['mutant-forest', 'swamp'], mutantsPlant: ['mutant-forest', 'swamp'], agrozone: ['mutant-forest', 'factory', 'wasteland'],
+    wilds: ['snow', 'mutant-forest', 'bunker-interior'], tekhonki: ['cyberspace', 'bunker-interior'], mechanids: ['bunker-interior', 'cyberspace', 'factory'],
+    aiParty: ['bunker-interior', 'ruins-city'], cult: ['cyberspace', 'bunker-interior'], cringegons: ['ruins-city', 'cyberspace'], harmony: ['bunker-interior', 'cyberspace'],
+  },
+  // old arena biomes (BIOMES) -> tile biome
+  legacy: { wasteland: 'wasteland', village: 'ruins-city', agro: 'mutant-forest', cyber: 'cyberspace', port: 'port', mutant: 'mutant-forest' },
+  hazard: { fire: 'mutant-forest', proxyStorm: 'cyberspace', cringe: 'ruins-city' },
+  // template by place: location kind / tile biome -> candidates (else any)
+  byKind: { town: ['crossroads', 'street', 'yard'], hub: ['crossroads', 'street', 'yard'], camp: ['camp', 'barricade'], dungeon: ['workshop', 'yard'], sea: ['bridge'] },
+  byBiome: { factory: ['workshop'], port: ['bridge', 'street'], 'ruins-city': ['street', 'crossroads', 'yard'], swamp: ['bridge', 'camp'] },
+  ambush: ['camp', 'yard'],
+  // pools '~' not connected to the edge: surface by biome (water — a puddle tile 'w')
+  liquid: { factory: 'oil', 'mutant-forest': 'acid' },
+  vehicles: ['lada', 'moskvich', 'bus', 'kamaz', 'container', 'container-red', 'wagon'],
+  // props never used for c / C slots (special slots or not cover-like)
+  slotSkip: ['barrel', 'barrel-toxic', 'campfire', 'bridge', 'trench', 'tent', 'fence', 'tower', 'antenna', 'lamp', 'dead-tree',
+    'lada', 'moskvich', 'bus', 'kamaz', 'container', 'container-red', 'wagon', 'garages', 'heatpipe', 'rowboat'],
+};
+
+// §4 weather and time of day: vis — sight range in cells (0 = unlimited; the smaller of weather / time wins);
+// light — radius of light around own units / fires / lamps at night; overlay — palette key + alpha (art: STYLE.md).
+export const WEATHER = {
+  clearChance: 0.55,
+  tod: {
+    day: { vis: 0 },
+    dusk: { vis: 0, overlay: ['1', 0.22] },
+    night: { vis: 6, light: 3, overlay: ['0', 0.55] },
+  },
+  weather: {
+    clear: { vis: 0 },
+    fog: { vis: 5, overlay: ['4', 0.3], drift: ['5', 0.12] },
+    rain: { vis: 8, overlay: ['1', 0.18], puddles: [2, 4] },
+    blizzard: { vis: 5, overlay: ['5', 0.25] },
+    storm: { vis: 7, overlay: ['0', 0.3], flash: [4, 7], dark: true },
+  },
+  // time of day by game day: index (day + seed) % length
+  cycle: ['day', 'day', 'dusk', 'night'],
+  // allowed per tile biome: [times], [weathers besides clear]
+  allowed: {
+    wasteland: [['day', 'dusk', 'night'], ['fog', 'rain']],
+    swamp: [['dusk', 'night'], ['fog', 'rain']],
+    snow: [['day', 'dusk', 'night'], ['blizzard', 'fog']],
+    'ruins-city': [['day', 'dusk', 'night'], ['fog', 'rain']],
+    'bunker-interior': [['day'], ['storm']],
+    factory: [['day', 'night'], ['rain']],
+    port: [['day', 'dusk', 'night'], ['fog', 'rain']],
+    'mutant-forest': [['day', 'dusk', 'night'], ['fog', 'rain']],
+    cyberspace: [['day', 'night'], ['storm']],
+  },
+};

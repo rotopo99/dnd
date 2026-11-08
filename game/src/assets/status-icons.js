@@ -20,6 +20,8 @@ const cloud = (c, d) => [
 
 const RAW = {
   // ---- statuses
+  // Cyberspace spirit: bust in profile, lower half dissolves into falling pixels, two pink glitch slices (n), eye = dark pit + dot.
+  spirit: ['....hhhh....', '...hhhhhh...', '..hhhhhhhh..', '..h05hhhhh..', '..hhhhhhhhh.', '...hhhhhh.nn', 'nn.hhhhhh...', '.hhhhhhhhhh.', '..h.hh.h.hh.', '...h..h...h.', '..h....h....', '............'],
   stun: ['.....bb.....', '.....bb.....', '....bbbb....', 'bbbbbbbbbbbb', '.bbbbbbbbbb.', '..bbbbbbbb..', '...bbbbbb...', '...bbbbbb...', '..bbbb.bbb..', '..bbb..bbb..', '.bbb....bbb.', '.bb......bb.'],
   bleed: ['.....cc.....', '....cccc....', '....cccc....', '...cccccc...', '..ccccccc...', '..cc5cccccc.', '.ccc5ccccccc'.slice(0, 12), '.cccccccccc.', '.ccc0000ccc.', '..cc0000cc..', '...cccccc...', '............'],
   poison: ['...jjjjjj...', '..jjjjjjjj..', '.jjjjjjjjjj.', '.jj00jj00jj.', '.jj00jj00jj.', '.jjjjjjjjjj.', '..jjjjjjjj..', '...jj00jj...', '...jjjjjj...', '...j.j.j.j..', '...j.j.j.j..', '............'],
