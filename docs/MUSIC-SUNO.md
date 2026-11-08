@@ -45,3 +45,26 @@ Instrumental, 2:00, 120 BPM, digital dreamscape in the spirit of Quasimorph cybe
 
 ### tension.mp3
 Instrumental, 1:30, heartbeat tempo 60 to 80 BPM, the last countdown before the end. Minimal: a fifth-only drone (no beating), a heavy heartbeat thud, soft clock ticks that speed up over time, a distant metallic strike now and then, no melody, claustrophobic, loopable ending.
+
+## Вокал (решение человека)
+Вокал **не нужен** в обычных треках (menu, world, town, battle, cyberspace, tension — Instrumental: on).
+Вокал **можно** только в трёх местах: финальные/сюжетные боссы, романтические сцены, трагические сцены.
+Язык — русский или без слов (хоровой распев). Текст — свой, без чужих песен; можно оставить Suno «[choir chant, no clear words]».
+
+| Трек | Файл | Длина | Темп | Вокал |
+|---|---|---|---|---|
+| boss-final | `boss-final.mp3` | 2:30 | 138 BPM | мужской/смешанный хор, распев |
+| romance | `romance.mp3` | 2:00 | 70 BPM | тихий женский вокал или вокализ |
+| tragic | `tragic.mp3` | 2:00 | 60 BPM | одинокий голос / хор, плач |
+
+### boss-final.mp3 (Instrumental: off)
+2:30, 138 BPM, epic grim boss battle in the spirit of Rogue Trader and Warhammer 40k. Massive pipe organ riffs, pounding industrial drums, distorted low brass, a huge male and mixed choir chanting in Russian-sounding Latin-like syllables, call-and-response chant on the chorus, bells on downbeats, sacred and apocalyptic, tension builds to a climax, no pop vocals, no rap, loopable ending.
+Lyrics hint: [Choir chant] Судья грядёт... исход... исход... (or leave as wordless chant)
+
+### romance.mp3 (Instrumental: off)
+2:00, 70 BPM, tender melancholic love theme in a post-apocalyptic ruined world. Soft felt piano, warm muted strings, distant reverb guitar, a quiet intimate female vocal or wordless vocalise in Russian, hopeful but fragile, campfire at night among ruins, no drums or only soft brushes, loopable ending.
+
+### tragic.mp3 (Instrumental: off)
+2:00, 60 BPM, tragic lament for a fallen companion. Solo cello and low strings, slow organ, a single mournful voice singing a Russian folk-style lament (wordless or few words), later joined by a soft choir, funeral and grief, vast cathedral reverb, no drums, ending fades to silence.
+
+Как подключить: положить файл в `game/assets/music/` и раскомментировать строку в `MUSIC_FILES` (`game/src/audio/music.js`). Пока файла нет, вместо boss-final играет boss, вместо romance — town, вместо tragic — menu. Вызовы этих треков в сценах (финальные боссы, романтические и трагические сцены) подключит программист вместе с романами.

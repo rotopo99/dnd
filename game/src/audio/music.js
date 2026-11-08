@@ -56,7 +56,12 @@ const MUSIC_FILES = {
   // boss: 'assets/music/boss.mp3',
   // cyberspace: 'assets/music/cyberspace.mp3',
   // tension: 'assets/music/tension.mp3',
+  // boss-final: 'assets/music/boss-final.mp3',   // vocals ok (choir/chant)
+  // romance: 'assets/music/romance.mp3',         // vocals ok
+  // tragic: 'assets/music/tragic.mp3',           // vocals ok
 };
+// Tracks that exist only as files: until the file is there, play this procedural track instead.
+const ALIAS = { 'boss-final': 'boss', romance: 'town', tragic: 'menu' };
 
 // Chords as MIDI notes, kept above ~110 Hz (no sub drone). Each chord lasts 8–16 s.
 const DORIAN = [
@@ -290,7 +295,7 @@ function hookGesture() {
 /** Start a track with crossfade (1–2 s). Same id while playing is a no-op unless a seed is given. */
 export function playTrack(id, opts = {}) {
   try {
-    if (!TRACKS[id]) return;
+    if (!TRACKS[id] && !ALIAS[id]) return;
     if (!Number.isFinite(opts.seed) && current && current.id === id) return;
     const fade = clamp(Number.isFinite(opts.fade) ? opts.fade : FADE_DEFAULT, FADE_MIN, FADE_MAX);
     const seed = Number.isFinite(opts.seed) ? opts.seed >>> 0 : (Math.random() * 0xffffffff) >>> 0;
@@ -356,7 +361,7 @@ function startAny(id, seed, t0, fadeS) {
 }
 
 function startTrack(id, seed, t0, fadeS) {
-  const def = TRACKS[id];
+  const def = TRACKS[id] || TRACKS[ALIAS[id]];
   const out = ctx.createGain();
   out.gain.setValueAtTime(0, t0);
   out.gain.linearRampToValueAtTime(1, t0 + fadeS);
