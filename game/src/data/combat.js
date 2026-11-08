@@ -61,7 +61,7 @@ export const COMBAT = {
     rescue: { rounds: 4, cost: 'bonus', reward: { xp: 0.25, loot: 1, rep: 1 }, failRep: -1 },
     terminal: { skills: ['tech', 'hacking'], dc: [11, 0.5], need: 2, cost: 'action', reward: { xp: 0.15, loot: 1 } },
     hold: { rounds: 3, radius: 1, reward: { xp: 0.2, loot: 1 } },
-    assassinate: { fleeRound: 3, reward: { xp: 0.2, loot: 1, credits: 0.25 } },
+    assassinate: { fleeRound: 4, reward: { xp: 0.2, loot: 1, credits: 0.25 } },
     nofire: { cargo: [2, 4], reward: { loot: 1, credits: 0.25 } },
     speed: { rounds: { normal: 4, elite: 6, boss: 8 }, eliteFrom: 5, reward: { credits: 0.25, loot: 1 } },
     flawless: { reward: { xp: 0.15 } },

@@ -666,6 +666,50 @@ export function consumeBattle(save, key, used) {
   });
 }
 
+/**
+ * After a battle: «Порыться» moved stacks between the bag and the quick slots (unit.inventory = quick slots at the end).
+ * Mirror the layout in the save: quick stacks no longer wanted go back to the bag (if it has room), wanted ones come
+ * from the bag into a matching / empty quick slot. Run after consumeBattle (counts already match).
+ */
+export function keepQuickLayout(save, key, quickNow) {
+  mutate(save, () => {
+    const h = holderOf(save, key);
+    if (!h) return;
+    const b = bagOf(h);
+    const n = quickCount(h);
+    const cont = { grid: b.grid, w: gridDims(h)[0], h: gridDims(h)[1] };
+    const want = {}, have = {};
+    for (const [id, k] of Object.entries(quickNow || {})) if (k > 0 && ITEMS[id]) want[id] = k;
+    b.quick.forEach((e, i) => { if (e && i < n && isBattleItem(ITEMS[e.item])) have[e.item] = (have[e.item] || 0) + e.n; });
+    // quick → bag (swapped back during the battle)
+    for (let i = 0; i < n; i++) {
+      const e = b.quick[i];
+      if (!e || !isBattleItem(ITEMS[e.item]) || (have[e.item] || 0) <= (want[e.item] || 0)) continue;
+      const k = Math.min(e.n, have[e.item] - (want[e.item] || 0));
+      const put = k - placeAuto(cont, { item: e.item, q: e.q }, k); // placeAuto returns what did not fit
+      e.n -= put; have[e.item] -= put;
+      if (e.n <= 0) b.quick[i] = null;
+    }
+    // bag → quick (rummaged)
+    for (const [id, w] of Object.entries(want)) {
+      let need = w - (have[id] || 0);
+      const cap = stackOf(ITEMS[id]);
+      for (let gi = b.grid.length - 1; gi >= 0 && need > 0; gi--) {
+        const e = b.grid[gi];
+        if (e.item !== id || (e.mods || []).length) continue;
+        let i = b.quick.findIndex((q, k) => k < n && q && q.item === id && (q.q || 'working') === (e.q || 'working') && q.n < cap);
+        if (i < 0) i = b.quick.findIndex((q, k) => k < n && !q);
+        if (i < 0) return;
+        const q = b.quick[i] || (b.quick[i] = { item: id, q: e.q, n: 0 });
+        const k = Math.min(need, e.n, cap - q.n);
+        q.n += k; e.n -= k; need -= k;
+        if (e.n <= 0) b.grid.splice(gi, 1);
+        if (k <= 0) break;
+      }
+    }
+  });
+}
+
 // ----------------------------------------------------------------------------- migration / normalisation
 const QOK = (q) => (QUALITY[q] ? q : null);
 function normEntry(e) {

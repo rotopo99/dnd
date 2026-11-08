@@ -12,12 +12,14 @@ import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT, TALENT_LEVELS } from '../
 import { RELATIONS } from '../data/factions.js';
 import { isBattleItem } from '../rules/combat.js';
 import { clearWithdrawal } from '../rules/aftermath.js';
-import { applyBackstory, backstoryWorld } from './backstory.js';
+import { applyBackstory, backstoryWorld, backstoryPassives, backstoryOf } from './backstory.js';
+const backstoryName = (h) => backstoryOf(h?.bg)?.name || '';
 import {
   LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
   PLAY_DATA as GAME_DATA, resolveLocation, starterKit, FINALE_TERMINALS,
 } from './data.js';
 import { EXODUS } from '../data/world/exodus.js';
+import { exodusRoad } from './exodus-road.js';
 import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast, meetFaction, startMet } from './reputation.js';
 import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
@@ -104,7 +106,8 @@ function gadgetWithItems(save, data) {
   const items = Object.entries(h.items || {}).filter(([id, n]) => n > 0 && ITEMS[id] && (ITEMS[id].passives || ITEMS[id].world))
     .map(([id]) => ITEMS[id]).filter((it) => !it.req?.weapon || (it.req.weapon === 'ranged' ? range > 1 : range <= 1));
   const bgWorld = backstoryWorld(h); // world-consequences.md ч.4: backstory skill bonuses ride on the merged gadget
-  if (bgWorld.length) items.push({ name: bgWorld[0].name, world: bgWorld });
+  const bgPass = backstoryPassives(save); // and the «first battle» drawback (−1 hit until the first win)
+  if (bgWorld.length || bgPass.length) items.push({ name: backstoryName(h) || 'bg', world: bgWorld, passives: bgPass });
   if (!items.length) return { data, gadget: h.gadget || undefined };
   const id = `${h.gadget || 'none'}+items`;
   const merged = {
@@ -216,6 +219,8 @@ export function partyUnits(save, data = GAME_DATA) {
     const u = buildCompanion(save, p, data);
     if (u) list.push(u);
   }
+  // a battle-wide buff of the party (base defense: barricades +KB) — set right before the battle, cleared after
+  if (save.battleBuff?.kb) for (const u of list) u.kb += save.battleBuff.kb;
   return list;
 }
 
@@ -802,7 +807,10 @@ export function encounterThreshold(save, r, data = GAME_DATA) {
 
 /** Weighted pick from a region's encounter table (raceWeight for party races). Friendly faction battles → trader. */
 export function pickEncounter(save, regionId, rng = Math.random) {
-  const list = (ENCOUNTER_TABLES[regionId] || []).filter((e) => e.kind !== 'npc' || NPCS[e.npc]);
+  // third-exodus.md: marks 2–5 add cult squads / revenants (world/exodus-road.js); the last mark — only them in part of the regions
+  const xr = exodusRoad(save, regionId);
+  const base = xr.only ? [] : (ENCOUNTER_TABLES[regionId] || []).filter((e) => e.kind !== 'npc' || NPCS[e.npc]);
+  const list = [...base, ...xr.list];
   if (!list.length) return null;
   const races = new Set([save.hero.race, ...activeCompanions(save).map((p) => NPCS[p.npc]?.race)]);
   const w = (e) => e.w * Object.entries(e.raceWeight || {}).reduce((m, [race, k]) => (races.has(race) ? m * k : m), 1);

@@ -26,7 +26,7 @@ export const BACKSTORIES = {
     start: { rep: { technikums: 15 }, items: [{ id: 'spare-cell', n: 1 }], credits: 30, flags: ['bs-tech'] },
     skills: [{ skill: 'analysis', bonus: 1 }, { skill: 'hacking', bonus: 1 }],
     conditional: [{ skill: 'tech', adv: true, when: 'чинить, разбирать, паять в хабах Гармонии' }],
-    topics: ['technikum-gossip', 'vazgen'], drawback: { note: 'нет опыта боя: −1 к первой атаке в первом бою' } },
+    topics: ['technikum-gossip', 'vazgen'], drawback: { hit: -1, note: 'нет опыта боя: −1 к атаке, пока не выиграна первая схватка' } },
   warprom: { id: 'warprom', name: 'Дезертир Военпрома', races: ['human', 'skeleton', 'android'],
     desc: 'Служил, не понравилось. Отпускать не собирались, поэтому ты сам отпустил себя.',
     start: { rep: { warprom: -10, renegades: 10, tinBrotherhood: 5 }, items: [{ id: 'bandage', n: 3 }], credits: 25, flags: ['bs-deserter'] },
@@ -59,4 +59,23 @@ export const TOPIC_NOTES = {
   'kreml-rumors': 'Слухи о Кремле: открывает скрытый узел «Коридоры под Кремлём».',
   'bard-songs': 'Спеть в таверне: заработок и слух раз в день.',
   'inn-gossip': 'Трактирщики делятся слухами без платы.',
+};
+
+/**
+ * Расспросы предысторий у NPC (topics): строка появляется в «Расспросить» у NPC перечисленных фракций (factions) или по id (npcs).
+ * Один раз на NPC даёт мелочь (fx: xp / credits / hook — открыть узел на карте). Логика — world/backstory.js backstoryTopics.
+ */
+export const TOPIC_TALK = {
+  'sky-bazaar': { factions: ['pirates'], q: 'Я был на Небесном базаре, когда он падал.', a: 'Ты тоже?! Тогда ты знаешь, почему мы не швартуемся у высоких причалов. Держи — за выживших.', fx: { credits: 15 } },
+  'harmony-old': { factions: ['technikums'], q: 'Помнишь, как Гармония жила до терминалов?', a: 'Помню. Тогда сеть была для связи, а не для душ. Ищи узлы, где провода тянутся вниз, а не вверх.', fx: { xp: 30 } },
+  'ai-bureaucracy': { factions: ['aiParty'], q: 'Я из канцелярии. Бывшей.', a: 'А-а, коллега… Тогда вот вам неофициально: в архиве талонов есть дыра. Только я вам не говорил.', fx: { xp: 30, hook: 'putinlyandiya' } },
+  'putin-leaks': { factions: ['aiParty', 'renegades'], q: 'Что известно о «Путине Марк 2»?', a: 'Кабель связи идёт под Путинляндией. Кто его найдёт — услышит, о чём молчит Партия.', fx: { xp: 40 } },
+  'scav-lore': { factions: ['scavengers'], q: 'Я вырос на Свалке. У третьей кучи, где сварка.', a: 'Так ты наш! Чего сразу не сказал. На, это не продаётся — это своим.', fx: { credits: 20 } },
+  'junk-prices': { factions: ['scavengers', 'neutralVillages'], q: 'Сколько на самом деле стоит этот лом?', a: 'Вдвое меньше, чем просят, и втрое больше, чем дают. Торгуйся — ты умеешь.', fx: { xp: 20 } },
+  'technikum-gossip': { factions: ['technikums', 'tekhonki'], q: 'Что нового изобрели в техникуме?', a: 'Паяльник, который паяет сам. Пока только пальцы. Но идея хорошая.', fx: { xp: 25 } },
+  vazgen: { npcs: ['vazgen'], q: 'Вазген, я у вас учился. Два курса.', a: 'Помню! Ты тот, кто сжёг лабораторию дважды. Ладно, слушай: терминалы культа боятся частоты 50 герц. Не спрашивай.', fx: { xp: 40 } },
+  'warprom-barracks': { factions: ['warprom'], q: 'Пароль казармы: «Ржавчина спит».', a: '…Отзыв: «Сталь не спит». Проходи, служивый. Я тебя не видел.', fx: { xp: 30 } },
+  'kreml-rumors': { factions: ['warprom', 'renegades'], q: 'Под Кремлём правда есть коридоры?', a: 'Есть. Вход — через старые подземелья. Кто туда ходит, возвращается молчаливым.', fx: { xp: 30, hook: 'dungeons-m12' } },
+  'bard-songs': { factions: ['neutralVillages', 'pirates', 'cringegons'], q: 'Хотите песню? Я пел по всем Пустошам.', a: 'Только не про маяки! …Ладно, давай. Красиво. На, за песню.', fx: { credits: 15 } },
+  'inn-gossip': { factions: ['neutralVillages', 'pirates', 'technikums'], q: 'Что болтают в трактирах?', a: 'Что культ скупает банки. Пустые. Для чего — никто не знает, но цены на банки растут.', fx: { xp: 20 } },
 };

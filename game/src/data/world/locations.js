@@ -487,7 +487,7 @@ for (const [id, bs] of Object.entries(NODE_BATTLES_V4)) {
   }
 }
 
-// third-exodus.md §3: density caches (density-caches.js) → node caches { id, check, loot: [{ item, n }, { credits }], text }
+// third-exodus.md §3: density caches (density-caches.js) → node caches { id, check, loot: [{ item, n }, { credits }], text, flag? } (flag — codex find cx-*)
 export const cacheLoot = (ids = [], credits = 0) => {
   const n = {};
   for (const id of ids) n[id] = (n[id] || 0) + 1;
@@ -495,7 +495,7 @@ export const cacheLoot = (ids = [], credits = 0) => {
 };
 for (const c of CACHES_DENSITY) {
   if (!LOCATIONS[c.node]) throw new Error(`density-caches: unknown node "${c.node}"`);
-  LOCATIONS[c.node].caches = [...LOCATIONS[c.node].caches, { id: c.id, check: c.check, loot: cacheLoot(c.loot, c.credits), text: c.text }];
+  LOCATIONS[c.node].caches = [...LOCATIONS[c.node].caches, { id: c.id, check: c.check, loot: cacheLoot(c.loot, c.credits), text: c.text, ...(c.flag ? { flag: c.flag } : {}) }];
 }
 
 for (const [old, target] of Object.entries(ALIASES)) {

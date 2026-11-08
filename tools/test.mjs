@@ -2501,6 +2501,22 @@ console.log('inventory v7: grid, quick slots, mods, off-hand, migration');
     assert.equal(s.hero.bag.quick[0], null);
     assert.equal(INV.countAll(s).grenade, 1);
   });
+  test('battle writeback: stacks moved by «Порыться» keep the new quick-slot layout', () => {
+    const s = mkSave();
+    s.hero.bag.quick = [{ item: 'grenade', q: 'working', n: 1 }, null, null, null, null, null];
+    s.hero.items.grenade = 0; INV.refreshView(s);
+    s.hero.items.molotov = 2; INV.syncItems(s); // molotovs in the bag
+    const n0 = INV.countAll(s);
+    assert.ok(s.hero.bag.grid.some((e) => e.item === 'molotov'));
+    // battle end: grenade swapped back to the bag, molotovs in the quick slots
+    INV.keepQuickLayout(s, 'hero', { molotov: 2 });
+    assert.ok(s.hero.bag.quick.some((e) => e && e.item === 'molotov' && e.n === 2), 'molotovs in a quick slot');
+    assert.ok(!s.hero.bag.quick.some((e) => e && e.item === 'grenade'), 'grenade left the quick slots');
+    assert.ok(s.hero.bag.grid.some((e) => e.item === 'grenade'), 'grenade back in the bag');
+    assert.deepEqual(INV.countAll(s), n0, 'nothing lost or duplicated');
+    INV.keepQuickLayout(s, 'hero', { molotov: 2 });
+    assert.deepEqual(INV.countAll(s), n0, 'idempotent');
+  });
 }
 
 // ---------------------------------------------------------------- world-consequences.md ч.3–5: base, backstories, neutral, skills 2
@@ -3182,6 +3198,291 @@ console.log('melee-aoe: leaps, cones, AI areas');
     assert.deepEqual(validateStatusIcons(), []);
     for (const id of Object.keys(STATUSES)) assert.ok(ICON_IDS.includes(id), `no icon for status ${id}`);
     for (const id of Object.keys(SURFACES)) assert.ok(ICON_IDS.includes(`surface:${id}`), `no icon for surface ${id}`);
+  });
+}
+
+// combat-rework §6 (stage 2): optional objectives, chests, retreat via exits, junk weapon jam (rules/objectives.js)
+console.log('combat rework stage 2: objectives, chests, retreat, jam');
+{
+  const OB = await import('../game/src/rules/objectives.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const { BATTLE_OBJECTIVES } = await import('../game/src/data/world/battle-objectives.js');
+  const { objectiveSpec } = await import('../game/src/scenes/world-battle.js');
+  const mkHero = (lvl = 3) => buildCreature({ race: 'human', cls: 'zabivnoy', level: lvl, data: GAME_DATA, id: 'hero' });
+  const mk = (goal, extra = {}) => createBattle({ map: makeWorldMap({ seed: 5, enemies: 3, biome: 'village' }), heroes: [mkHero()], enemies: ['gang-thug', 'gang-thug', 'scavenger-5'],
+    data: GAME_DATA, seed: 3, autoReactions: false, objectives: { goal, chests: 1, retreat: true, ...extra } });
+  const heroOf = (b) => b.units.find((u) => u.team === 'heroes');
+  const putNear = (b, u, p) => {
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]]) {
+      const x = p.x + dx, y = p.y + dy;
+      if (b.grid.tiles[y * b.grid.w + x] === 0 && !b.occ[y * b.grid.w + x]) { b.occ[u.y * b.grid.w + u.x] = 0; u.x = x; u.y = y; b.occ[y * b.grid.w + x] = b.units.indexOf(u) + 1; b.occVersion++; return; }
+    }
+    throw new Error('no free tile near prop');
+  };
+  test('objectives: every type sets up on a world arena; exits and chest placed, map def not mutated', () => {
+    for (const id of OB.OBJECTIVE_IDS) {
+      const map = makeWorldMap({ seed: 5, enemies: 3, biome: 'village' });
+      const rows = [...map.grid];
+      const b = createBattle({ map, heroes: [mkHero()], enemies: ['gang-thug', 'gang-thug', 'scavenger-5'], data: GAME_DATA, seed: 3, objectives: { goal: id, chests: 1, retreat: true } });
+      assert.ok(b.objectives.goal && b.objectives.goal.id === id && b.objectives.goal.state === 'active', id);
+      assert.equal(b.objectives.exits.length, 2, 'two exits');
+      assert.equal(b.objectives.chests, 1);
+      assert.deepEqual(map.grid, rows, 'shared map def untouched');
+      assert.ok(events(b, 'objective').some((e) => e.state === 'start'));
+    }
+  });
+  test('objectives: rescue — bonus action next to the captive frees it; deadline fails it', () => {
+    const b = mk('rescue');
+    const H = heroOf(b), cap = b.objectives.props.find((p) => p.kind === 'captive');
+    forceTurn(b, H); putNear(b, H, cap);
+    const it = OB.interactions(b, H).find((i) => i.kind === 'free');
+    assert.ok(it && it.cost === 'bonus');
+    assert.ok(perform(b, { type: 'interact', unit: H.id, tile: { x: cap.x, y: cap.y } }).ok);
+    assert.equal(b.objectives.goal.state, 'done');
+    assert.equal(b.turn.bonus, 0);
+    assert.equal(b.grid.tiles[cap.y * b.grid.w + cap.x], 0, 'tile is free');
+    const b2 = mk('rescue');
+    b2.round = b2.objectives.goal.need + 1; OB.objectiveEvent(b2, { type: 'roundStart' });
+    assert.equal(b2.objectives.goal.state, 'fail');
+    assert.equal(b2.objectives.goal.reason, 'executed');
+  });
+  test('objectives: terminal needs N successful hacks (action, skill check)', () => {
+    const b = mk('terminal');
+    const H = heroOf(b), p = b.objectives.props.find((x) => x.kind === 'terminal');
+    putNear(b, H, p);
+    b.objectives.goal.dc = 1; // auto success
+    for (let i = 0; i < b.objectives.goal.need; i++) {
+      forceTurn(b, H);
+      const r = perform(b, { type: 'interact', unit: H.id, tile: { x: p.x, y: p.y } });
+      assert.ok(r.ok, r.error);
+      assert.equal(b.turn.actions, 0);
+    }
+    assert.equal(b.objectives.goal.state, 'done');
+    assert.ok(events(b, 'objHack').length >= 2);
+  });
+  test('objectives: hold / speed / flawless / assassinate / nofire progress and fail', () => {
+    const h = mk('hold'); const g = h.objectives.goal; const H = heroOf(h);
+    h.occ[H.y * h.grid.w + H.x] = 0; H.x = g.zone[0].x; H.y = g.zone[0].y;
+    for (let r = 2; r <= g.need + 1; r++) { h.round = r; OB.objectiveEvent(h, { type: 'roundStart' }); }
+    assert.equal(g.state, 'done');
+    const sp = mk('speed'); sp.round = sp.objectives.goal.need + 1; OB.objectiveEvent(sp, { type: 'roundStart' });
+    assert.equal(sp.objectives.goal.state, 'fail');
+    const fl = mk('flawless'); dealDamage(fl, null, heroOf(fl), 999, 'blunt');
+    assert.equal(fl.objectives.goal.state, 'fail');
+    const as = mk('assassinate'); const tg = as.byId[as.objectives.goal.target];
+    as.round = as.objectives.goal.need; OB.objectiveEvent(as, { type: 'roundStart' });
+    assert.ok(tg.fleeing && tg.arch === 'coward', 'target runs');
+    dealDamage(as, null, tg, 9999, 'blunt');
+    assert.equal(as.objectives.goal.state, 'done');
+    const nf = mk('nofire'); const c = nf.objectives.goal.cargo[0];
+    assert.ok(nf.objectives.goal.cargo.length >= 2);
+    OB.objectiveEvent(nf, { type: 'objectBreak', x: c.x, y: c.y, kind: 'crate' });
+    assert.equal(nf.objectives.goal.state, 'fail');
+  });
+  test('chests: open with a check; trapped chest fires on a failed check', () => {
+    const b = mk(null);
+    const H = heroOf(b), p = b.objectives.props.find((x) => x.kind === 'chest');
+    putNear(b, H, p);
+    p.dc = 99; p.trapped = true;
+    forceTurn(b, H);
+    const hp0 = H.hp;
+    assert.ok(perform(b, { type: 'interact', unit: H.id, tile: { x: p.x, y: p.y } }).ok);
+    assert.ok(!p.open && !p.trapped && H.hp < hp0, 'trap fired');
+    p.dc = 1; forceTurn(b, H);
+    assert.ok(perform(b, { type: 'interact', unit: H.id, tile: { x: p.x, y: p.y } }).ok);
+    assert.ok(p.open);
+    assert.equal(OB.objectiveSummary(b).chestsOpened, 1);
+    forceTurn(b, H);
+    assert.equal(OB.interactions(b, H).length, 0, 'an open chest is done');
+  });
+  test('retreat: action on an exit removes the unit; whole party out → winner «retreat»; boss arena locked until phase 2', () => {
+    const b = mk(null);
+    const H = heroOf(b);
+    forceTurn(b, H);
+    assert.equal(OB.retreatWhy(b, H), 'notOnExit');
+    const e = b.objectives.exits[0];
+    b.occ[H.y * b.grid.w + H.x] = 0; H.x = e.x; H.y = e.y; b.occ[e.y * b.grid.w + e.x] = b.units.indexOf(H) + 1;
+    assert.equal(OB.retreatWhy(b, H), null);
+    assert.ok(perform(b, { type: 'retreat', unit: H.id }).ok);
+    assert.ok(H.removed);
+    assert.equal(b.winner, 'retreat');
+    const lk = mk(null, { exitLock: true });
+    assert.equal(OB.retreatWhy(lk, heroOf(lk)), 'locked');
+    OB.objectiveEvent(lk, { type: 'phase', actor: 'e1', n: 2 });
+    assert.notEqual(OB.retreatWhy(lk, heroOf(lk)), 'locked');
+  });
+  test('objectives data: ≥ 25 bound encounters exist; random ≈ 25%; finale has none; boss fights lock exits', () => {
+    const ids = Object.keys(BATTLE_OBJECTIVES.bindings);
+    assert.ok(ids.length >= 25, `${ids.length}`);
+    for (const id of ids) {
+      assert.ok(GAME_DATA.ENCOUNTERS[id], `unknown encounter ${id}`);
+      const g = BATTLE_OBJECTIVES.bindings[id];
+      assert.ok(OB.OBJECTIVE_IDS.includes(typeof g === 'string' ? g : g.id), id);
+    }
+    const save = { location: null, flags: {} };
+    let n = 0; const rng = createRng(7);
+    for (let i = 0; i < 2000; i++) if (objectiveSpec(save, { enemies: ['gang-thug'] }, ['gang-thug'], rng).goal) n++;
+    assert.ok(n > 400 && n < 600, `random share ${n / 2000}`);
+    assert.equal(objectiveSpec(save, { encounter: 'w-cc-finale' }, []), null);
+    assert.equal(objectiveSpec(save, { encounter: 'v3-tek-shrine' }, ['gang-thug']).goal, 'terminal');
+    const boss = Object.keys(GAME_DATA.ENEMIES).find((id) => GAME_DATA.ENEMIES[id].boss);
+    const sp = objectiveSpec(save, { enemies: [boss] }, [boss], () => 0);
+    assert.equal(sp.exitLock, true); assert.equal(sp.goal, null);
+  });
+  const { weaponBlocked } = await import('../game/src/rules/combat.js');
+  test('junk weapon: natural 1 jams it (no weapon until the end of the next turn)', () => {
+    const u = buildCreature({ race: 'human', cls: 'zabivnoy', level: 3, data: GAME_DATA, id: 'hero' });
+    u.weapon = { ...u.weapon, quality: 'junk', range: 1 };
+    const b = createBattle({ map: { grid: ['#####', '#PE.#', '#####'] }, heroes: [u], enemies: ['gang-thug'], data: GAME_DATA, seed: 1, autoReactions: false });
+    const H = heroOf(b), E = b.units.find((x) => x.team === 'enemies');
+    forceTurn(b, H);
+    b.rng = stubRng([0.0]);
+    perform(b, { type: 'attack', unit: H.id, target: E.id });
+    assert.equal(events(b, 'jam').length, 1);
+    assert.equal(weaponBlocked(b, H), 'jam');
+  });
+}
+
+// ---------------------------------------------------------------- world finishing: Exodus escalation, amnesty, gifts, codex, base, backstories
+{
+  const st = await import('../game/src/world/state.js');
+  const ex = await import('../game/src/world/exodus.js');
+  const road = await import('../game/src/world/exodus-road.js');
+  const crime = await import('../game/src/world/crime.js');
+  const comp = await import('../game/src/world/companions.js');
+  const bs = await import('../game/src/world/backstory.js');
+  const qs = await import('../game/src/world/quests.js');
+  const cq = await import('../game/src/world/consequences.js');
+  const base = await import('../game/src/world/base.js');
+  const su = await import('../game/src/world/skill-uses.js');
+  const { ENCOUNTERS_EXODUS } = await import('../game/src/data/enemies-exodus.js');
+  const { CACHES_DENSITY } = await import('../game/src/data/world/density-caches.js');
+  const { FACTION_FINDS, ENEMY_LORE } = await import('../game/src/data/text/codex.js');
+  const { WANTED } = await import('../game/src/data/world/crime.js');
+  const inv = await import('../game/src/world/inventory.js');
+  const { PERSONAL_QUESTS: PQ } = await import('../game/src/data/companions.js');
+  const { QUEST_TURNIN: QT } = await import('../game/src/data/text/quest-turnin.js');
+  const { CONSEQUENCES: CQD } = await import('../game/src/data/world/consequences.js');
+  const mk = (o = {}) => st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [], ...o });
+  const withMark = (m) => { const s = mk(); s.flags['prologue-done'] = true; ex.exodusSync(s); s.exodus.mark = m; return s; };
+  test('exodus roads: no escalation before mark 2; cult squads 8+ at mark 2; revenants at 3; only cult at 5', () => {
+    assert.equal(road.exodusRoad(withMark(1), 'renegades').list.length, 0);
+    const m2 = road.exodusRoad(withMark(2), 'renegades');
+    assert.ok(m2.list.some((e) => e.encounter === 'x-cult-renegades-1'));
+    assert.equal(road.exodusRoad(withMark(2), 'neutralVillages').list.length, 0, 'low region: no cult at mark 2');
+    const m3 = road.exodusRoad(withMark(3), 'neutralVillages');
+    assert.ok(m3.list.some((e) => e.encounter === 'x-revenant-neutralVillages'));
+    const m5 = road.exodusRoad(withMark(5), 'cult');
+    assert.equal(m5.only, true);
+    for (let i = 0; i < 20; i++) assert.ok(st.pickEncounter(withMark(5), 'cult', () => i / 20).encounter?.startsWith('x-'));
+    for (const e of Object.values(ENCOUNTERS_EXODUS)) for (const id of e.enemies) assert.ok(GAME_DATA.ENEMIES[id], `${e.id}: ${id}`);
+    assert.equal(GAME_DATA.ENEMIES['x-revenant-l18'].weapon.dmgType, 'psychic');
+    const s = withMark(5); s.flags['exodus-stopped'] = true;
+    assert.equal(road.exodusRoad(s, 'cult').list.length, 0, 'stopped timer');
+  });
+  test('exodus: marks reported once (radio), NPC lines once per mark, travel warning from mark 3', () => {
+    const s = mk(); s.flags['prologue-done'] = true; ex.exodusSync(s);
+    const r = ex.passDays(s, Math.ceil(ex.exodusTotal(s) * 0.26));
+    assert.deepEqual(r.marks, [1]);
+    assert.equal(ex.passDays(s, 1).marks.length, 0);
+    assert.ok(ex.exodusRadio(1).length >= 1);
+    assert.ok(ex.exodusNpcLine(s, 'nikola', 'technikums'));
+    assert.equal(ex.exodusNpcLine(s, 'nikola', 'technikums'), null, 'once per mark');
+    assert.equal(ex.travelWarning(s, 20), null, 'mark 1: no warning');
+    s.exodus.mark = 3;
+    const w = ex.travelWarning(s, 20);
+    assert.equal(w.n, 20); assert.equal(w.m, ex.exodusLeft(s) - 20);
+    assert.equal(ex.travelWarning(s, 3), null);
+  });
+  test('amnesty: data has no todo; pay items / check fail once a day; clears heat and gives rep', () => {
+    for (const [f, d] of Object.entries(WANTED.clear.quest)) { assert.ok(!d.todo, f); assert.ok(d.cost, f); }
+    const s = mk();
+    s.wanted = { scavengers: { heat: 3, since: s.day, bounty: 100 } };
+    assert.deepEqual(crime.amnestiesAt(s, ['glava-musora']).map((x) => x.faction), ['scavengers']);
+    assert.equal(crime.amnestiesAt(s, ['nikola']).length, 0);
+    assert.ok(crime.amnestyInfo(s, 'scavengers', inv.countAll).why, 'no rare parts');
+    inv.giveItem(s, 'rare-parts', 3);
+    assert.equal(crime.amnestyInfo(s, 'scavengers', inv.countAll).why, null);
+    const rep0 = s.rep.scavengers;
+    crime.applyAmnesty(s, 'scavengers', inv.dropItem);
+    assert.equal(s.wanted.scavengers.heat, 0);
+    assert.equal(inv.countAll(s)['rare-parts'] || 0, 0);
+    assert.ok(s.rep.scavengers > rep0);
+    s.wanted.warprom = { heat: 2 };
+    crime.amnestyFailed(s, 'warprom');
+    assert.ok(crime.amnestyInfo(s, 'warprom', inv.countAll).tried);
+  });
+  test('companions: gifts of a loved type once per item (+giftRare); request refuse −refuseOrder once per stage', () => {
+    const s = mk();
+    s.party.push({ npc: 'andrey', state: 'active', approval: 0 });
+    const loved = comp.lovedTypes('andrey');
+    assert.ok(loved.includes('medicine') && loved.includes('food'));
+    inv.giveItem(s, 'medkit', 2);
+    const opts = comp.giftOptions(s, 'andrey', inv.countAll(s));
+    assert.ok(opts.includes('medkit'), opts.join());
+    const a0 = s.party[0].approval;
+    comp.giveGift(s, 'andrey', 'medkit', inv.dropItem);
+    assert.ok(s.party[0].approval > a0);
+    assert.ok(!comp.giftOptions(s, 'andrey', inv.countAll(s)).includes('medkit'), 'once per item');
+    const q = 'cq-laska';
+    s.party.push({ npc: 'laska', state: 'active', approval: 0 });
+    const stage = PQ[q].stages.find((x) => x.id !== 'meet').id;
+    s.quests[q] = { state: 'active', stage, opt: null, subs: {}, fails: {}, failedOpts: {} };
+    assert.ok(comp.companionRequest(s, 'laska'));
+    const l0 = s.party[1].approval;
+    comp.refuseRequest(s, 'laska');
+    assert.ok(s.party[1].approval < l0);
+    assert.equal(comp.companionRequest(s, 'laska'), null, 'once per stage');
+  });
+  test('codex finds: every cx-* flag has a source in caches / events / tables', () => {
+    const flags = [...FACTION_FINDS.map((f) => f.flag), ...Object.values(ENEMY_LORE).flatMap((e) => (e.finds || []).map((f) => f.flag))];
+    const caches = CACHES_DENSITY.map((c) => c.flag).filter(Boolean);
+    for (const f of caches) assert.ok(flags.includes(f), f);
+    for (const c of CACHES_DENSITY.filter((x) => x.flag)) assert.ok(LOCS[c.node].caches.find((x) => x.id === c.id).flag === c.flag);
+    assert.ok(flags.length >= 6);
+  });
+  test('quest outcomes: mq3-fall by saved flags (save / crash); mq-beacons fork has its own lines and consequences', () => {
+    const s = mk();
+    const stq = { state: 'done', stage: 'hub', path: ['alarm', 'reactor', 'save', 'crash', 'hub'] };
+    assert.equal(qs.questOutcome(stq, QT['mq3-fall'], s), 'crash');
+    s.flags['saved-people'] = true; s.flags['saved-terminal'] = true;
+    assert.equal(qs.questOutcome(stq, QT['mq3-fall'], s), 'save');
+    assert.ok(qs.turninLines('mq3-fall', 'save').length && qs.turninLines('mq3-fall', 'crash').length);
+    const sb = { state: 'done', stage: 'report', path: ['ask', 'beacons', 'collector', 'keeper', 'report'] };
+    assert.equal(qs.questOutcome(sb, QT['mq-beacons'], s), 'keeper');
+    assert.notDeepEqual(qs.turninLines('mq-beacons', 'keeper'), qs.turninLines('mq-beacons', 'khikhik'));
+    assert.ok(CQD['mq-beacons'].khikhik && CQD['mq-beacons'].keeper && CQD['mq3-fall'].save && CQD['mq3-fall'].crash);
+  });
+  test('base: defense KB buff on party units; workbench repair & radio orders', () => {
+    const s = mk();
+    const kb0 = st.partyUnits(s)[0].kb;
+    s.battleBuff = { kb: 2 };
+    assert.equal(st.partyUnits(s)[0].kb, kb0 + 2);
+    base.baseTick(s);
+    assert.equal(s.battleBuff, undefined);
+    s.flags['base-open'] = true;
+    assert.equal(base.orderInfo(s), null, 'no radio');
+  });
+  test('backstories: topics at NPCs by faction, one-time fx; techStudent −1 hit until the first win', () => {
+    const s = mk({ bg: 'junkOrphan' });
+    const tps = bs.backstoryTopics(s, 'glava-musora', 'scavengers');
+    assert.ok(tps.some((x) => x.id === 'scav-lore'));
+    assert.ok(bs.useBackstoryTopic(s, 'glava-musora', 'scav-lore'));
+    assert.equal(bs.useBackstoryTopic(s, 'glava-musora', 'scav-lore'), null);
+    const a = mk({ bg: 'techStudent' }), b = mk({ bg: 'skyRefugee' });
+    assert.equal(st.buildHero(a).hitBonus, st.buildHero(b).hitBonus - 1);
+    a.codex = { seen: {}, kills: { 'gang-thug': 1 }, terms: {}, flags: [] };
+    assert.equal(bs.backstoryPassives(a).length, 0);
+    assert.equal(st.buildHero(a).hitBonus, st.buildHero(b).hitBonus);
+  });
+  test('neutral talents & skills: dispute quests, ritual discount, road uses shape', () => {
+    assert.equal(cq.isDispute('mq-agro-fire'), true);
+    assert.equal(cq.isDispute('mq-beacons'), false);
+    const s = mk();
+    const ms = st.members(s);
+    const r = su.roadUses(ms, [], false);
+    assert.equal(typeof r.encMod, 'number'); assert.ok(Array.isArray(r.log));
+    assert.equal(su.ritualDiscount(ms, 'pirates'), 1);
   });
 }
 

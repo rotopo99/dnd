@@ -2,7 +2,7 @@
 // (talk, trade, train/implant, recruit, quest), location actions (rest, heal, revive, trade, rumors, terminal, battles,
 // caches, quest goals, field camp), entry gate by reputation, unique events on enter/rest,
 // bottom bar: map / party / reputation / journal / menu. Every change is autosaved.
-import { giveItem, dropItem } from '../world/inventory.js';
+import { giveItem, dropItem, countAll } from '../world/inventory.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, talentAllowed, isCombatTalent } from '../data/talents.js';
@@ -26,7 +26,9 @@ import {
   members, activeCompanions, buildHero, canRecruit, recruit, hireInfo, grant, restParty, restDepartures, journal, tf,
   locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY, squadFree, requiresOk,
 } from '../world/state.js';
-import { exodusSync, passDays, serviceOff, tollMult } from '../world/exodus.js';
+import { exodusSync, passDays, serviceOff, tollMult, exodusRumor, exodusNpcLine } from '../world/exodus.js';
+import { EXODUS_UI } from '../data/text/exodus.js';
+import { backstoryTopics, useBackstoryTopic } from '../world/backstory.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
 import { questsOffered, startQuest, slotsAt, onTalk, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc,
@@ -46,13 +48,14 @@ import { openLevelUp } from './levelup.js';
 import { openCheckScene } from './check-scene.js';
 import { questScene, stageXp } from '../world/check-run.js';
 import { openRecruit } from '../ui/recruit-ui.js';
-import { recruitStatus, restLoyalty, waitingLoyalty } from '../world/companions.js';
+import { recruitStatus, restLoyalty, waitingLoyalty, giftOptions, giveGift, lovedTypes, companionRequest, refuseRequest, acceptRequest } from '../world/companions.js';
 import { syncBase, baseTick, atBase, modActive as baseModActive, radioTurnin } from '../world/base.js';
-import { nodeMark, worldRumors, shopClosed, closedLoc, TONE_COLOR } from '../world/consequences.js';
+import { nodeMark, worldRumors, shopClosed, closedLoc, TONE_COLOR, isDispute } from '../world/consequences.js';
 import { openEpilogue } from './epilogue.js';
 import {
   npcFaction, npcRole, attackBlock, attackHeatText, attackSetup, attackFailed, killNpc, theftPlaces, theftDc, theftLoot, theftTried, theftCap,
   resolveTheft, payFine, fineFor, serviceBlocked, wantedTick, entryThreat, entryCheckOf, guardEnemies, bribeInfo, applyBribe, heatOf, crimeRumors, isOfficial,
+  amnestiesAt, amnestyInfo, applyAmnesty, amnestyFailed,
 } from '../world/crime.js';
 import { CRIME_RULES, ATTACK_RULES } from '../data/world/crime.js';
 import { openLoot } from './world-battle.js';
@@ -260,7 +263,9 @@ export function createLocationScene(rawId) {
     sv.npcs[npc.id] = { ...(sv.npcs[npc.id] || {}), met: true };
     meetFaction(sv, npcRepFaction(npc));
     const askTopics = (g) => {
-      const topics = npcTopics(npc);
+      // world-consequences.md ч.4: backstory questions (TOPIC_TALK) join the NPC's own topics
+      const bfac = npcFaction(npc) || normFaction(npcRepFaction(npc));
+      const topics = [...npcTopics(npc), ...backstoryTopics(sv, npc.id, bfac).map((x) => ({ q: `✦ ${x.q}`, a: x.a, bg: x.id }))];
       if (!topics.length || tier === 'hostile') return finishTalk(g);
       g.openModal({
         title: npc.name, onCancel: (g2) => finishTalk(g2),
@@ -269,7 +274,13 @@ export function createLocationScene(rawId) {
           // portraits v2: the hero asks, the NPC answers (emotion by text, ui/emotion.js)
           g2.setScene(createDialogueScene({
             title: npc.name, lines: [{ who: 'hero', text: tp.q }, { who: npc.id, name: npc.name, text: tp.a }], hero: heroOf(sv), wounds: true,
-            onDone: (g3) => { g3.resume(self); if (tp.hook && LOCATIONS[tp.hook]) discover(sv, tp.hook); askTopics(g3); },
+            onDone: (g3) => {
+              g3.resume(self);
+              if (tp.hook && LOCATIONS[tp.hook]) discover(sv, tp.hook);
+              const fx = tp.bg ? useBackstoryTopic(sv, npc.id, tp.bg) : null;
+              if (fx) { toastAll(g3, grant(sv, { xp: fx.xp, credits: fx.credits }, g3.data)); if (fx.hook && LOCATIONS[fx.hook]) discover(sv, fx.hook); }
+              askTopics(g3);
+            },
           }));
         } })), { label: t('loc.bye'), run: (g2) => finishTalk(g2) }],
       });
@@ -280,8 +291,10 @@ export function createLocationScene(rawId) {
       if (offered.length) offerQuest(g, offered[0], npc.id);
       refresh(g);
     };
+    // third-exodus.md: once per mark the NPC mentions the Exodus (a line by faction)
+    const xl = tier !== 'hostile' ? exodusNpcLine(sv, npc.id, npcFaction(npc) || normFaction(npcRepFaction(npc))) : null;
     game.setScene(createDialogueScene({
-      title: loc.name, lines: [npcGreeting(npc, tier)], hero: heroOf(sv), wounds: true,
+      title: loc.name, lines: [npcGreeting(npc, tier), ...(xl ? [{ who: npc.id, name: npc.name, text: xl }] : [])], hero: heroOf(sv), wounds: true,
       onDone: (g) => { g.resume(self); askTopics(g); },
     }));
   }
@@ -333,6 +346,13 @@ export function createLocationScene(rawId) {
     });
   }
 
+  /** «Холодная голова» (cool-head): social approaches get advantage in a quest that is a dispute of two sides. */
+  function coolHeadScene(game, s, scene) {
+    if (!isDispute(s.qid) || !hasFlagInParty(save(game), game.data, 'cool-head')) return scene;
+    const SOCIAL = ['persuasion', 'deception', 'intimidation'];
+    return { ...scene, approaches: scene.approaches.map((ap) => ((ap.skills || []).some((x) => SOCIAL.includes(x)) ? { ...ap, adv: true } : ap)) };
+  }
+
   // ---------------------------------------------------------------- quest slots → actions
   function slotAction(game, s) {
     const sv = save(game);
@@ -357,7 +377,7 @@ export function createLocationScene(rawId) {
     if (goal.kind === 'check') {
       return { label: `${t('loc.solve')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goalDc(sv, goal)}`,
         // companions-scenes.md part 2: every quest check is a check scene (explicit by key or autoScene); group — everyone rolls
-        run: (g) => openCheckScene(g, { title: q.name, scene: questScene(s).scene, dc: goalDc(sv, goal), members: ms(g), group: !!goal.group, cancel: true,
+        run: (g) => openCheckScene(g, { title: q.name, scene: coolHeadScene(g, s, questScene(s).scene), dc: goalDc(sv, goal), members: ms(g), group: !!goal.group, cancel: true,
           memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`, xpBase: stageXp(s.qid), stageText: s.stage.text,
           onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
@@ -400,6 +420,7 @@ export function createLocationScene(rawId) {
     if (lore || mark) out.push({ label: t('lore.look'), sub: mark ? mark.descs.at(-1) : lore.problem ? `${t('lore.problem')}: ${lore.problem}` : t('lore.lookSub'), run: (g) => openLore(g) });
     const bribe = bribeAction(game);
     if (bribe) out.push(bribe);
+    out.push(...amnestyActions(game));
     for (const s of slotsAt(sv, locId)) { const a = slotAction(game, s); if (a) out.push(a); }
     // quests given by the location (giver not standing here)
     for (const qid of loc.quests || []) {
@@ -450,6 +471,11 @@ export function createLocationScene(rawId) {
     // services
     const svc = loc.services.filter((x) => !serviceOff(sv, loc, x));
     if (canCampAt(locId)) out.push(restAction(sv, svc, tier));
+    // companions-scenes.md: gifts (giftRare) and requests (refuseOrder)
+    if (activeCompanions(sv).length) {
+      const asks = activeCompanions(sv).filter((p) => companionRequest(sv, p.npc)).length;
+      out.push({ label: `${t('comp.menu')}${asks ? ' ●' : ''}`, sub: t('comp.menuSub'), run: (g) => openCompanions(g) });
+    }
     if (['town', 'hub'].includes(loc.kind) || (atBase(sv) && baseModActive(sv, 'workbench').ok)) out.push({ label: t('skillUse.disassemble'), sub: t('skillUse.disassembleSub'), run: (g) => openDisassemble(g) });
     if (svc.includes('heal')) out.push({ label: t('loc.heal'), sub: t('loc.healSub'), run: (g) => { restParty(sv, g.data, 1); g.toast(t('loc.healed'), 'j'); refresh(g); } });
     const cyber = sv.party.filter((p) => p.state === 'cyberspace');
@@ -485,6 +511,13 @@ export function createLocationScene(rawId) {
       openHidden(sv, l.id);
       journal(sv, `${t('loc.rumorFound')}: ${l.name}`);
       game.toast(`${t('loc.rumorFound')}: ${l.name}`, 'a');
+    }
+    // third-exodus.md: at marks 1–5 the taverns talk about the Exodus (chance EXODUS.tavernChance)
+    const xr = exodusRumor(sv);
+    if (xr) {
+      journal(sv, `${EXODUS_UI.rumor}: ${xr}`);
+      game.openModal({ title: t('lore.rumorsHeard'), lines: [{ text: EXODUS_UI.rumor, color: 'c' }, { text: `«${xr}»` }], options: [{ label: t('battle.continue'), run: () => {} }] });
+      return;
     }
     // world-consequences.md: rumors about the party's deeds (quest consequences, crimes) — every second time
     const wr = [...worldRumors(sv), ...crimeRumors(sv)];
@@ -568,7 +601,7 @@ export function createLocationScene(rawId) {
 
   function searchCache(game, c) {
     const sv = save(game);
-    const loot = { items: c.loot.filter((x) => x.item), credits: c.loot.reduce((s, x) => s + (x.credits || 0), 0) };
+    const loot = { items: c.loot.filter((x) => x.item), credits: c.loot.reduce((s, x) => s + (x.credits || 0), 0), ...(c.flag ? { flag: c.flag } : {}) }; // flag: codex find cx-*
     const take = (g) => {
       sv.caches.push(c.id); g.toast(t('loc.found'), 'a'); toastAll(g, grant(sv, loot, g.data)); refresh(g);
       if (c.text) g.openModal({ title: t('loc.found'), lines: [{ text: c.text }], options: [{ label: t('battle.ok'), run: () => {} }] });
@@ -820,6 +853,64 @@ export function createLocationScene(rawId) {
     return { label: title, sub: b.why || tf('wanted.bribeSub', { n: b.price, dc: b.dc }), disabled: !!b.why, reason: b.why,
       run: (g) => openCheck(g, { title, skills: b.skills, dc: b.dc, members: ms(g), cancel: true, memoKey: `bribe:${f}:${sv.day}`,
         onDone: (g2, ok, res) => { toastAll(g2, applyBribe(sv, f, ok, res ? res.total - b.dc : 0)); refresh(g2); } }) };
+  }
+
+  /** Companions: pick one → gift (liked items, once per id) / the personal-quest request (yes / refuse). */
+  function openCompanions(game) {
+    const sv = save(game);
+    game.openModal({ title: t('comp.menu'), lines: [],
+      options: [...activeCompanions(sv).map((p) => ({ label: NPCS[p.npc]?.name || p.npc, sub: companionRequest(sv, p.npc) ? `● ${t('comp.request')}` : '',
+        run: (g) => openCompanion(g, p.npc) })), { label: t('loc.close'), run: () => {} }] });
+  }
+  function openCompanion(game, id) {
+    const sv = save(game);
+    const name = NPCS[id]?.name || id;
+    const gifts = giftOptions(sv, id, countAll(sv));
+    const req = companionRequest(sv, id);
+    const loved = lovedTypes(id).map((x) => t(`comp.type.${x}`)).join(', ');
+    game.openModal({ title: name, lines: [],
+      options: [
+        { label: t('comp.giftBtn'), sub: gifts.length ? gifts.slice(0, 4).map((x) => ITEMS[x].name).join(', ') : tf('comp.giftNone', { types: loved }), disabled: !gifts.length,
+          run: (g) => g.openModal({ title: `${t('comp.giftBtn')}: ${name}`, lines: [],
+            options: [...gifts.slice(0, 10).map((x) => ({ label: ITEMS[x].name, run: (g2) => { toastAll(g2, giveGift(sv, id, x, dropItem)); refresh(g2); } })),
+              { label: t('loc.close'), run: () => {} }] }) },
+        ...(req ? [{ label: t('comp.request'), sub: req.text, run: (g) => g.openModal({ title: name, lines: [{ text: tf('comp.requestAsk', { name, text: req.text }) }],
+          options: [
+            { label: t('comp.requestYes'), run: (g2) => { toastAll(g2, acceptRequest(sv, id)); refresh(g2); } },
+            { label: t('comp.requestNo'), run: (g2) => { g2.toast(tf('comp.refused', { name }), '4'); toastAll(g2, refuseRequest(sv, id)); refresh(g2); } },
+          ] }) }] : []),
+        { label: t('loc.close'), run: () => {} },
+      ] });
+  }
+
+  /** world-consequences.md §2: amnesty — pay / work off at the faction's official (crime.js WANTED.clear.quest). */
+  function amnestyActions(game) {
+    const sv = save(game);
+    return amnestiesAt(sv, npcsAt(locId, sv)).map(({ faction: f, def, npc }) => {
+      const a = amnestyInfo(sv, f, countAll);
+      const cost = [
+        a.credits ? `${a.credits} ${t('world.credits')}` : '',
+        ...a.items.map((x) => `${ITEMS[x.id]?.name || x.id} ×${x.n}`),
+        a.days ? tf('wanted.amnestyDays', { n: a.days }) : '',
+        a.check ? tf('wanted.amnestyCheck', { skills: a.check.skills.map((x) => t(`skill.${x}`)).join(' / '), dc: a.check.dc }) : '',
+      ].filter(Boolean).join(' · ');
+      const title = tf('wanted.amnesty', { faction: factionName(f) });
+      const pay = (g) => {
+        toastAll(g, applyAmnesty(sv, f, dropItem));
+        if (a.days) { const ex = passDays(sv, a.days); toastAll(g, ex.out); }
+        refresh(g);
+      };
+      return { label: title, sub: a.why || `${NPCS[npc]?.name || ''}: ${def.task} — ${cost}`, disabled: !!a.why, reason: a.why,
+        run: (g) => g.openModal({ title, width: 860, lines: [{ text: `${NPCS[npc]?.name || ''}: ${def.task}` }, { text: `${t('wanted.amnestyCost')}: ${cost}`, color: 'b' }],
+          options: [
+            { label: t('wanted.amnestyGo'), run: (g2) => {
+              if (!a.check) return pay(g2);
+              openCheck(g2, { title, skills: a.check.skills, dc: a.check.dc, members: ms(g2), cancel: true, memoKey: `amnesty:${f}:${sv.day}`,
+                onDone: (g3, ok) => { if (ok) pay(g3); else { toastAll(g3, amnestyFailed(sv, f)); refresh(g3); } } });
+            } },
+            { label: t('loc.close'), run: () => {} },
+          ] }) };
+    });
   }
 
   /** The finale reached (consequences.js markFinale): the epilogue once, then back here. → true if opened. */

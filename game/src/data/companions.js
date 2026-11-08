@@ -50,6 +50,15 @@ export const COMPANION_RULES = {
       bondRest: +1, frictionRest: -2,        // привал: bond-пара вместе / soft-несовместимые вместе
       refuseOrder: -5,                       // игрок отклонил просьбу напарника (в диалоге)
     },
+    // Подарки: «любимый тип» предмета — по тегам поступков likes из npcs.js (COMPANION). Один и тот же id предмета дарится
+    // одному напарнику один раз (+giftRare). Типы: weapon, armor, medicine, food, tool, grenade, trinket, mod.
+    gifts: {
+      minPrice: 15, // дешёвку не дарят
+      byTag: {
+        honor: ['weapon', 'armor'], mercy: ['medicine'], 'help-weak': ['food', 'medicine'], 'free-slaves': ['tool', 'weapon'],
+        lie: ['trinket'], greed: ['trinket', 'mod'], 'tech-faith': ['mod', 'tool'], cruelty: ['grenade', 'weapon'],
+      },
+    },
     leaveAt: -70, warnAt: -50, teachAt: 50, trustsChoicesAt: 20, // как rules.js + новый порог доверия к выбору прокачки
     returnLoyalty: -40,                      // вернувшись, стартует с −40 (recruit уже так делает) и требует извинения (return Cond)
   },

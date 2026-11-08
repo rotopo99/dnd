@@ -8,8 +8,25 @@ import { onBattleWon, autoProgress } from '../world/quests.js';
 import { saveGame } from '../save.js';
 import { startWorldBattle } from './world-battle.js';
 import { openEpilogue } from './epilogue.js';
+import { exodusRadio } from '../world/exodus.js';
+import { EXODUS_UI } from '../data/text/exodus.js';
 
 const Z = EXODUS.zero;
+
+/** Radio «📻» when the timer enters new marks (travel day / rest): one modal per mark, then `then(game)`. */
+export function openExodusRadio(game, marks, then) {
+  const list = [...(marks || [])];
+  const next = (g) => {
+    const n = list.shift();
+    if (n == null) return then?.(g);
+    g.openModal({
+      title: EXODUS_UI.radioTitle, titleColor: 'c', border: 'c', onCancel: (g2) => next(g2),
+      lines: [{ text: `${t('exodus.mark')} ${n}: ${t(`exodus.mark.${n}`)}`, color: 'c' }, ...exodusRadio(n).map((x) => ({ text: `«${x}»` }))],
+      options: [{ label: t('battle.continue'), run: (g2) => next(g2) }],
+    });
+  };
+  next(game);
+}
 
 export function startExodusZero(game) {
   const save = game.save;

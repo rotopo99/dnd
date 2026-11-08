@@ -34,6 +34,13 @@ export const CONSEQUENCES = {
     default: E({ rep: { neutralVillages: 20 }, vendors: [{ npc: 'innkeeper-pelmen', mult: 0.92 }, { npc: 'galina', mult: 0.95 }],
       nodes: [{ loc: 'beacon-1', desc: 'Маяк молчит. Под ним дети играют в «кто дольше простоит у столба».', glyph: '✚', tone: 'good' }],
       rumors: ['Маяки больше не пищат. Совет Нейтральных селений угощает всех чаем, даже кринжгонов (те не берут).'], slides: ['beacons-silent'] }),
+    // развилка «Хихик или Маячник»: кто рассказал о Собирателе
+    khikhik: E({ rep: { neutralVillages: 20, cringegons: 5 }, vendors: [{ npc: 'innkeeper-pelmen', mult: 0.92 }, { npc: 'galina', mult: 0.95 }],
+      nodes: [{ loc: 'beacon-1', desc: 'Маяк молчит. Под ним дети играют в «кто дольше простоит у столба», а Хихик учит их смеяться без кринжа.', glyph: '✚', tone: 'good' }],
+      rumors: ['Говорят, пленный кринжгон Хихик ушёл от селений свободным — и даже помахал на прощание. Совет считает это победой.'], slides: ['beacons-silent'] }),
+    keeper: E({ rep: { neutralVillages: 15, cringegons: -10 }, vendors: [{ npc: 'innkeeper-pelmen', mult: 0.95 }],
+      nodes: [{ loc: 'beacon-1', desc: 'Маяк молчит. У подножия — пустая будка Маячника и следы, уходящие на север.', glyph: '✚', tone: 'warn' }],
+      rumors: ['Маячника допрашивали так, что он до сих пор вздрагивает от слова «маяк». Кринжгоны обещали это запомнить.'], slides: ['beacons-silent'] }),
   },
   'mq-agro-fire': {
     default: E({ rep: { agrozone: 5 }, rumors: ['Агрозона тлеет. Кто победил — ещё не решили, но урожая не будет.'], slides: ['agro-smoulders'] }),

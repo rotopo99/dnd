@@ -16,7 +16,7 @@
 //   'radio': reward at once, qid queued in save.pendingRadio (the location scene shows the radio modal).
 //   Failed quest with lines.failed: same delivery, no reward. Quests without an entry — as before.
 import { dropItem } from './inventory.js';
-import { QUESTS, sameLocation, QUEST_TURNIN, npcHome } from './data.js';
+import { QUESTS, sameLocation, QUEST_TURNIN, npcHome, resolveLocation } from './data.js';
 import { t } from '../data/text/index.js';
 import { grant, journal, requiresOk, tf, repToasts } from './state.js';
 import { applyRep, normFaction } from './reputation.js';
@@ -38,8 +38,10 @@ const track = (st, id) => { if (id) (st.path = st.path || []).push(id); };
 const SPECIAL_LINES = ['default', 'partial', 'failed'];
 
 /** Outcome id of a finished quest for its turn-in lines. */
-export function questOutcome(st, td) {
+export function questOutcome(st, td, save = null) {
   if (st.state === 'failed') return 'failed';
+  // td.outcomeBy: [{ key, all?: [flag] }] — the first entry whose flags are all set (no flags — fallback) wins (mq3-fall)
+  if (save && td?.outcomeBy) for (const o of td.outcomeBy) if ((o.all || []).every((f) => save.flags?.[f])) return o.key;
   const keys = Object.keys(td?.lines || {}).filter((k) => !SPECIAL_LINES.includes(k));
   const hist = [...(st.path || []), st.opt, st.stage].filter(Boolean);
   for (let i = hist.length - 1; i >= 0; i--) {
@@ -212,6 +214,17 @@ export function allSlots(save) {
   return out;
 }
 
+/** Locations of the current goals of active quests (radio L3 map marks). → Set of location ids. */
+export function questTargets(save) {
+  const out = new Set();
+  for (const s of allSlots(save)) {
+    if (save.quests[s.qid]?.state !== 'active') continue;
+    const loc = s.goal.location || (s.kind === 'choice' ? s.choice.location : null);
+    if (loc) out.add(resolveLocation(loc));
+  }
+  return out;
+}
+
 /** Slots shown as actions on a location: goals bound to it, plus location-free decisions / checks / payments. */
 export function slotsAt(save, locId) {
   return allSlots(save).filter((s) => {
@@ -228,7 +241,7 @@ function finish(save, qid, end, data) {
   const out = [];
   st.state = end === 'failed' ? 'failed' : 'done';
   const td = QUEST_TURNIN[qid];
-  if (td) st.outcome = questOutcome(st, td);
+  if (td) st.outcome = questOutcome(st, td, save);
   if (st.state === 'failed') {
     journal(save, tf('q.failed', { name: q.name }));
     out.push({ text: tf('q.failed', { name: q.name }), color: 'c' });
@@ -291,6 +304,8 @@ export function completeSlot(save, slot, data) {
   track(st, slot.option?.id);
   if (slot.sub !== undefined) {
     st.subs[slot.sub] = true;
+    const sg = slot.stage.goal.goals?.[slot.sub];
+    if (sg?.doneFlag) save.flags[sg.doneFlag] = true; // the subgoal's flag is the world's memory of it (mq3-fall: saved-*)
     const g = slot.stage.goal;
     const done = g.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
     if (done >= allNeed(save, g)) {

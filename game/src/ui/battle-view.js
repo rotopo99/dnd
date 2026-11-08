@@ -13,6 +13,7 @@ import { hotspot } from './tooltip.js';
 import { resLineTip, resTip, statusTip, termTip } from './tips.js';
 import { itemTip } from './items-ui.js';
 import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp } from './battle-terrain.js';
+import { drawObjectiveMarkers, drawObjectivePanel } from './battle-objectives.js';
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
 
@@ -228,6 +229,7 @@ export function renderBattle(game, S) {
     ctx.strokeRect(x + c * 0.18, y + c * 0.18, c * 0.64, c * 0.64);
   }
   drawObjects(ctx, S);
+  drawObjectiveMarkers(ctx, S); // combat rework §6: exits, zone, cargo, props, target
   const preview = drawHighlights(ctx, S);
   drawUnits(ctx, S, preview, tms);
   drawIntents(ctx, S);
@@ -242,6 +244,7 @@ export function renderBattle(game, S) {
   if (shaking) ctx.restore();
   drawOddsCard(ctx, S, preview);
   drawHelp(ctx, S);
+  drawObjectivePanel(ctx, S);
   drawPin(ctx, S);
   drawTopBar(ctx, S);
   drawActionBar(ctx, S);

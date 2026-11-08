@@ -154,6 +154,25 @@ export function formatEvent(S, e) {
     case 'rage': return [a(A), [` ${t('log.rage')}`, C.c]];
     case 'holdPos': return [a(A), g(` ${t('log.holdPos')}`)];
     case 'archSummon': return [a(A), g(` ${t('log.archSummon')}`)];
+    // combat rework §6: objectives, chests, retreat, junk weapon jam
+    case 'objective': {
+      const name = t(`obj.${e.id}.name`);
+      if (e.state === 'start') return [[`${t('obj.optional')}: ${name}`, C.b]];
+      if (e.state === 'progress') return [[name, C.b], g(`: ${e.progress}/${e.need}`)];
+      const col = e.state === 'done' ? C.j : e.state === 'fail' ? C.c : C.a;
+      return [[name, C.b], g(': '), [t(`obj.state.${e.state}`) + (e.reason ? ` (${t(`obj.why.${e.reason}`)})` : ''), col]];
+    }
+    case 'objFree': return [a(A), [` ${t('obj.log.free')}`, C.j]];
+    case 'objHack': case 'chestOpen': {
+      const what = e.type === 'objHack' ? t('obj.log.hack') : t('obj.log.open');
+      const sk = e.skill ? ` (${t(`skill.${e.skill}`)})` : '';
+      const res = e.success ? [t(e.type === 'objHack' ? 'obj.log.hackOk' : 'obj.chestOpened') + (e.type === 'objHack' ? ` ${e.progress}/${e.need}` : e.disarmed ? `, ${t('obj.log.disarmed')}` : ''), C.j] : [t('trick.fail'), C.c];
+      return [a(A), g(` ${what}${sk}: d20[${e.natural}] = ${e.total} ${t('battle.vs')} ${t('battle.dc')} ${e.dc} — `), res];
+    }
+    case 'chestTrap': return [a(T), g(': '), [t('obj.trap'), C.c]];
+    case 'retreat': return [a(A), [` ${t('obj.log.retreat')}`, C.a]];
+    case 'exitOpen': return [[t('obj.log.exitOpen'), C.a]];
+    case 'jam': return [a(A), g(': '), [t('battle.jammedLog'), C.c]];
     default: return null;
   }
 }
@@ -196,6 +215,9 @@ export function eventSound(S, e) {
     case 'objectBreak': play('crit'); break;
     case 'fall': case 'slam': play('hit', { dmgType: 'blunt' }); break;
     case 'phase': play('enemyTurn'); break;
+    case 'objective': if (e.state === 'done') play('victory'); break;
+    case 'chestTrap': play('crit'); break;
+    case 'jam': play('miss'); break;
     case 'victory': play(e.winner === 'heroes' ? 'victory' : 'defeat'); break;
     default: break;
   }

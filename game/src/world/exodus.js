@@ -3,6 +3,7 @@
 import { EXODUS as X } from '../data/world/exodus.js';
 import { t } from '../data/text/index.js';
 import { journal, tf } from './state.js';
+import { EXODUS_RADIO, EXODUS_RUMORS, EXODUS_NPC } from '../data/text/exodus.js';
 
 /** Timer stopped for good (mq-exodus closed / node destroyed). */
 export const exodusStopped = (save) => X.stopFlags.some((f) => save.flags?.[f]);
@@ -59,13 +60,14 @@ export function exodusExtend(save, id, days) {
  * Idempotent; call after any day change or world change. → { out: toast lines, zero: bool }.
  */
 export function exodusSync(save) {
-  const out = [];
+  const out = [], marks = [];
   exodusStart(save);
-  if (!exodusActive(save)) return { out, zero: false };
+  if (!exodusActive(save)) return { out, zero: false, marks };
   for (const s of X.ext) if (sourceDone(save, s)) out.push(...exodusExtend(save, s.id, s.days));
   const m = markFor(save);
   while ((save.exodus.mark || 0) < m) {
     const n = ++save.exodus.mark;
+    marks.push(n);
     const text = `${t('exodus.mark')} ${n}: ${t(`exodus.mark.${n}`)}`;
     journal(save, text);
     out.push({ text, color: 'c' });
@@ -73,7 +75,7 @@ export function exodusSync(save) {
   }
   // zero: stays true until the node falls (a lost finale → the next node entry starts it again)
   const zero = exodusLeft(save) <= 0;
-  return { out, zero };
+  return { out, zero, marks };
 }
 
 /** Days pass (travel / rest): save.day += n, then exodusSync. */
@@ -109,4 +111,38 @@ export function incarnate(enemies, ENEMIES) {
   const nid = `${id}^inc`;
   if (!ENEMIES[nid]) ENEMIES[nid] = { ...e, id: nid, hp: Math.round(e.hp * X.zero.bossHp) };
   return [nid, ...enemies.slice(1)];
+}
+
+// ---------------------------------------------------------------- radio, rumors, NPC lines (data/text/exodus.js)
+const pick = (list, rng = Math.random) => (list?.length ? list[Math.floor(rng() * list.length)] : null);
+
+/** Radio lines of a mark (the «📻» modal when the mark comes). */
+export const exodusRadio = (n) => EXODUS_RADIO[n] || [];
+
+/** A tavern rumor about the Exodus at the current mark (null — none / the dice said «an ordinary rumor»). */
+export function exodusRumor(save, rng = Math.random) {
+  const m = exodusMark(save);
+  if (!m || rng() >= (X.tavernChance ?? 0.5)) return null;
+  return pick(EXODUS_RUMORS[m], rng);
+}
+
+/**
+ * An NPC's line about the Exodus: once per NPC per mark (save.npcs[id].exoMark), marks 1–2 → [0], 3–5 → [1].
+ * → string | null. Marks the NPC as told.
+ */
+export function exodusNpcLine(save, npcId, faction) {
+  const m = exodusMark(save);
+  if (m < (X.npcLines?.fromMark ?? 1) || !npcId) return null;
+  const st = (save.npcs[npcId] = save.npcs[npcId] || {});
+  if ((st.exoMark || 0) >= m) return null;
+  st.exoMark = m;
+  const lines = EXODUS_NPC[faction] || EXODUS_NPC.none;
+  return lines[m >= 3 ? 1 : 0] || null;
+}
+
+/** Long travel warning: { n, m } when the mark ≥ confirm.fromMark and the route is longer than confirm.days, else null. */
+export function travelWarning(save, days) {
+  const C = X.confirm;
+  if (!C || exodusMark(save) < C.fromMark || days <= C.days) return null;
+  return { n: days, m: Math.max(0, exodusLeft(save) - days) };
 }

@@ -224,7 +224,7 @@ export const ENCOUNTER_TABLES = {
   cult: [
     B(4, 'w-cc-dead', 'cult'), B(2, 'w-villages-terminal', 'cult'),
     EV(2, 'ev-sermon', 'Уличный проповедник зачитывает «приговор» прохожим.', { skills: ['religion', 'judge', 'deception'], dc: 14 },
-      { text: 'Переспорили. Проповедник ушёл писать апелляцию.', xp: 60 }, { text: 'Приговор засел в голове.', mrl: -5 }),
+      { text: 'Переспорили. Проповедник ушёл писать апелляцию, а запись проповеди осталась у вас.', xp: 60, flag: 'cx-priest-sermon' }, { text: 'Приговор засел в голове.', mrl: -5 }),
     RUMOR(),
   ],
   renegades: [

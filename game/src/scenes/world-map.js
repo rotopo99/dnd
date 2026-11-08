@@ -2,7 +2,7 @@
 // with nodes at `px`, fog of the unknown, routes styled by kind (road / trail / wild / sea / lake / tunnel / district),
 // pan (drag, WASD / arrows) and zoom (wheel, +/− buttons). Travel along known routes: days, sea fare, `route.rolls`
 // encounter rolls per hop (d20 ≤ 3 × danger + mod, shown in the map log), ambush, encounters, hidden nodes by Perception.
-import { baseOpen, BASE_LOC } from '../world/base.js';
+import { baseOpen, BASE_LOC, modFx as baseFx } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
@@ -13,15 +13,17 @@ import { WORLD_RULES as R } from '../data/world/rules.js';
 import { repTier, factionName, tierAtLeast } from '../world/reputation.js';
 import {
   members, visit, routesFrom, otherEnd, isKnownRoute, encounterThreshold, pickEncounter, partyFlagSet, openHidden,
-  journal, locFaction, requiresOk, stigmaRep, tf,
+  journal, locFaction, requiresOk, stigmaRep, tf, grant,
 } from '../world/state.js';
-import { onArrive } from '../world/quests.js';
+import { onArrive, questTargets } from '../world/quests.js';
 import { runEvent, travelEvents } from './event.js';
 import { runEncounter } from './encounter.js';
 import { createLocationScene, tierColor } from './location.js';
 import { saveGame } from '../save.js';
-import { passDays, exodusHud } from '../world/exodus.js';
-import { startExodusZero } from './exodus-zero.js';
+import { passDays, exodusHud, travelWarning } from '../world/exodus.js';
+import { startExodusZero, openExodusRadio } from './exodus-zero.js';
+import { roadUses } from '../world/skill-uses.js';
+import { EXODUS_UI } from '../data/text/exodus.js';
 import { hotspot } from '../ui/tooltip.js';
 import { openPauseMenu } from '../ui/save-ui.js';
 import { nodeMark, closedLoc, TONE_COLOR } from '../world/consequences.js';
@@ -49,6 +51,8 @@ function mapImage() {
 
 /** Night travel: one day less on routes of 2+ days (world.md §2). */
 const hopDays = (r, night) => (night && r.days >= 2 ? r.days - 1 : r.days);
+/** Days of hop i of a trip: night travel, Endurance forced march (march hop −1, min 1). */
+const tripDays = (tr, i) => { const d = hopDays(tr.hops[i].r, tr.night); return tr.march === i ? Math.max(1, d - 1) : d; };
 
 /** Sea / canoe fare (travel.js FARE): pirates friendly −50%, ally — free. */
 export function routeFare(save, r) {
@@ -211,14 +215,24 @@ export function createWorldMapScene() {
   }
 
   // ---------------------------------------------------------------- travel
-  function startTravel(game, to) {
+  function startTravel(game, to, confirmed = false) {
     const sv = save(game);
     if (to === sv.location) return enterLocation(game);
     const hops = findRoute(sv, sv.location, to, S.pflags);
     if (!hops) { game.toast(t('map.noRoute'), 'c'); return; }
     const fare = hops.reduce((s, h) => s + routeFare(sv, h.r), 0);
     if (fare > sv.hero.credits) { game.toast(`${t('map.noFare')}: ${fare} ${t('world.credits')}`, 'c'); return; }
-    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night };
+    // third-exodus.md: a long trip at late marks asks first
+    const warn = !confirmed && travelWarning(sv, hops.reduce((s, h) => s + hopDays(h.r, !!S.night), 0));
+    if (warn) {
+      game.openModal({ title: EXODUS_UI.confirmTitle, titleColor: 'c', lines: [{ text: EXODUS_UI.confirm.replace('{n}', warn.n).replace('{m}', warn.m) }],
+        options: [{ label: EXODUS_UI.go, run: (g) => startTravel(g, to, true) }, { label: EXODUS_UI.stay, run: () => {} }] });
+      return;
+    }
+    // world-consequences.md ч.5: peaceful road uses (Survival tracking / forage, Endurance forced march)
+    const ru = roadUses(members(sv, game.data), hops, !!S.night);
+    for (const x of ru.log) log(x.text, x.color);
+    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night, encMod: ru.encMod, forage: ru.forage, march: ru.marchHop };
     payHop(game);
     play('uiClick');
   }
@@ -233,7 +247,7 @@ export function createWorldMapScene() {
   function stepTravel(game, dt) {
     const tr = S.travel;
     const hop = tr.hops[tr.i];
-    const days = hopDays(hop.r, tr.night);
+    const days = tripDays(tr, tr.i);
     const dur = Math.max(0.3, days * TRAVEL_DAY_S);
     tr.t += dt;
     // day counter: one per travelled day; travel events — once per day
@@ -242,6 +256,7 @@ export function createWorldMapScene() {
       const ex = passDays(save(game), 1);
       for (const x of ex.out) log(x.text, x.color);
       if (ex.zero && !save(game).cyberspace) { S.paused = true; saveGame(save(game)); startExodusZero(game); return; }
+      if (ex.marks?.length) { S.paused = true; openExodusRadio(game, ex.marks, () => { S.paused = false; }); return; }
       const ev = travelEvents(save(game), LOCATIONS[hop.to].region)[0];
       if (ev) { S.paused = true; runEvent(game, ev, (g) => { g.resume(self); S.paused = false; }); return; }
     }
@@ -260,6 +275,8 @@ export function createWorldMapScene() {
     if (!th.need) return false;
     const hb = hunterBonus(sv);
     if (hb) { th.mod += hb; th.need += hb; }
+    const em = S.travel?.encMod || 0; // Survival «Следопыт» for this trip
+    if (em) { th.mod += em; th.need = Math.max(1, th.need + em); }
     if (S.travel?.night && !S.pflags.has('night-sight')) { th.mod += ENCOUNTER_MODS.night; th.need += ENCOUNTER_MODS.night; }
     const roll = 1 + Math.floor(Math.random() * 20);
     const hit = roll <= th.need;
@@ -284,7 +301,10 @@ export function createWorldMapScene() {
     tr.i++; tr.t = 0; tr.day = 0; tr.roll = 0;
     for (const x of onArrive(sv, hop.to, game.data)) game.toast(x.text, x.color);
     saveGame(sv);
-    if (tr.i >= tr.hops.length) { S.travel = null; enterLocation(game); return; }
+    if (tr.i >= tr.hops.length) {
+      if (tr.forage) for (const x of grant(sv, { items: [{ item: tr.forage, n: 1 }] }, game.data)) game.toast(x.text, x.color);
+      S.travel = null; enterLocation(game); return;
+    }
     payHop(game);
   }
 
@@ -449,6 +469,8 @@ export function createWorldMapScene() {
     }
     const placed = [];
     const order = [...ids].sort((a, b) => prio(sv, b) - prio(sv, a));
+    // world-consequences.md ч.3: radio L3 — marks of the current quest goals on the map
+    const qt = baseOpen(sv) && baseFx(sv, 'radio')?.mapReveal ? questTargets(sv) : null;
     for (const id of [...order].reverse()) {
       const l = LOCATIONS[id];
       const { x, y } = nodePos(id);
@@ -463,6 +485,10 @@ export function createWorldMapScene() {
       ctx.strokeRect(x - half - 2, y - half - 2, half * 2 + 4, half * 2 + 4);
       drawMapIcon(ctx, iconOf(l, sv, visited, S.pflags), x - half, y - half, scale);
       drawNodeMark(ctx, sv, id, x + half, y - half);
+      if (qt?.has(id)) {
+        ctx.fillStyle = C.a; ctx.beginPath(); ctx.arc(x - half, y - half, 7, 0, Math.PI * 2); ctx.fill();
+        text(ctx, '!', x - half, y - half - 7, C['0'], 'bold 12px monospace', 'center');
+      }
     }
     // labels: greedy by priority (current, hover, capitals, cities…), skipped on overlap
     for (const id of order) {
@@ -489,7 +515,7 @@ export function createWorldMapScene() {
     if (S.travel) {
       const hop = S.travel.hops[S.travel.i];
       const a = nodePos(hop.from), b = nodePos(hop.to);
-      const k = Math.min(1, S.travel.t / Math.max(0.3, hopDays(hop.r, S.travel.night) * TRAVEL_DAY_S));
+      const k = Math.min(1, S.travel.t / Math.max(0.3, tripDays(S.travel, S.travel.i) * TRAVEL_DAY_S));
       hp = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
     }
     drawSprite(ctx, heroSpriteIds(sv.hero.race, sv.hero.cls, sv.hero.look), hp.x - 16, hp.y - 46, 2, { frame: idleFrame(S.time * 1000) });

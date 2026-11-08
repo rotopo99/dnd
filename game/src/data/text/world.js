@@ -84,4 +84,12 @@ export const WORLD_TEXT = {
   'wanted.bribeFail': 'Взятку взяли и сдали вас: розыск +1',
   'wanted.bribeNo': 'Нельзя: «Чистые руки»',
   'wanted.bribeMax': 'Смертный приговор не снять взяткой',
+  'wanted.amnesty': 'Амнистия ({faction})',
+  'wanted.amnestyCost': 'Цена',
+  'wanted.amnestyDays': '{n} дн. работы',
+  'wanted.amnestyCheck': '{skills} СЛ {dc}',
+  'wanted.amnestyOk': 'Амнистия {faction}: розыск снят',
+  'wanted.amnestyFail': 'Не вышло. Должностное лицо примет вас завтра',
+  'wanted.amnestyTried': 'Сегодня уже пробовали',
+  'wanted.amnestyGo': 'Взяться',
 };

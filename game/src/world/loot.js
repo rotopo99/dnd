@@ -26,7 +26,7 @@ function draw(rng, table) {
  * @param opts      {flags: Set|Array of world flag ids, owned?: Set of unique item ids already owned}
  * @returns {credits, items: [{id, n, q?}]}
  */
-export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } = {}) {
+export function rollLoot(defeated, data, rng, { flags = [], owned = new Set(), extraRolls = 0, onlyExtra = false } = {}) {
   const tables = data.LOOT_TABLES || LOOT_TABLES;
   const drop = data.GEAR_DROP || GEAR_DROP;
   const relics = data.BOSS_RELICS || BOSS_RELICS;
@@ -57,7 +57,7 @@ export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } 
     .filter((u) => u && u.kind !== 'summon' && data.ENEMIES?.[u.enemyId])
     .map((u) => ({ def: data.ENEMIES[u.enemyId], tags: u.tags || data.ENEMIES[u.enemyId].tags || [] }));
 
-  for (const { def } of beaten) {
+  for (const { def } of onlyExtra ? [] : beaten) {
     const tb = def.loot && tables[def.loot];
     if (tb) {
       if (tb.credits) credits += int(rng, tb.credits[0], tb.credits[1]);
@@ -77,9 +77,17 @@ export function rollLoot(defeated, data, rng, { flags = [], owned = new Set() } 
     if (e) add(e.item, e.n || 1);
     else credits += rollDice(rng, WORLD_RULES.loot.dice) * WORLD_RULES.loot.mult;
   };
-  if (beaten.length && fl.has('battle-loot')) extra(() => true);
+  if (beaten.length && fl.has('battle-loot') && !onlyExtra) extra(() => true);
+  // combat rework §6: objective rewards and opened chests — extra draws from a random beaten table (no table → credits)
+  for (let i = 0; i < extraRolls; i++) {
+    const withTb = beaten.filter((x) => x.def.loot && tables[x.def.loot]);
+    const src = withTb.length ? withTb[Math.floor(rng() * withTb.length)] : null;
+    const e = src && draw(rng, tables[src.def.loot]);
+    if (e) add(e.item, e.n || 1, qualityOf(tables[src.def.loot], e.item));
+    else credits += rollDice(rng, WORLD_RULES.loot.dice) * WORLD_RULES.loot.mult;
+  }
   const isMech = (x) => x.tags.includes('mechanical');
-  if (fl.has('scrap-loot') && beaten.some(isMech)) extra(isMech);
+  if (fl.has('scrap-loot') && beaten.some(isMech) && !onlyExtra) extra(isMech);
 
   return { credits, items: [...bag.values()] };
 }

@@ -104,9 +104,10 @@ const LIST = [
         ] },
       ] }, next: 'collector' },
       { id: 'collector', text: 'Кто такой Великий Собиратель? Спросить пленного или смотрителя маяка.', goal: { kind: 'choice', options: [
-        { id: 'khikhik', text: 'Поговорить с Хихиком.', goal: { kind: 'talk', npc: 'prisoner-khikhik', location: 'svyatost' }, next: 'report' },
+        { id: 'khikhik', text: 'Поговорить с Хихиком.', goal: { kind: 'talk', npc: 'prisoner-khikhik', location: 'svyatost' },
+          effects: { flags: ['beacons-khikhik'], deeds: ['mercy'] }, next: 'report' },
         { id: 'keeper', text: 'Допросить Маячника.', goal: { kind: 'check', skills: ['intimidation', 'deception', 'persuasion'], dc: 14 },
-          effects: { deeds: ['lie'] }, next: 'report' },
+          effects: { flags: ['beacons-keeper'], deeds: ['lie'] }, next: 'report' },
       ] } },
       { id: 'report', text: 'Рассказать совету.', goal: { kind: 'talk', npc: 'elder-ulyana', location: 'svyatost' }, end: 'done' },
     ],

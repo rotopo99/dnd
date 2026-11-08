@@ -10,7 +10,7 @@ import { tf, restDepartures, pickEncounter, members } from '../world/state.js';
 import { passDays } from '../world/exodus.js';
 import { waitingLoyalty, restLoyalty } from '../world/companions.js';
 import { hasWorldFlag } from '../world/checks.js';
-import { autoCheck } from '../world/skill-uses.js';
+import { autoCheck, campMeditation } from '../world/skill-uses.js';
 import { giveItem } from '../world/inventory.js';
 import { hunterEncounter } from '../world/crime.js';
 import {
@@ -19,7 +19,7 @@ import {
 import { openGroupCheck } from '../ui/checks-ui.js';
 import { eventsFor, runEvent } from './event.js';
 import { runEncounter } from './encounter.js';
-import { startExodusZero } from './exodus-zero.js';
+import { startExodusZero, openExodusRadio } from './exodus-zero.js';
 import { saveGame } from '../save.js';
 
 const toastAll = (game, list) => { for (const x of list || []) game.toast(x.text, x.color); };
@@ -106,6 +106,17 @@ function dayRest(game, o, risk, mode) {
   toastAll(game, r.toasts);
   if (r.bonus?.medbay) game.toast(t('rest.baseMedbay'), 'j');
   if (r.bonus?.generator) game.toast(t('rest.baseGenerator'), 'j');
+  // world-consequences.md ч.5: Meditation of the best member — +N % MRL to the party
+  const med = mode !== 'hungry' ? campMeditation(party) : null;
+  if (med) {
+    if (med.ok) for (const m of party) {
+      const u = m.unit, holder = m.isHero ? sv.hero : m.p;
+      if (!holder || !u.maxMrl || u.mrl >= u.maxMrl) continue;
+      const v = Math.min(u.maxMrl, u.mrl + Math.max(1, Math.round(u.maxMrl * med.pct / 100)));
+      holder.mrl = v >= u.maxMrl ? null : v;
+    }
+    game.toast(`${med.member?.name || ''}: ${med.name} — ${med.ok ? `+${med.pct}% ${t('res.mrl')}` : t('check.fail')}`, med.ok ? 'j' : '4');
+  }
   // third-exodus.md: a rest costs a day of the Exodus timer
   const ex = passDays(sv, REST.long.days ?? EXODUS.restDays);
   toastAll(game, ex.out);
@@ -128,6 +139,8 @@ function dayRest(game, o, risk, mode) {
     if (risk.risky) guarded(g, o, risk, () => {});
   };
   const ev = mode !== 'base' && eventsFor(sv, locId, 'rest')[0];
-  if (ev) return runEvent(game, ev, (g) => { if (o.again) o.again(g); finish(g); });
-  finish(game);
+  const go = (g) => (ev ? runEvent(g, ev, (g2) => { if (o.again) o.again(g2); finish(g2); }) : finish(g));
+  // third-exodus.md: a new mark of the Exodus — the radio first
+  if (ex.marks?.length) return openExodusRadio(game, ex.marks, go);
+  go(game);
 }

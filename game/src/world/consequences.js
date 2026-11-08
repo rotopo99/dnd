@@ -34,6 +34,21 @@ export function cqOutcome(save, qid) {
   return 'default';
 }
 
+/**
+ * A dispute of two sides (talent «Холодная голова», flag cool-head): different outcomes of the quest favour different
+ * factions (the top positive rep of each CONSEQUENCES outcome differs). → bool.
+ */
+export function isDispute(qid) {
+  const c = CONSEQUENCES[qid];
+  if (!c) return false;
+  const fav = new Set();
+  for (const e of Object.values(c)) {
+    const top = Object.entries(e?.rep || {}).filter(([, d]) => d > 0).sort((a, b) => b[1] - a[1])[0];
+    if (top) fav.add(top[0]);
+  }
+  return fav.size >= 2;
+}
+
 export const cqApplied = (save, qid) => (save.cq || []).some((c) => c.qid === qid);
 const entries = (save) => (save?.cq || []).map((c) => ({ ...c, e: CONSEQUENCES[c.qid]?.[c.o] || CONSEQUENCES[c.qid]?.default })).filter((c) => c.e);
 

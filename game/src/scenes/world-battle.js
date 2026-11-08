@@ -16,7 +16,7 @@ import { applyRep, meetFaction } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
 import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
-import { syncItems, consumeBattle, receive, makeInst, canStash, qualityName } from '../world/inventory.js';
+import { syncItems, consumeBattle, keepQuickLayout, receive, makeInst, canStash, qualityName } from '../world/inventory.js';
 import { itemTip, itemStats } from '../ui/items-ui.js';
 import { C } from '../ui/draw.js';
 import { saveGame } from '../save.js';
@@ -27,6 +27,11 @@ import { markSeen, markKills, markTerm } from '../world/codex.js';
 import { battleLoyalty } from '../world/companions.js';
 import { queueBark } from '../world/barks.js';
 import { afterBattle as restAfterBattle } from '../world/rest.js';
+import { BATTLE_OBJECTIVES } from '../data/world/battle-objectives.js';
+import { COMBAT, biomeOf } from '../data/combat.js';
+import { objectiveSummary } from '../rules/objectives.js';
+import { passDays } from '../world/exodus.js';
+import { locFaction } from '../world/state.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -44,8 +49,32 @@ export function encounterSetup(save, encId) {
   return { enemies: encounterEnemies(encId, partySize(save), { reduce }), allies };
 }
 
+const enemyDef = (e) => ENEMIES[String(typeof e === 'string' ? e : e?.enemyId || e?.id || '').split('^')[0]];
+const isBossDef = (d) => !!d && (d.boss || d.rank === 'boss' || d.rank === 'miniboss');
+
+/**
+ * combat-rework §6 (stage 2): objectives spec of a world battle for rules/objectives.js — goal (o.objective > encounter
+ * binding > random `chance` from the biome pool; none in boss fights / the finale), chests (COMBAT.chest.count), exits
+ * for retreat (no exits in the finale; boss fights — locked until the boss phase).
+ */
+export function objectiveSpec(save, o, enemies, rng = Math.random) {
+  if (o.encounter === FINALE_ENCOUNTER || o.noObjectives) return null;
+  const boss = (enemies || []).some((e) => isBossDef(enemyDef(e)));
+  const loc = LOCATIONS[o.location || save.location];
+  const bind = o.encounter ? BATTLE_OBJECTIVES.bindings[o.encounter] : null;
+  let goal = o.objective !== undefined ? o.objective : bind || null;
+  if (!goal && !boss && o.objective === undefined && rng() < BATTLE_OBJECTIVES.random.chance) {
+    const pool = BATTLE_OBJECTIVES.random.pool[biomeOf({ biome: o.biome, region: loc?.region, faction: o.faction, hazard: o.hazard ?? loc?.hazard })] || BATTLE_OBJECTIVES.random.pool.wasteland;
+    goal = pool[Math.floor(rng() * pool.length)];
+  }
+  let chests = o.chests ?? 0;
+  if (o.chests == null) for (const p of COMBAT.chest?.count || []) { if (rng() < p) chests++; else break; }
+  return { goal, chests, retreat: !o.noRetreat, exitLock: boss };
+}
+
 /**
  * startWorldBattle(game, { encounter?, enemies?, allies?, map?, location?, title?, faction?, hazard?, ambush?, id?,
+ *                          objective? (id | null — override the binding / random), chests?, noObjectives?, noRetreat?,
  *                          onWin(game), onLose?(game) })
  */
 export function startWorldBattle(game, o) {
@@ -84,11 +113,18 @@ export function startWorldBattle(game, o) {
       if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind);
       companionEvent(S, e); // companions-scenes.md: barks and revives
     },
+    objectives: objectiveSpec(save, o, setup.enemies),
+    onRetreatExit: (g, S) => retreatExit(g, S, o),
     race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {
       queueBark('victory');
       for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
-      openLoot(g, battleLoot(g, S), () => afterBattle(g, S, o));
+      const notes = [];
+      const extra = objectiveRewards(g, S, o, notes);
+      const loot = battleLoot(g, S, extra.rolls);
+      if (extra.credits) loot.credits += Math.max(COMBAT.objectives?.creditsMin ?? 10, Math.round(loot.credits * extra.credits));
+      loot.notes = notes;
+      openLoot(g, loot, () => afterBattle(g, S, o));
     },
     onLose: (g, S) => { writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
     onExit: (g) => (o.onLose || defaultLose)(g),
@@ -142,7 +178,7 @@ function defaultLose(game) {
 }
 
 /** Loot of the beaten enemies (world/loot.js). Unique items already owned by the party do not drop again. */
-function battleLoot(game, S) {
+function battleLoot(game, S, extraRolls = 0) {
   const save = game.save;
   const flags = new Set(partyUnits(save, game.data).flatMap((u) => (u.worldFlags || []).map((w) => w.id)));
   const owned = new Set(Object.keys(save.hero.items || {}).filter((id) => save.hero.items[id] > 0));
@@ -154,12 +190,83 @@ function battleLoot(game, S) {
   // combat rework §3.2: broken crates rolled «junk» (b.junk) — item from COMBAT.junkItem
   const junk = game.data.COMBAT?.junkItem;
   if (S.b.junk && junk && game.data.ITEMS[junk]) loot.items.push({ id: junk, n: S.b.junk });
+  // combat rework §6: objective rewards and opened chests — extra draws from the beaten enemies' tables
+  if (extraRolls > 0) {
+    const ex = rollLoot(beaten, { ...game.data, ENEMIES }, Math.random, { flags, owned, extraRolls, onlyExtra: true });
+    loot.credits += ex.credits;
+    for (const it of ex.items) {
+      const same = loot.items.find((x) => x.id === it.id && (x.q || null) === (it.q || null));
+      if (same) same.n += it.n; else loot.items.push(it);
+    }
+  }
   return loot;
+}
+
+/**
+ * combat rework §6: rewards of the optional objective after a win (XP and reputation now; extra loot rolls and the
+ * credits share go to the loot) + opened chests. Fills `notes` (lines of the loot window). Returns { rolls, credits }.
+ */
+function objectiveRewards(game, S, o, notes) {
+  const save = game.save;
+  const sum = objectiveSummary(S.b);
+  const out = { rolls: sum.chestsOpened * (COMBAT.chest?.loot ?? 1), credits: 0 };
+  if (sum.chestsOpened) notes.push({ text: `▣ ${t('obj.chests')}: ${sum.chestsOpened}/${sum.chests} — ${tf('obj.rewardLoot', { n: out.rolls })}`, color: 'b' });
+  const g = sum.goal;
+  if (!g) return out;
+  const name = t(`obj.${g.id}.name`);
+  // reputation: the binding's faction, else the node's faction unless it is the enemy side, else the villages
+  const foe = o.faction || enemyDef(S.b.units.find((u) => u.team === 'enemies')?.enemyId)?.faction;
+  const lf = locFaction(o.location || save.location);
+  const fac = g.rep || (lf && lf !== foe ? lf : 'neutralVillages');
+  if (g.state === 'done') {
+    const rw = g.reward || {}, parts = [];
+    if (rw.xp) {
+      const xp = Math.round(battleXp(S.b, game.data) * rw.xp);
+      if (xp > 0) { for (const x of gainXp(save, xp, game.data)) game.toast(x.text, x.color); parts.push(`+${xp} ${t('res.xp')}`); }
+    }
+    if (rw.loot) { out.rolls += rw.loot; parts.push(tf('obj.rewardLoot', { n: rw.loot })); }
+    if (rw.credits) { out.credits = rw.credits; parts.push(tf('obj.rewardCredits', { n: Math.round(rw.credits * 100) })); }
+    if (rw.rep && fac) { for (const x of repToasts(applyRep(save, fac, rw.rep))) game.toast(x.text, x.color); parts.push(tf('obj.rewardRep', { n: rw.rep })); }
+    notes.push({ text: `✓ ${name}: ${parts.join(', ') || t('obj.state.done')}`, color: 'j' });
+  } else {
+    const failRep = COMBAT.objectives?.[g.id]?.failRep;
+    if (failRep && fac) for (const x of repToasts(applyRep(save, fac, failRep))) game.toast(x.text, x.color);
+    notes.push({ text: `✗ ${name}: ${t('obj.state.fail')}${g.reason ? ` (${t(`obj.why.${g.reason}`)})` : ''}${failRep && fac ? ` · ${tf('obj.failRep', { n: failRep })}` : ''}`, color: 'c' });
+  }
+  return out;
+}
+
+/**
+ * combat rework §6.2: the whole party left through exits — XP × retreat.xpMul for the beaten, no loot, the battle stays
+ * undone (enemies remain), days pass; back to the previous node (as the old world-flag retreat).
+ */
+function retreatExit(game, S, o) {
+  const save = game.save;
+  const RT = COMBAT.retreat || {};
+  for (const x of writeBack(game, S, false, o, { retreat: true })) game.toast(x.text, x.color);
+  const lines = [];
+  const xp = Math.floor(battleXp(S.b, game.data) * (RT.xpMul ?? 0.25));
+  if (xp > 0) { for (const x of gainXp(save, xp, game.data)) game.toast(x.text, x.color); lines.push({ text: tf('obj.retreatXp', { n: xp }), color: 'h' }); }
+  const ex = passDays(save, RT.days ?? 1);
+  for (const x of ex.out || []) game.toast(x.text, x.color);
+  lines.push({ text: tf('obj.retreatDays', { n: RT.days ?? 1 }), color: 'a' }, { text: t('obj.retreatStay'), color: '4' });
+  o.onFlee?.(game); // world-consequences.md: an attacked NPC survives the retreat
+  if (save.prevLocation && LOCATIONS[save.prevLocation]) save.location = save.prevLocation;
+  const heroDead = !!S.b.byId.hero?.dead;
+  if (heroDead) save.cyberspace = save.cyberspace || { reason: 'hero', helped: true, pending: true };
+  saveGame(save);
+  game.visit = null;
+  game.openModal({ title: t('obj.retreatDone'), border: 'a', titleColor: 'a', lines, onCancel: false,
+    options: [{ label: t('battle.ok'), run: (g) => {
+      if (heroDead) import('./cyberspace.js').then((m) => m.startCyberspace(g, { reason: 'hero', helped: true }));
+      else if (ex.zero && !save.cyberspace) import('./exodus-zero.js').then((m) => m.startExodusZero(g));
+      else import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene()));
+    } }] });
 }
 
 /** Battle results: credits and items, «Забрать всё» puts them into the shared backpack (no weight limit in data). */
 export function openLoot(game, loot, then) {
-  if (!loot.credits && !loot.items.length) { then(); return; }
+  if (!loot.credits && !loot.items.length && !loot.notes?.length) { then(); return; }
   const take = () => {
     const h = game.save.hero;
     h.credits += loot.credits;
@@ -178,6 +285,8 @@ export function openLoot(game, loot, then) {
   };
   const QC = { junk: 'n', working: 'h', masterwork: 'b', relic: 'f' };
   const lines = [];
+  // combat rework §6: objective results / chests — the summary on top of the loot window
+  if (loot.notes?.length) lines.push({ text: t('obj.summary'), color: '4' }, ...loot.notes);
   if (loot.credits) lines.push({ text: tf('fx.credits', { n: `+${loot.credits}` }), color: 'b' });
   const label = ({ id, n, q }) => `${ITEMS[id]?.name || id}${q && q !== 'working' ? ` (${qualityName(q)})` : ''}${n > 1 ? ` ×${n}` : ''}`;
   // items — info rows: the full card of the hovered one in the details panel (ui/modal.js `detail`, `inert`)
@@ -230,7 +339,9 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
   if (hu) {
     const r = after(hu); save.hero.hp = r.hp; save.hero.mrl = r.mrl;
     // v3/v7: items used in battle leave the quick slots / bag (unit.inventory + unit.backpack are battle copies)
-    consumeBattle(save, 'hero', usedItems(hu));    // v3.1: opiates used in battle → withdrawal (−МРЛ now, debuff until a full rest)
+    consumeBattle(save, 'hero', usedItems(hu));
+    keepQuickLayout(save, 'hero', hu.inventory); // «Порыться» during the battle — the new quick-slot layout stays
+    // v3.1: opiates used in battle → withdrawal (−МРЛ now, debuff until a full rest)
     if (!hu.dead) {
       const w = applyWithdrawal(save.hero, hu, Math.random);
       if (w?.loss) out.push({ text: `${t('world.withdrawal')}: −${w.loss} ${t('res.mrl')}`, color: 'f' });
@@ -249,6 +360,7 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     const r = after(u);
     p.hp = r.hp; p.mrl = r.mrl;
     consumeBattle(save, p.npc, usedItems(u));
+    keepQuickLayout(save, p.npc, u.inventory);
   }
   out.push(...restAfterBattle(save, b.byId, won && !retreat, game.data)); // rest: ENR / «за отдых» persist, breather after a win
   // Cyberspace is decided right here (synchronously): a reload before the next scene still sends the hero there

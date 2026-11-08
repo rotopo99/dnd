@@ -29,7 +29,7 @@ export const BASE_MODULES = {
   workbench: { name: 'Верстак модов', glyph: '⚒', needs: ['generator'], desc: 'Установка и снятие модов без проверок и без шанса поломки; разбор предметов с бонусом.',
     levels: [
       { cost: { credits: 200, items: [{ id: 'servo-parts', n: 3 }, { id: 'electrical-tape', n: 2 }], days: 1 }, power: 1, fx: { modInstall: 'noCheck', note: 'моды ставятся без проверки, провал 25% не бросается' } },
-      { cost: { credits: 450, items: [{ id: 'servo-parts', n: 5 }, { id: 'repair-kit', n: 2 }], days: 2 }, power: 1, fx: { disassembleBonus: 1, repair: true, note: 'разбор: +1 деталь; ремонт предметов за 20% цены' } },
+      { cost: { credits: 450, items: [{ id: 'servo-parts', n: 5 }, { id: 'repair-kit', n: 2 }], days: 2 }, power: 1, fx: { disassembleBonus: 1, repair: true, repairPrice: 0.2, note: 'разбор: +1 деталь; ремонт предметов за 20% цены' } },
       { cost: { credits: 900, items: [{ id: 'rare-parts', n: 2 }, { id: 'repair-kit', n: 3 }], days: 3 }, power: 2, fx: { qualityUp: { skill: 'tech', dc: 15, from: 'junk|working', to: '+1', perItemOnce: true }, note: 'улучшение качества: хлам→рабочее, рабочее→мастеровое (Технологии СЛ 15, раз на предмет)' } },
     ] },
   medbay: { name: 'Медотсек', glyph: '✚', needs: ['generator'], desc: 'Койки и аптечка: отдых на базе лечит полностью и снимает статусы.',
@@ -41,7 +41,7 @@ export const BASE_MODULES = {
   radio: { name: 'Радиоузел', glyph: '📻', needs: ['generator'], desc: 'Рация большой мощности: сдача квестов с `radio` и `return` из любой точки карты (mode `radio` у всех); слухи; вызов торговцев.',
     levels: [
       { cost: { credits: 250, items: [{ id: 'spare-cell', n: 2 }, { id: 'electrical-tape', n: 2 }], days: 1 }, power: 1, fx: { turninRadio: 'all-return-quests', note: 'квесты с turnin: return можно сдать по рации, NPC достижим (награда сразу, реплика по итогу в журнале)' } },
-      { cost: { credits: 500, items: [{ id: 'krona-battery', n: 2 }, { id: 'spare-cell', n: 2 }], days: 2 }, power: 1, fx: { rumorPerDay: 1, vendorCall: 3, note: 'раз в день — слух; 3 «заказа» торговцу в неделю: купленное придёт в схрон через 2 дня (+10% цены)' } },
+      { cost: { credits: 500, items: [{ id: 'krona-battery', n: 2 }, { id: 'spare-cell', n: 2 }], days: 2 }, power: 1, fx: { rumorPerDay: 1, vendorCall: 3, vendorDays: 2, vendorMarkup: 0.1, vendorStock: ['medkit', 'rations', 'calmers', 'grenade', 'repair-kit', 'servo-parts', 'electrical-tape', 'krona-battery', 'spare-cell', 'rare-parts'], note: 'раз в день — слух; 3 «заказа» торговцу в неделю: купленное придёт в схрон через 2 дня (+10% цены)' } },
       { cost: { credits: 1000, items: [{ id: 'proxy-can', n: 2 }, { id: 'rare-parts', n: 2 }], days: 3 }, power: 2, fx: { mapReveal: 'узлы с флагами квестов', warning: 'за 1 день предупреждение о нападении на базу', note: 'на карте метки открытых квестов; предупреждение об атаке' } },
     ] },
   quarters: { name: 'Комнаты напарников', glyph: '☗', needs: [], desc: 'Койка и тумбочка каждому напарнику: лояльность растёт, отдых на базе уютнее.',
@@ -58,9 +58,9 @@ export const BASE_MODULES = {
     ] },
   defense: { name: 'Оборона', glyph: '⛨', needs: [], desc: 'Баррикады и турели «Лиса»: бой защиты с бонусом, потери при набеге меньше.',
     levels: [
-      { cost: { credits: 200, items: [{ id: 'servo-parts', n: 2 }, { id: 'repair-kit', n: 1 }], days: 1 }, power: 0, fx: { defense: 2, note: 'оборона 2: в бою обороны союзники +1 КБ первые 2 раунда' } },
-      { cost: { credits: 450, items: [{ id: 'servo-parts', n: 4 }, { id: 'krona-battery', n: 1 }], days: 2 }, power: 1, fx: { defense: 4, turrets: 1, note: 'оборона 4; 1 турель «Лиса» в бою: 1d6+2 в 1-й раунд' } },
-      { cost: { credits: 900, items: [{ id: 'rare-parts', n: 2 }, { id: 'proxy-can', n: 1 }], days: 3 }, power: 2, fx: { defense: 6, turrets: 2, needsFlag: 'lis-online', note: 'оборона 6; 2 турели; Лис руководит огнём (нужен ИИ «Лис»)' } },
+      { cost: { credits: 200, items: [{ id: 'servo-parts', n: 2 }, { id: 'repair-kit', n: 1 }], days: 1 }, power: 0, fx: { defense: 2, allyKb: 1, note: 'оборона 2: в бою обороны партия +1 КБ (баррикады, весь бой)' } },
+      { cost: { credits: 450, items: [{ id: 'servo-parts', n: 4 }, { id: 'krona-battery', n: 1 }], days: 2 }, power: 1, fx: { defense: 4, turrets: 1, allyKb: 1, note: 'оборона 4; партия +1 КБ; 1 турель «Лиса» в бою: 1d6+2 в 1-й раунд' } },
+      { cost: { credits: 900, items: [{ id: 'rare-parts', n: 2 }, { id: 'proxy-can', n: 1 }], days: 3 }, power: 2, fx: { defense: 6, turrets: 2, allyKb: 2, needsFlag: 'lis-online', note: 'оборона 6; партия +2 КБ; 2 турели; Лис руководит огнём (нужен ИИ «Лис»)' } },
     ] },
 };
 
@@ -102,6 +102,7 @@ export const BASE_TEXT = {
   open: 'Бункер Лиса теперь ваш. Лампы мигают, из динамика кряхтит «Лис»: «Добро пожаловать, гражданин».',
   powerLack: 'Не хватает питания: поставьте или улучшите генератор.',
   upgradeDone: '{module} теперь уровня {n}.',
+  orderDone: 'Заказ по рации доставлен: {item}.',
   attackWarn: 'По рации: к базе идёт группа ({name}). Сутки.',
   attackLost: 'Налёт: {module} разгромлен (−1 уровень).',
 };

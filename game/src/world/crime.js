@@ -359,3 +359,55 @@ export function killNpc(save, npcId, rng = Math.random) {
   addRumor(save, 'kill', { name: npc.name, faction: f ? factionName(f) : '' });
   return { toasts: out, loot };
 }
+
+// ---------------------------------------------------------------- amnesty (WANTED.clear.quest): pay / work off at an official
+const AM = W.clear.quest;
+/** Amnesty entry of a faction (its own or default). */
+export const amnestyDef = (f) => AM[f] || AM.default;
+
+/**
+ * Amnesties available at a node: factions with heat ≥ 1 whose amnesty NPC stands here (default — any official of the faction).
+ * → [{ faction, def, npc }].
+ */
+export function amnestiesAt(save, npcIds) {
+  const out = [];
+  for (const [f, w] of Object.entries(save.wanted || {})) {
+    if (!w?.heat) continue;
+    const def = amnestyDef(f);
+    const npc = AM[f] ? (npcIds.includes(def.npc) ? def.npc : null) : npcIds.find((id) => npcFaction(NPCS[id]) === f && isOfficial(NPCS[id]));
+    if (npc) out.push({ faction: f, def, npc });
+  }
+  return out;
+}
+
+/** Cost and blockers: { credits, items, days, check, why, tried }. */
+export function amnestyInfo(save, f, countFn) {
+  const c = amnestyDef(f).cost || {};
+  const credits = (c.credits || 0) + (c.perLevel || 0) * (save.hero.level || 1);
+  const have = countFn ? countFn(save) : {};
+  const tried = !!save.flags[`amnesty-try:${f}:${save.day}`];
+  let why = null;
+  if (tried) why = tf('wanted.amnestyTried');
+  else if (save.hero.credits < credits) why = tf('loc.noMoney');
+  else { const miss = (c.items || []).find((x) => (have[x.id] || 0) < x.n); if (miss) why = `${tf('loc.needItem')}: ${ITEMS[miss.id]?.name || miss.id} ×${miss.n}`; }
+  return { credits, items: c.items || [], days: c.days || 0, check: c.check || null, why, tried };
+}
+
+/** A failed amnesty check: one attempt per day, nothing is spent. */
+export const amnestyFailed = (save, f) => { save.flags[`amnesty-try:${f}:${save.day}`] = true; return [{ text: tf('wanted.amnestyFail'), color: 'c' }]; };
+
+/** Pay the amnesty (credits, items via takeFn) and clear the faction's heat; rep +questRep. Days are passed by the caller. → toasts. */
+export function applyAmnesty(save, f, takeFn) {
+  const info = amnestyInfo(save, f);
+  save.hero.credits = Math.max(0, save.hero.credits - info.credits);
+  const out = [];
+  if (info.credits) out.push({ text: tf('fx.credits', { n: `−${info.credits}` }), color: 'b' });
+  for (const it of info.items) { takeFn?.(save, it.id, it.n); out.push({ text: `−${ITEMS[it.id]?.name || it.id} ×${it.n}`, color: 'b' }); }
+  const w = save.wanted?.[f];
+  if (w) { w.heat = 0; w.since = save.day; w.bounty = 0; }
+  save.flags[`amnesty:${f}`] = true;
+  journal(save, tf('wanted.amnestyOk', { faction: factionName(f) }));
+  out.push({ text: tf('wanted.amnestyOk', { faction: factionName(f) }), color: 'j' });
+  out.push(...repToasts(applyRep(save, f, W.clear.questRep || 0)));
+  return out;
+}

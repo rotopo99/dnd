@@ -95,15 +95,19 @@ export const WANTED = {
       checks: { skill: 'persuasion|deception', dc: 12, bonusHeat: 1 }, // СЛ +1 за каждый уровень выше 1
       maxDrop: 2, failFx: 'сумма потеряна, +1 розыск',
       note: 'цена = 100 × heat × ур. героя / 2 (минимум 100); минус 1–2 уровня; нельзя с heat 5; talent clean-hands запрещает' },
-    quest: { // амнистия: квест по фракциям; снимает розыск полностью и ставит rep +10 (после выполнения)
-      aiParty: { id: 'amnesty-ai', npc: 'archivist-nine', loc: 'putinlyandiya', todo: true, task: 'вернуть украденное + уничтожить 1 «преступный» терминал' },
-      warprom: { id: 'amnesty-wp', npc: 'quartermaster-krotova', loc: 'kreml', todo: true, task: 'выполнить заказ интенданта: 3 ремонта оружия или бой с мародёрами' },
-      tinBrotherhood: { id: 'amnesty-tin', npc: 'ken', loc: 'zhestoboy', todo: true, task: 'искупить на арене: победа без потери союзника' },
-      scavengers: { id: 'amnesty-scv', npc: 'glava-musora', loc: 'svalka', todo: true, task: 'принести редкий лом (rare-parts ×3) в «налог»' },
-      pirates: { id: 'amnesty-pir', npc: 'burevestnik', loc: 'raytsentr', todo: true, task: 'проводить груз через море по квесту «Через море»' },
-      renegades: { id: 'amnesty-ren', npc: 'marta', loc: 'marta', todo: true, task: 'освободить пленных в рейде Отступников' },
-      neutralVillages: { id: 'amnesty-ns', npc: 'elder-ulyana', loc: 'svyatost', todo: true, task: 'труд на сельсовет: 3 дня работы (−3 дня) и компенсация потерпевшему' },
-      default: { id: 'amnesty-generic', todo: true, task: 'извиниться перед потерпевшим (Убеждение СЛ 15) и заплатить компенсацию 100 × ур.' },
+    // Амнистия (без отдельного квест-движка): «отработать/заплатить» у должностного лица фракции. Снимает розыск полностью, rep +questRep.
+    // Где: в узле, где стоит npc (или любое должностное лицо фракции для default). cost: credits (+ perLevel × ур. героя),
+    // items [{ id, n }], days (дни работы — идёт таймер исхода), check { skills, dc } (провал — попытка завтра, ничего не списано).
+    questRep: 10,
+    quest: {
+      aiParty: { id: 'amnesty-ai', npc: 'archivist-nine', loc: 'putinlyandiya', task: 'вернуть украденное в архив и стереть «преступную» запись в терминале', cost: { credits: 150, perLevel: 20, check: { skills: ['hacking', 'deception'], dc: 15 } } },
+      warprom: { id: 'amnesty-wp', npc: 'quartermaster-krotova', loc: 'kreml', task: 'выполнить заказ интенданта: отремонтировать оружие роты', cost: { items: [{ id: 'repair-kit', n: 2 }], days: 1, check: { skills: ['tech', 'military'], dc: 14 } } },
+      tinBrotherhood: { id: 'amnesty-tin', npc: 'ken', loc: 'zhestoboy', task: 'искупить на арене: показательный поединок без грязных приёмов', cost: { days: 1, check: { skills: ['athletics', 'military'], dc: 15 } } },
+      scavengers: { id: 'amnesty-scv', npc: 'glava-musora', loc: 'svalka', task: 'принести редкий лом в «налог»', cost: { items: [{ id: 'rare-parts', n: 3 }] } },
+      pirates: { id: 'amnesty-pir', npc: 'burevestnik', loc: 'raytsentr', task: 'проводить груз через залив без потерь', cost: { days: 2, check: { skills: ['athletics', 'survival', 'military'], dc: 13 } } },
+      renegades: { id: 'amnesty-ren', npc: 'marta', loc: 'marta', task: 'освободить пленных в рейде Отступников', cost: { days: 1, check: { skills: ['stealth', 'military', 'lockpicking'], dc: 15 } } },
+      neutralVillages: { id: 'amnesty-ns', npc: 'elder-ulyana', loc: 'svyatost', task: 'труд на сельсовет и компенсация потерпевшему', cost: { credits: 50, perLevel: 10, days: 3 } },
+      default: { id: 'amnesty-generic', task: 'извиниться перед потерпевшим и заплатить компенсацию', cost: { credits: 0, perLevel: 100, check: { skills: ['persuasion'], dc: 15 } } },
     },
     forge: { flag: 'forge-pass', talent: 'fake-codes', note: 'Поддельные документы: раз в узел вход под чужим именем без проверки розыска (талант/предмет), не снимает розыск' },
     kill: { note: 'убийство всех свидетелей в узле не снимает розыск — снижает прирост на 1 (хронические, «вырезать» нельзя)' },

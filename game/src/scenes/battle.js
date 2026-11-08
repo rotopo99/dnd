@@ -4,7 +4,8 @@
 // createBattleScene(opts) -> scene
 //   opts: { hero: { race, cls, path, name }, map?, enemies?, allies?, seed?, title, intro?, hint?,
 //           winText?, defeatLines?: [{who,text}], barks?: { [enemyId]: key }, onEvent?(S, e),
-//           onWin(game, S), onExit(game) }
+//           onWin(game, S), onExit(game), objectives?: {goal, chests, retreat, exitLock} (rules/objectives.js),
+//           onRetreatExit?(game, S) — the whole party left through exits 'D' }
 // Events from the engine are queued and replayed one by one: a 'move' blocks the queue until the
 // walk animation ends, so popups / sounds / log lines appear in order and at the right place.
 import { t } from '../data/text/index.js';
@@ -33,6 +34,7 @@ import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
 import { SKILL_RULES } from '../data/world/skill-rules.js';
 import { TRICKS2, trick2 } from '../world/skill-uses.js';
+import { interactions, retreatWhy } from '../rules/objectives.js';
 
 /** v7: quick slots on 1–6, abilities on letters (inventory-mods.md §2). */
 const QUICK_KEYS = 6;
@@ -111,7 +113,10 @@ function tileInArea(b, u, a, center, x, y) {
 const REASONS = {
   energy: 'battle.noEnr', uses: 'battle.uses', action: 'battle.noAction', silence: 'battle.silence',
   disarm: 'battle.disarm', turn: 'battle.notTurn', down: 'battle.down', noTargets: 'battle.noTargets',
+  jam: 'battle.jammed', bonus: 'battle.noBonus',
 };
+/** combat rework §6.2: why «Отступить» is off (rules/objectives.js retreatWhy). */
+const RETREAT_WHY = { locked: 'obj.exitLocked', notOnExit: 'obj.notOnExit', turn: 'battle.notTurn', action: 'battle.noAction', noExit: 'obj.notOnExit' };
 
 export function createBattleScene(opts) {
   const S = { opts };
@@ -139,6 +144,7 @@ export function createBattleScene(opts) {
     S.b = createBattle({
       map: typeof opts.map === 'function' ? opts.map(seed) : opts.map, heroes, enemies, allies: opts.allies, data: game.data, seed,
       onEvent: (e) => S.queue.push(e),
+      objectives: opts.objectives || null, // combat rework §6: optional objective, chests, exits
     });
     const b = S.b;
     S.heroId = heroes[0].id; // the player-controlled unit whose turn it is (party: switches every turn)
@@ -226,7 +232,7 @@ export function createBattleScene(opts) {
     const btns = [];
     const bt = b.turn;
     const reasonOf = (r) => (r ? t(REASONS[r] || 'battle.notAllowedHere') : null);
-    let r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : hero.noAttack || !hero.weapon ? 'disarm' : S.attackTargets.size || (S.specs[AREA_KEY] || []).length ? null : 'noTargets';
+    let r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : hero.noAttack || !hero.weapon ? 'disarm' : hero.weaponJam ? 'jam' : S.attackTargets.size || (S.specs[AREA_KEY] || []).length ? null : 'noTargets';
     btns.push({ id: 'attack', label: t('battle.attack'), sub: hero.weapon ? `${hero.weapon.dice}${hero.weapon.range > 1 ? ` ↔${hero.weapon.range}` : ''}` : '', key: 'A', disabled: !!r, reason: reasonOf(r), selected: S.sel?.kind === 'attack' });
     let n = 0;
     for (const a of hero.abilities) {
@@ -273,6 +279,14 @@ export function createBattleScene(opts) {
     btns.push({ id: 'dash', label: t('battle.dash'), sub: t('act.action'), disabled: !!r, reason: reasonOf(r) });
     r = !S.playerTurn ? 'turn' : bt.bonus <= 0 || bt.disengaged ? 'bonus' : null;
     btns.push({ id: 'disengage', label: t('battle.disengage'), sub: t('act.bonus'), disabled: !!r, reason: r === 'bonus' ? t('battle.noBonus') : reasonOf(r) });
+    // combat rework §6: props next to the hero (free a captive / hack a terminal / open a chest), retreat via exits 'D'
+    S.interacts = S.playerTurn ? interactions(b, hero) : [];
+    S.interacts.forEach((it, i) => btns.push({ id: 'interact', tile: { x: it.x, y: it.y }, label: t(`obj.act.${it.kind}`), sub: t(it.cost === 'bonus' ? 'act.bonus' : 'act.action'),
+      key: i === 0 ? 'G' : '', disabled: !!it.why, reason: it.why ? t(REASONS[it.why] || 'battle.notAllowedHere') : null }));
+    if (b.objectives?.exits.length) {
+      const why = retreatWhy(b, hero);
+      btns.push({ id: 'exitRetreat', label: t('obj.retreatBtn'), sub: why ? t(RETREAT_WHY[why] || 'battle.notAllowedHere') : t('act.action'), key: 'D', disabled: !!why, reason: why ? t(RETREAT_WHY[why] || 'battle.notAllowedHere') : null });
+    }
     if (opts.onRetreat) btns.push({ id: 'retreat', label: t('battle.retreat'), sub: t('battle.retreatSub'), disabled: !S.playerTurn });
     btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: t('battle.endTurnKey'), disabled: !S.playerTurn, reason: S.playerTurn ? null : t('battle.notTurn') });
     S.buttons = btns;
@@ -466,6 +480,8 @@ export function createBattleScene(opts) {
       case 'disengage': doAction({ type: 'disengage' }); break;
       case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
       case 'retreat': opts.onRetreat(game, S); return;
+      case 'interact': doAction({ type: 'interact', tile: btn.tile }); break;
+      case 'exitRetreat': confirmRetreat(); return;
       default: {
         if (btn.quick) { useQuick(btn.quick); break; }
         if (btn.endStatus) { doAction({ type: 'endStatus', status: btn.endStatus }); break; }
@@ -478,6 +494,16 @@ export function createBattleScene(opts) {
       }
     }
     S.dirty = true;
+  }
+
+  /** combat rework §6.2: leave the battle from an exit tile; the last one standing — confirm the price. */
+  function confirmRetreat() {
+    const b = S.b;
+    const others = b.units.some((u) => u.team === 'heroes' && u.kind !== 'summon' && u.id !== S.heroId && isStanding(u));
+    if (others) { doAction({ type: 'retreat' }); S.dirty = true; return; }
+    const RT = b.data.combat?.retreat || {};
+    S.game.openModal({ title: t('obj.retreatTitle'), lines: [{ text: t('obj.retreatCost').replace('{xp}', Math.round((RT.xpMul ?? 0.25) * 100)).replace('{d}', RT.days ?? 1), color: 'a' }],
+      options: [{ label: t('obj.retreatBtn'), run: () => { doAction({ type: 'retreat' }); S.dirty = true; } }, { label: t('loc.close'), run: () => {} }] });
   }
 
   /** Targets of a skill trick for unit u. */
@@ -627,6 +653,8 @@ export function createBattleScene(opts) {
     }
     const occ = b.units.find((u) => !u.dead && !u.removed && u.x === cx && u.y === cy && !isHiddenFoe(u) && S.attackTargets.has(u.id));
     if (occ) { doAction({ type: 'attack', target: occ.id }); return; }
+    const prop = (S.interacts || []).find((it) => it.x === cx && it.y === cy && !it.why);
+    if (prop) { doAction({ type: 'interact', tile: { x: cx, y: cy } }); return; }
     if (S.reach && S.reach.dist[idx] > 0) doAction({ type: 'move', to: { x: cx, y: cy } });
   }
 
@@ -724,6 +752,16 @@ export function createBattleScene(opts) {
       case 'phase': if (A) { popup(A, t('log.phase').replace('{n}', e.n), C.c); S.shake = 0.25; } break;
       case 'flee': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('log.flee'), C['4']); } break;
       case 'rage': if (A) popup(A, t('log.rage'), C.c); break;
+      // combat rework §6: objectives, chests, retreat, junk weapon jam
+      case 'objective':
+        if (e.state === 'done' || e.state === 'fail' || e.state === 'warn') { say(`${t(`obj.${e.id}.name`)}: ${t(`obj.state.${e.state}`)}`); }
+        break;
+      case 'objFree': tilePop(e.x, e.y, t('obj.freed'), C.j); break;
+      case 'objHack': tilePop(e.x, e.y, e.success ? `${e.progress}/${e.need}` : t('battle.miss'), e.success ? C.j : C['4']); break;
+      case 'chestOpen': tilePop(e.x, e.y, e.success ? t('obj.chestOpened') : t('battle.miss'), e.success ? C.b : C['4']); break;
+      case 'chestTrap': tilePop(e.x, e.y, t('obj.trap'), C.c); S.shake = 0.15; break;
+      case 'retreat': if (A) { const d = dispOf(A); d.fade = 1; popup(A, t('obj.retreated'), C.j); } break;
+      case 'jam': if (A) popup(A, t('battle.jammed'), C.c); break;
       case 'damage': {
         if (!T) break;
         const d = dispOf(T);
@@ -875,6 +913,8 @@ export function createBattleScene(opts) {
     if (inp.wasPressed('KeyB')) selectButton(S.buttons.find((x) => x.id === 'burst'));
     if (inp.wasPressed('KeyI')) selectButton(S.buttons.find((x) => x.id === 'items'));
     if (inp.wasPressed('KeyK')) selectButton(S.buttons.find((x) => x.id === 'trick'));
+    if (inp.wasPressed('KeyG')) selectButton(S.buttons.find((x) => x.id === 'interact'));
+    if (inp.wasPressed('KeyD')) selectButton(S.buttons.find((x) => x.id === 'exitRetreat'));
     if (inp.wasPressed('Space') || inp.wasPressed('Enter')) selectButton(S.buttons.find((x) => x.id === 'endTurn'));
   }
 
@@ -907,6 +947,14 @@ export function createBattleScene(opts) {
       const b = S.b;
       if (S.queue.length || busy()) return;
       syncDisp();
+      if (b.winner === 'retreat') { // combat rework §6.2: the whole party left through the exits
+        if (!S.result && !S.retreatDone && (S.resultTimer += dt) > 0.7) {
+          S.retreatDone = true;
+          if (opts.onRetreatExit) opts.onRetreatExit(game, S);
+          else { S.result = 'lose'; layoutBattle.result(game, S); }
+        }
+        return;
+      }
       if (b.winner) {
         if (!S.result && (S.resultTimer += dt) > 0.7) {
           S.result = b.winner === 'heroes' ? 'win' : 'lose';

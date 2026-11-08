@@ -4,6 +4,7 @@ import { INVENTORY_TEXT } from './inventory.js';
 import { COMPANION_TEXT } from './companions.js';
 import { WORLD_TEXT } from './world.js';
 import { REST_TEXT } from './rest.js';
+import { OBJECTIVE_TEXT } from './objectives.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -225,7 +226,9 @@ const ru = {
   'base.radioRumor': 'Слух по рации', 'base.radioRumorSub': 'раз в день', 'base.defend': 'Оборона!', 'base.defendSub': 'бой у шлюза',
   'base.leave': 'В бункер', 'base.built': 'Стройка начата: {name} ур. {n}', 'base.restDone': 'Отдых на базе',
   'base.benchNone': 'Нечего улучшать: нужен предмет-снаряжение «хлам» или «рабочее» в рюкзаке.', 'base.benchOk': 'Качество улучшено: {name}',
-  'base.benchFail': 'Не вышло: {name} (раз на предмет)', 'base.noRumor': 'Эфир молчит. Завтра.', 'base.radioTurnin': 'Сдано по рации',
+  'base.benchFail': 'Не вышло: {name} (раз на предмет)', 'base.order': 'Заказ по рации', 'base.orderSub': 'осталось {n}/{max} на неделе', 'base.orderOff': 'нужна рация ур. 2', 'base.orderText': 'Торговец привезёт заказ через {d} дн. (цена +10%). Заказов на этой неделе: {n}/{max}.', 'base.ordered': 'Заказано: {item}, будет через {d} дн.',
+  'base.repair': 'Ремонт', 'base.repairSub': 'ремонт хлама за 20% цены', 'base.repairNone': 'Нечего чинить: нужен предмет-снаряжение «хлам» в рюкзаке.', 'base.repaired': 'Отремонтировано: {name}',
+  'base.noRumor': 'Эфир молчит. Завтра.', 'base.radioTurnin': 'Сдано по рации',
   'base.hint': 'Наведите на модуль — подробности. Верстак, медотсек и рация требуют генератор.', 'base.lastRaid': 'Последний набег: {text}',
   'base.defendTitle': 'Оборона базы: {name}', 'base.revived': 'Медотсек вернул душу: {name}', 'base.medkit': 'Медотсек: +1 аптечка',
   // world-consequences.md ч.4: backstories
@@ -792,5 +795,6 @@ Object.assign(ru, INVENTORY_TEXT); // v7 inventory strings (override older gear/
 Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
 Object.assign(ru, WORLD_TEXT); // world-consequences.md: consequences, epilogue, crime
 Object.assign(ru, REST_TEXT); // rest: short / long rests, provisions
+Object.assign(ru, OBJECTIVE_TEXT); // combat-rework §6: battle objectives, chests, retreat, jam
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

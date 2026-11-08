@@ -86,6 +86,7 @@ import {
 import {
   initTerrain, coverBonus, terrainHit, elevRange, meleeElevOk, objectAt, damageObject, damageObjectsIn, terrainOn,
 } from './terrain.js';
+import { initObjectives, objectiveEvent, interact as objInteract, retreatWhy } from './objectives.js';
 import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath, archHit, archDmg, archKb } from './archetypes.js';
 import {
   initSurfaces, tickSurfaces, surfaceEffect, createSurface, radiusTiles, elementHit, surfacesOn, clearSurfaces,
@@ -153,6 +154,7 @@ function emit(b, ev) {
   ev.round = b.round;
   if (b.log) b.log.push(ev);
   if (b.onEvent) b.onEvent(ev, b);
+  if (b.objectives && ev.type !== 'objective') objectiveEvent(b, ev); // combat-rework §6 (rules/objectives.js)
 }
 export { emit as emitEvent };
 
@@ -363,7 +365,7 @@ export function isHostile(b, a, t) {
 export function weaponBlocked(b, u) {
   const w = u.weapon;
   if (!w) return 'noWeapon';
-  if (u.weaponHot) return 'overheat';
+  if (u.weaponHot) return u.weaponJam ? 'jam' : 'overheat';
   if (w.charges != null && (u.weaponCharges ?? w.charges) <= 0) return 'charges';
   if (w.enr && u.maxEnr > 0 && u.enr < w.enr) return 'energy';
   return null;
@@ -387,6 +389,14 @@ function payWeapon(b, u) {
 /** Overheat after a shot (natural — d20 or null). Returns true if the weapon stops firing. */
 function afterShot(b, u, natural) {
   const w = u.weapon;
+  // QUALITY.junk.jamOn1 (data/items/mods.js): a natural 1 with a junk weapon jams it — no weapon until the end of the next turn
+  if (natural === 1 && w && w.quality && b.data.quality?.[w.quality]?.jamOn1) {
+    u.weaponLock = Math.max(u.weaponLock || 0, 1);
+    u.weaponHot = true;
+    u.weaponJam = true;
+    emit(b, { type: 'jam', actor: u.id });
+    return true;
+  }
   const oh = w && w.overheat;
   if (!oh) return false;
   if (typeof oh === 'string' || (oh.dice && !oh.shots)) {
@@ -478,7 +488,7 @@ export const unitAt = (b, x, y) => {
  * The list defines the side ('heroes' / 'enemies'). Units are cloned: callers' objects are not mutated.
  * Start points 'P' / 'E' / 'A' are taken row by row, left to right.
  */
-export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1, log = true, onEvent = null, autoReactions = true } = {}) {
+export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null } = {}) {
   const D = normalizeData(data);
   const enemyList = enemies || (map && map.enemies) || [];
   const mapDef = map || makeArena({ heroes: heroes.length, enemies: enemyList.length });
@@ -510,6 +520,8 @@ export function createBattle({ map, heroes = [], enemies, allies, data, seed = 1
   // combat rework: destructible objects get HP from the battle level, AI archetypes (terrain.js, archetypes.js)
   initTerrain(b);
   assignArchetypes(b);
+  // combat rework §6 (stage 2): optional objective, chests, exits for retreat (rules/objectives.js)
+  if (objectives) initObjectives(b, objectives);
   // opiate withdrawal carried over from earlier battles (aftermath.js): status at battle start
   for (const u of b.units) {
     const nb = u.withdrawal && u.withdrawal.nextBattle;
@@ -573,6 +585,7 @@ function beginTurn(b, u) {
   emit(b, { type: 'turnStart', actor: u.id });
   u.weaponHot = u.weaponLock > 0;
   if (u.weaponHot) u.weaponLock--;
+  else u.weaponJam = false;
   if (u.turnPenalty) {
     const p = u.turnPenalty;
     u.turnPenalty = null;
@@ -734,6 +747,8 @@ export function checkVictory(b) {
   }
   if (!winner && teams === 0) winner = 'draw';
   if (!winner && teams > 0 && standing.size <= 1) winner = standing.size ? [...standing][0] : 'draw';
+  // combat rework §6.2: no one of the party is standing on the field, someone retreated — the battle ends as a retreat
+  if (winner && winner !== 'heroes' && b.objectives?.retreated.length) winner = 'retreat';
   if (winner) {
     b.winner = winner;
     emit(b, { type: 'victory', winner });
@@ -2662,6 +2677,25 @@ export function perform(b, action) {
       burstAttack(b, u, tgt);
       selfDamage(b, u);
       checkVictory(b);
+      break;
+    }
+    case 'interact': { // combat rework §6: free a captive / hack a terminal / open a chest (rules/objectives.js)
+      const why = objInteract(b, u, action.tile);
+      if (why) return fail(b, start, why);
+      checkVictory(b);
+      break;
+    }
+    case 'retreat': { // combat rework §6.2: leave the battle from an exit tile
+      const why = retreatWhy(b, u);
+      if (why) return fail(b, start, why);
+      t.actions--;
+      u.removed = true;
+      u.shield = null;
+      clearPos(b, u);
+      b.objectives.retreated.push(u.id);
+      emit(b, { type: 'retreat', actor: u.id, target: u.id });
+      checkVictory(b);
+      if (!b.winner) startNextTurn(b);
       break;
     }
     case 'rummage': {

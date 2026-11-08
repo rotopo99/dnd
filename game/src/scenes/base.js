@@ -10,7 +10,7 @@ import { QUALITY } from '../data/items/mods.js';
 import { NPCS } from '../data/npcs.js';
 import {
   baseState, modLevel, modActive, modFx, power, buildInfo, startBuild, buyCustom, hasCustom, baseTick, baseRestPlan,
-  defendResult, defenseAllies, MODULE_IDS, lisOnline,
+  defendResult, defenseAllies, defenseKb, MODULE_IDS, lisOnline, orderInfo, placeOrder,
 } from '../world/base.js';
 import { ITEMS, LORE_RUMORS, LOCATIONS } from '../world/data.js';
 import { restParty, activeCompanions, members, journal, MAX_PARTY, squadFree } from '../world/state.js';
@@ -75,9 +75,11 @@ export function createBaseScene(back = null) {
     const acts = [
       { kind: 'rest', label: t('base.rest'), sub: tf('rest.hud', { n: restState(sv).short, max: restState(sv).max, food: provisionCount(sv) }), key: 'R' },
       { kind: 'stash', label: t('base.stash'), sub: t('base.stashSub'), key: 'I' },
-      { kind: 'bench', label: t('base.bench'), sub: t('base.benchSub'), disabled: !modFx(sv, 'workbench')?.qualityUp, reason: modActive(sv, 'workbench').why },
+      { kind: 'bench', label: t('base.bench'), sub: modFx(sv, 'workbench')?.qualityUp ? t('base.benchSub') : t('base.repairSub'), disabled: !(modFx(sv, 'workbench')?.qualityUp || modFx(sv, 'workbench')?.repair), reason: modActive(sv, 'workbench').why },
       { kind: 'rumor', label: t('base.radioRumor'), sub: t('base.radioRumorSub'), disabled: !modFx(sv, 'radio')?.rumorPerDay || sv.flags[`base-rumor:${sv.day}`] },
     ];
+    const oi = orderInfo(sv);
+    acts.push({ kind: 'order', label: t('base.order'), sub: oi ? tf('base.orderSub', { n: oi.left, max: oi.max }) : t('base.orderOff'), disabled: !oi || !oi.left });
     if (sv.base.raid) acts.push({ kind: 'defend', label: t('base.defend'), sub: t('base.defendSub'), selected: true });
     acts.push({ kind: 'idle', label: t('base.idle'), sub: `${baseIdle(sv).length} · ${tf('party.squad', { n: 1 + activeCompanions(sv).length, m: squadInfo(sv).max })}`, key: 'P' });
     acts.push({ kind: 'leave', label: t('base.leave'), sub: LOCATIONS[BASE_LOCATION]?.name || '', key: 'Esc' });
@@ -109,6 +111,7 @@ export function createBaseScene(back = null) {
     else if (b.kind === 'stash') return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: 'gear', back: self, canSwap: true })));
     else if (b.kind === 'bench') return bench(game);
     else if (b.kind === 'rumor') return radioRumor(game);
+    else if (b.kind === 'order') return openOrder(game);
     else if (b.kind === 'defend') return defend(game);
     else if (b.kind === 'leave') { persist(game); return leave(game); }
     else if (b.kind === 'idle') return idleMenu(game);
@@ -174,22 +177,48 @@ export function createBaseScene(back = null) {
   /** Workbench L3: junk → working → masterwork, Tech check, once per item instance. */
   function bench(game) {
     const sv = game.save;
-    const fx = modFx(sv, 'workbench')?.qualityUp;
+    const wf = modFx(sv, 'workbench') || {};
+    const fx = wf.qualityUp;
     syncItems(sv);
-    const rows = [];
+    const rows = [], junk = [];
     for (const k of bagKeys(sv)) {
       const grid = bagOf(holderOf(sv, k)).grid;
-      grid.forEach((e) => { if (isGear(ITEMS[e.item]) && ITEMS[e.item].slot !== 'mod' && Q_NEXT[e.q] && !e.up) rows.push({ e, k }); });
+      grid.forEach((e) => {
+        if (!isGear(ITEMS[e.item]) || ITEMS[e.item].slot === 'mod') return;
+        if (wf.repair && e.q === 'junk') junk.push(e);
+        if (fx && Q_NEXT[e.q] && !e.up) rows.push({ e, k });
+      });
     }
-    if (!rows.length) { game.openModal({ title: t('base.bench'), lines: [t('base.benchNone')], options: [{ label: t('loc.close'), run: () => {} }] }); return; }
+    // workbench L2: repair junk → working for repairPrice × price, no check
+    const repairCost = (e) => Math.max(1, Math.round((ITEMS[e.item].price || 0) * (wf.repairPrice ?? 0.2)));
+    const repairs = junk.slice(0, 6).map((e) => ({ label: `${t('base.repair')}: ${ITEMS[e.item].name}`, sub: `${QUALITY.junk.name} → ${QUALITY.working.name} · ${repairCost(e)} ${t('world.credits')}`,
+      disabled: sv.hero.credits < repairCost(e),
+      run: (g2) => { sv.hero.credits -= repairCost(e); e.q = 'working'; g2.toast(tf('base.repaired', { name: ITEMS[e.item].name }), 'j'); refreshView(sv); persist(g2); layout(g2); } }));
+    if (!fx) {
+      if (!repairs.length) { game.openModal({ title: t('base.bench'), lines: [t('base.repairNone')], options: [{ label: t('loc.close'), run: () => {} }] }); return; }
+      game.openModal({ title: t('base.bench'), width: 820, lines: [t('base.repairSub')], options: [...repairs, { label: t('loc.close'), run: () => {} }] });
+      return;
+    }
+    if (!rows.length && !repairs.length) { game.openModal({ title: t('base.bench'), lines: [t('base.benchNone')], options: [{ label: t('loc.close'), run: () => {} }] }); return; }
     game.openModal({ title: t('base.bench'), width: 820, lines: [`${t('base.benchSub')}: ${t(`skill.${fx.skill}`)} ${t('battle.dc')} ${fx.dc}`],
-      options: [...rows.slice(0, 9).map(({ e }) => ({ label: ITEMS[e.item].name, sub: `${QUALITY[e.q].name} → ${QUALITY[Q_NEXT[e.q]].name}`,
+      options: [...rows.slice(0, repairs.length ? 5 : 9).map(({ e }) => ({ label: ITEMS[e.item].name, sub: `${QUALITY[e.q].name} → ${QUALITY[Q_NEXT[e.q]].name}`,
         run: (g) => openCheck(g, { title: `${t('base.bench')}: ${ITEMS[e.item].name}`, skill: fx.skill, dc: fx.dc, members: members(sv, g.data), cancel: true,
           onDone: (g2, ok) => {
             e.up = true;
             if (ok) { e.q = Q_NEXT[e.q]; g2.toast(tf('base.benchOk', { name: ITEMS[e.item].name }), 'j'); } else g2.toast(tf('base.benchFail', { name: ITEMS[e.item].name }), 'c');
             refreshView(sv); persist(g2); layout(g2);
-          } }) })), { label: t('loc.close'), run: () => {} }] });
+          } }) })), ...repairs, { label: t('loc.close'), run: () => {} }] });
+  }
+
+  /** Radio L2: order goods from a vendor — paid now, delivered in N days (world/base.js orderInfo / placeOrder). */
+  function openOrder(game) {
+    const sv = game.save;
+    const oi = orderInfo(sv);
+    if (!oi) return;
+    game.openModal({ title: t('base.order'), width: 820, lines: [tf('base.orderText', { n: oi.left, max: oi.max, d: oi.days }), { text: `${t('world.credits')}: ${sv.hero.credits}`, color: 'b' }],
+      options: [...oi.stock.map((x) => ({ label: `${ITEMS[x.id].name} — ${x.price}`, disabled: !oi.left || sv.hero.credits < x.price,
+        run: (g) => { if (placeOrder(sv, x.id)) g.toast(tf('base.ordered', { item: ITEMS[x.id].name, d: oi.days }), 'j'); persist(g); layout(g); } })),
+      { label: t('loc.close'), run: () => {} }] });
   }
 
   function radioRumor(game) {
@@ -206,11 +235,13 @@ export function createBaseScene(back = null) {
   function defend(game) {
     const sv = game.save;
     const ev = sv.base.raid.ev;
+    const kb = defenseKb(sv); // barricades: the party's KB in this battle (partyUnits reads save.battleBuff)
+    if (kb) sv.battleBuff = { kb }; else delete sv.battleBuff;
     import('./world-battle.js').then((m) => m.startWorldBattle(game, {
       encounter: ev.encounter, map: BASE_ATTACKS.defenseMap, location: BASE_LOCATION, allies: defenseAllies(sv), faction: null,
       title: tf('base.defendTitle', { name: ev.name }), id: `base-raid:${sv.day}`,
-      onWin: (g) => { toastAll(g, defendResult(g.save, true)); persist(g); g.setScene(createBaseScene(back)); },
-      onLose: (g) => { toastAll(g, defendResult(g.save, false)); persist(g); import('./cyberspace.js').then((c) => c.startCyberspace(g, { reason: 'wipe', helped: false })); },
+      onWin: (g) => { delete g.save.battleBuff; toastAll(g, defendResult(g.save, true)); persist(g); g.setScene(createBaseScene(back)); },
+      onLose: (g) => { delete g.save.battleBuff; toastAll(g, defendResult(g.save, false)); persist(g); import('./cyberspace.js').then((c) => c.startCyberspace(g, { reason: 'wipe', helped: false })); },
     }));
   }
 

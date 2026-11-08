@@ -266,3 +266,71 @@ export function sendToReserve(save, npcId) {
 /** Companions resting at the base (waiting, base open). */
 export const baseIdle = (save) => (baseIsOpen(save) ? save.party.filter((p) => p.state === 'waiting') : []);
 export { squadInfo };
+
+// ---------------------------------------------------------------- gifts and requests (COMPANION_RULES.loyalty.gifts / events)
+const G = CR.loyalty.gifts || { minPrice: 0, byTag: {} };
+/** Gift type of an item: weapon | armor | medicine | food | tool | grenade | trinket | mod | null. */
+export function giftType(it) {
+  if (!it) return null;
+  if (it.cat === 'weapon') return 'weapon';
+  if (it.cat === 'armor' || it.cat === 'offhand') return 'armor';
+  if (it.cat === 'mod' || it.slot === 'mod') return 'mod';
+  if (it.cat === 'trinket') return 'trinket';
+  if (it.cat === 'consumable') {
+    if (['medicine', 'stim', 'sedative'].includes(it.kind)) return 'medicine';
+    if (it.kind === 'food') return 'food';
+    if (it.kind === 'tool') return 'tool';
+    if (['grenade', 'trap'].includes(it.kind)) return 'grenade';
+  }
+  return null;
+}
+/** Gift types a companion loves (from likes tags). */
+export function lovedTypes(npcId) {
+  const n = NPCS[npcId];
+  const likes = n?.companion?.likes || n?.likes || [];
+  return [...new Set(likes.flatMap((tag) => G.byTag[tag] || []))];
+}
+/** Items of `counts` ({ id: n }) a companion would love and was not given yet. → [id]. */
+export function giftOptions(save, npcId, counts) {
+  const p = partyEntry(save, npcId);
+  if (!p || p.state === 'left') return [];
+  const loved = lovedTypes(npcId), given = p.gifts || [];
+  return Object.keys(counts).filter((id) => counts[id] > 0 && !given.includes(id) && ITEMS[id] && !ITEMS[id].unique
+    && (ITEMS[id].price || 0) >= G.minPrice && loved.includes(giftType(ITEMS[id])));
+}
+/** Give a gift: take the item (takeFn), +giftRare loyalty, remember the id. → toasts. */
+export function giveGift(save, npcId, itemId, takeFn) {
+  const p = partyEntry(save, npcId);
+  if (!p) return [];
+  takeFn?.(save, itemId, 1);
+  p.gifts = [...(p.gifts || []), itemId];
+  journal(save, tf('comp.giftJournal', { name: NPCS[npcId]?.name || npcId, item: ITEMS[itemId]?.name || itemId }));
+  return [{ text: tf('comp.gift', { name: NPCS[npcId]?.name || npcId, item: ITEMS[itemId]?.name || itemId }), color: 'j' }, ...addLoyalty(save, npcId, E.giftRare)];
+}
+
+/** A companion's request: the current stage of the personal quest (active, not refused at this stage). → { qid, stage, text } | null. */
+export function companionRequest(save, npcId) {
+  const q = COMPANIONS[npcId]?.quest;
+  const st = q && save.quests[q];
+  if (!st || st.state !== 'active' || partyEntry(save, npcId)?.state !== 'active') return null;
+  const stage = PERSONAL_QUESTS[q]?.stages.find((s) => s.id === st.stage);
+  if (!stage || stage.id === 'meet' || (st.refused || []).includes(stage.id)) return null;
+  return { qid: q, stage: stage.id, text: stage.text };
+}
+/** Refuse the request: refuseOrder loyalty, once per stage. → toasts. */
+export function refuseRequest(save, npcId) {
+  const r = companionRequest(save, npcId);
+  if (!r) return [];
+  const st = save.quests[r.qid];
+  st.refused = [...(st.refused || []), r.stage];
+  return addLoyalty(save, npcId, E.refuseOrder);
+}
+/** Accept the request: nothing but a promise (journal); the request is not asked again at this stage. */
+export function acceptRequest(save, npcId) {
+  const r = companionRequest(save, npcId);
+  if (!r) return [];
+  const st = save.quests[r.qid];
+  st.refused = [...(st.refused || []), r.stage];
+  journal(save, tf('comp.promise', { name: NPCS[npcId]?.name || npcId, text: r.text }));
+  return [{ text: tf('comp.promise', { name: NPCS[npcId]?.name || npcId, text: r.text }), color: 'a' }];
+}

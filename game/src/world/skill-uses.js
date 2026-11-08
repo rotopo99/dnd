@@ -89,3 +89,40 @@ export function mutantsIn(enemyIds, data = GAME_DATA) {
   const S = SR.economy.samples;
   return (enemyIds || []).some((id) => { const e = enemyDef(id, data); return e && (S.factions.includes(e.faction) || (e.tags || []).some((t) => S.tags.includes(t))); });
 }
+
+// ----------------------------------------------------------------------------- ч.5: peaceful uses on the road / camp / shop
+const use2 = (skill, id) => (SKILL_USES2[skill] || []).find((x) => x.id === id) || null;
+
+/**
+ * Road uses at the start of a journey (SKILL_USES2, where 'travel'; only when someone in the party knows the skill):
+ * Survival «Следопыт» (encounter threshold encMod for the trip), Survival «Охота» (an item on arrival),
+ * Endurance «Форсированный марш» (first road hop of 2+ days is 1 day shorter; not at night).
+ * → { encMod, forage: itemId|null, marchHop: index|-1, log: [{ text, color }] }.
+ */
+export function roadUses(members, hops, night = false) {
+  const out = { encMod: 0, forage: null, marchHop: -1, log: [] };
+  const say = (r, u) => out.log.push({ text: `${r.member.name}: ${useName(u)} — ${r.success ? '✓' : '✗'}`, color: r.success ? 'j' : '4' });
+  const track = use2('survival', 'sur-track'), forage = use2('survival', 'sur-forage'), march = use2('endurance', 'end-march');
+  if (knowsSkill(members, 'survival')) {
+    if (track) { const r = autoCheck(members, ['survival'], track.dc); say(r, track); if (r.success) out.encMod = track.fx.encMod || 0; }
+    if (forage) { const r = autoCheck(members, ['survival'], forage.dc); say(r, forage); if (r.success) out.forage = forage.fx.item || null; }
+  }
+  const i = night ? -1 : hops.findIndex((h) => h.r.kind === 'road' && h.r.days >= 2);
+  if (march && i >= 0 && knowsSkill(members, 'endurance')) { const r = autoCheck(members, ['endurance'], march.dc); say(r, march); if (r.success) out.marchHop = i; }
+  return out;
+}
+
+/** Camp: Meditation «Привал» — +mrlRestPct % MRL to the party (best member rolls). → { pct, member } | null (nobody knows it). */
+export function campMeditation(members) {
+  const u = use2('meditation', 'med-rest');
+  if (!u || !knowsSkill(members, 'meditation')) return null;
+  const r = autoCheck(members, ['meditation'], u.dc);
+  return { ok: r.success, pct: r.success ? u.fx.mrlRestPct || 0 : 0, member: r.member, name: useName(u) };
+}
+
+/** Shop: Religion «Знаток обрядов» — price multiplier for the listed factions (passive: someone knows the skill). */
+export function ritualDiscount(members, faction) {
+  const u = use2('religion', 'rel-tekhonki');
+  if (!u || !faction || !(u.fx.factions || []).includes(faction) || !knowsSkill(members, 'religion')) return 1;
+  return u.fx.price || 1;
+}

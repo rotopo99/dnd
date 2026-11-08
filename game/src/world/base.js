@@ -129,6 +129,30 @@ export const hasCustom = (save, id) => !!save.base?.custom?.[id];
 
 /** Defence value: module + Military (applied in the battle window) is not here. */
 export const defenseValue = (save) => (modActive(save, 'defense').ok ? modFx(save, 'defense').defense || 0 : 0);
+// ---------------------------------------------------------------- radio L2: orders to a vendor (vendorCall per 7 days, delivered in vendorDays)
+/** Order state: { max, left, days, markup, stock: [{ id, price }] } or null without the radio L2. */
+export function orderInfo(save) {
+  const fx = modFx(save, 'radio');
+  if (!fx?.vendorCall) return null;
+  const B = baseState(save);
+  const week = Math.floor(save.day / 7);
+  const used = (B.orders || []).filter((o) => Math.floor(o.placed / 7) === week).length + (B.ordersDone || []).filter((d) => Math.floor(d / 7) === week).length;
+  const stock = (fx.vendorStock || []).filter((id) => ITEMS[id]?.price > 0).map((id) => ({ id, price: Math.max(1, Math.round(ITEMS[id].price * (1 + (fx.vendorMarkup || 0)))) }));
+  return { max: fx.vendorCall, left: Math.max(0, fx.vendorCall - used), days: fx.vendorDays || 2, stock };
+}
+/** Place an order: pay now, the item comes in `days` (baseTick). → ok. */
+export function placeOrder(save, id) {
+  const info = orderInfo(save);
+  const row = info?.stock.find((x) => x.id === id);
+  if (!row || !info.left || save.hero.credits < row.price) return false;
+  save.hero.credits -= row.price;
+  const B = baseState(save);
+  B.orders = [...(B.orders || []), { id, placed: save.day, ready: save.day + info.days }];
+  return true;
+}
+
+/** KB bonus of the party in the base defense battle (defense fx.allyKb) — set as save.battleBuff by scenes/base.js. */
+export const defenseKb = (save) => (modActive(save, 'defense').ok ? modFx(save, 'defense').allyKb || 0 : 0);
 
 /** Raid chance of one check (0..1). */
 export function raidChance(save) {
@@ -160,10 +184,20 @@ export function pickRaid(save, rng = Math.random) {
  * raid checks while away, auto-resolves an expired raid. → toasts.
  */
 export function baseTick(save, rng = Math.random) {
+  delete save.battleBuff; // a leftover of a defense battle left by retreat
   if (!baseOpen(save)) return [];
   const B = baseState(save);
   const out = [];
   const here = save.location === BASE_LOCATION;
+  // radio orders: delivered to the party (bags → stash) when ready
+  if (B.orders?.length) {
+    const ready = B.orders.filter((o) => save.day >= o.ready);
+    if (ready.length) {
+      B.orders = B.orders.filter((o) => save.day < o.ready);
+      B.ordersDone = [...(B.ordersDone || []).filter((d) => save.day - d < 7), ...ready.map((o) => o.placed)];
+      for (const o of ready) { addInst(save, makeInst(o.id), 1); out.push({ text: fmt(BASE_TEXT.orderDone || 'Заказ доставлен: {item}', { item: ITEMS[o.id]?.name || o.id }), color: 'j' }); }
+    }
+  }
   if (B.queue && save.day >= B.queue.ready) {
     B.mods[B.queue.id] = B.queue.level;
     out.push({ text: fmt(BASE_TEXT.upgradeDone, { module: BASE_MODULES[B.queue.id].name, n: B.queue.level }), color: 'j' });

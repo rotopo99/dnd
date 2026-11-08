@@ -12,8 +12,8 @@ import { play } from '../audio/sfx.js';
 import { ITEMS, SKILL_RULES } from '../world/data.js';
 import { itemStats, soonNote, itemTip } from '../ui/items-ui.js';
 import { members, tf } from '../world/state.js';
-import { worldFlagValues } from '../world/checks.js';
-import { chaTrade, knowsSkill } from '../world/skill-uses.js';
+import { worldFlagValues, hasWorldFlag } from '../world/checks.js';
+import { chaTrade, knowsSkill, ritualDiscount } from '../world/skill-uses.js';
 import { openCheck } from '../ui/checks-ui.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
 import { saveGame } from '../save.js';
@@ -30,7 +30,8 @@ const setShopState = (sv, key, patch) => { sv.flags[shopKey(sv, key)] = { ...sho
 
 export function shopPrices(game, tier, faction, key = null) {
   const ms = members(game.save, game.data);
-  let buy = R.prices[tier] ?? 1;
+  // «Открытая ладонь» (open-market): suspicious traders sell as neutral ones (hostile stays closed)
+  let buy = (tier === 'suspicious' && hasWorldFlag(ms, 'open-market') ? R.prices.neutral : R.prices[tier]) ?? 1;
   for (const m of ms) for (const w of m.unit.worldFlags || []) {
     if (w.id === 'cheap-trade' && (!w.factions || (faction && w.factions.includes(faction)))) buy *= 1 - (w.value || 0.1);
   }
@@ -38,6 +39,7 @@ export function shopPrices(game, tier, faction, key = null) {
   const cha = chaTrade(ms);
   const st = key ? shopState(game.save, key) : {};
   buy *= cha.buy * (st.haggle === 'ok' ? 1 - T.haggle.discount : 1);
+  buy *= ritualDiscount(ms, faction); // world-consequences.md ч.5: Religion «Знаток обрядов» (tekhonki)
   buy *= exodusPrice(game.save); // third-exodus.md: marks 3+ raise prices
   buy *= wantedPriceMult(game.save, faction); // world-consequences.md §2: wanted levels raise prices
   const sellMul = (1 + sellBonus) * cha.sell;

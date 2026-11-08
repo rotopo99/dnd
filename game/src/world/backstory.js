@@ -3,7 +3,7 @@
 // flags, topics (flag `topic:<id>`), drawback (rep / phobia / wanted). Skill bonuses work through buildHero
 // (backstoryWorld → the merged gadget's world entries { check, bonus }), so checks and the skills window see them.
 import { giveItem } from './inventory.js';
-import { BACKSTORIES, TOPIC_NOTES } from '../data/world/backstories.js';
+import { BACKSTORIES, TOPIC_NOTES, TOPIC_TALK } from '../data/world/backstories.js';
 import { SKILLS } from '../data/talents.js';
 import { applyRep, factionName } from './reputation.js';
 import { ITEMS } from './data.js';
@@ -20,6 +20,19 @@ const skillName = (s) => SKILLS[s]?.name || s;
 export function backstoryWorld(hero) {
   const b = backstoryOf(hero?.bg);
   return b ? b.skills.map((s) => ({ check: s.skill, bonus: s.bonus, name: b.name })) : [];
+}
+
+/**
+ * Drawback «no battle experience» (drawback.hit): passives for the merged gadget until the first won battle
+ * (codex kills are empty). → [{ op: { hit } }].
+ */
+export function backstoryPassives(save) {
+  const b = backstoryOf(save?.hero?.bg);
+  const hit = b?.drawback?.hit;
+  if (!hit) return [];
+  const kills = save.codex?.kills;
+  if (kills && Object.keys(kills).length) return [];
+  return [{ op: { hit } }];
 }
 
 /** Apply start effects to a fresh save (before normalizeInventory: items go into hero.items counts). → [{ faction, delta }]. */
@@ -63,4 +76,25 @@ export function backstoryTip(b) {
   for (const tp of b.topics || []) lines.push({ text: tf('bg.topic', { text: TOPIC_NOTES[tp] || tp }), color: 'b' });
   lines.push({ text: tf('bg.drawback', { text: b.drawback?.note || b.drawback?.trust || '—' }), color: 'c' });
   return { title: b.name, lines };
+}
+
+/**
+ * Backstory questions for an NPC (TOPIC_TALK): the hero has `topic:<id>` and the NPC's faction / id matches.
+ * → [{ id, q, a, fx, used }] (used — the one-time fx was already given by this NPC).
+ */
+export function backstoryTopics(save, npcId, faction) {
+  const out = [];
+  for (const [id, tp] of Object.entries(TOPIC_TALK)) {
+    if (!hasTopic(save, id)) continue;
+    if (!(tp.npcs?.includes(npcId) || (faction && tp.factions?.includes(faction)))) continue;
+    out.push({ id, q: tp.q, a: tp.a, fx: tp.fx || {}, used: !!save.flags[`topic-used:${id}:${npcId}`] });
+  }
+  return out;
+}
+/** Mark a backstory topic as used with this NPC; → the one-time effects ({ xp, credits }, hook) or null when used. */
+export function useBackstoryTopic(save, npcId, id) {
+  const k = `topic-used:${id}:${npcId}`;
+  if (save.flags[k]) return null;
+  save.flags[k] = true;
+  return TOPIC_TALK[id]?.fx || {};
 }
