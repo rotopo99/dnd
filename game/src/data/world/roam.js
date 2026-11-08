@@ -1,5 +1,5 @@
 // Free node map (docs/specs/free-roam.md, этап 1): numbers and node-type recipes for world/roam-gen.js.
-// Blocks themselves — data/maps/blocks.js. Node kinds wild | sea | boss | terminal stay menu nodes (types: null).
+// Blocks themselves — data/maps/roam/blocks.js. Node kinds wild | sea | boss | terminal stay menu nodes (types: null).
 
 export const ROAM = {
   enabled: true, // FREE_ROAM: entering a node with a map opens the free map (false — the old menu everywhere)
@@ -25,7 +25,7 @@ export const ROAM = {
 export const ROAM_SIZE = { camp: [28, 22], city: [48, 36], default: [40, 30] };
 
 /**
- * Recipes: blocks — [id, min, max] from data/maps/blocks.js; exits — gaps in the border (D); fill '#' — rooms carved
+ * Recipes: blocks — [id, min, max] from data/maps/roam/blocks.js; exits — gaps in the border (D); fill '#' — rooms carved
  * in rock and joined by corridors (bunker), '.' — open ground with a border; decor — scattered chars [char, n].
  */
 export const ROAM_TYPES = {

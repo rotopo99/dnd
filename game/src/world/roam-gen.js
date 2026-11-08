@@ -1,7 +1,7 @@
-// Generated node maps (free-roam.md §1.1): a border (or rock for bunkers) + blocks from data/maps/blocks.js placed with
+// Generated node maps (free-roam.md §1.1): a border (or rock for bunkers) + blocks from data/maps/roam/blocks.js placed with
 // paths between them, exits as gaps in the border, decor, then markers → objects. Deterministic: seed = locId.
 // Connectivity is checked (≤ ROAM.genTries attempts); after that unreachable objects are dropped. No DOM.
-import { BLOCKS } from '../data/maps/blocks.js';
+import { BLOCKS } from '../data/maps/roam/blocks.js';
 import { ROAM, ROAM_SIZE, ROAM_TYPES, roamTypeOf } from '../data/world/roam.js';
 import { parseMap, reachable, T_WALL, T_COVER, T_WATER } from '../rules/grid.js';
 
