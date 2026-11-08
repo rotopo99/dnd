@@ -72,6 +72,20 @@ function restore(u, hp, mrl) {
   if (mrl != null) u.mrl = Math.max(0, Math.min(u.maxMrl, mrl));
 }
 
+/**
+ * Rest (data/world/rest.js): persisted ENR (`holder.enr`, null — full) and «за отдых» abilities: `recharge: 'short'|'long'`,
+ * `usesPerRest` (default usesPerBattle) — the battle copy gets usesPerBattle = what is left until the rest (`holder.restUses`).
+ */
+function restoreRest(u, holder) {
+  if (holder.enr != null) u.enr = Math.max(0, Math.min(u.maxEnr, holder.enr));
+  const used = holder.restUses || {};
+  u.abilities = u.abilities.map((a) => {
+    if (!a.recharge) return a;
+    const per = a.usesPerRest ?? a.usesPerBattle ?? 1;
+    return { ...a, usesPerRest: per, usesPerBattle: Math.max(0, per - (used[a.id] || 0)) };
+  });
+}
+
 /** Weapon range of the hero's class/path (for item requirements without building). */
 function weaponRangeOf(data, cls, path) {
   const c = data.CLASSES[cls];
@@ -128,6 +142,7 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const marks = h.judgeMarks || 0;
   if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
   restore(u, h.hp, h.mrl);
+  restoreRest(u, h);
   u.look = h.look || null; u.avatar = h.avatar || null;
   if (h.withdrawal) u.withdrawal = { ...h.withdrawal };
   return u;
@@ -155,6 +170,7 @@ export function buildCompanion(save, p, data = GAME_DATA) {
     try { u = buildCreature({ race: 'human', cls, path, level, name: n.name, data, id: `c-${n.id}`, equipment, asi }); } catch { u = buildCreature({ race: 'human', cls, path, level, name: n.name, data, id: `c-${n.id}` }); }
   }
   restore(u, p.hp, p.mrl);
+  restoreRest(u, p);
   if (save.settings.aiCompanions) u.control = 'ai';
   return u;
 }

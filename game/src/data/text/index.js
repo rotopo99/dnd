@@ -3,6 +3,7 @@ import { SKILLS } from '../talents.js';
 import { INVENTORY_TEXT } from './inventory.js';
 import { COMPANION_TEXT } from './companions.js';
 import { WORLD_TEXT } from './world.js';
+import { REST_TEXT } from './rest.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -789,5 +790,6 @@ for (const [id, sk] of Object.entries(SKILLS)) ru[`skill.${id}`] = sk.name;
 Object.assign(ru, INVENTORY_TEXT); // v7 inventory strings (override older gear/battle item keys)
 Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
 Object.assign(ru, WORLD_TEXT); // world-consequences.md: consequences, epilogue, crime
+Object.assign(ru, REST_TEXT); // rest: short / long rests, provisions
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

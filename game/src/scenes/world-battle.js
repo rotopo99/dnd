@@ -26,6 +26,7 @@ import { incarnate, exodusZeroFinale } from '../world/exodus.js';
 import { markSeen, markKills, markTerm } from '../world/codex.js';
 import { battleLoyalty } from '../world/companions.js';
 import { queueBark } from '../world/barks.js';
+import { afterBattle as restAfterBattle } from '../world/rest.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -249,6 +250,7 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     p.hp = r.hp; p.mrl = r.mrl;
     consumeBattle(save, p.npc, usedItems(u));
   }
+  out.push(...restAfterBattle(save, b.byId, won && !retreat, game.data)); // rest: ENR / «за отдых» persist, breather after a win
   // Cyberspace is decided right here (synchronously): a reload before the next scene still sends the hero there
   if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
   if (won) {
