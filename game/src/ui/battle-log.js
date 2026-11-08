@@ -54,7 +54,7 @@ export function formatEvent(S, e) {
     case 'damage': {
       const mrl = e.resource === 'mrl';
       const col = mrl ? C.n : e.dmgType === 'proxy' ? C.a : C.c;
-      const out = [a(T), g(': '), [`−${e.amount} ${resName(e.resource)}`, col]];
+      const out = e.amount > 0 || !e.absorbed ? [a(T), g(': '), [`−${e.amount} ${resName(e.resource)}`, col]] : [a(T), g(':')];
       const notes = [dmgName(e.dmgType)];
       if (e.resist === 'resist') notes.push(t('battle.resisted'));
       if (e.resist === 'vuln') notes.push(t('battle.vulnerable'));
@@ -66,7 +66,7 @@ export function formatEvent(S, e) {
       return out;
     }
     case 'heal': return [a(T), g(': '), [`+${e.amount} ${resName(e.resource)}`, e.resource === 'mrl' ? C.f : C.j]];
-    case 'shield': return [a(T), g(': '), e.kept ? [`${t('battle.shield')} ${e.value} (${t('battle.shieldKept')})`, C.f] : [`+${e.value} ${t('battle.shield')}`, C.f]];
+    case 'shield': return [a(T), g(': '), e.kept ? [`${t('battle.shield')} ${e.value} (${t('battle.shieldKept')})`, C.f] : [t('battle.shieldGain').replace('{n}', e.value), C.f]];
     case 'shieldBreak': return [a(T), g(': '), [`${t('battle.shield')} ✕`, C.f]];
     case 'status': {
       const d = b.data.statuses[e.id];

@@ -111,7 +111,7 @@ const ru = {
   'battle.roundN': 'Раунд',
   'battle.damageTo': 'урон',
   'battle.heals': 'лечение',
-  'battle.shield': 'Врем. ЗДР', 'battle.absorbed': 'поглощено', 'battle.shieldKept': 'не складываются',
+  'battle.shield': 'Врем. ЗДР', 'battle.absorbed': 'поглощено', 'battle.shieldKept': 'не складываются', 'battle.shieldGain': '+{n} врем. ЗДР',
   'battle.immune': 'иммунитет',
   'battle.resisted': 'сопр.',
   'battle.vulnerable': 'уязв.',

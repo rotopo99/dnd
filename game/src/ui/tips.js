@@ -108,8 +108,8 @@ export function talentTip(id) {
 
 /** Find a term (status / ability name) inside a log segment «…» and return its tip. */
 export function termTip(str, statuses, abilities = []) {
-  if (String(str).includes(t('battle.absorbed'))) return tmpHpTip(null);
-  if (String(str).includes(t('battle.shield'))) return tmpHpTip(null);
+  const low = String(str).toLowerCase();
+  if (low.includes(t('battle.absorbed')) || low.includes(t('battle.shield').toLowerCase())) return tmpHpTip(null);
   const name = String(str).replace(/[«»]/g, '').replace(/\s*\(\d+\)$/, '').trim();
   for (const s of Object.values(statuses || STATUSES)) if (s.name === name) return statusTip(s.id || name, statuses);
   const a = abilities.find((x) => x && x.name === name);

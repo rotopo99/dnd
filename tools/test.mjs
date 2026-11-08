@@ -223,6 +223,38 @@ test('shield absorbs HP damage, larger shield wins', () => {
   assert.equal(dealDamage(b, H, E, 10, 'slash'), 4);
   assert.equal(E.shield, null);
 });
+test('temp HP (shield): ally-cast in a foreign turn outlives the owner\'s turns, absorbs, no stacking, lasts the battle', () => {
+  const { b, H, E } = duel();
+  H.hp = H.maxHp = 50;
+  forceTurn(b, E);
+  applyOp(b, E, H, { op: 'shield', value: 8 }); // cast in someone else's turn (like an ally's)
+  assert.deepEqual([H.shield.value, H.shield.turns], [8, null], 'default: until the battle ends');
+  for (let i = 0; i < 6; i++) endTurn(b); // several full rounds: owner's turns pass
+  assert.ok(H.shield && H.shield.value === 8, 'survives owner turn ends');
+  assert.equal(dealDamage(b, E, H, 5, 'slash'), 0, 'fully absorbed');
+  assert.equal(H.hp, 50);
+  assert.equal(events(b, 'damage').pop().absorbed, 5);
+  applyOp(b, E, H, { op: 'shield', value: 2 });
+  assert.equal(H.shield.value, 3, 'smaller does not replace or stack');
+  assert.ok(events(b, 'shield').pop().kept);
+  applyOp(b, E, H, { op: 'shield', value: 6 });
+  assert.equal(H.shield.value, 6, 'bigger replaces, no sum');
+  assert.equal(dealDamage(b, E, H, 10, 'slash'), 4);
+  assert.equal(H.shield, null);
+  assert.equal(H.hp, 46);
+  // explicit turns (enemy shields) still expire
+  applyOp(b, H, E, { op: 'shield', value: 5, turns: 1 });
+  assert.equal(E.shield.turns, 1);
+  for (let i = 0; i < 4; i++) endTurn(b);
+  assert.equal(E.shield, null, 'explicit turns expire');
+});
+test('temp HP: hero-side shield ops in data have no turns (until battle end)', () => {
+  const bad = [];
+  const scan = (id, list) => { for (const a of list || []) for (const op of a.effects || []) if (op.op === 'shield' && op.turns != null) bad.push(`${id}:${a.id}`); };
+  for (const k of ['CLASSES', 'RACES', 'TALENTS', 'GADGETS']) for (const c of Object.values(GAME_DATA[k])) scan(c.id, c.abilities);
+  for (const it of Object.values(GAME_DATA.ITEMS)) scan(it.id, [it.battle, ...(it.grants || [])].filter(Boolean));
+  assert.deepEqual(bad, []);
+});
 test('statuses: tick at turn start, durations, immuneTags, endOnHeal, cumulative corrosion', () => {
   const { b, H, E } = duel();
   E.hp = E.maxHp = 100;

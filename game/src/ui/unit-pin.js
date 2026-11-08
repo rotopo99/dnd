@@ -73,7 +73,7 @@ export function drawPin(ctx, S) {
   text(ctx, fit(ctx, sub.filter(Boolean).join(' · '), tw), tx, y + 22, C['4']);
   y += 52;
   const line = (s, col = C['4'], font = FONT) => { for (const l of wrap(ctx, s, w)) { text(ctx, l, x, y, col, font); y += LINE; } };
-  resLineTip(ctx, x, y, w, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
+  resLineTip(ctx, x, y, w, 'hp', d.hp, v.maxHp, t('res.hp'), v.shield); y += 22;
   if (v.maxMrl > 0) { resLineTip(ctx, x, y, w, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
   if (v.maxEnr > 0) { resLineTip(ctx, x, y, w, 'enr', v.enr, v.maxEnr, t('res.enr')); y += 22; }
   text(ctx, `${t('res.kb')} ${v.kb}  ${t('create.speed')} ${v.speed}${v.shield ? `  ${t('battle.shield')} ${v.shield}` : ''}`, x, y, C['5'], FONT_B);

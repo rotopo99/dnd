@@ -5,7 +5,7 @@ import { drawUnitPortrait } from './portrait-of.js';
 import { TILE, drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
 import { abilityRange, unitView, movePath, statusFactor, isStatusImmune } from '../rules/combat.js';
 import { drawSurfaces, drawBarrels, surfaceHover } from './surface-view.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, clear } from './draw.js';
+import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, clear, TMP_COLOR } from './draw.js';
 import { teamColor } from './battle-log.js';
 import { ITEMS } from '../data/index.js';
 import { beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
@@ -380,7 +380,7 @@ function drawUnits(ctx, S, preview, tms) {
     const bx = px + 3;
     const base = String(u.enemyId || '').split('^')[0];
     const by = py - (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s - bh * 2 - 4;
-    bar(ctx, bx, by, bw, bh, d.hp, u.maxHp, 'hp');
+    bar(ctx, bx, by, bw, bh, d.hp, u.maxHp, 'hp', u.shield ? u.shield.value : 0);
     if (u.maxMrl > 0) bar(ctx, bx, by + bh + 1, bw, bh, d.mrl, u.maxMrl, 'mrl');
     // status icons (Stage B: palette colour per status, max 4, then «+N»)
     let sx = bx;
@@ -629,7 +629,7 @@ function unitCard(ctx, S, u, x, y, w, odds) {
   const tx = x + 56, tw = w - 56;
   text(ctx, fit(ctx, S.name(u.id), tw, FONT_B), tx, y, teamColor(u), FONT_B);
   y += 24;
-  resLineTip(ctx, tx, y, tw, 'hp', d.hp, v.maxHp, t('res.hp')); y += 22;
+  resLineTip(ctx, tx, y, tw, 'hp', d.hp, v.maxHp, t('res.hp'), v.shield); y += 22;
   if (v.maxMrl > 0) { resLineTip(ctx, tx, y, tw, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
   y = Math.max(y, top + 52);
   if (v.maxEnr > 0) { resLineTip(ctx, x, y, w, 'enr', v.enr, v.maxEnr, t('res.enr')); y += 22; }
@@ -702,7 +702,7 @@ function drawPanel(ctx, S, preview) {
   text(ctx, fit(ctx, raceName, w - 108), x + 106, y + 30, C['4']);
   text(ctx, fit(ctx, cls?.name || '', w - 108), x + 106, y + 50, C['4']);
   y += 110;
-  resLineTip(ctx, x, y, w, 'hp', S.dispOf(hero).hp, hero.maxHp, t('res.hp')); y += 22;
+  resLineTip(ctx, x, y, w, 'hp', S.dispOf(hero).hp, hero.maxHp, t('res.hp'), hero.shield ? hero.shield.value : 0); y += 22;
   resLineTip(ctx, x, y, w, 'mrl', S.dispOf(hero).mrl, hero.maxMrl, t('res.mrl')); y += 22;
   resLineTip(ctx, x, y, w, 'enr', hero.enr, hero.maxEnr, t('res.enr')); y += 24;
   const v = unitView(b, hero);
@@ -748,7 +748,8 @@ function drawPanel(ctx, S, preview) {
     ctx.fillStyle = teamColor(u);
     ctx.fillRect(x, y + 4, 8, 8);
     text(ctx, fit(ctx, S.name(u.id), w - 90), x + 16, y, curr ? C['5'] : C['4'], curr ? FONT_B : FONT);
-    text(ctx, u.down ? t('battle.downTag') : `${S.dispOf(u).hp}/${u.maxHp}`, x + w, y, u.down ? C.c : C['3'], FONT, 'right');
+    text(ctx, u.down ? t('battle.downTag') : `${S.dispOf(u).hp}/${u.maxHp}`, x + w - (u.shield && !u.down ? 34 : 0), y, u.down ? C.c : C['3'], FONT, 'right');
+    if (u.shield && !u.down) text(ctx, `+${u.shield.value}`, x + w, y, TMP_COLOR, FONT_B, 'right');
     y += 22;
     shown++;
   }

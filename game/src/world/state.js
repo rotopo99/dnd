@@ -1,6 +1,6 @@
 // World state helpers over the save object (world.md §8): new game, party members, creatures for battle,
 // experience and levels, rewards (Effects), deeds/approval, discovery, travel and encounters.
-import { buildCreature, isAllowed, mod, asiLevelsFor, mainStatOf, ASI_STAT_MAX } from '../rules/character.js';
+import { buildCreature, isAllowed, mod, asiLevelsFor } from '../rules/character.js';
 import { t } from '../data/text/index.js';
 import { talentAllowed } from '../data/talents.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
@@ -8,7 +8,7 @@ import { gainXp as engineGainXp, levelForXp, xpForLevel, MAX_LEVEL } from '../ru
 import { COMPANIONS, COMPANION_RULES as CR } from '../data/companions.js';
 import { queueBark } from './barks.js';
 import { NPCS } from '../data/npcs.js';
-import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
+import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT, TALENT_LEVELS } from '../data/talents.js';
 import { RELATIONS } from '../data/factions.js';
 import { isBattleItem } from '../rules/combat.js';
 import { clearWithdrawal } from '../rules/aftermath.js';
@@ -165,7 +165,7 @@ export function buildCompanion(save, p, data = GAME_DATA) {
   try {
     if (!isAllowed(race, data.CLASSES[cls])) throw new Error('race');
     // companions: ASI automatically by the class main stat (levels-20.md)
-    u = buildCreature({ race, cls, path, level, name: n.name, data, id: `c-${n.id}`, equipment, ...kit, talents, asi, activeCombat: talents.filter((id) => isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(level)) });
+    u = buildCreature({ race, cls, path, level, name: n.name, data, id: `c-${n.id}`, equipment, ...kit, talents, asi, activeCombat: activeOf(p, talents, level) });
   } catch {
     try { u = buildCreature({ race: 'human', cls, path, level, name: n.name, data, id: `c-${n.id}`, equipment, asi }); } catch { u = buildCreature({ race: 'human', cls, path, level, name: n.name, data, id: `c-${n.id}` }); }
   }
@@ -173,6 +173,12 @@ export function buildCompanion(save, p, data = GAME_DATA) {
   restoreRest(u, p);
   if (save.settings.aiCompanions) u.control = 'ai';
   return u;
+}
+
+/** Active combat talents of a member entry: its own loadout (p.activeCombat) or the first combat talents; ≤ the level limit. */
+function activeOf(e, talents, level) {
+  const own = Array.isArray(e.activeCombat) ? e.activeCombat : talents.filter((id) => isCombatTalent(TALENTS[id]));
+  return own.filter((id) => talents.includes(id) && isCombatTalent(TALENTS[id])).slice(0, COMBAT_TALENT_LIMIT(level));
 }
 
 /** Starter equipment of a companion by class / path (shops.js STARTER_KITS): { weapon, armor, offhand, mods } or null. */
@@ -327,25 +333,91 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
 
 const itemName = (id) => ITEMS[id]?.name || id;
 
-/** Can the hero take this world-given talent: race, alignment, tags, weapon, stats, level (jobs/origins are not checked). */
-export function talentOk(save, id, data = GAME_DATA) {
-  const tl = TALENTS[id];
-  if (!tl) return false;
-  const u = buildHero(save, data);
-  const req = { ...(tl.req || {}) };
-  delete req.jobs; delete req.origins; // alignment is still checked: good heroes get no evil talents and vice versa
-  return talentAllowed({ ...tl, req }, { race: save.hero.race, cls: save.hero.cls, alignment: save.hero.alignment, stats: u.stats, level: save.hero.level, weaponRange: u.weapon?.range || 1, tags: u.tags });
+/** Party member entry by key: save.hero for 'hero', else the (not left) party entry or null. */
+export function memberEntry(save, key = 'hero') {
+  if (key === 'hero') return save.hero;
+  return save.party.find((p) => p.npc === key && p.state !== 'left') || null;
 }
 
-/** Learn a talent (quest reward, trainer, companion, Cyberspace). Checks talentOk; returns toasts. */
-export function learnTalent(save, id, data = GAME_DATA, { force = false } = {}) {
+/** Battle creature of a member key (hero or companion). */
+export function memberUnit(save, key = 'hero', data = GAME_DATA) {
+  if (key === 'hero') return buildHero(save, data);
+  const p = memberEntry(save, key);
+  return p ? buildCompanion(save, p, data) : null;
+}
+
+/** talentAllowed context of a member: its race / class / stats / level / weapon (companions — from their own build). */
+export function talentCtx(save, key, u) {
+  const h = save.hero;
+  if (key === 'hero') return { race: h.race, cls: h.cls, origin: h.origin, alignment: h.alignment, stats: u.stats, level: h.level, weaponRange: u.weapon?.range || 1, tags: u.tags };
+  const n = NPCS[key] || {};
+  return { race: u.raceId || n.race, cls: u.classId || n.cls, origin: n.origin, alignment: n.alignment, stats: u.stats, level: u.level, weaponRange: u.weapon?.range || 1, tags: u.tags };
+}
+
+/** Can a member (hero by default) take this world-given talent: race, alignment, tags, weapon, stats, level (jobs/origins are not checked). */
+export function talentOk(save, id, data = GAME_DATA, key = 'hero') {
   const tl = TALENTS[id];
-  if (!tl || save.hero.talents.includes(id)) return [];
-  if (!force && !talentOk(save, id, data)) return [{ text: tf('fx.talentNotAllowed', { name: tl.name }), color: 'c' }];
-  save.hero.talents.push(id);
-  if (isCombatTalent(tl) && save.hero.activeCombat.length < COMBAT_TALENT_LIMIT(save.hero.level)) save.hero.activeCombat.push(id);
+  if (!tl) return false;
+  const u = memberUnit(save, key, data);
+  if (!u) return false;
+  const req = { ...(tl.req || {}) };
+  delete req.jobs; delete req.origins; // alignment is still checked: good heroes get no evil talents and vice versa
+  return talentAllowed({ ...tl, req }, talentCtx(save, key, u));
+}
+
+/** Learn a talent (quest reward, trainer, companion, Cyberspace, level pick). opts.key — the member (hero by default). Returns toasts. */
+export function learnTalent(save, id, data = GAME_DATA, { force = false, key = 'hero' } = {}) {
+  const tl = TALENTS[id];
+  const e = memberEntry(save, key);
+  if (!tl || !e) return [];
+  e.talents = e.talents || [];
+  if (e.talents.includes(id)) return [];
+  if (!force && !talentOk(save, id, data, key)) return [{ text: tf('fx.talentNotAllowed', { name: tl.name }), color: 'c' }];
+  const before = key === 'hero' ? null : buildCompanion(save, e, data);
+  if (key !== 'hero' && !Array.isArray(e.activeCombat)) e.activeCombat = activeOf(e, safeTalents(e.talents), e.level || 1);
+  e.talents.push(id);
+  if (isCombatTalent(tl) && e.activeCombat.length < COMBAT_TALENT_LIMIT(e.level || 1)) e.activeCombat.push(id);
+  if (key !== 'hero') {
+    rebuildKeep(save, e, before, data);
+    const text = `${NPCS[key]?.name || key}: ${tf('fx.talent', { name: tl.name })}`;
+    journal(save, text);
+    return [{ text, color: 'a' }];
+  }
   journal(save, tf('fx.talent', { name: tl.name }));
   return [{ text: tf('fx.talent', { name: tl.name }), color: 'a' }];
+}
+
+/** Level talent pick of a member (pendingTalents − 1). → toasts. */
+export function chooseMemberTalent(save, key, id, data = GAME_DATA) {
+  const e = memberEntry(save, key);
+  if (!e || !(e.pendingTalents > 0) || !TALENTS[id]) return [];
+  const out = learnTalent(save, id, data, { force: true, key });
+  if (out.length) e.pendingTalents--;
+  return out;
+}
+
+/** Unspent level-ups of a member: { asi: [levels], talents: n, any }. */
+export function memberPending(save, key) {
+  const e = memberEntry(save, key);
+  const asi = [...(e?.pendingAsi || [])].sort((a, b) => a - b);
+  const talents = Math.max(0, e?.pendingTalents || 0);
+  return { asi, talents, any: asi.length > 0 || talents > 0 };
+}
+
+/** Toggle a combat talent of a member between active and «в рюкзаке». → 'on' | 'off' | 'limit' | null. */
+export function toggleActiveTalent(save, key, id, data = GAME_DATA) {
+  const e = memberEntry(save, key);
+  if (!e || !(e.talents || []).includes(id) || !TALENTS[id] || !isCombatTalent(TALENTS[id])) return null;
+  const before = key === 'hero' ? null : buildCompanion(save, e, data);
+  if (!Array.isArray(e.activeCombat)) e.activeCombat = activeOf(e, safeTalents(e.talents), e.level || 1);
+  const a = e.activeCombat;
+  const i = a.indexOf(id);
+  let r;
+  if (i >= 0) { a.splice(i, 1); r = 'off'; }
+  else if (a.length < COMBAT_TALENT_LIMIT(e.level || 1)) { a.push(id); r = 'on'; }
+  else return 'limit';
+  if (before) rebuildKeep(save, e, before, data);
+  return r;
 }
 
 function damageParty(save, dhp, dmrl, data) {
@@ -403,11 +475,31 @@ function keepDamage(entry, oldU, newU) {
   entry.mrl = Math.max(1, newU.maxMrl - Math.max(0, oldU.maxMrl - oldU.mrl));
 }
 
-/** companions-scenes.md: old saves / new entries — own XP and level from the hero's current level. */
-export function ensureCompanionXp(save, p) {
+/**
+ * Companion level fields (companions-scenes.md + party talents): old saves / new entries get own XP and level
+ * from the hero, activeCombat, asi[], pendingAsi, pendingTalents. Migration (p.tv !== 1): XP above the level
+ * becomes levels; ASI and talent levels ≤ the level that were never chosen by the player (auto ASI of the
+ * old rule included) become unspent level-ups — the player picks them like the hero's.
+ */
+export function ensureCompanionXp(save, p, data = GAME_DATA) {
   if (!p) return p;
   if (!Number.isFinite(p.level) || p.level < 1) p.level = Math.max(1, Math.min(MAX_LEVEL, save.hero.level || 1));
   if (!Number.isFinite(p.xp)) p.xp = xpForLevel(p.level);
+  if (p.tv === 1) return p;
+  const cls = data.CLASSES[NPCS[p.npc]?.cls];
+  const cap = Math.max(p.level, Math.min(MAX_LEVEL, (save.hero.level || 1) + CR.xp.levelCapOverHero));
+  const lv = Math.min(cap, Math.max(p.level, levelForXp(p.xp)));
+  for (let L = p.level + 1; L <= lv; L++) p.levelNews = [...(p.levelNews || []), L];
+  p.level = lv;
+  p.talents = safeTalents(p.talents);
+  p.asi = (Array.isArray(p.asi) ? p.asi : []).filter((e) => e && Number.isInteger(e.level) && !e.auto);
+  const asiLv = cls ? asiLevelsFor(cls) : [];
+  p.pendingAsi = [...new Set([...(p.pendingAsi || []), ...asiLv.filter((L) => L <= p.level && !p.asi.some((e) => e.level === L))])].sort((a, b) => a - b);
+  const tl = data.TALENT_LEVELS || TALENT_LEVELS;
+  p.pendingTalents = Math.max(0, p.pendingTalents || 0) + tl.filter((L) => L <= p.level).length;
+  if (!Array.isArray(p.activeCombat)) p.activeCombat = activeOf(p, p.talents, p.level);
+  p.asiNotes = [];
+  p.tv = 1;
   return p;
 }
 
@@ -435,20 +527,6 @@ export function shareXp(save, xp, data = GAME_DATA) {
   return out;
 }
 
-/** Auto ASI entry for a companion level: +2 to the main stat, overflow to CON / DEX / WIL (as rules autoAsi). */
-function autoAsiEntry(u, cls, pathId, level) {
-  const pathDef = (cls.paths || []).find((x) => x.id === pathId) || {};
-  const main = mainStatOf(cls, pathDef);
-  const stats = {};
-  let left = 2;
-  for (const k of [main, 'con', 'dex', 'wil']) {
-    const n = Math.min(left, Math.max(0, ASI_STAT_MAX - ((u.stats?.[k] ?? 10) + (stats[k] || 0))));
-    if (n > 0) { stats[k] = (stats[k] || 0) + n; left -= n; }
-    if (!left) break;
-  }
-  return { level, stats, auto: true };
-}
-
 /** Rebuild a companion after a change and keep the damage taken. */
 function rebuildKeep(save, p, before, data) {
   const hp = p.hp, mrl = p.mrl;
@@ -460,35 +538,32 @@ function rebuildKeep(save, p, before, data) {
 }
 
 /**
- * A companion reaches level `to`: HP/MRL keep the damage, p.levelNews (level-up windows, scenes/levelup.js);
- * ASI levels — the player picks (p.pendingAsi) if loyalty ≥ trustsChoicesAt, else the companion picks itself (line in p.asiNotes).
+ * A companion reaches level `to` (like the hero): HP/MRL keep the damage, p.levelNews (level-up windows,
+ * scenes/levelup.js), talent levels → p.pendingTalents, ASI levels → p.pendingAsi (the player picks).
  */
 export function companionLevelUp(save, p, to, data = GAME_DATA) {
   const n = NPCS[p.npc];
   const cls = data.CLASSES[n?.cls];
   if (!cls) { p.level = to; return []; }
+  ensureCompanionXp(save, p, data);
   const before = buildCompanion(save, p, data);
-  if (!Array.isArray(p.asi)) p.asi = (before?.asi || []).map(({ level, stats, talent }) => (talent ? { level, talent } : { level, stats: { ...stats } }));
+  if (!Array.isArray(p.asi)) p.asi = [];
   const from = p.level;
+  if (to <= from) return [];
   p.level = to;
   const asiLv = asiLevelsFor(cls);
-  const trusts = (p.approval || 0) >= CR.loyalty.trustsChoicesAt;
+  const tl = data.TALENT_LEVELS || TALENT_LEVELS;
   for (let L = from + 1; L <= to; L++) {
     p.levelNews = [...(p.levelNews || []), L];
-    if (!asiLv.includes(L) || p.asi.some((e) => e.level === L)) continue;
-    if (trusts) { p.pendingAsi = [...(p.pendingAsi || []), L]; continue; }
-    const u = buildCompanion(save, { ...p, hp: null, mrl: null, level: L }, data);
-    const e = autoAsiEntry(u, cls, p.path || n.path, L);
-    p.asi.push(e);
-    const what = Object.entries(e.stats).map(([k, v]) => `${t(`stat.${k}`)} +${v}`).join(', ');
-    p.asiNotes = [...(p.asiNotes || []), tf('comp.autoAsi', { name: n.name, what })];
+    if (tl.includes(L)) p.pendingTalents = (p.pendingTalents || 0) + 1;
+    if (asiLv.includes(L) && !p.asi.some((e) => e.level === L) && !(p.pendingAsi || []).includes(L)) p.pendingAsi = [...(p.pendingAsi || []), L];
   }
   rebuildKeep(save, p, before, data);
   if (p.state === 'active') queueBark('levelUp', p.npc);
   return [{ text: tf('comp.levelTitle', { name: n.name, n: to }), color: 'a' }];
 }
 
-/** Companion ASI choice (loyalty ≥ trustsChoicesAt): { stats } | { talent }. Keeps the damage. → toasts. */
+/** Companion ASI choice: { stats } | { talent }. Keeps the damage. → toasts. */
 export function chooseCompanionAsi(save, npcId, level, choice, data = GAME_DATA) {
   const p = save.party.find((x) => x.npc === npcId);
   const i = (p?.pendingAsi || []).indexOf(level);
@@ -496,11 +571,10 @@ export function chooseCompanionAsi(save, npcId, level, choice, data = GAME_DATA)
   const before = buildCompanion(save, p, data);
   p.pendingAsi.splice(i, 1);
   p.asi = [...(p.asi || []).filter((e) => e.level !== level), choice.talent ? { level, talent: choice.talent } : { level, stats: { ...choice.stats } }];
-  if (choice.talent && !p.talents.includes(choice.talent)) p.talents.push(choice.talent);
   rebuildKeep(save, p, before, data);
+  if (choice.talent) return learnTalent(save, choice.talent, data, { force: true, key: npcId });
   const name = NPCS[npcId]?.name || npcId;
-  const what = choice.talent ? (TALENTS[choice.talent]?.name || choice.talent) : Object.entries(choice.stats).map(([k, v]) => `${t(`stat.${k}`)} +${v}`).join(', ');
-  return [{ text: `${name}: ${what}`, color: 'a' }];
+  return [{ text: `${name}: ${Object.entries(choice.stats).map(([k, v]) => `${t(`stat.${k}`)} +${v}`).join(', ')}`, color: 'a' }];
 }
 
 

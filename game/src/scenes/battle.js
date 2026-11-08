@@ -700,7 +700,7 @@ export function createBattleScene(opts) {
         break;
       }
       case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); emote(T, 'happy'); } break;
-      case 'shield': if (T && !e.kept) popup(T, `+${e.value} ${t('battle.shield').toLowerCase()}`, C.f); break;
+      case 'shield': if (T && !e.kept) popup(T, t('battle.shieldGain').replace('{n}', e.value), C.f); break;
       case 'nadlom': if (T) popup(T, t('state.strain'), C.n); break;
       case 'breakdown':
         if (T) {
