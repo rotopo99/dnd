@@ -19,6 +19,7 @@ export const ROAM = {
   genTries: 5, // generation attempts until the map is connected
   // generated crates: credits dice and a chance of a ration (the node's own caches go to crates first)
   stash: { credits: '2d6', mult: 3, itemChance: 0.35, items: ['ration', 'tushenka'] },
+  skillSpots: 4, // skills-v3.md: open skill actions shown as points on the map (next to NPCs when possible); the rest — «Навыки» button
 };
 
 /** Map size by type, [w, h]. */

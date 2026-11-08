@@ -12,9 +12,12 @@ import { hotspot } from '../ui/tooltip.js';
 import { TILE, drawSprite, heroSpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
 import { drawTileExtra } from '../ui/battle-terrain.js';
 import { fieldBiome, drawFieldCell, drawFieldProps, propCells } from '../ui/field-view.js';
+import { skillActionsAt, npcHintSkills, hintSkillsOf, hintLines } from '../world/node-actions.js';
+import { openSkillAction, openSkillActions, drawSkillBadge, drawHintBadges } from '../ui/skill-ui.js';
+import { skillName } from '../world/checks.js';
 import { T_RUBBLE, T_EXIT, isPassable, chebyshev } from '../rules/grid.js';
 import { rollDice } from '../rules/dice.js';
-import { activeCompanions, grant } from '../world/state.js';
+import { activeCompanions, grant, tf } from '../world/state.js';
 import { pendingTurnins } from '../world/quests.js';
 import { atBase, modActive as baseModActive } from '../world/base.js';
 import { saveGame } from '../save.js';
@@ -81,8 +84,32 @@ export function createRoamScene(rawId) {
     S.layer = null;
     marks(game);
   }
+  /**
+   * skills-v3.md: up to ROAM.skillSpots open skill actions as points with a skill badge — on a free cell next to an NPC's home
+   * (in order), else on a free spot; deterministic per node. The full list — «Навыки» button.
+   */
+  function syncSkills(game) {
+    const open = skillActionsAt(game.save, locId, loc).filter((x) => !x.done);
+    S.skillAll = skillActionsAt(game.save, locId, loc).length;
+    S.skillOpen = open.length;
+    const taken = new Set([...S.npcs.map((n) => `${n.hx},${n.hy}`), ...S.objs.map((o) => `${o.x},${o.y}`)]);
+    const free = (x, y) => isPassable(grid, x, y) && !taken.has(`${x},${y}`) && grid.tiles[y * W + x] !== T_EXIT;
+    const anchors = [...S.npcs.map((n) => [n.hx, n.hy]), ...(map.spots || [])];
+    const pts = [];
+    open.slice(0, ROAM.skillSpots).forEach((x, i) => {
+      const old = (S.skills || []).find((p) => p.s.id === x.id);
+      if (old) { pts.push({ ...old, s: x }); taken.add(`${old.x},${old.y}`); return; }
+      for (let k = 0; k < anchors.length; k++) {
+        const [ax, ay] = anchors[(i + k) % anchors.length];
+        const cand = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].map(([dx, dy]) => [ax + dx, ay + dy]).find(([cx, cy]) => free(cx, cy));
+        if (cand) { pts.push({ s: x, x: cand[0], y: cand[1] }); taken.add(`${cand[0]},${cand[1]}`); return; }
+      }
+    });
+    S.skills = pts;
+  }
   /** Quest marks («!»): a turn-in waits or the NPC offers a quest. */
   function marks(game) {
+    syncSkills(game);
     for (const n of S.npcs) n.mark = pendingTurnins(game.save, n.id).length ? 'turnin' : L && L.npc.offeredBy(game, NPCS[n.id]).length ? 'quest' : null;
   }
   function writePos(game) {
@@ -219,13 +246,14 @@ export function createRoamScene(rawId) {
   const entities = () => [
     ...S.npcs.map((n) => ({ kind: 'npc', n, x: n.fx, y: n.fy })),
     ...S.objs.map((o) => ({ kind: 'obj', o, x: o.x, y: o.y })),
+    ...(S.skills || []).map((p) => ({ kind: 'skill', p, x: p.x, y: p.y })),
   ];
 
   /** NPC menu: the same buttons as the menu view (world/npc-actions.js). */
   function npcMenu(game, npc) {
     const acts = L.npc.npcActions(game, npc);
     game.openModal({
-      title: npc.name, lines: [{ text: npc.role || '', color: '4' }],
+      title: npc.name, lines: [{ text: npc.role || '', color: '4' }, ...(npcHintSkills(npc.id).length ? [{ text: t('hint.title'), color: 'a' }, ...hintLines(game.save, npcHintSkills(npc.id))] : [])],
       options: [...acts.map((a) => ({ label: a.label, sub: a.disabled ? a.reason : null, disabled: !!a.disabled, reason: a.reason, run: (g) => L.npc.doNpc(g, npc, a.id) })),
         { label: t('loc.close'), run: () => {} }],
     });
@@ -234,6 +262,7 @@ export function createRoamScene(rawId) {
     writePos(game);
     play('uiClick');
     if (ent.kind === 'npc') return npcMenu(game, NPCS[ent.n.id]);
+    if (ent.kind === 'skill') return openSkillAction(game, locId, ent.p.s, (g) => { syncSkills(g); L.refresh(g); });
     const o = ent.o;
     const a = objectAction(o);
     const sv = game.save;
@@ -286,6 +315,8 @@ export function createRoamScene(rawId) {
     const bw = 124, gap = 6;
     const x0 = W0 - nav.length * (bw + gap) - 10;
     S.buttons = nav.map(([id, key, k], i) => ({ id, label: t(key), key: k || undefined, x: x0 + i * (bw + gap), y: H0 - 52, w: bw, h: 42 }));
+    if (S.skillAll) S.buttons.push({ id: 'skills', label: `${t('nsa.group')} ${S.skillOpen}/${S.skillAll}`, x: x0 - bw - gap, y: H0 - 52, w: bw, h: 42 });
+    S.hints = hintSkillsOf(game.save, locId, loc);
     const sv = game.save;
     if (sv.hero.pendingTalents > 0 || (sv.hero.pendingAsi || []).length) S.buttons.push({ id: 'party', label: sv.hero.pendingTalents > 0 ? t('talent.pending') : t('lvl.asiPending'), x: W0 - 260, y: 12, w: 248, h: 36, selected: true });
   }
@@ -300,6 +331,7 @@ export function createRoamScene(rawId) {
   function nav(game, id) {
     writePos(game);
     if (id === 'menuView') return toMenu(game);
+    if (id === 'skills') return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
     if (id === 'map') return confirmLeave(game);
     return L.nav(game, id);
   }
@@ -402,7 +434,8 @@ export function createRoamScene(rawId) {
         // sprites are taller than a tile: the cell under the mouse or the one below it
         const es = entities();
         S.hoverEnt = es.find((e) => e.kind === 'npc' && Math.round(e.x) === mx && (Math.round(e.y) === my || Math.round(e.y) === my + 1))
-          || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my)) || null;
+          || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my))
+          || es.find((e) => e.kind === 'skill' && e.x === mx && e.y === my) || null;
       }
       if (m.wheel) { S.zoom = Math.max(0, Math.min(ROAM.zooms.length - 1, S.zoom - Math.sign(m.wheel))); S.cam = null; }
       if (m.clicked) {
@@ -449,6 +482,14 @@ export function createRoamScene(rawId) {
         const [px, py] = scr(S.hoverCell.x, S.hoverCell.y);
         ctx.strokeStyle = S.hoverEnt ? C.a : rgba(C['5'], 0.4); ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, c - 2, c - 2);
       }
+      // skills-v3.md: skill action points (badge, pulsing frame)
+      for (const p of S.skills || []) {
+        const [px, py] = scr(p.x, p.y);
+        if (px < -c || py < -c || px > W0 || py > H0) continue;
+        const bs = Math.round(c * 0.62);
+        ctx.strokeStyle = rgba(C.a, 0.5 + 0.3 * Math.sin(S.time * 4)); ctx.lineWidth = 2; ctx.strokeRect(px + 2, py + 2, c - 4, c - 4);
+        drawSkillBadge(ctx, p.s.skill, px + (c - bs) / 2, py + (c - bs) / 2, bs, !!p.s.best && p.s.best.kind !== 'other');
+      }
       // units sorted by y (only those on screen)
       const s = c / TILE, tms = S.time * 1000;
       const list = [];
@@ -485,12 +526,16 @@ export function createRoamScene(rawId) {
         if (e.kind === 'npc') {
           const npc = NPCS[e.n.id];
           hotspot(px, py - c, c, c * 2, { title: npc.name, lines: [npc.role || '', ...(e.n.mark ? [{ text: t(e.n.mark === 'turnin' ? 'roam.turnin' : 'roam.quest'), color: 'a' }] : [])] });
+        } else if (e.kind === 'skill') {
+          const x = e.p.s;
+          hotspot(px, py, c, c, { title: x.label, lines: [tf('nsa.mapHint', { skill: skillName(x.skill) }), { text: `${t('battle.dc')} ${x.dc}${x.best ? ` · ${x.best.member.name} ${Math.round(x.best.chance * 100)}%` : ''}`, color: 'a' }] });
         } else hotspot(px, py, c, c, { title: objName(e.o), lines: objLines(e.o) });
       }
       // HUD: node, day, credits; help line; buttons
       panel(ctx, 10, 10, 520, 54, rgba(C['1'], 0.88), C['3']);
       text(ctx, fit(ctx, loc.name, 500, FONT_B), 20, 16, C.h, FONT_B);
       text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level}`, 20, 40, C.b, '13px monospace');
+      drawHintBadges(ctx, sv, S.hints || [], 522, 18, 22, 'right'); // skills-v3.md: «здесь пригодится»
       text(ctx, fit(ctx, t('roam.help'), W0 - S.buttons.length * 130 - 40, '12px monospace'), 12, H0 - 36, C['4'], '12px monospace');
       for (const b of S.buttons) button(ctx, b, S.hover === b);
     },

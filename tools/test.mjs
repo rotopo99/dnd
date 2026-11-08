@@ -3666,5 +3666,135 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
   });
 }
 
+// battlefields.md + skills-v3.md: biomes, templates, props, weather; node skill actions, battle tricks
+{
+  console.log('battlefields & skills v3');
+  const BF = await import('../game/src/world/battlefields.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const { BATTLEFIELD, WEATHER } = await import('../game/src/data/combat.js');
+  const TERRAIN = await import('../game/src/rules/terrain.js');
+  const { validateTilesets, BIOME_IDS } = await import('../game/src/assets/tilesets.js');
+  const { validateProps } = await import('../game/src/assets/props.js');
+  const G = await import('../game/src/rules/grid.js');
+  const st = await import('../game/src/world/state.js');
+  const NA = await import('../game/src/world/node-actions.js');
+  const { BATTLE_SKILL_TRICKS } = await import('../game/src/data/world/node-skill-actions.js');
+  test('fields: assets validate, every region maps to known tile biomes, main biome dominates', () => {
+    assert.deepEqual(validateTilesets(), []);
+    assert.deepEqual(validateProps(), []);
+    for (const [r, list] of Object.entries(BATTLEFIELD.regions)) for (const b of list) assert.ok(BIOME_IDS.includes(b), `${r}: ${b}`);
+    let main = 0;
+    for (let seed = 1; seed <= 200; seed++) if (BF.tileBiomeOf({ region: 'warprom', seed }) === 'factory') main++;
+    assert.ok(main > 110 && main < 170, `factory share ${main}/200`);
+    assert.equal(BF.tileBiomeOf({ region: 'tekhonki', seed: 3, biome: 'cyber' }), 'cyberspace'); // explicit legacy id
+    assert.equal(BF.tileBiomeOf({ biome: 'snow' }), 'snow');
+    assert.equal(BF.tileBiomeOf({}), 'wasteland');
+  });
+  test('fields: every template × biome is valid 22×12 and passable (all starts connected), starts enough', () => {
+    for (const tpl of BF.TEMPLATE_IDS) for (const biome of BIOME_IDS) for (const seed of [1, 2, 3]) {
+      const m = makeWorldMap({ seed, enemies: 6, template: tpl, biome });
+      assert.equal(m.template, tpl, `${tpl}/${biome}/${seed} fell back`);
+      assert.equal(m.grid.length, 12); assert.ok(m.grid.every((r) => r.length === 22));
+      const g = G.parseMap(m);
+      assert.ok(g.starts.P.length >= 5 && g.starts.E.length >= 7, `${tpl} starts`);
+      const all = [...g.starts.P, ...g.starts.A, ...g.starts.E];
+      const r = G.reachable(g, all[0].x, all[0].y, 9999, null);
+      assert.ok(all.every((p) => r.dist[p.y * g.w + p.x] >= 0), `${tpl}/${biome}/${seed} connected`);
+      assert.ok(m.props.every((p) => p.biomes === undefined), 'props are plain entries');
+    }
+  });
+  test('fields: boss arenas — the boss stands on its spot (on the dais), connected', () => {
+    for (const [boss, a] of Object.entries(BF.BOSS_ARENAS)) {
+      const m = makeWorldMap({ seed: 4, enemies: 3, enemyIds: [`${boss}`, 'x', 'y'] });
+      assert.equal(m.template, `boss:${boss}`);
+      assert.equal(m.biome, a.biome);
+      const g = G.parseMap(m);
+      const bAt = a.grid.findIndex((r) => r.includes('B'));
+      assert.deepEqual(g.starts.E[0], { x: a.grid[bAt].indexOf('B'), y: bAt });
+    }
+    const g = G.parseMap(makeWorldMap({ seed: 1, enemies: 2, enemyIds: ['x', 'cult-judge-hand'] }));
+    assert.equal(G.elevAt(g, g.starts.E[1].x, g.starts.E[1].y), 2); // the Judge's hand on the H dais
+  });
+  test('fields: a prop gives cover, breaks into rubble and leaves its debris surface', () => {
+    const def = { grid: ['#######', '#P.c.E#', '#######'], props: [{ id: 'lada', x: 3, y: 1, w: 1, h: 1, cover: 'half', blocks: true, destructible: true, hp: 4, debris: 'oil' }] };
+    const b = createBattle({ map: def, heroes: [buildCreature({ race: 'human', cls: 'ranger', level: 1, data: GAME_DATA })], enemies: ['crawler'], data: GAME_DATA, seed: 1 });
+    const T = b.objects.get(1 * 7 + 3);
+    assert.ok(T && T.kind === 'prop' && T.prop === 'lada' && T.hp >= 5, 'prop object with hp');
+    assert.equal(G.tileCover(b.grid.tiles[1 * 7 + 3]), 2); // half cover
+    TERRAIN.damageObject(b, 3, 1, 999, null, 'blunt');
+    assert.equal(b.grid.tiles[1 * 7 + 3], G.T_RUBBLE);
+    assert.equal(b.surfaces.get('3,1')?.floor?.kind, 'oil');
+    // an indestructible prop stays static
+    const def2 = { grid: ['#######', '#P.C.E#', '#######'], props: [{ id: 'bus', x: 3, y: 1, w: 1, h: 1, cover: 'full', blocks: true, destructible: false }] };
+    const b2 = createBattle({ map: def2, heroes: [buildCreature({ race: 'human', cls: 'ranger', level: 1, data: GAME_DATA })], enemies: ['crawler'], data: GAME_DATA, seed: 1 });
+    assert.equal(b2.objects.get(1 * 7 + 3), undefined);
+    // fence: blocks movement, no cover, sight passes
+    const g3 = G.parseMap({ grid: ['P.f.E'] });
+    assert.ok(G.blocksMove(g3.tiles[2]) && G.tileCover(g3.tiles[2]) === 0 && G.lineOfSight(g3, 0, 0, 4, 0));
+  });
+  test('fields: weather — night hides far enemies, reveal op shows them; rain adds puddles (water surfaces)', () => {
+    const grid = ['P..................E', '....................'];
+    const b = createBattle({ map: { grid, tod: 'night', weather: 'clear' }, heroes: [buildCreature({ race: 'human', cls: 'ranger', level: 1, data: GAME_DATA })], enemies: ['crawler'], data: GAME_DATA, seed: 1 });
+    const foe = b.units.find((u) => u.team === 'enemies');
+    assert.ok(BF.fogHiddenIds(b).has(foe.id), 'hidden at 18 cells at night');
+    applyOp(b, b.units[0], foe, { op: 'reveal', turns: 1 });
+    assert.ok(!BF.fogHiddenIds(b).has(foe.id), 'revealed');
+    const day = createBattle({ map: { grid }, heroes: [buildCreature({ race: 'human', cls: 'ranger', level: 1, data: GAME_DATA })], enemies: ['crawler'], data: GAME_DATA, seed: 1 });
+    assert.equal(BF.fogHiddenIds(day).size, 0);
+    const rain = makeWorldMap({ seed: 2, template: 'barricade', biome: 'wasteland', weather: 'rain', tod: 'day' });
+    assert.ok(rain.grid.join('').includes('w'), 'puddles');
+    for (const biome of BIOME_IDS) for (let seed = 1; seed < 30; seed++) {
+      const w = BF.pickWeather(biome, seed, seed);
+      assert.ok(['clear', ...WEATHER.allowed[biome][1]].includes(w.weather) && WEATHER.allowed[biome][0].includes(w.tod), `${biome} ${w.weather}/${w.tod}`);
+    }
+  });
+  const mkSave = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; return s; };
+  test('skills v3: a town has ≥ 5 actions; a once:day action works once a day; fx land (items, repLocal), done survives', () => {
+    const town = Object.values(LOCS).find((l) => l.kind === 'town' && !l.alias);
+    const s = mkSave();
+    const list = NA.skillActionsAt(s, town.id, town);
+    assert.ok(list.length >= 5, `town actions ${list.length}`);
+    const camp = Object.values(LOCS).find((l) => l.kind === 'camp' && !l.alias);
+    const day = NA.skillActionsAt(s, camp.id, camp).find((x) => x.a.once === 'day');
+    assert.ok(day, 'a daily action');
+    const r1 = NA.runSkillAction(s, camp.id, day.a, { rng: () => 0.99 });
+    assert.ok(r1.ok);
+    assert.ok(NA.skillActionsAt(s, camp.id, camp).find((x) => x.id === day.id).done, 'done today');
+    s.day += 1;
+    assert.ok(!NA.skillActionsAt(s, camp.id, camp).find((x) => x.id === day.id).done, 'open next day');
+    // node action: items to the backpack, repLocal to the node faction, flag kept
+    const withItems = list.find((x) => x.a.once === 'node' && x.a.success.items && x.a.success.repLocal) || list.find((x) => x.a.once === 'node' && x.a.success.items);
+    const f = st.locFaction(town.id);
+    const rep0 = s.rep[f] || 0;
+    const r2 = NA.runSkillAction(s, town.id, withItems.a, { rng: () => 0.5 + 0.49 });
+    assert.ok(r2.ok);
+    for (const it of withItems.a.success.items) assert.ok(st.countItem ? st.countItem(s, it.item) > 0 : JSON.stringify(s).includes(it.item), it.item);
+    if (withItems.a.success.repLocal && f) assert.notEqual(s.rep[f] || 0, rep0);
+    assert.ok(s.flags[NA.actionFlag(withItems.a, town.id, s.day)]);
+    assert.ok(NA.skillActionsAt(JSON.parse(JSON.stringify(s)), town.id, town).find((x) => x.id === withItems.id).done, 'after a reload');
+  });
+  test('skills v3: failure costs; crit 1 ×1.5; crit 20 credits ×1.5; hints ≤ 3', () => {
+    const a = { id: 't', success: { text: '', credits: 40, xp: 30 }, fail: { text: '', hp: -2, credits: -10 } };
+    const s = mkSave();
+    assert.equal(NA.outcomeFx(a, 'critSuccess', s, 'x').credits, 60);
+    assert.equal(NA.outcomeFx(a, 'critFail', s, 'x').hp, -3);
+    assert.equal(NA.outcomeFx(a, 'fail', s, 'x').credits, -10);
+    assert.ok(NA.hintSkillsOf(s, 'noch').length <= 3 && NA.hintSkillsOf(s, 'noch').includes('stealth'));
+  });
+  test('skills v3: battle tricks — data shape, reveal op lifts stealth', () => {
+    assert.equal(BATTLE_SKILL_TRICKS.length, 7);
+    for (const tr of BATTLE_SKILL_TRICKS) {
+      assert.ok(['foe', 'foeNoDeaf', 'foeHidden', 'ally', 'self'].includes(tr.target));
+      if (tr.op.status) assert.ok(GAME_DATA.STATUSES[tr.op.status], tr.op.status);
+    }
+    const b = createBattle({ map: { grid: ['P...E'] }, heroes: [buildCreature({ race: 'human', cls: 'ranger', level: 1, data: GAME_DATA })], enemies: ['crawler'], data: GAME_DATA, seed: 1 });
+    const foe = b.units.find((u) => u.team === 'enemies');
+    applyStatus(b, foe, 'stealth', 3, foe);
+    applyOp(b, b.units[0], foe, { op: 'reveal', turns: 1 });
+    assert.ok(!foe.statuses.some((x) => x.id === 'stealth'));
+    assert.ok(foe.revealedUntil >= b.round);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
