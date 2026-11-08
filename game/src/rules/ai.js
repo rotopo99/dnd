@@ -9,7 +9,7 @@ import {
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
   abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS, itemAbility,
-  isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop,
+  isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop, isLeapArea,
 } from './combat.js';
 import { surfaceHarm, surfaceOf, surfaceDefs, surfaceKindsAt, cellAt, connected } from './surfaces.js';
 import { archTargetMul, archAbilityMul, archTileScore, archHarmMul, fleeAction } from './archetypes.js';
@@ -270,6 +270,7 @@ export function evalAbility(b, u, a, spec) {
   if (sf) v += surfaceEV(b, u, a, spec);
   if (sf && sf.kind === 'smoke') v += zoneValue(b, u, a, { size: sf.size, turns: sf.turns, kind: 'smoke' }, spec);
   if (!targets.length && !z && !sf && !effects.some((e) => e.op === 'summon' || e.op === 'extraAction')) return 0;
+  if (isLeapArea(a) && spec && spec.x != null) v -= landingHarm(b, u, spec.x, spec.y);
   const cost = a.cost || 0;
   v -= cost * 0.3;
   if (cost > u.enr) v -= 8; // overcast risk
@@ -277,6 +278,15 @@ export function evalAbility(b, u, a, spec) {
 }
 
 // ---------------------------------------------------------------- surfaces (spec §7)
+
+/** melee-aoe: cost of landing on (x, y) after a leap — surface harm (berserk scaled), legacy hazard tile 6. */
+function landingHarm(b, u, x, y) {
+  if (!(b.surfaces && b.surfaces.size)) return tileAt(b.grid, x, y) === T_HAZARD ? 6 : 0;
+  const h = surfaceHarm(b, u, x, y);
+  if (h <= 0) return h;
+  const mul = u.arch ? archHarmMul(b, u) : null;
+  return mul != null ? h * mul : h;
+}
 
 const specCenter = (b, u, spec) => (spec && spec.unit && b.byId[spec.unit] ? b.byId[spec.unit] : spec && spec.x != null ? spec : u);
 

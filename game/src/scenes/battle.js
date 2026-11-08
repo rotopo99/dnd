@@ -74,6 +74,13 @@ function meleeAttack(b, u, action) {
   return abilityRange(u, a) <= 1;
 }
 
+/** melee-aoe aiming mode of an ability: 'dir' (cone / line on a tile), 'leap' (jump + area), else null. */
+function aimKind(a) {
+  if (!a || a.target !== 'tile' || !a.area) return null;
+  if (combat.isLeapArea(a)) return 'leap';
+  return a.area.shape === 'cone' || a.area.shape === 'line' ? 'dir' : null;
+}
+
 /** Same rule as the engine's inArea (combat.js): radius with LOS from the centre, cone with LOS from the caster,
  *  line by Bresenham from the caster stopping at walls. */
 function tileInArea(b, u, a, center, x, y) {
@@ -283,6 +290,18 @@ export function createBattleScene(opts) {
         for (const act of S.specs[S.sel.a.id] || []) {
           if (act.target) { const u = b.byId[act.target]; cells.set(u.y * b.grid.w + u.x, { target: act.target }); }
           else if (act.tile) cells.set(act.tile.y * b.grid.w + act.tile.x, { tile: act.tile });
+        }
+        // melee-aoe: cones / lines aim at any tile in range, leaps land on any valid free tile (not only next to foes)
+        const a = S.sel.a;
+        const kind = !S.sel.item && !S.sel.weaponArea ? aimKind(a) : null;
+        if (kind && (S.specs[a.id] || []).length) {
+          const r = abilityRange(hero, a);
+          for (let y = hero.y - r; y <= hero.y + r; y++) for (let x = hero.x - r; x <= hero.x + r; x++) {
+            if ((x === hero.x && y === hero.y) || x < 0 || y < 0 || x >= b.grid.w || y >= b.grid.h) continue;
+            const idx = y * b.grid.w + x;
+            if (combat.targetValid(b, hero, a, { x, y })) cells.set(idx, { tile: { x, y }, [kind]: true });
+            else if (cells.has(idx) && kind === 'leap') cells.delete(idx);
+          }
         }
       }
       S.targetCells = cells;
@@ -572,11 +591,32 @@ export function createBattleScene(opts) {
     });
   }
 
+  /**
+   * Target under the cursor: the cell itself, or for cones / lines the farthest valid tile in range along the
+   * hero → cursor direction (aiming from anywhere on the map).
+   */
+  S.targetAt = (cell) => {
+    const b = S.b;
+    if (!cell || !S.targetCells) return null;
+    const tc = S.targetCells.get(cell.y * b.grid.w + cell.x);
+    if (tc || S.sel?.kind !== 'ability' || S.sel.item || S.sel.weaponArea || aimKind(S.sel.a) !== 'dir') return tc || null;
+    const u = b.byId[S.heroId];
+    const vx = cell.x - u.x, vy = cell.y - u.y;
+    const d = Math.max(Math.abs(vx), Math.abs(vy));
+    if (!d) return null;
+    for (let k = Math.min(d, abilityRange(u, S.sel.a)); k >= 1; k--) {
+      const x = u.x + Math.round((vx * k) / d), y = u.y + Math.round((vy * k) / d);
+      const hit = S.targetCells.get(y * b.grid.w + x);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
   function clickCell(cx, cy) {
     const b = S.b;
     const idx = cy * b.grid.w + cx;
     if (S.sel) {
-      const tc = S.targetCells && S.targetCells.get(idx);
+      const tc = S.targetAt({ x: cx, y: cy });
       if (!tc) { S.sel = null; S.dirty = true; return; }
       if (tc.smash) doAction({ type: 'smash', tile: tc.smash });
       else if (S.sel.kind === 'attack') doAction({ type: S.sel.burst ? 'burst' : S.sel.throw ? 'throw' : 'attack', target: tc.target });

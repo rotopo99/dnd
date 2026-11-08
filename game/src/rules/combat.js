@@ -1683,8 +1683,11 @@ function moveTileValid(b, u, a, mv, x, y) {
     const reach = reachable(b.grid, u.x, u.y, mv.tiles, b.occ);
     return reach.dist[y * b.grid.w + x] > 0;
   }
-  return true;
+  return lineOfSight(b.grid, u.x, u.y, x, y);
 }
+
+/** Leap + area (melee-aoe: target 'tile', area, move op): the landing tile must be a valid move destination. */
+export const isLeapArea = (a) => a.target === 'tile' && !!a.area && !!moveOp(a) && !moveOp(a).random;
 
 const isSelfCentered = (u, a, spec) => a.target === 'self' || (abilityRange(u, a) === 0 && !(spec && (spec.unit || spec.x != null)));
 
@@ -1699,7 +1702,7 @@ export function targetValid(b, u, a, spec) {
   if (range === 0 && !(spec && (spec.unit || spec.x != null))) return true;
   if (a.target === 'tile') {
     if (!spec || spec.x == null || !inBounds(b.grid, spec.x, spec.y)) return false;
-    if (mv && !a.area) return moveTileValid(b, u, a, mv, spec.x, spec.y);
+    if (mv && (!a.area || !mv.random)) return moveTileValid(b, u, a, mv, spec.x, spec.y);
     if (tileAt(b.grid, spec.x, spec.y) === T_WALL) return false;
     return chebyshev(u.x, u.y, spec.x, spec.y) <= range && lineOfSight(b.grid, u.x, u.y, spec.x, spec.y);
   }
@@ -2504,15 +2507,46 @@ export function abilitySpecs(b, u, a) {
       }
       return out;
     }
-    for (const e of b.units) {
-      if (!isAlive(e) || e === u || !isHostile(b, u, e)) continue;
-      if (targetValid(b, u, a, { x: e.x, y: e.y })) out.push({ tile: { x: e.x, y: e.y } });
-    }
-    return out;
+    return areaTileSpecs(b, u, a);
   }
   for (const e of b.units) {
     if (!isAlive(e) && !canRevive(a, e)) continue;
     if (targetValid(b, u, a, { unit: e.id })) out.push({ target: e.id });
+  }
+  return out;
+}
+
+/**
+ * Candidate tiles of a ranged area ability (only those whose area catches a hostile, so AI / UI lists stay short):
+ * radius — hostile tiles; cone / line — hostile tiles plus a ring of directions at min(range, size);
+ * leap + area — free landing tiles within the jump with a hostile inside the area around them.
+ */
+function areaTileSpecs(b, u, a) {
+  const out = [];
+  const seen = new Set();
+  const hostiles = b.units.filter((e) => isAlive(e) && e !== u && isHostile(b, u, e));
+  const push = (x, y) => {
+    const k = y * b.grid.w + x;
+    if (seen.has(k)) return;
+    seen.add(k);
+    if (targetValid(b, u, a, { x, y }) && abilityTargets(b, u, a, { x, y }).length) out.push({ tile: { x, y } });
+  };
+  const R = a.area.size || 1;
+  if (isLeapArea(a)) {
+    const mv = moveOp(a);
+    const r = Math.min(abilityRange(u, a) || mv.tiles, mv.tiles);
+    for (let y = u.y - r; y <= u.y + r; y++) for (let x = u.x - r; x <= u.x + r; x++) {
+      if ((x === u.x && y === u.y) || !hostiles.some((e) => chebyshev(e.x, e.y, x, y) <= R)) continue;
+      push(x, y);
+    }
+    return out;
+  }
+  for (const e of hostiles) push(e.x, e.y);
+  if (a.area.shape === 'cone' || a.area.shape === 'line') {
+    const r = Math.max(1, Math.min(abilityRange(u, a), R));
+    for (let y = u.y - r; y <= u.y + r; y++) for (let x = u.x - r; x <= u.x + r; x++) {
+      if (Math.max(Math.abs(x - u.x), Math.abs(y - u.y)) === r && inBounds(b.grid, x, y)) push(x, y);
+    }
   }
   return out;
 }

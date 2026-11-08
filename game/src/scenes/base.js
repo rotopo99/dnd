@@ -14,7 +14,7 @@ import {
 } from '../world/base.js';
 import { ITEMS, LORE_RUMORS, LOCATIONS } from '../world/data.js';
 import { restParty, activeCompanions, members, journal, MAX_PARTY, squadFree } from '../world/state.js';
-import { addLoyalty } from '../world/companions.js';
+import { addLoyalty, baseIdle, rejoin, sendToReserve, canRejoin, squadInfo } from '../world/companions.js';
 import { passDays } from '../world/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { countAll, addInst, makeInst, syncItems, refreshView, bagKeys, holderOf, bagOf, isGear } from '../world/inventory.js';
@@ -79,8 +79,9 @@ export function createBaseScene(back = null) {
       { kind: 'rumor', label: t('base.radioRumor'), sub: t('base.radioRumorSub'), disabled: !modFx(sv, 'radio')?.rumorPerDay || sv.flags[`base-rumor:${sv.day}`] },
     ];
     if (sv.base.raid) acts.push({ kind: 'defend', label: t('base.defend'), sub: t('base.defendSub'), selected: true });
+    acts.push({ kind: 'idle', label: t('base.idle'), sub: `${baseIdle(sv).length} · ${tf('party.squad', { n: 1 + activeCompanions(sv).length, m: squadInfo(sv).max })}`, key: 'P' });
     acts.push({ kind: 'leave', label: t('base.leave'), sub: LOCATIONS[BASE_LOCATION]?.name || '', key: 'Esc' });
-    const aw = 200, gap = 8;
+    const gap = 8, aw = Math.min(200, Math.floor((BASE_W - 32 - gap * (acts.length - 1)) / acts.length));
     let x = ox + BASE_W - 16 - acts.length * (aw + gap) + gap;
     for (const a of acts) { B.push({ ...a, x, y: oy + BASE_H - 60, w: aw, h: 48, font: FONT_B }); x += aw + gap; }
     S.buttons = B;
@@ -110,8 +111,41 @@ export function createBaseScene(back = null) {
     else if (b.kind === 'rumor') return radioRumor(game);
     else if (b.kind === 'defend') return defend(game);
     else if (b.kind === 'leave') { persist(game); return leave(game); }
+    else if (b.kind === 'idle') return idleMenu(game);
     persist(game);
     layout(game);
+  }
+
+  /**
+   * «Отдыхают на базе» (feedback 2026-11-07): companions out of the squad live in the bunker — talk, take into the
+   * squad (free place: squadInfo), leave active ones at the base. Logic — world/companions.js.
+   */
+  function idleMenu(game) {
+    const sv = game.save;
+    const idle = baseIdle(sv);
+    const act = activeCompanions(sv);
+    const name = (p) => NPCS[p.npc]?.name || p.npc;
+    const again = (g) => { persist(g); layout(g); idleMenu(g); };
+    const options = [];
+    for (const p of idle) {
+      const r = canRejoin(sv, p);
+      options.push({ label: `${name(p)}: ${t('base.take')}`, sub: `${t('world.level')} ${p.level || 1}`, disabled: !r.ok,
+        reason: r.why === 'full' ? tf('party.squadFull', { m: squadInfo(sv).max }) : null, run: (g) => { rejoin(g.save, p.npc); again(g); } });
+      options.push({ label: `${name(p)}: ${t('base.talk')}`, run: (g) => talk(g, p) });
+    }
+    for (const p of act) options.push({ label: `${name(p)}: ${t('base.leave')}`, run: (g) => { sendToReserve(g.save, p.npc); again(g); } });
+    options.push({ label: t('loc.close'), run: (g) => layout(g) });
+    const lines = [{ text: tf('party.squad', { n: 1 + act.length, m: squadInfo(sv).max }), color: 'a' }];
+    if (!idle.length) lines.push({ text: t('base.idleNone'), color: '4' });
+    game.openModal({ title: t('base.idle'), width: 760, lines, options, onCancel: (g) => layout(g) });
+  }
+
+  /** A short talk with a resting companion: their bark / hook in the dialogue scene, back to the base. */
+  function talk(game, p) {
+    const n = NPCS[p.npc] || {};
+    const said = [n.bark, n.hook].filter(Boolean);
+    import('./dialogue.js').then((m) => game.setScene(m.createDialogueScene({ title: t('base.idle'), hero: game.save.hero,
+      lines: (said.length ? said : ['…']).map((text) => ({ who: p.npc, name: n.name, text })), onDone: (g) => g.resume(self) })));
   }
 
   /** Rest at the base = a long rest through the shared window (scenes/rest.js, mode 'base': rations from the stash count). */
@@ -238,6 +272,7 @@ export function createBaseScene(back = null) {
 
   self = {
     id: 'base',
+    S,
     enter(game) { toastAll(game, baseTick(game.save)); persist(game); layout(game); },
     resume(game) { layout(game); },
     resize(game) { layout(game); },
@@ -251,6 +286,7 @@ export function createBaseScene(back = null) {
       if (inp.wasPressed('Escape')) { persist(game); return leave(game); }
       if (inp.wasPressed('KeyR')) return rest(game);
       if (inp.wasPressed('KeyI')) return click(game, S.buttons.find((b) => b.kind === 'stash'));
+      if (inp.wasPressed('KeyP')) return idleMenu(game);
     },
     render(game) {
       const { ctx, width: W, height: H } = game;

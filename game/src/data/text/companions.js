@@ -78,6 +78,7 @@ export const COMPANION_TEXT = {
   'gear.bestNone': 'Лучше уже некуда: всё лучшее надето.',
   'gear.bestOk': 'Принять',
   'gear.bestUndo': 'Отменить',
+  'gear.bestSum': '  Урон за атаку ≈ {a} → {b} · КБ {k1} → {k2}',
   // check scene
   'cs.pick': 'Как действовать?',
   'cs.roller': 'бросает',

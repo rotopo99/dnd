@@ -58,6 +58,9 @@ export const COMPANION_RULES = {
   // Размер отряда (человек, 2026-11-07): base мест (вместе с героем) + perChaMod за каждую единицу положительного
   // мод. ХАР героя + value флага мира 'squad-size' у талантов героя («Лидерство», «Командный голос»).
   squad: { base: 4, perChaMod: 1 },
+  // «Одеть лучшее» (world/best-gear.js): оценка = ожидаемый урон атаки против КБ refKb + ур.×kbPerLevel
+  // + kbWeight × КБ − штрафы (невыполненные требования, броня без владения); очередь rof добавляет rofShare за выстрел.
+  bestGear: { refKb: 12, kbPerLevel: 0.5, kbWeight: 0.8, reqPenalty: 3, untrainedPenalty: 3, rofShare: 0.3 },
   levelup: {
     asi: true,            // движок levelup.js openAsi(game, level, …, { unit: companion }) на уровнях asiLevelsFor(cls)
     talentOffers: 3,      // «Талант вместо роста»: 3 случайных из talentPool(sv, u) + любимый (companion.talents[1])

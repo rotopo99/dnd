@@ -295,6 +295,14 @@ export function intentOf(b, u) {
     if (ctl && foes.length) return { kind: 'zone', target: nearest(u, foes).id };
   }
   if (!u.weapon || u.noAttack || !foes.length) return null;
+  // melee-aoe: a free area strike (circle around self / cone / line / leap) with 2+ foes within its reach
+  const aoe = isMeleeWeapon(u) && (u.abilities || []).find((a) => free(a) && a.area && a.target !== 'ally' && a.target !== 'self' && (a.effects || []).some((op) => op.op === 'damage'));
+  if (aoe) {
+    const mv = (aoe.effects || []).find((op) => op.op === 'move');
+    const reach = (aoe.range || 0) + (aoe.range && !mv && aoe.area.shape === 'radius' ? aoe.area.size || 1 : 0) + (mv || !aoe.range ? aoe.area.size || 1 : 0);
+    const near = foes.filter((e) => chebyshev(u.x, u.y, e.x, e.y) <= reach);
+    if (near.length >= 2) return { kind: 'zone', target: nearest(u, near).id };
+  }
   if (isMeleeWeapon(u)) {
     let best = null, bs = -1e9;
     for (const e of foes) { const s = archTargetMul(b, u, e) * 10 - chebyshev(u.x, u.y, e.x, e.y); if (s > bs) { bs = s; best = e; } }

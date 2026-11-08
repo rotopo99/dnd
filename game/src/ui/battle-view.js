@@ -27,6 +27,7 @@ const CY_FILL = rgba(C.h, 0.16);
 const CY_LINE = rgba(C.h, 0.55);
 const RANGE_FILL = rgba(C.h, 0.08);
 const TARGET_FILL = rgba(C.a, 0.22);
+const LEAP_FILL = rgba(C.a, 0.1);
 const AREA_FILL = rgba(C.n, 0.25);
 const AREA_OWN = rgba(C.j, 0.2);
 const areaFill = (a) => (a.target === 'self' || a.target === 'ally' ? AREA_OWN : AREA_FILL);
@@ -262,6 +263,21 @@ function cellRect(ctx, L, x, y, fill, stroke) {
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, L.cell - 2, L.cell - 2); }
 }
 
+/** melee-aoe leap preview: dashed jump line from the hero and a framed landing cell. */
+function drawLanding(ctx, L, hero, p) {
+  const c = L.cell, half = c / 2;
+  ctx.save();
+  ctx.strokeStyle = rgba(C.a, 0.8);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(L.mapX + hero.x * c + half, L.mapY + hero.y * c + half);
+  ctx.lineTo(L.mapX + p.x * c + half, L.mapY + p.y * c + half);
+  ctx.stroke();
+  ctx.restore();
+  cellRect(ctx, L, p.x, p.y, rgba(C.a, 0.35), C.a);
+}
+
 function unitAtCell(b, x, y) {
   for (const u of b.units) if (!u.dead && !u.removed && u.x === x && u.y === y && !isHidden(u)) return u;
   return null;
@@ -290,17 +306,23 @@ function drawHighlights(ctx, S) {
         }
       }
     }
-    for (const [idx] of S.targetCells || []) cellRect(ctx, L, idx % w, (idx / w) | 0, TARGET_FILL, rgba(C.a, 0.7));
-    const tc = hc && S.targetCells && S.targetCells.get(hc.y * w + hc.x);
+    // melee-aoe: cone / line tiles are the whole range (no per-cell frames), leap landings — a light fill
+    for (const [idx, c] of S.targetCells || []) {
+      if (c.dir) continue;
+      cellRect(ctx, L, idx % w, (idx / w) | 0, c.leap ? LEAP_FILL : TARGET_FILL, c.leap ? null : rgba(C.a, 0.7));
+    }
+    const tc = hc && S.targetAt(hc);
     if (tc) {
       if (S.sel.kind === 'ability') {
         const pv = S.areaPreview(S.sel.a, tc);
         for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(S.sel.a));
         out.area = pv;
       }
-      const tu = tc.target ? b.byId[tc.target] : unitAtCell(b, hc.x, hc.y);
+      const tu = tc.target ? b.byId[tc.target] : tc.dir || tc.leap ? null : unitAtCell(b, hc.x, hc.y);
       out.target = tu;
       if (tu) out.odds = S.odds(tu);
+      if (tc.leap) drawLanding(ctx, L, hero, tc.tile);
+      else if (tc.dir) cellRect(ctx, L, tc.tile.x, tc.tile.y, null, C.a);
       cellRect(ctx, L, hc.x, hc.y, null, C.a);
     } else if (hc) out.target = unitAtCell(b, hc.x, hc.y);
     return out;

@@ -7,6 +7,7 @@ import { parseMap, chebyshev, lineOfSight, hasCover, findPath, reachable, makeAr
 import { createBattle, perform, endTurn, getLegalActions, dealDamage, applyStatus, applyOp, getKb, weaponDamageBonus, isMeleeAttack, attackOdds,
   BREAKDOWN_HEARTBREAK_MAX, HEARTBREAK_HP_LOSS, BREAKDOWN_MRL_RESET, BIG_HIT_FRACTION, BIG_HIT_DC, COVER_KB, DOWN_TURNS_TO_DEATH, OVERCAST_LIMIT } from '../game/src/rules/combat.js';
 import { chooseAction, playTurn, evalAction } from '../game/src/rules/ai.js';
+import { targetValid, abilityTargets } from '../game/src/rules/combat.js';
 import { applyWithdrawal, clearWithdrawal } from '../game/src/rules/aftermath.js';
 import { skillCheck, skillTier } from '../game/src/rules/skills.js';
 import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS, levelGains, xpScale, enemyXpForLevel } from '../game/src/rules/progression.js';
@@ -2172,15 +2173,17 @@ console.log('combat rework: cover, objects, heights, pushes, archetypes, arenas'
     assert.equal(o.party[0].level, 4);
     assert.equal(st.buildCompanion(o, o.party[0]).level, 4);
   });
-  test('companion level-up: ASI — player picks at loyalty ≥ 20, else auto + line; news queued', () => {
+  test('companion level-up: like the hero — ASI and level talents wait for the player (any loyalty); news queued', () => {
     const s = mk();
     st.recruit(s, 'andrey'); st.recruit(s, 'tik');
     const A = s.party[0], T = s.party[1];
     A.approval = 30; T.approval = 0;
     st.gainXp(s, xpForLevel(4) + 10, GAME_DATA);
     assert.ok(s.hero.level >= 4 && A.level >= 4 && T.level >= 4);
-    assert.ok(A.pendingAsi.includes(4) && !A.asi.some((e) => e.level === 4), 'player picks');
-    assert.ok(T.asi.some((e) => e.level === 4 && e.auto) && T.asiNotes.length === 1, 'auto + line');
+    for (const P of [A, T]) {
+      assert.ok(P.pendingAsi.includes(4) && !P.asi.some((e) => e.level === 4), `${P.npc}: player picks`);
+      assert.equal(P.pendingTalents, 2, `${P.npc}: talents of levels 2 and 4`);
+    }
     assert.ok(A.levelNews.includes(4) && T.levelNews.includes(2));
     const str0 = st.buildCompanion(s, A).stats.con;
     st.chooseCompanionAsi(s, 'andrey', 4, { stats: { con: 2 } }, GAME_DATA);
@@ -2894,6 +2897,279 @@ console.log('Rest: short / long rests, hit dice, provisions');
     assert.ok(s.hero.hp > 4);
     const v = st.buildHero(s, GAME_DATA);
     assert.equal(v.enr, s.hero.enr);
+  });
+}
+
+// party talents (2026-11-08): member selection, companion level-ups with talents, requirements, migration;
+// squad size, reserve at the base, «Одеть лучшее»
+{
+  console.log('Party: companions level up like the hero, squad size, reserve, best gear');
+  const st = await import('../game/src/world/state.js');
+  const CP = await import('../game/src/world/companions.js');
+  const BG = await import('../game/src/world/best-gear.js');
+  const INV = await import('../game/src/world/inventory.js');
+  const LU = await import('../game/src/scenes/levelup.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const { TALENTS, TALENT_LEVELS, isCombatTalent, COMBAT_TALENT_LIMIT } = await import('../game/src/data/talents.js');
+  const { NPCS } = await import('../game/src/data/npcs.js');
+  const { COMPANION_RULES: CRu } = await import('../game/src/data/companions.js');
+  const { BASE_LOCATION, BASE_UNLOCK } = await import('../game/src/data/world/base.js');
+  const { asiLevelsFor } = await import('../game/src/rules/character.js');
+  const { xpForLevel: xpFor } = await import('../game/src/rules/progression.js');
+  const mk = (o = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [], ...o }); s.flags['prologue-done'] = true; return s; };
+  const fakeGame = (s) => {
+    const pressed = new Set();
+    const ctx = { font: '', measureText: (x) => ({ width: String(x).length * 8 }) };
+    return { ctx, save: s, data: GAME_DATA, width: 1280, height: 720, toasts: [], toast() {}, modals: [], openModal(m) { this.modals.push(m); }, resume() {},
+      press(k) { pressed.add(k); },
+      input: { wasPressed: (k) => { const r = pressed.has(k); pressed.delete(k); return r; }, isDown: () => false, typed: () => '', mouse: { x: 0, y: 0, inside: false, clicked: false, wheel: 0 } } };
+  };
+
+  {
+    const s = mk(); s.hero.level = 5; s.hero.xp = xpFor(5);
+    st.recruit(s, 'andrey'); st.recruit(s, 'tik');
+    const { createPanelsScene } = await import('../game/src/scenes/panels.js');
+    const g = fakeGame(s);
+    const sc = createPanelsScene({ tab: 'party', back: null });
+    sc.enter(g);
+    test('party panel: selection by card, keys, shared across tabs', () => {
+      const card = sc.S.buttons.find((b) => b.kind === 'card' && b.id === 'tik');
+      assert.ok(card, 'card button');
+      g.input.mouse = { x: card.x + 5, y: card.y + 5, inside: true, clicked: true, wheel: 0 };
+      sc.update(g, 1 / 60);
+      g.input.mouse = { x: 0, y: 0, inside: false, clicked: false, wheel: 0 };
+      assert.equal(sc.S.sel, 'tik');
+      g.press('ArrowLeft'); sc.update(g, 1 / 60);
+      assert.equal(sc.S.sel, 'andrey');
+      g.press('Digit1'); sc.update(g, 1 / 60);
+      assert.equal(sc.S.sel, 'hero');
+      g.press('Digit3'); sc.update(g, 1 / 60);
+      assert.equal(sc.S.sel, 'tik');
+      g.press('KeyC'); sc.update(g, 1 / 60);
+      assert.equal(sc.S.tab, 'stats');
+      assert.ok(sc.S.buttons.find((b) => b.kind === 'statMember' && b.id === 'tik').selected, 'stats tab shows tik');
+      g.press('KeyG'); sc.update(g, 1 / 60);
+      assert.equal(sc.S.gearKey, 'tik', 'gear tab shows tik');
+      g.press('KeyP'); sc.update(g, 1 / 60);
+      const lv = sc.S.buttons.find((b) => b.kind === 'm' && b.act === 'levelup' && b.member === 'tik' && !b.disabled);
+      assert.ok(lv, 'level-up button for a companion with unspent level-ups');
+    });
+  }
+
+  test('recruit at level 5: unspent ASI + level talents; pick a talent by the companion\'s own requirements', () => {
+    const s = mk(); s.hero.level = 5; s.hero.xp = xpFor(5);
+    st.recruit(s, 'andrey');
+    const p = s.party[0];
+    const cls = GAME_DATA.CLASSES[NPCS.andrey.cls];
+    assert.deepEqual(p.pendingAsi, asiLevelsFor(cls).filter((L) => L <= 5));
+    assert.equal(p.pendingTalents, TALENT_LEVELS.filter((L) => L <= 5).length);
+    assert.ok(st.memberPending(s, 'andrey').any);
+    const u = st.buildCompanion(s, p);
+    const pool = LU.talentPool(s, u, 'andrey');
+    assert.ok(pool.length > 0, 'pool');
+    // requirements: stats / class / race of the companion, not the hero
+    for (const x of pool) {
+      for (const [k, v] of Object.entries(x.req?.stats || {})) assert.ok(u.stats[k] >= v, `${x.id} ${k}`);
+      if (x.req?.races) assert.ok(x.req.races.includes(u.raceId), `${x.id} race`);
+    }
+    const strong = Object.values(TALENTS).find((x) => x.slot === 'stat' && x.req?.stats && Object.entries(x.req.stats).some(([k, v]) => u.stats[k] < v));
+    if (strong) {
+      assert.ok(!pool.some((x) => x.id === strong.id), 'talent above the companion stats is not offered');
+      assert.ok(!st.talentOk(s, strong.id, GAME_DATA, 'andrey'));
+    }
+    const pick = pool.find((x) => isCombatTalent(x)) || pool[0];
+    st.chooseMemberTalent(s, 'andrey', pick.id, GAME_DATA);
+    assert.ok(p.talents.includes(pick.id));
+    assert.equal(p.pendingTalents, TALENT_LEVELS.filter((L) => L <= 5).length - 1);
+    const v = st.buildCompanion(s, p);
+    assert.ok(v.talents.includes(pick.id));
+    // ASI choice «talent instead»
+    const tl = LU.talentPool(s, v, 'andrey').find((x) => x.id !== pick.id);
+    st.chooseCompanionAsi(s, 'andrey', 4, { talent: tl.id }, GAME_DATA);
+    assert.ok(p.talents.includes(tl.id) && p.asi.some((e) => e.level === 4 && e.talent === tl.id) && !p.pendingAsi.includes(4));
+  });
+
+  test('companion combat talents: active ≤ limit, rest «в рюкзаке», toggled for any member', () => {
+    const s = mk();
+    st.recruit(s, 'andrey');
+    const p = s.party[0];
+    const combat = Object.values(TALENTS).filter((x) => isCombatTalent(x) && !x.todo && !p.talents.includes(x.id)).slice(0, 4).map((x) => x.id);
+    for (const id of combat) st.learnTalent(s, id, GAME_DATA, { force: true, key: 'andrey' });
+    const lim = COMBAT_TALENT_LIMIT(p.level);
+    assert.ok(p.activeCombat.length <= lim);
+    const u = st.buildCompanion(s, p);
+    assert.ok(u.activeTalents.length <= lim);
+    const off = p.talents.find((id) => isCombatTalent(TALENTS[id]) && !p.activeCombat.includes(id));
+    assert.equal(st.toggleActiveTalent(s, 'andrey', off, GAME_DATA), 'limit');
+    const on = p.activeCombat[0];
+    assert.equal(st.toggleActiveTalent(s, 'andrey', on, GAME_DATA), 'off');
+    assert.equal(st.toggleActiveTalent(s, 'andrey', off, GAME_DATA), 'on');
+    assert.ok(st.buildCompanion(s, p).activeTalents.includes(off));
+  });
+
+  test('migration: old companions without level / talents fields get defaults, XP becomes unspent level-ups', () => {
+    const s = mk(); s.hero.level = 6; s.hero.xp = xpFor(6);
+    s.party.push({ npc: 'andrey', state: 'active', hp: null, mrl: null, approval: 0, talents: ['knee-repair'] }); // v4 entry
+    s.party.push({ npc: 'tik', state: 'active', hp: null, mrl: null, approval: 0, talents: [], level: 3, xp: xpFor(5) + 5, asi: 'auto' }); // XP above level
+    s.party.push({ npc: 'diss', state: 'active', hp: null, mrl: null, approval: 0, talents: [], level: 4, xp: xpFor(4), asi: [{ level: 4, stats: { cha: 2 }, auto: true }], asiNotes: ['x'] });
+    const n = normalizeSave(JSON.parse(JSON.stringify(s)), GAME_DATA);
+    const P = (id) => n.party.find((x) => x.npc === id);
+    assert.equal(P('andrey').level, 6);
+    assert.equal(P('andrey').pendingTalents, 2);
+    assert.ok(P('andrey').pendingAsi.includes(4) && Array.isArray(P('andrey').asi) && Array.isArray(P('andrey').activeCombat));
+    assert.equal(P('tik').level, 5, 'XP → levels');
+    assert.ok(P('tik').levelNews.includes(4) && P('tik').levelNews.includes(5));
+    assert.ok(P('tik').pendingAsi.includes(4) && P('tik').pendingTalents === 2);
+    assert.ok(P('diss').pendingAsi.includes(4) && !P('diss').asi.length, 'old auto ASI → unspent');
+    // idempotent: second normalize gives nothing new
+    const n2 = normalizeSave(JSON.parse(JSON.stringify(n)), GAME_DATA);
+    assert.equal(n2.party.find((x) => x.npc === 'andrey').pendingTalents, 2);
+    assert.ok(st.buildCompanion(n2, n2.party[0]));
+  });
+
+  test('squad size: 4 + CHA mod + leader talents; extra companions wait, cannot join', () => {
+    const s = mk();
+    s.hero.stats = { str: 10, dex: 10, con: 10, int: 10, wil: 10, cha: 10 };
+    const info = st.squadInfo(s, GAME_DATA);
+    const cha = Math.max(0, Math.floor((st.buildHero(s).stats.cha - 10) / 2));
+    assert.equal(info.max, CRu.squad.base + cha + info.lead);
+    for (const id of ['andrey', 'tik', 'diss', 'lox', 'dymka', 'sekiro']) st.recruit(s, id);
+    assert.equal(1 + st.activeCompanions(s).length, info.max, 'active = squad');
+    const w = s.party.find((p) => p.state === 'waiting');
+    assert.ok(w && !CP.canRejoin(s, w).ok);
+    s.hero.talents.push('leadership');
+    assert.equal(st.squadInfo(s, GAME_DATA).lead, 1);
+    assert.equal(st.squadMax(s, GAME_DATA), info.max + 1);
+    assert.ok(CP.rejoin(s, w.npc, GAME_DATA), 'leader place');
+    assert.equal(w.state, 'active');
+  });
+
+  test('reserve: waits where hired; with the base open — rests at the base, join only there', () => {
+    const s = mk();
+    st.recruit(s, 'andrey');
+    const here = s.location;
+    CP.sendToReserve(s, 'andrey');
+    const p = s.party[0];
+    assert.equal(p.state, 'waiting'); assert.equal(p.waitAt, here);
+    s.location = here === BASE_LOCATION ? 'flat-lagoon' : BASE_LOCATION;
+    assert.equal(CP.canRejoin(s, p).why, 'away');
+    s.flags[BASE_UNLOCK.openOn.flag] = true;
+    assert.equal(CP.idleHome(s, p), BASE_LOCATION);
+    assert.deepEqual(CP.baseIdle(s).map((x) => x.npc), ['andrey']);
+    s.location = BASE_LOCATION;
+    assert.ok(CP.rejoin(s, 'andrey'));
+    CP.sendToReserve(s, 'andrey');
+    assert.equal(p.waitAt, BASE_LOCATION);
+  });
+
+  test('best gear: picks a better weapon / armour from party bags, two-handed frees the off-hand, undo restores', () => {
+    const s = mk({ cls: 'zabivnoy' });
+    st.recruit(s, 'andrey');
+    INV.syncItems(s);
+    const before = BG.gearScore(st.buildHero(s));
+    const req0 = (st.buildHero(s).reqPenalty || []).length;
+    // the best weapon for this hero by the same estimate (trial equip), put into the companion's bag
+    const h = s.hero, keep = h.equipment;
+    let best = null;
+    for (const it of Object.values(GAME_DATA.ITEMS).filter((x) => x.slot === 'weapon' && x.dice && !x.unique)) {
+      h.equipment = { ...keep, weapon: it.id, offhand: it.twoHanded ? null : keep.offhand, inst: {} };
+      let sc; try { sc = BG.gearScore(st.buildHero(s)); } catch { continue; }
+      if (!best || sc > best.sc) best = { id: it.id, sc };
+    }
+    h.equipment = keep;
+    assert.ok(best.sc > before, 'a better weapon exists');
+    INV.placeAuto(INV.contOf(s, { c: 'bag', key: 'andrey' }), INV.makeInst(best.id), 1);
+    INV.refreshView(s);
+    const snap = BG.gearSnapshot(s);
+    const r = BG.equipBest(s, ['hero'], GAME_DATA);
+    const after = BG.gearScore(st.buildHero(s));
+    assert.ok(after >= before - 1e-9, `score ${before} → ${after}`);
+    assert.equal(s.hero.equipment.weapon, best.id, 'best weapon taken from the companion bag');
+    assert.ok(after > before, 'improved');
+    assert.ok(INV.bagOf(s.party[0]).grid.some((e) => e.item === 'armatura') || INV.bagOf(s.hero).grid.some((e) => e.item === 'armatura'), 'old weapon kept');
+    assert.ok(Array.isArray(BG.planLines(s, r.plans)));
+    const w = GAME_DATA.ITEMS[s.hero.equipment.weapon];
+    if (w?.twoHanded) assert.ok(!s.hero.equipment.offhand, 'two-handed: no off-hand');
+    // requirements: never equips into an unmet requirement when the old gear had none
+    assert.ok((st.buildHero(s).reqPenalty || []).length <= req0, 'no new unmet requirements');
+    BG.restoreGear(s, snap);
+    assert.equal(BG.gearScore(st.buildHero(s)), before, 'undo');
+    // «всем»: hero and companion, items are not duplicated
+    const total = () => {
+      const c = { ...INV.countAll(s) };
+      for (const hh of [s.hero, ...s.party]) for (const sl of ['weapon', 'offhand', 'armor']) { const id = hh.equipment?.[sl]; if (id) c[id] = (c[id] || 0) + 1; }
+      return JSON.stringify(Object.keys(c).sort().map((k) => [k, c[k]]));
+    };
+    const total0 = total();
+    BG.equipBest(s, ['hero', 'andrey'], GAME_DATA);
+    assert.equal(total(), total0, 'items conserved');
+  });
+}
+
+console.log('melee-aoe: leaps, cones, AI areas');
+{
+  const DM = { ...DATA, SURFACES, SURFACE_RULES, STATUSES: { ...DATA.STATUSES, ...GAME_DATA.STATUSES } };
+  const LEAP = { id: 't-leap', name: 'leap', action: 'action', cost: 0, range: 4, target: 'tile', area: { shape: 'radius', size: 1 },
+    roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 1,
+    effects: [{ op: 'damage', dice: '6d6', dmgType: 'slash' }, { op: 'move', tiles: 4, mode: 'teleport' }] };
+  const CONE = { id: 't-cone', name: 'cone', action: 'action', cost: 0, range: 3, target: 'tile', area: { shape: 'cone', size: 3 },
+    roll: 'save', save: 'dex', onSave: 'half', usesPerBattle: 2, effects: [{ op: 'damage', dice: '6d6', dmgType: 'slash' }] };
+  const mk = (grid, nHeroes, enemies) => {
+    const heroes = Array.from({ length: nHeroes }, () => buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data: DM }));
+    const b = createBattle({ map: { id: 'tma', grid, win: 'killAll' }, heroes, enemies, data: DM, seed: 3, autoReactions: false });
+    for (const u of b.units) u.maxHp = u.hp = 300;
+    return { b, H: b.units.filter((u) => u.team === 'heroes'), E: b.units.filter((u) => u.team === 'enemies') };
+  };
+  const at = (b, x, y) => b.units.find((u) => u.x === x && u.y === y);
+  test('leap + area: landing tile must be free, passable, within the jump and in sight; hero lands, area around', () => {
+    const { b, H, E } = mk(['##########', '#P.#.....#', '#..#.....#', '#....E...#', '#......E.#', '##########'], 1, ['thug', 'thug']);
+    const h = H[0];
+    h.abilities.push({ ...LEAP }); h.uses = {};
+    forceTurn(b, h);
+    assert.ok(!targetValid(b, h, LEAP, { x: 5, y: 3 }), 'occupied');
+    assert.ok(!targetValid(b, h, LEAP, { x: 3, y: 2 }), 'wall');
+    assert.ok(!targetValid(b, h, LEAP, { x: 6, y: 1 }), 'out of jump range');
+    assert.ok(!targetValid(b, h, LEAP, { x: 4, y: 1 }), 'no line of sight');
+    assert.ok(targetValid(b, h, LEAP, { x: 4, y: 4 }));
+    const specs = getLegalActions(b, h.id, { noMoves: true }).filter((a) => a.ability === 't-leap');
+    assert.ok(specs.length && specs.every((s) => !at(b, s.tile.x, s.tile.y)), 'legal landing tiles are free');
+    const hp = E[0].hp, hp2 = E[1].hp;
+    assert.ok(!perform(b, { type: 'ability', unit: h.id, ability: 't-leap', tile: { x: 5, y: 3 } }).ok, 'cannot land on a foe');
+    assert.ok(perform(b, { type: 'ability', unit: h.id, ability: 't-leap', tile: { x: 4, y: 4 } }).ok);
+    assert.deepEqual([h.x, h.y], [4, 4]);
+    assert.ok(E[0].hp < hp, 'adjacent foe hit');
+    assert.equal(E[1].hp, hp2, 'far foe untouched');
+  });
+  test('AI cone: picks the direction with the most foes and never hits its own side', () => {
+    const { b, H, E } = mk(['#########', '#.......#', '#..PPE..#', '#.......#', '#....E.P#', '#.......#', '#########'], 3, ['thug', 'thug']);
+    const caster = at(b, 5, 4), buddy = at(b, 5, 2);
+    caster.abilities = [{ ...CONE }]; caster.uses = {};
+    forceTurn(b, caster); b.turn.move = 0;
+    const act = chooseAction(b, caster.id);
+    assert.equal(act.type, 'ability', JSON.stringify(act));
+    assert.equal(act.ability, 't-cone');
+    const hit = abilityTargets(b, caster, CONE, act.tile);
+    assert.equal(hit.length, 2, `cone toward the pair, got ${JSON.stringify(act.tile)}`);
+    assert.ok(hit.every((u) => u.team === 'heroes'));
+    const hp = buddy.hp;
+    assert.ok(perform(b, act).ok);
+    assert.equal(buddy.hp, hp, 'ally in the cone is not damaged');
+    assert.ok(H.some((u) => u.hp < 300));
+  });
+  test('AI leap: lands next to the cluster, avoids a harmful surface tile', () => {
+    const { b, E } = mk(['##########', '#........#', '#.....PP.#', '#........#', '#..E.....#', '#.......P#', '##########'], 3, ['thug']);
+    const e = E[0];
+    e.abilities = [{ ...LEAP }]; e.uses = {};
+    forceTurn(b, e); b.turn.move = 0;
+    let act = chooseAction(b, e.id);
+    assert.equal(act.ability, 't-leap', JSON.stringify(act));
+    assert.equal(abilityTargets(b, e, LEAP, act.tile).length, 2);
+    const first = act.tile;
+    createSurface(b, 'fire', [first], null, { turns: 3 });
+    act = chooseAction(b, e.id);
+    assert.equal(act.ability, 't-leap');
+    assert.ok(act.tile.x !== first.x || act.tile.y !== first.y, 'moved off the fire tile');
+    assert.equal(abilityTargets(b, e, LEAP, act.tile).length, 2);
   });
 }
 

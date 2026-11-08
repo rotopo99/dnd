@@ -17,7 +17,8 @@ import { stageOf, currentGoalText, turninText } from '../world/quests.js';
 import { rollDice } from '../rules/dice.js';
 import { tierColor } from './location.js';
 import { saveGame } from '../save.js';
-import { layoutGear, renderGear, renderGearHover, clickGear, itemChips, updateGear, gearBusy } from './panel-gear.js';
+import { layoutGear, renderGear, renderGearHover, clickGear, updateGear, gearBusy, gearMembers } from './panel-gear.js';
+import { equipBest, planLines, restoreGear } from '../world/best-gear.js';
 import { createScroll, updateScroll, beginClip, endClip, drawScrollbar, SCROLLBAR_W } from '../ui/scroll.js';
 import { hotspot } from '../ui/tooltip.js';
 import { resLineTip, xpLine, talentTip, abilityTip, resTip, termText } from '../ui/tips.js';
@@ -83,6 +84,20 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     rebuild(game);
   }
 
+  function bestGear(game, all) {
+    const sv = game.save;
+    const keys = all ? gearMembers(sv).map((m) => m.key) : [S.gearKey || 'hero'];
+    const r = equipBest(sv, keys, game.data);
+    rebuild(game);
+    const lines = planLines(sv, r.plans);
+    if (!r.done || !lines.length) { restoreGear(sv, r.snap); rebuild(game); game.toast(t('gear.bestNone'), '4'); return; }
+    saveGame(sv);
+    game.openModal({ title: t('gear.bestTitle'), width: 820, lines: lines.slice(0, 24),
+      options: [{ label: t('gear.bestOk'), run: (g) => { saveGame(g.save); rebuild(g); } },
+        { label: t('gear.bestUndo'), run: (g) => { restoreGear(g.save, r.snap); saveGame(g.save); rebuild(g); } }],
+      onCancel: (g) => rebuild(g) });
+  }
+
   function layout(game) {
     const sv = game.save;
     const ox = Math.max(0, Math.floor((game.width - BASE_W) / 2)), oy = Math.max(0, Math.floor((game.height - BASE_H) / 2));
@@ -91,7 +106,12 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     TABS.forEach((id, i) => b.push({ kind: 'tab', id, label: t(`panel.${id}`), x: ox + 24 + i * 170, y: oy + 16, w: 160, h: 40, selected: S.tab === id }));
     b.push({ kind: 'back', label: t('panel.back'), key: 'Esc', x: ox + BASE_W - 164, y: oy + 16, w: 140, h: 40 });
     if (S.tab === 'party') layoutParty(game, b);
-    if (S.tab === 'gear') layoutGear(game, S, b);
+    if (S.tab === 'gear') {
+      layoutGear(game, S, b);
+      // feedback 2026-11-07: «Одеть лучшее» (selected member) / «всем» — world/best-gear.js, result window with undo
+      b.push({ kind: 'best', label: t('gear.best'), x: ox + 24, y: oy + 452, w: 146, h: 30, font: FONT });
+      b.push({ kind: 'bestAll', label: t('gear.bestAll'), x: ox + 176, y: oy + 452, w: 148, h: 30, font: FONT });
+    }
     if (S.tab === 'codex') layoutCodex(game, S, b);
     if (S.tab === 'journal') b.push({ kind: 'epilogue', label: t('journal.epilogue'), x: ox + BASE_W - 184, y: oy + 70, w: 160, h: 32, font: FONT }); // world-consequences.md
     if (S.tab === 'stats') {
@@ -112,6 +132,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'back') { game.resume(back); return; }
     if (b.kind === 'epilogue') { openEpilogue(game, { onDone: (g) => g.resume(self) }); return; }
     if (clickCodex(game, S, b)) { layout(game); return; }
+    if (b.kind === 'best' || b.kind === 'bestAll') return bestGear(game, b.kind === 'bestAll');
     if (clickGear(game, S, b, (g) => rebuild(g))) { if (b.kind === 'gearMember') S.sel = S.statKey = S.gearKey; rebuild(game); return; }
     if (b.kind === 'm') {
       if (b.act === 'medkit' || b.act === 'calmers') return useItem(game, b.act, b.member);
