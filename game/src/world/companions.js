@@ -1,6 +1,7 @@
 // Companions (docs/specs/companions-scenes.md, part 1): recruitment conditions with refusal reasons, loyalty events,
 // personal quest rewards, path change. Data — data/companions.js (COMPANIONS, COMPANION_RULES); XP / levels / approval
 // thresholds — world/state.js (shareXp, companionLevelUp, adjustApproval). No DOM.
+import { expBusy } from './expeditions.js';
 import { COMPANIONS, COMPANION_RULES as CR, PERSONAL_QUESTS } from '../data/companions.js';
 import { NPCS } from '../data/npcs.js';
 import { ITEMS, LOCATIONS, sameLocation } from './data.js';
@@ -241,6 +242,8 @@ export const idleHomeName = (save, p) => { const h = idleHome(save, p); return h
 /** Can a waiting companion join the squad now? → { ok, why: 'full' | 'away' | null }. */
 export function canRejoin(save, p, data) {
   if (!p || p.state !== 'waiting') return { ok: false, why: null };
+  const busy = expBusy(save, p); // expeditions.md: out on an errand / wounded / captive
+  if (busy) return { ok: false, why: 'busy', text: busy };
   const home = idleHome(save, p);
   if (home && !sameLocation(save.location, home)) return { ok: false, why: 'away' };
   if (squadFree(save, data) <= 0) return { ok: false, why: 'full' };

@@ -131,6 +131,7 @@ export function normalizeSave(s, data) {
   out.journal = arr(s.journal).filter((e) => e && typeof e.text === 'string').slice(-200);
   out.settings = { aiCompanions: false, ...obj(s.settings) };
   out.cyberspace = s.cyberspace && typeof s.cyberspace === 'object' ? s.cyberspace : null;
+  out.cs = s.cs && typeof s.cs === 'object' ? s.cs : null; // cyberspace-v2.md: zones / events / real-world hacks (world/cyber.js csState)
   out.pendingTalentChoice = arr(s.pendingTalentChoice);
   // world-consequences.md: applied quest consequences, wanted by faction, heirs, crime rumors (old saves — empty)
   out.cq = arr(s.cq).filter((c) => c && QUESTS[c.qid] && typeof c.o === 'string');

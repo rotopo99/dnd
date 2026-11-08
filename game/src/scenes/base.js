@@ -135,7 +135,7 @@ export function createBaseScene(back = null) {
     for (const p of idle) {
       const r = canRejoin(sv, p);
       options.push({ label: `${name(p)}: ${t('base.take')}`, sub: `${t('world.level')} ${p.level || 1}`, disabled: !r.ok,
-        reason: r.why === 'full' ? tf('party.squadFull', { m: squadInfo(sv).max }) : null, run: (g) => { rejoin(g.save, p.npc); again(g); } });
+        reason: r.text || (r.why === 'full' ? tf('party.squadFull', { m: squadInfo(sv).max }) : null), run: (g) => { rejoin(g.save, p.npc); again(g); } });
       options.push({ label: `${name(p)}: ${t('base.talk')}`, run: (g) => talk(g, p) });
     }
     for (const p of act) options.push({ label: `${name(p)}: ${t('base.leave')}`, run: (g) => { sendToReserve(g.save, p.npc); again(g); } });

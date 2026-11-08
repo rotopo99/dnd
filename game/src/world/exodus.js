@@ -1,5 +1,6 @@
 // «Третий исход» — глобальный таймер (docs/specs/third-exodus.md §1). Состояние: save.exodus = { start, ext, mark } (нет — таймер не идёт).
 // Числа — data/world/exodus.js. Дни идут через passDays (путь, отдых); метки и продления — exodusSync (идемпотентно).
+import { expTick } from './expeditions.js';
 import { EXODUS as X } from '../data/world/exodus.js';
 import { t } from '../data/text/index.js';
 import { journal, tf } from './state.js';
@@ -84,6 +85,7 @@ export function passDays(save, n = 1) {
   save.day += n;
   const r = exodusSync(save);
   r.out.push(...clashTick(save, n)); // skirmishes.md: markers appear / resolve with the days
+  r.out.push(...expTick(save)); // expeditions.md: errands of the reserve come back
   return r;
 }
 

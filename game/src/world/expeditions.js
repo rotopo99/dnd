@@ -3,16 +3,15 @@
 // passDays (exodus.js) → expTick: when save.day ≥ start + days the roll is made, rewards granted, p.expResult kept
 // for the «Вернулся» window (location.js); wounded → p.expBusy (day), captive → p.expCaptive { region, until }, dead → state 'cyberspace'.
 import { EXP_RULES, EXP_DC, EXP_TYPES, AUTOABLE_QUESTS, EXP_OUTCOMES, EXP_DANGER_GATE, EXP_LOOT, EXP_LOYALTY, EXP_FLAGS } from '../data/world/expeditions.js';
-import { COMPANION_RULES } from '../data/companions.js';
 import { REGIONS } from '../data/world/regions.js';
-import { LOCATIONS, ROUTES } from '../data/world/locations.js';
+import { LOCATIONS } from '../data/world/locations.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { NPCS } from '../data/npcs.js';
 import { t } from '../data/text/index.js';
 import { QUESTS, sameLocation, resolveLocation, ENCOUNTER_TABLES } from './data.js';
-import { grant, journal, tf, buildCompanion, openHidden, routesFrom, otherEnd, deed } from './state.js';
+import { grant, journal, tf, buildCompanion, openHidden, routesFrom, otherEnd } from './state.js';
 import { checkInfo, checkChance, hasWorldFlag } from './checks.js';
-import { idleHome, loyaltyBand, partyEntry } from './companions.js';
+import { idleHome, loyaltyBand } from './companions.js';
 import { adjustApproval } from './state.js';
 import { mutate, instValue } from './inventory.js';
 import { stageOf } from './quests.js';
@@ -131,10 +130,10 @@ export function expPlan(save, p, type, target, mode = 'normal') {
 
 /** Send the companion. → toasts. */
 export function startExp(save, p, plan) {
-  p.exp = { type: plan.type, target: plan.target, region: plan.region, start: save.day, days: plan.days, mode: plan.mode, dc: plan.dc, total: plan.total, mode2: plan.mode, skill: plan.skill };
+  p.exp = { type: plan.type, target: plan.target, region: plan.region, start: save.day, days: plan.days, mode: plan.mode, dc: plan.dc, total: plan.total, skill: plan.skill };
   delete p.expResult;
   const out = [];
-  const npc = COMPANION_RULES && NPCS[p.npc];
+  const npc = NPCS[p.npc];
   // sent «to his taste» (a loved deed tag fits the type): EXP_LOYALTY.sentOnTrait
   const likes = (NPCS[p.npc]?.likes || []).concat(npc?.companion?.spec?.likes || []);
   if ((plan.type === 'trade' && likes.includes('greed')) || (plan.type === 'scout' && likes.includes('explore'))) out.push(...adjustApproval(save, p, EXP_LOYALTY.sentOnTrait));
@@ -267,4 +266,3 @@ export function freeCaptive(save, p) {
 /** Results not yet shown at the companion's home node (location.js «Вернулся» window). */
 export const unseenResults = (save, locId) => save.party.filter((p) => p.expResult && !p.expResult.seen && (!idleHome(save, p) || sameLocation(idleHome(save, p), locId)));
 
-export { partyEntry, deed, ROUTES };

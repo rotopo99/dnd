@@ -237,7 +237,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       if (m.p && m.p.state === 'active') add({ act: 'wait', label: t('party.toReserve'), w: 110 });
       else if (m.p && m.p.state === 'waiting') {
         const r = canRejoin(sv, m.p, game.data);
-        add({ act: 'join', label: t('party.toActive'), w: 110, disabled: !r.ok, reason: r.why === 'full' ? tf('party.squadFull', { m: free.max }) : r.why === 'away' ? tf('party.idleAt', { place: idleHomeName(sv, m.p) }) : null });
+        add({ act: 'join', label: t('party.toActive'), w: 110, disabled: !r.ok, reason: r.text ? r.text : r.why === 'full' ? tf('party.squadFull', { m: free.max }) : r.why === 'away' ? tf('party.idleAt', { place: idleHomeName(sv, m.p) }) : null });
       }
       const pend = memberPending(sv, m.key);
       if (pend.any) add({ act: 'levelup', label: `▲ ${t('comp.levelUp')}`, w: 190, selected: true, tipText: pendingText(pend) });
