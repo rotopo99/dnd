@@ -18,6 +18,8 @@
 // Сила: боевой талант ≈ +3–5 п.п. к вкладу героя в бой партии. Большинство — «раз за бой».
 // Классы и враги этим файлом не меняются.
 
+import { NEUTRAL_TALENTS, WORLD_FLAGS_NEUTRAL } from './talents-neutral.js';
+
 const ab = (o) => ({
   level: 1, path: null, cost: 0, action: 'action', trigger: null,
   range: 1, target: 'enemy', area: null, roll: 'auto', save: null, onSave: 'none',
@@ -147,6 +149,7 @@ export const WORLD_FLAGS = {
   'gig': 'Раз за визит в поселение — выступление: Убеждение СЛ 13 → креды (10 × уровень) и +3 репутации.',
   'storm-ward': 'Партия защищена от прокси-бурь и прочих опасностей региона (hazard).',
   'judge-code': 'Перепрошивка терминалов культа — Магия Судьи с преимуществом; побег из Киберспейса +2; каждое использование — культ −5.',
+  ...WORLD_FLAGS_NEUTRAL, // world-consequences.md ч.4: нейтральное мировоззрение
 };
 
 // ------------------------------------------------------------------ список
@@ -812,6 +815,8 @@ const LIST = [
       desc: 'Невидимость на 1 ход. Раз за бой.' })],
     desc: 'ЛВК 14+: замаскироваться под окружение.' }),
 ];
+
+LIST.push(...NEUTRAL_TALENTS); // world-consequences.md ч.4 (вне канона, решение человека п. 18)
 
 // Пассивкам подставляем id/name/desc таланта (схема core-rules: { id, name, desc, op }).
 for (const t of LIST) {

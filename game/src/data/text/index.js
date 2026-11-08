@@ -2,6 +2,7 @@ import { PROLOGUE } from './prologue.js';
 import { SKILLS } from '../talents.js';
 import { INVENTORY_TEXT } from './inventory.js';
 import { COMPANION_TEXT } from './companions.js';
+import { WORLD_TEXT } from './world.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -210,6 +211,27 @@ const ru = {
   'create.alignment': 'Мировоззрение',
   'create.align.good': 'Добрый',
   'create.align.evil': 'Злой',
+  'create.align.neutral': 'Нейтральный',
+  // world-consequences.md ч.3: the base (scenes/base.js)
+  'base.title': 'Бункер Лиса — база', 'base.enter': 'База: модули и отдых', 'base.enterSub': 'стройка, схрон, медотсек, рация',
+  'base.toBase': 'На базу', 'base.power': 'Питание {use}/{supply}', 'base.noFuel': 'нет топлива', 'base.fuel': 'топливо: {name} ×{n}',
+  'base.queue': 'Стройка: {name} ур. {n} — готово к дню {day}', 'base.raid': 'НАБЕГ: {name} — защитить до дня {day}',
+  'base.lvl': 'ур. {n}/{max}', 'base.on': 'работает', 'base.off': 'не построен', 'base.noPower': 'нет питания', 'base.building': 'строится',
+  'base.build': 'Построить ур. {n}', 'base.max': 'Максимум', 'base.why.busy': 'идёт другая стройка', 'base.why.lis': 'нужен ИИ «Лис»',
+  'base.why.credits': 'мало кредитов', 'base.why.items': 'не хватает материалов', 'base.days': '{n} дн.', 'base.cost': '{c} кр.',
+  'base.custom': 'Обустройство', 'base.owned': 'есть', 'base.rest': 'Отдых', 'base.restSub': '{pct}% ЗДР/МРЛ · 1 день',
+  'base.stash': 'Схрон', 'base.stashSub': 'общий инвентарь', 'base.bench': 'Верстак', 'base.benchSub': 'улучшить качество',
+  'base.radioRumor': 'Слух по рации', 'base.radioRumorSub': 'раз в день', 'base.defend': 'Оборона!', 'base.defendSub': 'бой у шлюза',
+  'base.leave': 'В бункер', 'base.built': 'Стройка начата: {name} ур. {n}', 'base.restDone': 'Отдых на базе',
+  'base.benchNone': 'Нечего улучшать: нужен предмет-снаряжение «хлам» или «рабочее» в рюкзаке.', 'base.benchOk': 'Качество улучшено: {name}',
+  'base.benchFail': 'Не вышло: {name} (раз на предмет)', 'base.noRumor': 'Эфир молчит. Завтра.', 'base.radioTurnin': 'Сдано по рации',
+  'base.hint': 'Наведите на модуль — подробности. Верстак, медотсек и рация требуют генератор.', 'base.lastRaid': 'Последний набег: {text}',
+  'base.defendTitle': 'Оборона базы: {name}', 'base.revived': 'Медотсек вернул душу: {name}', 'base.medkit': 'Медотсек: +1 аптечка',
+  // world-consequences.md ч.4: backstories
+  'bg.title': 'Предыстория', 'bg.none': 'Без предыстории', 'bg.noneSub': 'только свободный текст',
+  'bg.button': 'Предыстория: {name}', 'bg.pickHint': 'Одна предыстория: плюсы, темы для разговоров и один недостаток.',
+  'bg.skills': 'Навыки: {list}', 'bg.adv': 'Преимущество ({skill}): {when}', 'bg.rep': 'репутация {list}',
+  'bg.credits': '{n} кр.', 'bg.start': 'Старт: {list}', 'bg.topic': 'Тема: {text}', 'bg.drawback': 'Недостаток: {text}',
   'create.anyStatPick': 'Человек: +1 к характеристике',
   'create.anyDefault': 'по умолчанию (основная класса)',
   'create.slot.race': 'Расовый талант',
@@ -699,6 +721,9 @@ const ru = {
   'trick.analysis': 'Изучить цель: метка, +2 урона по ней', 'trick.hacking': 'Взломать машину: теряет ход',
   'trick.tech': 'Починить щит меха: +10', 'trick.medicine': 'Стабилизировать союзника без аптечки',
   'trick.athletics': 'Толкнуть врага на 2 клетки', 'trick.stealth': 'Затаиться: следующая атака с преимуществом (1-й раунд)',
+  'trick.endurance': 'Стойкость: временные ЗДР себе', 'trick.meditation': 'Отрешиться: снять страх и панику',
+  'trick.judge': 'Перечитать: снять бафф скрилета/души и 2 МРЛ-урона', 'trick.lockpicking': 'Освободить союзника от пут (рядом)',
+  'stats.newUses': 'Теперь работает',
   'trick.biology': 'Показать сопротивления цели', 'trick.acrobatics': 'Пройти по огню и опасным клеткам без урона (до конца хода)', 'trick.safe': 'Акробатика: опасные клетки не ранят до конца хода', 'trick.noTargets': 'нет целей', 'trick.resists': 'Сопротивления',
   'trick.immune': 'Иммунитет', 'trick.r.resist': 'сопротивление', 'trick.r.vuln': 'уязвимость', 'trick.r.immune': 'иммунитет', 'trick.nothing': 'слабостей и защит не видно', 'trick.firstRound': 'только в 1-м раунде',
   'skillUse.military': 'Военное дело: партия +1 к инициативе', 'skillUse.medkit': 'медицина, лечение ×1.5',
@@ -762,5 +787,6 @@ const ru = {
 for (const [id, sk] of Object.entries(SKILLS)) ru[`skill.${id}`] = sk.name;
 Object.assign(ru, INVENTORY_TEXT); // v7 inventory strings (override older gear/battle item keys)
 Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
+Object.assign(ru, WORLD_TEXT); // world-consequences.md: consequences, epilogue, crime
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

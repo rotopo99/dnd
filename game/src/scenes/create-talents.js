@@ -6,17 +6,20 @@ import { TALENTS, CREATION_SLOTS, COMBAT_TALENT_LIMIT, talentsForSlot, isCombatT
 import { buildCreature, STATS } from '../rules/character.js';
 import { ORIGINS, originAllowed, gadgetFor } from '../world/data.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear } from '../ui/draw.js';
+import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear, fit } from '../ui/draw.js';
+import { openBackstoryPick, backstoryLabel } from '../ui/backstory-ui.js';
 import { createDetails, updateDetails, drawDetails as drawDetailsPanel } from '../ui/details.js';
 import { talentTip, abilityTip } from '../ui/tips.js';
 
+const ALIGNMENTS = ['good', 'neutral', 'evil'];
+const ALIGN_W = { good: 76, neutral: 112, evil: 64 };
 const BASE_W = 1280, BASE_H = 720;
 const SLOT_ROWS = 8;
 
 /** createTalentsScene(hero {race, cls, path, name}, back scene, onStart(game, fullHero)) */
 export function createTalentsScene(hero, back, onStart) {
   const st = {
-    origin: null, alignment: 'good', anyStat: null, picks: {}, focus: null, time: 0, pages: {}, lists: {}, dsc: createDetails(),
+    origin: null, alignment: 'good', bg: hero.bg || null, anyStat: null, picks: {}, focus: null, time: 0, pages: {}, lists: {}, dsc: createDetails(),
   };
   let buttons = [];
   let hover = null;
@@ -57,7 +60,9 @@ export function createTalentsScene(hero, back, onStart) {
     buttons = [];
     origins().forEach((o, i) => buttons.push({ kind: 'origin', id: o.id, label: o.name, x: ox + 24, y: oy + 100 + i * 40, w: 260, h: 36, font: FONT, selected: st.origin === o.id }));
     const ay = oy + 100 + 11 * 40 + 24;
-    ['good', 'evil'].forEach((a, i) => buttons.push({ kind: 'align', id: a, label: t(`create.align.${a}`), x: ox + 24 + i * 134, y: ay, w: 126, h: 36, selected: st.alignment === a }));
+    // world-consequences.md ч.4: the third, neutral alignment (its 6 talents — data/talents-neutral.js)
+    let axx = ox + 24;
+    ALIGNMENTS.forEach((a) => { const w = ALIGN_W[a]; buttons.push({ kind: 'align', id: a, label: t(`create.align.${a}`), x: axx, y: ay, w, h: 36, font: FONT, selected: st.alignment === a }); axx += w + 4; });
     if (game.data.RACES[hero.race]?.statBonus?.any) {
       STATS.forEach((k, i) => buttons.push({ kind: 'any', id: k, label: t(`stat.${k}`), x: ox + 24 + i * 37, y: ay + 74, w: 35, h: 30, font: '12px monospace', selected: (st.anyStat || null) === k }));
       buttons.push({ kind: 'any', id: null, label: t('create.anyDefault'), x: ox + 24, y: ay + 108, w: 260, h: 26, font: '12px monospace', selected: !st.anyStat });
@@ -78,6 +83,7 @@ export function createTalentsScene(hero, back, onStart) {
           reason: blocked ? t('create.combatLimit') : null });
       });
     });
+    buttons.push({ kind: 'bg', label: fit(game.ctx, backstoryLabel(st.bg), 320, '12px monospace'), x: ox + 924, y: oy + 622, w: 332, h: 26, font: '12px monospace', selected: !!st.bg });
     buttons.push({ kind: 'back', label: t('create.back'), x: ox + 924, y: oy + 652, w: 160, h: 48 });
     buttons.push({ kind: 'start', label: t('create.start'), x: ox + 1096, y: oy + 652, w: 160, h: 48, disabled: CREATION_SLOTS.some((s) => !st.picks[s] && list(game, s).length) });
   }
@@ -87,6 +93,7 @@ export function createTalentsScene(hero, back, onStart) {
     play('uiClick');
     if (b.kind === 'origin') { st.origin = b.id; st.focus = { kind: 'origin', id: b.id }; }
     else if (b.kind === 'align') st.alignment = b.id;
+    else if (b.kind === 'bg') { openBackstoryPick(game, { race: hero.race, current: st.bg, onPick: (g, id) => { st.bg = id; layout(g); } }); return; }
     else if (b.kind === 'any') st.anyStat = b.id;
     else if (b.kind === 'talent') { st.picks[b.slot] = b.id; st.focus = { kind: 'talent', id: b.id }; }
     else if (b.kind === 'spage') st.pages[b.slot] = (st.pages[b.slot] || 0) + b.dir;
@@ -98,7 +105,7 @@ export function createTalentsScene(hero, back, onStart) {
   function start(game) {
     if (buttons.find((b) => b.kind === 'start')?.disabled) { game.toast(t('create.pickAll'), 'c'); return; }
     const talents = CREATION_SLOTS.map((s) => st.picks[s]).filter(Boolean);
-    onStart(game, { ...hero, origin: st.origin, alignment: st.alignment, anyStat: st.anyStat, talents });
+    onStart(game, { ...hero, origin: st.origin, alignment: st.alignment, bg: st.bg, anyStat: st.anyStat, talents });
   }
 
   // details panel (ui/details.js): full card of the hovered / focused talent or origin + the class gadget, scrolls

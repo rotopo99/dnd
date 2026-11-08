@@ -26,6 +26,10 @@ import { questXp } from '../rules/progression.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { exodusActive, exodusLeft, exodusExtend } from './exodus.js';
 import { personalStage, personalQuestDone } from './companions.js';
+import { applyConsequences, markFinale } from './consequences.js';
+import { ATTACK_RULES } from '../data/world/crime.js';
+
+const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
 export const questDef = (id) => QUESTS[id];
 const stageDef = (q, id) => q.stages.find((s) => s.id === id);
@@ -55,7 +59,7 @@ export function turninLines(qid, outcome) {
 export function turninReachable(save, npcId) {
   if (!NPCS[npcId] || save.npcs?.[npcId]?.dead) return false;
   if (save.party?.some((p) => p.npc === npcId)) return true;
-  return !!npcHome(npcId);
+  return !!npcHome(npcId, save);
 }
 
 /** Quests waiting for a turn-in: [qid]; with npcId — only this NPC's. */
@@ -74,12 +78,16 @@ function reward(save, qid, data) {
   const q = QUESTS[qid];
   const r = { ...(q.rewards || {}) };
   r.xp = questXp(q);
+  // world-consequences.md §2: a quest passed to the dead giver's heir pays less
+  if (save.heirs?.[qid]) { const k = HEIR_MULT; r.xp = Math.round(r.xp * k); if (r.credits) r.credits = Math.round(r.credits * k); }
   const out = grant(save, r, data, { keyChoice: q.key });
   // third-exodus.md: rewards.exodus { ext } — the Exodus deadline moves once (flag exo-ext:<quest id>)
   const ext = (q.rewards?.exodus || q.exodus)?.ext;
   if (ext) out.push(...exodusExtend(save, qid, ext));
   if (r.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), r.talentChoice];
   if (q.personal) out.push(...personalQuestDone(save, q)); // companions-scenes.md: +loyalty, alternative path
+  out.push(...applyConsequences(save, qid)); // world-consequences.md: flag cq:<qid>:<outcome>, rep, world changes (once)
+  markFinale(save);
   return out;
 }
 
@@ -116,7 +124,7 @@ export function stageOf(save, id) {
 
 /** Quests this NPC can give now. */
 export function questsOffered(save, npcId) {
-  return Object.values(QUESTS).filter((q) => q.giver === npcId && !save.quests[q.id] && requiresOk(save, q.requires));
+  return Object.values(QUESTS).filter((q) => (save.heirs?.[q.id] || q.giver) === npcId && !save.quests[q.id] && requiresOk(save, q.requires)); // heirs: crime.js killNpc
 }
 
 export function startQuest(save, id) {

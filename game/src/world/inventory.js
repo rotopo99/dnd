@@ -11,6 +11,7 @@
 //   writes it (quests, events, location); syncItems(save) turns such edits into instances (+: hero bag → companions →
 //   stash; −: quick → bag → companions → stash, junk first). Every mutator here syncs first and recounts after.
 // Containers: ref { c: 'bag', key } | { c: 'stash' } | { c: 'ground' }.
+import { BASE_LOCATION, BASE_UNLOCK } from '../data/world/base.js';
 import { ITEMS, LOCATIONS, resolveLocation } from './data.js';
 import { INVENTORY as INV } from '../data/items/inventory.js';
 import { QUALITY, MOD_SLOTS } from '../data/items/mods.js';
@@ -99,6 +100,7 @@ export function groundOf(save) {
 /** Is the stash reachable here (hub / town / camp / bunker or a node with rest)? */
 export function canStash(save) {
   const L = LOCATIONS[resolveLocation(save.location)] || LOCATIONS[save.location];
+  if (L && save.flags?.[BASE_UNLOCK.openOn.flag] && resolveLocation(save.location) === BASE_LOCATION) return true; // world-consequences ч.3: the base stash
   return !!L && (INV.stashKinds.includes(L.kind) || (L.services || []).includes('rest'));
 }
 /** { grid, w, h } of a container ref. */

@@ -8,7 +8,7 @@ export const BACKSTORIES = {
     start: { rep: { technikums: 10, pirates: 5 }, items: [{ id: 'rations', n: 2 }], credits: 20, flags: ['bs-sky'] },
     skills: [{ skill: 'acrobatics', bonus: 1 }, { skill: 'survival', bonus: 1 }],
     conditional: [{ skill: 'perception', adv: true, when: 'падение, обрыв, платформа, высота' }],
-    topics: ['sky-bazaar', 'harmony-old'], drawback: { phobia: 'height', note: 'добавляется фобия высоты (триггер как в create-build)' } },
+    topics: ['sky-bazaar', 'harmony-old'], drawback: { phobia: 'heights', note: 'добавляется фобия высоты (триггер как в create-build)' } },
   aiCourier: { id: 'aiCourier', name: 'Бывший курьер АИ Партии', races: ['human', 'skeleton', 'android'],
     desc: 'Носил пакеты между кабинетами и однажды прочитал один. С тех пор ты в бегах, но с хорошими манерами.',
     start: { rep: { aiParty: 5, renegades: 10 }, items: [{ id: 'electrical-tape', n: 1 }], credits: 40, flags: ['bs-courier'] },

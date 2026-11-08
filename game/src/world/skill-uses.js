@@ -5,6 +5,7 @@ import { GAME_DATA } from '../data/index.js';
 import { mod } from '../rules/character.js';
 import { baseId } from './data.js';
 import { checkInfo, checkChance, rollCheck } from './checks.js';
+import { SKILL_USES2 } from '../data/world/skill-uses2.js';
 
 /** Best CHA modifier among members (N1). */
 export const bestChaMod = (members) => Math.max(0, ...members.map((m) => mod(m.unit.stats?.cha ?? 10)));
@@ -64,6 +65,19 @@ export const TRICKS = ['analysis', 'hacking', 'tech', 'medicine', 'athletics', '
 
 /** DC of a battle trick against a target of `level` (12 + level / 2). */
 export const trickDc = (level = 0) => SR.tricks.dc + Math.floor((level || 0) / 2);
+
+// ----------------------------------------------------------------------------- world-consequences.md ч.5: second pass
+// Battle tricks of the weak skills: SKILL_USES2 entries with where 'battle' (id below) — the «Навык» button lists them.
+export const TRICKS2 = { endurance: 'end-ambush', meditation: 'med-cringe', judge: 'jud-resist', lockpicking: 'lock-cuffs', acrobatics: 'acro-dodge' };
+/** SKILL_USES2 entry of a battle trick (or null). */
+export const trick2 = (skill) => (SKILL_USES2[skill] || []).find((x) => x.id === TRICKS2[skill]) || null;
+/** Short name of a use: the rule text before «:» / «(». */
+export const useName = (u) => u.rule.split(':')[0].split(' (')[0].trim();
+/** «Теперь работает: …» line of a skill for the skills window (null — no second-pass uses). */
+export function newUsesLine(skill) {
+  const list = SKILL_USES2[skill];
+  return list?.length ? list.map((u) => useName(u)).join(' · ') : null;
+}
 
 // ----------------------------------------------------------------------------- N7: economy
 /** DC to take an item apart: tier + 10. */

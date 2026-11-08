@@ -7,6 +7,7 @@ import { NPCS } from '../data/npcs.js';
 import { ITEMS, LOCATIONS, REGIONS } from './data.js';
 import { normFaction } from './reputation.js';
 import { createRng, hashSeed } from '../rules/rng.js';
+import { vendorMods } from './consequences.js';
 
 export { VENDORS, ARCHETYPES };
 const RANK = { hostile: 0, suspicious: 1, neutral: 2, friendly: 3, ally: 4 };
@@ -57,7 +58,19 @@ export function gateFor(it, cap) {
  *   kind: 'staple' | 'sig' (exclusive) | 'edition' (masterwork) | 'rot' | 'rare'; mult — price multiplier
  *   (quality × archetype markup × (1 + greed) × rare markup); `locked` — the tier the item needs.
  */
-export function vendorStock(npcId, day, tier = 'neutral') {
+export function vendorStock(npcId, day, tier = 'neutral', save = null) {
+  const vs = vendorStockBase(npcId, day, tier);
+  if (!vs || !save) return vs;
+  // world-consequences.md: quest consequences — price ×mult, add / remove goods (closed shops are checked by the caller)
+  const m = vendorMods(save, npcId);
+  if (m.mult === 1 && !m.add.length && !m.remove.size) return vs;
+  const rows = vs.rows.filter((r) => !m.remove.has(r.id)).map((r) => ({ ...r, mult: r.mult * m.mult }));
+  const base = vs.arch.markup * (1 + (vs.vendor.greed || 0));
+  for (const id of m.add) if (ITEMS[id] && !rows.some((r) => r.id === id)) rows.push({ id, q: 'working', kind: 'staple', mult: base * m.mult });
+  return { ...vs, rows, worldMult: m.mult };
+}
+
+function vendorStockBase(npcId, day, tier) {
   const v = VENDORS[npcId];
   const arch = v && ARCHETYPES[v.arch];
   if (!arch) return null;

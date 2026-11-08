@@ -46,6 +46,15 @@ import { openCheckScene } from './check-scene.js';
 import { questScene, stageXp } from '../world/check-run.js';
 import { openRecruit } from '../ui/recruit-ui.js';
 import { recruitStatus, restLoyalty, waitingLoyalty } from '../world/companions.js';
+import { syncBase, baseTick, atBase, modActive as baseModActive, radioTurnin } from '../world/base.js';
+import { nodeMark, worldRumors, shopClosed, closedLoc, TONE_COLOR } from '../world/consequences.js';
+import { openEpilogue } from './epilogue.js';
+import {
+  npcFaction, npcRole, attackBlock, attackHeatText, attackSetup, attackFailed, killNpc, theftPlaces, theftDc, theftLoot, theftTried, theftCap,
+  resolveTheft, payFine, fineFor, serviceBlocked, wantedTick, entryThreat, entryCheckOf, guardEnemies, bribeInfo, applyBribe, heatOf, crimeRumors, isOfficial,
+} from '../world/crime.js';
+import { CRIME_RULES, ATTACK_RULES } from '../data/world/crime.js';
+import { openLoot } from './world-battle.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
@@ -66,7 +75,7 @@ export function createLocationScene(rawId) {
   // v3.1: gear stigma shifts how the faction sees the party (effectiveRep)
   const facTier = (game, f) => (f ? repTier(effectiveRep(game.save, f, game.data)) : 'neutral');
   const back = (game) => { game.resume(self); refresh(game); };
-  const refresh = (game) => { S.turnin = true; toastAll(game, autoProgress(save(game), game.data)); toastAll(game, exodusSync(save(game)).out); persist(game); layout(game); };
+  const refresh = (game) => { S.turnin = true; toastAll(game, autoProgress(save(game), game.data)); toastAll(game, exodusSync(save(game)).out); toastAll(game, syncBase(save(game))); toastAll(game, baseTick(save(game))); persist(game); layout(game); };
   const ms = (game) => members(save(game), game.data);
   const homeTier = (game) => facTier(game, locFaction(locId) || (loc.region === 'harmony' ? 'technikums' : null));
   const toMap = (g) => { g.visit = null; import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene())); };
@@ -214,7 +223,7 @@ export function createLocationScene(rawId) {
       const h = hireInfo(save(game), npc.id, hireTier(game, npc), game.data);
       if (h.why !== 'already' && h.why !== 'no') acts.push({ id: 'hire', label: `${t('loc.hire')} ${h.price}`, disabled: !!h.why, reason: h.why ? t(`loc.hire.${h.why}`) : null });
     }
-    return acts;
+    return worldActs(game, npc, acts);
   }
 
   function doNpc(game, npc, act) {
@@ -227,6 +236,8 @@ export function createLocationScene(rawId) {
       if (ta.bribe) { sv.hero.credits -= ta.bribe; game.toast(`${t('check.bribe')}: −${ta.bribe}`, 'b'); }
       return openShopHere(game, npc.name, tier, null, npc);
     }
+    if (act === 'steal') return openTheft(game, npc);
+    if (act === 'attack') return openAttack(game, npc);
     if (act === 'train') return openTrain(game, npc);
     if (act === 'recruit') return openRecruit(game, npc, (g) => refresh(g));
     if (act === 'hire') {
@@ -377,8 +388,13 @@ export function createLocationScene(rawId) {
     const sv = save(game);
     const out = [];
     const tier = homeTier(game);
+    // world-consequences.md ч.3: the base panel (bunker after sq-galina-hatch)
+    if (atBase(sv)) out.push({ label: t('base.enter'), sub: t('base.enterSub'), run: (g) => import('./base.js').then((m) => g.setScene(m.createBaseScene(self))) });
     const lore = locationLore(locId);
-    if (lore) out.push({ label: t('lore.look'), sub: lore.problem ? `${t('lore.problem')}: ${lore.problem}` : t('lore.lookSub'), run: (g) => openLore(g) });
+    const mark = nodeMark(sv, locId); // world-consequences.md: the node changed after a quest
+    if (lore || mark) out.push({ label: t('lore.look'), sub: mark ? mark.descs.at(-1) : lore.problem ? `${t('lore.problem')}: ${lore.problem}` : t('lore.lookSub'), run: (g) => openLore(g) });
+    const bribe = bribeAction(game);
+    if (bribe) out.push(bribe);
     for (const s of slotsAt(sv, locId)) { const a = slotAction(game, s); if (a) out.push(a); }
     // quests given by the location (giver not standing here)
     for (const qid of loc.quests || []) {
@@ -436,7 +452,7 @@ export function createLocationScene(rawId) {
     } else if (loc.region !== 'harmony' && loc.kind !== 'boss') {
       out.push({ label: t('loc.camp'), sub: t('loc.campSub'), run: (g) => doRest(g, FIELD_CAMP.restore, true) });
     }
-    if (['town', 'hub'].includes(loc.kind)) out.push({ label: t('skillUse.disassemble'), sub: t('skillUse.disassembleSub'), run: (g) => openDisassemble(g) });
+    if (['town', 'hub'].includes(loc.kind) || (atBase(sv) && baseModActive(sv, 'workbench').ok)) out.push({ label: t('skillUse.disassemble'), sub: t('skillUse.disassembleSub'), run: (g) => openDisassemble(g) });
     if (svc.includes('heal')) out.push({ label: t('loc.heal'), sub: t('loc.healSub'), run: (g) => { restParty(sv, g.data, 1); g.toast(t('loc.healed'), 'j'); refresh(g); } });
     const cyber = sv.party.filter((p) => p.state === 'cyberspace');
     if ((svc.includes('revive') || (loc.terminal && sv.terminals[loc.terminal.id] === 'ours')) && cyber.length) {
@@ -510,6 +526,14 @@ export function createLocationScene(rawId) {
       journal(sv, `${t('loc.rumorFound')}: ${l.name}`);
       game.toast(`${t('loc.rumorFound')}: ${l.name}`, 'a');
     }
+    // world-consequences.md: rumors about the party's deeds (quest consequences, crimes) — every second time
+    const wr = [...worldRumors(sv), ...crimeRumors(sv)];
+    if (wr.length && Math.random() < 0.5) {
+      const text = wr[Math.floor(Math.random() * wr.length)];
+      journal(sv, `${t('cq.worldRumor')}: ${text}`);
+      game.openModal({ title: t('lore.rumorsHeard'), lines: [{ text: t('cq.worldRumor'), color: 'a' }, { text: `«${text}»` }], options: [{ label: t('battle.continue'), run: () => {} }] });
+      return;
+    }
     // v4: the shared rumor pool (locations-lore.js) — about the revealed place, else any other place
     const others = LORE_RUMORS.filter((r) => r.loc !== locId);
     const lr = (l && LORE_RUMORS.find((r) => r.loc === l.id)) || (others.length ? others[Math.floor(Math.random() * others.length)] : null);
@@ -523,10 +547,12 @@ export function createLocationScene(rawId) {
   // ---------------------------------------------------------------- v4: location lore (locations-lore.js)
   function openLore(game) {
     const sv = save(game);
-    const lore = locationLore(locId);
+    const mark = nodeMark(sv, locId);
+    const lore = locationLore(locId) || (mark ? {} : null);
     if (!lore) return;
     const hook = npcsAt(locId, sv).some((id) => offeredBy(game, NPCS[id]).length);
     const lines = [{ text: lore.desc || loc.desc || '' }];
+    if (mark) for (const d of mark.descs) lines.push({ text: d, color: TONE_COLOR[mark.tone] || 'a' });
     if (lore.problem) lines.push({ text: `${t('lore.problem')}: ${lore.problem}`, color: 'a' }, ...(hook ? [{ text: t('lore.problemQuest'), color: 'j' }] : []));
     if (lore.rumor) lines.push({ text: `${t('lore.rumor')}: «${lore.rumor}»`, color: '4' });
     if (lore.spots?.length) lines.push({ text: t('lore.spots'), color: 'h' });
@@ -621,7 +647,16 @@ export function createLocationScene(rawId) {
     if (radio) { openRadio(game, radio); persist(game); return true; }
     const near = new Set([...npcsAt(locId, sv), ...activeCompanions(sv).map((p) => p.npc)]);
     const qid = pendingTurnins(sv).find((id) => near.has(QUEST_TURNIN[id].npc));
-    if (!qid) return false;
+    if (!qid) {
+      // world-consequences.md ч.3: base radio — a «return» turn-in is claimed from anywhere
+      const rq = radioTurnin(sv) && pendingTurnins(sv)[0];
+      if (!rq) return false;
+      const got = claimTurnin(sv, rq, game.data);
+      persist(game);
+      game.toast(`${t('base.radioTurnin')}: ${QUESTS[rq].name}`, 'a');
+      showReward(game, QUESTS[rq].name, got);
+      return true;
+    }
     const npc = NPCS[QUEST_TURNIN[qid].npc];
     const st = sv.quests[qid];
     game.setScene(createDialogueScene({
@@ -673,6 +708,171 @@ export function createLocationScene(rawId) {
     return true;
   }
 
+  // ---------------------------------------------------------------- world-consequences.md: crime, wanted, world changes
+  /** NPC buttons under world changes: closed shop, services closed by the wanted level, «Украсть» / «Напасть». */
+  function worldActs(game, npc, acts) {
+    const sv = save(game);
+    const f = npcFaction(npc);
+    for (const a of acts) {
+      if (a.id === 'trade' && VENDORS[npc.id] && shopClosed(sv, npc.id)) { a.disabled = true; a.reason = t('cq.shopClosed'); }
+      const svc = { trade: 'trade', train: 'training', recruit: 'recruit', hire: 'recruit' }[a.id];
+      if (svc && f && serviceBlocked(sv, f, svc)) { a.disabled = true; a.reason = t('wanted.service'); }
+    }
+    if (sv.party.some((p) => p.npc === npc.id && p.state !== 'left')) return acts;
+    acts.push({ id: 'steal', label: t('crime.steal'), crime: true, disabled: theftTried(sv, npc.id), reason: t('crime.tooSoon') });
+    const why = attackBlock(sv, npc.id);
+    acts.push({ id: 'attack', label: t('crime.attack'), crime: true, disabled: !!why, reason: why });
+    return acts;
+  }
+
+  function openTheft(game, npc) {
+    const sv = save(game);
+    game.openModal({
+      title: tf('crime.stealTitle', { name: npc.name }), lines: [{ text: t('crime.stealLines'), color: 'a' }],
+      options: [...theftPlaces(sv, npc, loc).map((pl) => {
+        const dc = theftDc(sv, npc, pl);
+        return { label: t(`crime.place.${pl}`), sub: tf('crime.placeSub', { dc, cap: theftCap(sv) }), run: (g) => stealRoll(g, npc, pl, dc) };
+      }), { label: t('check.cancel'), run: () => {} }],
+    });
+  }
+
+  function stealRoll(game, npc, place, dc) {
+    const sv = save(game);
+    const loot = theftLoot(sv, npc, place);
+    openCheck(game, { title: tf('crime.stealTitle', { name: npc.name }), skills: CRIME_RULES.theft.skills, dc, members: ms(game), cancel: true,
+      memoKey: `theft:${npc.id}:${sv.day}`,
+      onDone: (g, ok, res) => {
+        const r = resolveTheft(sv, npc, loot, { ok, gap: res ? dc - res.total : 4, natural: res?.natural || 0, place });
+        toastAll(g, r.toasts);
+        persist(g);
+        if (r.ok) { refresh(g); return; }
+        theftFail(g, npc, r, loot);
+      } });
+  }
+
+  function theftFail(game, npc, r, loot) {
+    const sv = save(game);
+    const f = npcFaction(npc) || locFaction(locId);
+    const fine = r.fail.id === 'caught' ? fineFor(loot.value) : CRIME_RULES.fine.min;
+    const opts = [];
+    for (const a of r.ask) {
+      if (a === 'return') opts.push({ label: t('crime.return'), run: (g) => refresh(g) });
+      if (a === 'fine') opts.push({ label: tf('crime.fine', { n: fine }), run: (g) => { toastAll(g, payFine(sv, fine)); refresh(g); } });
+      if (a === 'fight') opts.push({ label: t('crime.fight'), sub: encounterName(guardEnemies(sv, f).encounter), run: (g) => guardFight(g, f) });
+      if (a === 'run') opts.push({ label: t('crime.run'), sub: tf('crime.runSub', { dc: CRIME_RULES.run.dc }), run: (g) => runAway(g, f) });
+    }
+    game.openModal({ title: r.fail.text, border: 'c', onCancel: false, lines: [{ text: npc.name, color: 'a' }], options: opts });
+  }
+
+  /** Fight the node's guards (theft alarm, wanted at the gate). The win counts as passing the gate. */
+  function guardFight(game, f) {
+    const sv = save(game);
+    const ge = guardEnemies(sv, f);
+    V(game).gate = true;
+    startWorldBattle(game, { enemies: ge.enemies, faction: f, title: tf('crime.guardsTitle', { faction: f ? factionName(f) : loc.name }), onWin: again });
+  }
+
+  /** Escape: Acrobatics / Athletics / Stealth; success — to the previous node, failure — the guards. */
+  function runAway(game, f) {
+    const R = CRIME_RULES.run;
+    openCheck(game, { title: t('crime.run'), skills: R.skill.split('|'), dc: R.dc, members: ms(game), memoKey: `run:${locId}:${save(game).day}`,
+      onDone: (g, ok) => {
+        if (!ok) return guardFight(g, f);
+        const sv = save(g);
+        g.toast(t('crime.ranAway'), 'j');
+        if (sv.prevLocation && LOCATIONS[sv.prevLocation] && sv.prevLocation !== locId) sv.location = sv.prevLocation;
+        persist(g);
+        toMap(g);
+      } });
+  }
+
+  function openAttack(game, npc) {
+    const sv = save(game);
+    const why = attackBlock(sv, npc.id);
+    if (why) { game.toast(why, 'c'); return; }
+    const A = ATTACK_RULES, f = npcFaction(npc);
+    const fill = (s) => s.replace(/\{(\w+)\}/g, (_, k) => ({ name: npc.name, role: t(`crime.role.${npcRole(npc)}`), faction: f ? factionName(f) : t('crime.noFaction'), heat: attackHeatText(sv, npc) }[k] ?? ''));
+    const S2 = A.surprise;
+    game.openModal({
+      title: fill(A.confirm.title), border: 'c', width: 820,
+      lines: A.confirm.lines.map((l) => ({ text: fill(l), color: 'a' })),
+      options: [
+        { label: t('crime.attackSure'), run: (g) => attackFight(g, npc, 0) },
+        { label: tf('crime.surprise', { dc: S2.dc }), sub: tf('crime.surpriseSub', { n: S2.init }),
+          run: (g) => openCheck(g, { title: fill(A.confirm.title), skill: S2.skill, dc: S2.dc, members: ms(g), memoKey: `surprise:${npc.id}:${sv.day}`,
+            onDone: (g2, ok) => { if (ok) g2.toast(tf('crime.surpriseOk', { n: S2.init }), 'j'); attackFight(g2, npc, ok ? S2.init : 0); } }) },
+        { label: A.confirm.cancel, run: () => {} },
+      ],
+    });
+  }
+
+  function attackFight(game, npc, init) {
+    const sv = save(game);
+    const st = attackSetup(sv, npc, npcsAt(locId, sv));
+    V(game).gate = true;
+    startWorldBattle(game, {
+      enemies: st.enemies, faction: st.faction, title: tf('crime.attackTitle', { name: npc.name }), heroInit: init,
+      onWin: (g) => { const k = killNpc(sv, npc.id); toastAll(g, k.toasts); persist(g); openLoot(g, k.loot, () => { persist(g); again(g); }); },
+      onFlee: (g) => { toastAll(g, attackFailed(sv, npc)); },
+    });
+  }
+
+  /** Wanted / closed access at the entry (before the reputation gate). → true if a modal was opened. */
+  function wantedGate(game) {
+    const sv = save(game);
+    const leave = (g) => { if (sv.prevLocation && LOCATIONS[sv.prevLocation]) sv.location = sv.prevLocation; persist(g); toMap(g); };
+    if (closedLoc(sv, locId) && sv.prevLocation && sv.prevLocation !== locId) {
+      game.openModal({ title: tf('cq.closed', { loc: loc.name }), border: 'c', onCancel: false, lines: [{ text: t('cq.closedText') }], options: [{ label: t('wanted.leave'), run: leave }] });
+      return true;
+    }
+    const f = locFaction(locId);
+    const th = f ? entryThreat(sv, f) : null;
+    if (!th) return false;
+    if (hasFlagInParty(sv, game.data, 'forge-pass') && !V(game).forged) { V(game).forged = true; game.toast(t('wanted.forge'), 'j'); return false; }
+    const pass = (g) => { if (!gateCheck(g)) afterGate(g); };
+    const title = tf('wanted.entryTitle', { faction: factionName(f) });
+    if (th === 'check') {
+      const ec = entryCheckOf(sv, f);
+      game.openModal({ title, border: 'a', onCancel: false, lines: [{ text: t('wanted.entryText') }],
+        options: [
+          { label: t('wanted.entryCheck'), sub: `${ec.skill.split('|').map((s) => t(`skill.${s}`)).join(' / ')} · ${t('battle.dc')} ${ec.dc}`,
+            run: (g) => openCheck(g, { title, skills: ec.skill.split('|'), dc: ec.dc, members: ms(g), memoKey: `wanted:${locId}:${sv.day}`, onDone: (g2, ok) => (ok ? pass(g2) : guardFight(g2, f)) }) },
+          { label: t('crime.fight'), run: (g) => guardFight(g, f) },
+          { label: t('wanted.leave'), run: leave },
+        ] });
+      return true;
+    }
+    game.openModal({ title, border: 'c', onCancel: false, lines: [{ text: t('wanted.guardsText') }],
+      options: [
+        { label: t('crime.fight'), sub: encounterName(guardEnemies(sv, f).encounter), run: (g) => guardFight(g, f) },
+        { label: t('crime.run'), sub: tf('crime.runSub', { dc: CRIME_RULES.run.dc }), run: (g) => runAway(g, f) },
+      ] });
+    return true;
+  }
+
+  /** Bribe an official of the node's faction (wanted 1–4). */
+  function bribeAction(game) {
+    const sv = save(game);
+    const f = locFaction(locId);
+    if (!f || !heatOf(sv, f) || !npcsAt(locId, sv).some((id) => npcFaction(NPCS[id]) === f && isOfficial(NPCS[id]))) return null;
+    const b = bribeInfo(sv, f);
+    const title = tf('wanted.bribe', { faction: factionName(f) });
+    return { label: title, sub: b.why || tf('wanted.bribeSub', { n: b.price, dc: b.dc }), disabled: !!b.why, reason: b.why,
+      run: (g) => openCheck(g, { title, skills: b.skills, dc: b.dc, members: ms(g), cancel: true, memoKey: `bribe:${f}:${sv.day}`,
+        onDone: (g2, ok, res) => { toastAll(g2, applyBribe(sv, f, ok, res ? res.total - b.dc : 0)); refresh(g2); } }) };
+  }
+
+  /** The finale reached (consequences.js markFinale): the epilogue once, then back here. → true if opened. */
+  function pendingEpilogue(game) {
+    const sv = save(game);
+    if (!sv.pendingEpilogue || game.modals.length) return false;
+    sv.pendingEpilogue = false;
+    sv.flags['epilogue-seen'] = true;
+    persist(game);
+    openEpilogue(game, { onDone: (g) => g.resume(self) });
+    return true;
+  }
+
   // ---------------------------------------------------------------- layout & input
   function layout(game) {
     const sv = save(game);
@@ -691,8 +891,10 @@ export function createLocationScene(rawId) {
       const acts = npcActions(game, npc);
       for (let k = acts.length - 1; k >= 0; k--) {
         const a = acts[k];
-        x -= 92 + 4;
-        btns.push({ ...a, kind: 'npc', npc: id, act: a.id, x, y: y + 14, w: 92, h: 34, font: FONT });
+        // world-consequences.md: crime buttons are narrow; many buttons shrink to keep room for the name
+        const bw = Math.min(a.crime ? 74 : 92, Math.floor((600 - 70 - 150) / acts.length) - 4);
+        x -= bw + 4;
+        btns.push({ ...a, kind: 'npc', npc: id, act: a.id, x, y: y + 14, w: bw, h: 34, font: bw < 92 ? '12px monospace' : FONT });
       }
       const all = questsOffered(sv, id);
       S.rows.push({ id, y, quest: offeredBy(game, npc).length > 0 || pendingTurnins(sv, id).length > 0, questLocked: all.length > 0 && !offeredBy(game, npc).length, tier: sv.rep[normFaction(npcRepFaction(npc))] != null ? repTier(sv.rep[normFaction(npcRepFaction(npc))]) : null });
@@ -747,6 +949,8 @@ export function createLocationScene(rawId) {
       toastAll(game, waitingLoyalty(save(game)));
       if (ex.zero && !save(game).cyberspace) { startExodusZero(game); return; }
       const v = V(game);
+      toastAll(game, wantedTick(save(game), locId)); // world-consequences.md: wanted cools outside the faction
+      if (!v.gate && wantedGate(game)) return;
       if (!v.gate && gateCheck(game)) return;
       afterGate(game);
     },
@@ -758,6 +962,7 @@ export function createLocationScene(rawId) {
       S.time += dt;
       const inp = game.input;
       if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return; }
+      if (V(game).gate && pendingEpilogue(game)) return;
       S.hover = hitButton(S.buttons, inp.mouse);
       if (inp.mouse.clicked && S.hover) click(game, S.hover);
       else if (inp.wasPressed('KeyM')) nav(game, 'map');
@@ -780,14 +985,15 @@ export function createLocationScene(rawId) {
       const regName = reg?.name && !loc.name.startsWith(reg.name) ? reg.name : '';
       text(ctx, [regName, f ? `${factionName(f)}: ${t(`tier.${tier}`)}` : ''].filter(Boolean).join(' · '), ox + 24, oy + 50, f ? tierColor(tier) : C['4'], FONT);
       if (!sv.hero.pendingTalents && !(sv.hero.pendingAsi || []).length) text(ctx, `${t('world.day')} ${sv.day} · ${t('world.credits')} ${sv.hero.credits} · ${t('world.level')} ${sv.hero.level} (${xpInfo(sv.hero.xp, sv.hero.level).max ? sv.hero.xp : `${sv.hero.xp}/${xpInfo(sv.hero.xp, sv.hero.level).to}`} ${t('res.xp')})`, ox + BASE_W - 24, oy + 20, C.b, FONT_B, 'right');
-      textBlock(ctx, loc.desc || '', ox + 24, oy + 72, BASE_W - 300, C['4'], FONT, LINE, 1);
+      const mark = nodeMark(sv, locId); // world-consequences.md: the latest change of the node replaces its line
+      textBlock(ctx, mark ? mark.descs.at(-1) : loc.desc || '', ox + 24, oy + 72, BASE_W - 300, mark ? C[TONE_COLOR[mark.tone] || '4'] : C['4'], FONT, LINE, 1);
       text(ctx, t('loc.people'), ox + 24, oy + 100, C['4'], FONT_B);
       S.rows.forEach((row) => {
         const npc = NPCS[row.id];
         panel(ctx, ox + 24, row.y, 600, 60, C['1'], C['2']);
         drawPortrait(ctx, row.id, ox + 32, row.y + 6, 1, { native: true });
-        const nActs = S.buttons.filter((b) => b.kind === 'npc' && b.npc === row.id).length;
-        const tw = 600 - 70 - nActs * 96 - 12;
+        const bx = Math.min(ox + 24 + 600, ...S.buttons.filter((b) => b.kind === 'npc' && b.npc === row.id).map((b) => b.x));
+        const tw = bx - (ox + 86) - 8;
         text(ctx, fit(ctx, `${npc.name}${row.quest ? ' !' : row.questLocked ? ` · ${t('loc.questLocked')}` : ''}`, tw, FONT_B), ox + 86, row.y + 8, row.quest ? C.a : C['5'], FONT_B);
         text(ctx, fit(ctx, npc.role || '', tw, '12px monospace'), ox + 86, row.y + 34, row.tier ? tierColor(row.tier) : C['4'], '12px monospace');
       });

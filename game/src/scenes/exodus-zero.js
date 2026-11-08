@@ -7,6 +7,7 @@ import { journal, visit } from '../world/state.js';
 import { onBattleWon, autoProgress } from '../world/quests.js';
 import { saveGame } from '../save.js';
 import { startWorldBattle } from './world-battle.js';
+import { openEpilogue } from './epilogue.js';
 
 const Z = EXODUS.zero;
 
@@ -36,18 +37,23 @@ function fight(game) {
       saveGame(sv);
       g.openModal({ title: t('exodus.lateWinTitle'), titleColor: 'a', border: 'a', onCancel: false, lines: [{ text: t('exodus.lateWin') }],
         options: [
+          // world-consequences.md: the epilogue at the Exodus zero (the late win), then the Main node
+          { label: t('epi.title'), run: (g2) => openEpilogue(g2, { extra: [{ title: t('exodus.lateWinTitle'), text: t('exodus.lateWin') }],
+            onDone: (g3) => import('./location.js').then((m) => g3.setScene(m.createLocationScene(Z.location))) }) },
           { label: t('battle.continue'), run: (g2) => import('./location.js').then((m) => g2.setScene(m.createLocationScene(Z.location))) },
           { label: t('menu.back'), run: (g2) => import('./menu.js').then((m) => g2.setScene(m.menuScene)) },
         ] });
     },
     onLose: (g) => {
-      // the bad ending: the save slots stay (load an earlier one)
+      // the bad ending: the save slots stay (load an earlier one); first the epilogue of what the world remembers
+      const sv = g.save;
       g.save = null;
-      import('./menu.js').then((m) => {
-        g.setScene(m.menuScene);
-        g.openModal({ title: t('exodus.lostTitle'), titleColor: 'n', border: 'n', onCancel: false, lines: [{ text: t('exodus.lost') }],
-          options: [{ label: t('menu.back'), run: (g2) => g2.setScene(m.menuScene) }] });
+      const toMenu = (g2) => import('./menu.js').then((m) => {
+        g2.setScene(m.menuScene);
+        g2.openModal({ title: t('exodus.lostTitle'), titleColor: 'n', border: 'n', onCancel: false, lines: [{ text: t('exodus.lost') }],
+          options: [{ label: t('menu.back'), run: (g3) => g3.setScene(m.menuScene) }] });
       });
+      openEpilogue(g, { save: sv, extra: [{ title: t('exodus.lostTitle'), text: t('exodus.lost') }], onDone: toMenu });
     },
   });
 }

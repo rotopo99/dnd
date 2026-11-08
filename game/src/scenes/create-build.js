@@ -17,6 +17,7 @@ import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hit
 import { itemStats, soonNote, weaponTypeName, armorTypeName, tierName, itemTip } from '../ui/items-ui.js';
 import { hotspot } from '../ui/tooltip.js';
 
+import { openBackstoryPick, backstoryLabel } from '../ui/backstory-ui.js';
 const BASE_W = 1280, BASE_H = 720;
 const STORY_MAX = 240;
 /** Clothes colours: palette keys (STYLE palette). null — class default. */
@@ -37,7 +38,7 @@ export function kitOptions(cls, pathId, prof) {
 export function createBuildScene(hero, back, onNext) {
   const st = {
     stats: Object.fromEntries(STATS.map((k) => [k, STAT_MIN])), base: [], extra: [], chosen: { weaponTypes: {}, dmgTypes: {}, armor: {} },
-    phobia: [], look: null, story: '', focus: null, weapon: null, armor: null, time: 0,
+    phobia: [], look: null, story: '', bg: hero.bg || null, focus: null, weapon: null, armor: null, time: 0,
   };
   let buttons = [], hover = null, ox = 0, oy = 0, errors = [], built = null, opts = null, defaults = null;
   let self;
@@ -120,6 +121,8 @@ export function createBuildScene(hero, back, onNext) {
         disabled: !on && st.phobia.length >= MAX_PHOBIAS });
     });
     buttons.push({ kind: 'story', id: 'story', label: '', x: ox + 444, y: oy + 610, w: 396, h: 96 });
+    // world-consequences.md ч.4: one backstory next to the free text
+    buttons.push({ kind: 'bg', id: 'bg', label: fit(game.ctx, backstoryLabel(st.bg), 260, SMALL), x: ox + 568, y: oy + 581, w: 272, h: 26, font: SMALL, selected: !!st.bg });
     // C: look, kit
     LOOK_COLORS.forEach((k, i) => buttons.push({ kind: 'look', id: k, label: k ? '' : '×', x: ox + 860 + i * 38, y: oy + 220, w: 34, h: 30, selected: st.look === k }));
     opts.weapons.forEach((id, i) => buttons.push({ kind: 'weapon', id, label: ITEMS[id].name, sub: itemStats(ITEMS[id]), font: SMALL, x: ox + 860, y: oy + 284 + i * 44, w: 396, h: 40, selected: st.weapon === id }));
@@ -137,6 +140,7 @@ export function createBuildScene(hero, back, onNext) {
     if (b.disabled) { play('miss'); return; }
     play('uiClick');
     st.focus = b.kind === 'story' ? 'story' : null;
+    if (b.kind === 'bg') { openBackstoryPick(game, { race: hero.race, current: st.bg, onPick: (g, id) => { st.bg = id; layout(g); } }); return; }
     if (b.kind === 'stat-') st.stats[b.id]--;
     else if (b.kind === 'stat+') st.stats[b.id]++;
     else if (b.kind === 'prof+' || b.kind === 'prof-') {
@@ -168,7 +172,7 @@ export function createBuildScene(hero, back, onNext) {
     const b = buildSpec();
     onNext(game, {
       ...hero, stats: b.stats, skills: b.skills, proficiencies: b.proficiencies || null, phobia: b.phobia || null,
-      equipment: b.equipment, belt: opts.kit.belt || [], look: st.look, backstory: st.story.trim(), flex: true,
+      equipment: b.equipment, belt: opts.kit.belt || [], look: st.look, backstory: st.story.trim(), bg: st.bg, flex: true,
     });
   }
 

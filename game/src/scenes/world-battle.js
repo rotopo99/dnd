@@ -83,7 +83,7 @@ export function startWorldBattle(game, o) {
       if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind);
       companionEvent(S, e); // companions-scenes.md: barks and revives
     },
-    race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: mil.success ? MIL.init : 0,
+    race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {
       queueBark('victory');
       for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
@@ -94,6 +94,7 @@ export function startWorldBattle(game, o) {
     // world flag 'retreat': leave a non-boss battle — back to the previous node, no loot
     onRetreat: o.encounter !== FINALE_ENCOUNTER && !o.boss && hasFlagInParty(save, data, 'retreat') ? (g, S) => {
       writeBack(g, S, false, o, { retreat: true });
+      o.onFlee?.(g); // world-consequences.md: an attacked NPC survives the retreat
       if (save.prevLocation && LOCATIONS[save.prevLocation]) save.location = save.prevLocation;
       saveGame(save);
       g.toast(t('battle.retreated'), 'a');

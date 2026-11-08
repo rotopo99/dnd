@@ -4,6 +4,7 @@
 // LMB press — pick up (release elsewhere — drop; click without moving — carry until the next click), R / RMB while
 // carrying — rotate, Shift+LMB — quick place, RMB on an item — menu, Esc — put back, drop on a member tab — give.
 // Mods: drop onto a slot of the card / onto a worn or bagged weapon/armour; `req` → Tech check of the best member.
+import { benchNoCheck } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { ITEMS, SKILL_RULES } from '../world/data.js';
 import { buildHero, buildCompanion, gearHolder, members, tf } from '../world/state.js';
@@ -85,6 +86,7 @@ export function transferItem(game, slot, id, from, to) {
 function modCheck(game) {
   return (req) => {
     const sv = game.save;
+    if (benchNoCheck(sv)) return { success: true, bench: true }; // world-consequences ч.3: the base workbench — no check, no tool
     if (req.tool && !(countAll(sv)[req.tool] > 0)) return { success: false, noTool: true };
     const r = autoCheck(members(sv, game.data), [req.skill || 'tech'], req.dc || 10);
     if (r.success && req.tool === 'repair-kit') takeItem(sv, req.tool, 1); // ремнабор тратит 1 заряд

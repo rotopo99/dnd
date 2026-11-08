@@ -1,5 +1,6 @@
 // Party / Reputation / Journal / Codex screens (tabs). createPanelsScene({ tab: 'party'|'stats'|'gear'|'rep'|'journal'|'codex', back, canSwap })
 // back — scene to resume on Esc. canSwap — combat talent loadout can be changed (on a node with rest).
+import { newUsesLine } from '../world/skill-uses.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, SKILLS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
@@ -26,6 +27,9 @@ import { openTalentPick, openAsi, openSheet } from './levelup.js';
 import { layoutCodex, clickCodex, updateCodex, renderCodex } from './panel-codex.js';
 import { loyaltyBand, canChangePath, changePath } from '../world/companions.js';
 import { COMPANIONS } from '../data/companions.js';
+import { consequenceLog } from '../world/consequences.js';
+import { heatOf, wantedOf, wantedLevel } from '../world/crime.js';
+import { openEpilogue } from './epilogue.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex'];
@@ -116,6 +120,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     }
     if (S.tab === 'gear') layoutGear(game, S, b);
     if (S.tab === 'codex') layoutCodex(game, S, b);
+    if (S.tab === 'journal') b.push({ kind: 'epilogue', label: t('journal.epilogue'), x: ox + BASE_W - 184, y: oy + 70, w: 160, h: 32, font: FONT }); // world-consequences.md
     if (S.tab === 'stats') {
       const ms = statMembers(sv);
       if (!ms.some((m) => m.key === S.statKey)) S.statKey = 'hero';
@@ -131,6 +136,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'tab') { S.tab = b.id; layout(game); return; }
     if (b.kind === 'statMember') { S.statKey = b.id; S.sc.off = 0; layout(game); return; }
     if (b.kind === 'back') { game.resume(back); return; }
+    if (b.kind === 'epilogue') { openEpilogue(game, { onDone: (g) => g.resume(self) }); return; }
     if (clickCodex(game, S, b)) { layout(game); return; }
     if (clickGear(game, S, b, (g) => rebuild(g))) { rebuild(game); return; }
     if (b.kind === 'm') {
@@ -245,6 +251,13 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       for (const th of [-50, -15, 15, 50]) ctx.fillRect(bx + ((th + 100) / 200) * bw, y + 6, 1, 16);
       text(ctx, `${v > 0 ? '+' : ''}${v}`, bx + bw + 16, y + 6, C['5'], FONT_B);
       text(ctx, t(`tier.${tier}`), bx + bw + 80, y + 6, tierColor(tier), FONT_B);
+      // world-consequences.md §2: wanted level of the faction (stars) with the bounty in the tip
+      const heat = heatOf(sv, f);
+      if (heat) {
+        const lv = wantedLevel(heat), w = wantedOf(sv, f);
+        text(ctx, '★'.repeat(heat) + '☆'.repeat(5 - heat), bx + bw + 196, y + 6, heat >= 3 ? C.c : C.a, FONT_B);
+        hotspot(bx + bw + 192, y, 70, 28, { title: `${t('wanted.label')}: ${lv.name}`, lines: [lv.text || '', ...(w.bounty ? [tf('wanted.bounty', { n: w.bounty })] : [])] });
+      }
     });
     legend(ctx, ox + 40, oy + BASE_H - 24);
   }
@@ -281,6 +294,14 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       for (const l of wrap(ctx, `${q.key ? '★ ' : ''}${q.name} — ${t(st.turnin && st.state === 'done' ? 'journal.turnin' : `journal.${st.state}`)}`, w, FONT_B)) rows.push({ text: l, color: col, font: FONT_B, x: 0 });
       if (st.turnin && st.state === 'done') for (const l of wrap(ctx, turninText(sv, id), w - 20, FONT)) rows.push({ text: l, color: C['4'], font: FONT, x: 20 });
       if (stageOf(sv, id) && st.state === 'active') for (const l of wrap(ctx, currentGoalText(sv, id), w - 20, FONT)) rows.push({ text: l, color: C['4'], font: FONT, x: 20 });
+      rows.push({ gap: true });
+    }
+    // world-consequences.md: «Последствия» — what the finished quests changed in the world, newest first
+    const log = consequenceLog(sv);
+    if (log.length) rows.push({ text: t('journal.consequences'), color: C.h, font: FONT_B, x: 0 });
+    for (const c of log) {
+      for (const l of wrap(ctx, `${t('world.day')} ${c.day}: ${c.name}`, w, FONT_B)) rows.push({ text: l, color: C['5'], font: FONT_B, x: 0 });
+      for (const ln of c.lines) for (const l of wrap(ctx, `· ${ln}`, w - 20, FONT)) rows.push({ text: l, color: C['4'], font: FONT, x: 20 });
       rows.push({ gap: true });
     }
     const ew = jeView().w - SCROLLBAR_W - 12;
@@ -405,7 +426,11 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       const parts = [`${t(`stat.${info.stat}`)} ${sgn(info.statMod)}`];
       if (info.prof) parts.push(`${t('stats.profBonus')} ${sgn(info.prof)}`);
       for (const n of info.notes) if (n.bonus) parts.push(`${n.text === 'base' ? t('stats.baseSkill') : n.text === 'extra' ? t('stats.extraSkill') : n.text} ${sgn(n.bonus)}`);
-      hotspot(x, y, 384, 20, { title: SKILLS[sk].name, lines: [{ text: t(`stats.kind.${info.kind}`), color: 'a' }, parts.join(' · '), info.mode !== 'normal' ? t(`stats.mode.${info.mode}`) : ''] });
+      // world-consequences.md ч.5: second-pass uses of the skill — «Теперь работает: …» (✦ on the row)
+      const nu = newUsesLine(sk);
+      if (nu) text(ctx, '✦', x + 352, y, C.h, '12px monospace', 'right');
+      hotspot(x, y, 384, 20, { title: SKILLS[sk].name, lines: [{ text: t(`stats.kind.${info.kind}`), color: 'a' }, parts.join(' · '), info.mode !== 'normal' ? t(`stats.mode.${info.mode}`) : '',
+        ...(nu ? [{ text: `${t('stats.newUses')}: ${nu}`, color: 'j' }] : [])] });
       y += 21;
     }
     // right: talents, passives, abilities (scrolled)

@@ -11,6 +11,7 @@ import { LOCATION_LORE } from '../data/world/locations-lore.js';
 import { NPC_DIALOGUE } from '../data/text/npc-dialogue.js';
 import { PARTY_EVENTS_TEXT } from '../data/text/party-events.js';
 import { QUEST_TURNIN } from '../data/text/quest-turnin.js';
+import { CONSEQUENCES } from '../data/world/consequences.js';
 import { PROLOGUE } from '../data/text/prologue.js';
 import { LOCATIONS, ITEMS as WORLD_ITEMS, resolveLocation } from '../data/world/locations.js';
 import { GAME_DATA } from '../data/index.js';
@@ -128,8 +129,36 @@ for (const l of Object.values(LOCATIONS)) for (const n of l.npcs || []) if (!LIS
  * here, NPCs whose home `burg` is here and whose `location` is not a node (unless another node lists them), and NPCs
  * with a `burg` here that an active quest waits for (talk goal at this burg).
  */
+/**
+ * World changes of NPC places (world-consequences.md): quest consequences `npcs.appear/vanish/move` in the order of
+ * save.cq, then deaths (save.npcs[id].dead). → Map npcId → { home: still at the usual place, extra: Set of nodes }.
+ */
+export function npcPlacement(save) {
+  const m = new Map();
+  const get = (n) => { if (!m.has(n)) m.set(n, { home: true, extra: new Set() }); return m.get(n); };
+  for (const c of save?.cq || []) {
+    const e = CONSEQUENCES[c.qid]?.[c.o];
+    if (!e) continue;
+    for (const a of e.npcs?.appear || []) get(a.npc).extra.add(resolveLocation(a.at));
+    for (const n of e.npcs?.vanish || []) { const p = get(n); p.home = false; p.extra.clear(); }
+    for (const a of e.npcs?.move || []) { const p = get(a.npc); p.home = false; p.extra = new Set([resolveLocation(a.to)]); }
+  }
+  for (const [n, st] of Object.entries(save?.npcs || {})) if (st?.dead) { const p = get(n); p.home = false; p.extra.clear(); }
+  return m;
+}
+
 export function npcsAt(locId, save = null) {
   const id = resolveLocation(locId);
+  const base = npcsAtBase(id, save);
+  if (!save?.cq?.length && !save?.npcs) return base;
+  const pl = npcPlacement(save);
+  if (!pl.size) return base;
+  const out = base.filter((n) => !pl.has(n) || pl.get(n).home);
+  for (const [n, p] of pl) if (p.extra.has(id) && NPCS[n] && !out.includes(n)) out.push(n);
+  return out;
+}
+
+function npcsAtBase(id, save) {
   const loc = LOCATIONS[id];
   const out = (loc?.npcs || []).filter((n) => NPCS[n]);
   const wanted = wantedAt(save, id);
@@ -144,10 +173,12 @@ export function npcsAt(locId, save = null) {
   return out;
 }
 
-/** Node where an NPC can be found: explicit `npcs` list → `location` (if a node) → `burg` (if a node); null — nowhere. */
-export function npcHome(npcId) {
+/** Node where an NPC can be found: explicit `npcs` list → `location` (if a node) → `burg` (if a node); null — nowhere. With save — world changes (moved / vanished / dead). */
+export function npcHome(npcId, save = null) {
   const n = NPCS[npcId];
   if (!n) return null;
+  const p = save ? npcPlacement(save).get(npcId) : null;
+  if (p && !p.home) return [...p.extra][0] || null;
   if (LISTED_AT.has(npcId)) return LISTED_AT.get(npcId);
   for (const l of [n.location, n.burg]) { const r = resolveLocation(l); if (r && LOCATIONS[r]) return r; }
   return null;

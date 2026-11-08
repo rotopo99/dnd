@@ -54,7 +54,7 @@ export const BASE_MODULES = {
     levels: [
       { cost: { credits: 220, items: [{ id: 'servo-parts', n: 3 }, { id: 'krona-battery', n: 1 }], days: 1 }, power: 0, fx: { supply: 2, fuel: { item: 'krona-battery', perDays: 10 }, note: 'питание 2; расход 1 батарея в 10 дней базы' } },
       { cost: { credits: 500, items: [{ id: 'krona-battery', n: 3 }, { id: 'repair-kit', n: 1 }], days: 2 }, power: 0, fx: { supply: 4, fuel: { item: 'krona-battery', perDays: 15 }, note: 'питание 4; расход 1 батарея в 15 дней' } },
-      { cost: { credits: 1000, items: [{ id: 'spare-cell', n: 4 }, { id: 'rare-parts', n: 2 }], days: 3 }, power: 0, fx: { supply: 6, fuel: { item: 'spare-cell', perDays: 25 }, note: 'питание 6; расход 1 запасная ячейка в 25 дней; лампы «Лиса» работают (нужен флаг lis-online)' } },
+      { cost: { credits: 1000, items: [{ id: 'spare-cell', n: 4 }, { id: 'rare-parts', n: 2 }], days: 3 }, power: 0, fx: { supply: 6, fuel: { item: 'spare-cell', perDays: 25 }, needsFlag: 'lis-online', note: 'питание 6; расход 1 запасная ячейка в 25 дней; лампы «Лиса» работают (нужен флаг lis-online)' } },
     ] },
   defense: { name: 'Оборона', glyph: '⛨', needs: [], desc: 'Баррикады и турели «Лиса»: бой защиты с бонусом, потери при набеге меньше.',
     levels: [
@@ -67,10 +67,10 @@ export const BASE_MODULES = {
 // Кастомизация (косметика и мелочи): выбор игрока, один раз за пункт, цена в кредитах
 export const BASE_CUSTOM = [
   { id: 'poster-cringe', name: 'Плакат «Кринж — сила»', cost: 30, fx: { mrl: 'партия +1 МРЛ в начале боя на базе (бой обороны)' } },
-  { id: 'poster-ai', name: 'Плакат Партии', cost: 30, fx: { rep: { aiParty: 1 }, note: 'раз в 14 дней: +1 репутация АИ при визите' } },
-  { id: 'garden', name: 'Грядки Галины', cost: 80, fx: { food: 'раз в 5 дней +1 рацион в схрон' } },
+  { id: 'poster-ai', name: 'Плакат Партии', cost: 30, fx: { rep: { aiParty: 1 }, everyDays: 14, note: 'раз в 14 дней: +1 репутация АИ при визите' } },
+  { id: 'garden', name: 'Грядки Галины', cost: 80, fx: { food: 'раз в 5 дней +1 рацион в схрон', item: 'rations', everyDays: 5 } },
   { id: 'vinyl', name: 'Патефон и пластинки', cost: 60, fx: { restLoyalty: 1 } },
-  { id: 'trophy-wall', name: 'Стена трофеев', cost: 100, fx: { note: 'показывает убитых боссов; +1 к Запугиванию на базе' } },
+  { id: 'trophy-wall', name: 'Стена трофеев', cost: 100, fx: { note: 'показывает убитых боссов; +1 к Запугиванию на базе', check: 'intimidation', bonus: 1 } },
   { id: 'lis-voice', name: 'Голос «Лиса»', cost: 0, needsFlag: 'lis-online', fx: { choices: ['Бодрый диктор', 'Усталый сержант', 'Заботливая бабушка'], note: 'озвучка фраз базы' } },
 ];
 
@@ -91,6 +91,10 @@ export const BASE_ATTACKS = {
   // Исход набега (если игрок не пришёл защищать, бросок обороны: d20 + defense против СЛ 10 + ур. региона)
   autoResolve: { dcBase: 10, win: { loss: 'нет' }, part: { loss: 'теряется 1 случайный модуль уровнем −1 (ремонт 50% цены)' }, fail: { loss: 'потеря: до 25% кредитов базы-схрона (кроме сейфа), модуль −1 уровень, Галина обижена' } },
   defend: { text: 'Если игрок на базе или приходит в течение 2 дней — бой обороны на карте бункера (map hatch-1) с бонусами defense и турелями; победа даёт XP как за бой и +10 лояльности напарникам в комнатах.', win: { rep: 1, xp: 'battle' }, lose: 'как fail авторазбора, плюс −5 лояльности' },
+  // Числа движка (программист): окно защиты, порог «частично», потери, награды боя обороны
+  defendDays: 2, partMargin: 5, lossCredits: 0.25, winRep: { neutralVillages: 1 }, winLoyalty: 10, loseLoyalty: -5,
+  turretAlly: 'lis-5-turret', defenseMap: 'hatch-1',
+  restNoMedbay: 0.5, // отдых на базе без медотсека — как привал (доля ЗДР/МРЛ)
   lisReaction: ['«Внимание, гражданин. Периметр нарушен».', '«Тревога. Предлагаю обороняться, а не обсуждать»', '«Я записал лица. Кого-то из них я видел. Они мне не понравились»'],
 };
 

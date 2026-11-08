@@ -4,6 +4,10 @@ import { t } from '../data/text/index.js';
 import { EXTRA_FACTIONS } from '../data/npcs.js';
 import { REP_FACTIONS, REP_TIERS, repTier as tierOf, spreadRep, startingRep as start, PROLOGUE_REP, ORIGINS } from '../data/world/origins.js';
 import { FACTION_ALIAS } from './data.js';
+import { NEUTRAL_RULES } from '../data/talents-neutral.js';
+
+// world-consequences.md ч.4: neutral talents of the hero change how reputation moves
+const heroHas = (save, id) => (save.hero?.talents || []).includes(id);
 
 export const FACTION_IDS = REP_FACTIONS;
 export const TIERS = ['hostile', 'suspicious', 'neutral', 'friendly', 'ally'];
@@ -18,8 +22,13 @@ export const tierAtLeast = (tier, min) => TIERS.indexOf(tier) >= TIERS.indexOf(m
 export function applyRep(save, faction, delta) {
   faction = normFaction(faction);
   if (!delta || !FACTION_IDS.includes(faction)) return [];
+  // «Срединный путь» (rep-damp): every change ×repDamp, rounded towards zero
+  if (heroHas(save, 'middle-way')) delta = Math.trunc(delta * NEUTRAL_RULES.repDamp);
+  if (!delta) return [];
   const before = { ...save.rep };
   spreadRep(save.rep, faction, delta);
+  // «Двое хозяев» (double-dealer): a gain does not drag rivals down
+  if (delta > 0 && heroHas(save, 'two-masters')) for (const f of FACTION_IDS) if (f !== faction && (save.rep[f] || 0) < (before[f] || 0)) save.rep[f] = before[f];
   const out = [];
   for (const f of FACTION_IDS) {
     const d = (save.rep[f] || 0) - (before[f] || 0);

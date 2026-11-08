@@ -2,6 +2,7 @@
 // with nodes at `px`, fog of the unknown, routes styled by kind (road / trail / wild / sea / lake / tunnel / district),
 // pan (drag, WASD / arrows) and zoom (wheel, +/− buttons). Travel along known routes: days, sea fare, `route.rolls`
 // encounter rolls per hop (d20 ≤ 3 × danger + mod, shown in the map log), ambush, encounters, hidden nodes by Perception.
+import { baseOpen, BASE_LOC } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
@@ -12,7 +13,7 @@ import { WORLD_RULES as R } from '../data/world/rules.js';
 import { repTier, factionName, tierAtLeast } from '../world/reputation.js';
 import {
   members, visit, routesFrom, otherEnd, isKnownRoute, encounterThreshold, pickEncounter, partyFlagSet, openHidden,
-  journal, locFaction, requiresOk, stigmaRep,
+  journal, locFaction, requiresOk, stigmaRep, tf,
 } from '../world/state.js';
 import { onArrive } from '../world/quests.js';
 import { runEvent, travelEvents } from './event.js';
@@ -23,6 +24,8 @@ import { passDays, exodusHud } from '../world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
 import { hotspot } from '../ui/tooltip.js';
 import { openPauseMenu } from '../ui/save-ui.js';
+import { nodeMark, closedLoc, TONE_COLOR } from '../world/consequences.js';
+import { hunterEncounter, hunterBonus } from '../world/crime.js';
 
 const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
 
@@ -63,6 +66,7 @@ export function findRoute(save, from, to, pflags) {
     for (const r of routesFrom(cur)) {
       if (!isKnownRoute(save, r, pflags)) continue;
       const o = otherEnd(r, cur);
+      if (closedLoc(save, o)) continue; // world-consequences.md: access.close
       const d = dist[cur] + r.days + 0.01;
       if (dist[o] == null || d < dist[o]) { dist[o] = d; prev[o] = { r, from: cur }; open.push(o); }
     }
@@ -144,6 +148,7 @@ export function createWorldMapScene() {
       { id: 'zoomOut', label: '−', key: '-', w: 44 }, { id: 'zoomIn', label: '+', key: '+', w: 44 }, { id: 'center', label: t('map.center'), key: 'C', w: 110 },
       { id: 'night', label: `${t('map.night')}: ${S.night ? t('party.on') : t('party.off')}`, key: 'N', selected: S.night },
       { id: 'enter', label: t('map.enter'), key: 'Enter' },
+      ...(baseOpen(game.save) ? [{ id: 'base', label: t('base.toBase'), key: 'H', w: 100 }] : []), // world-consequences.md ч.3
       { id: 'party', label: t('panel.party'), key: 'P' },
       { id: 'rep', label: t('panel.rep'), key: 'R' },
       { id: 'journal', label: t('panel.journal'), key: 'J' },
@@ -233,6 +238,8 @@ export function createWorldMapScene() {
     const sv = save(game);
     const th = encounterThreshold(sv, hop.r, game.data);
     if (!th.need) return false;
+    const hb = hunterBonus(sv);
+    if (hb) { th.mod += hb; th.need += hb; }
     if (S.travel?.night && !S.pflags.has('night-sight')) { th.mod += ENCOUNTER_MODS.night; th.need += ENCOUNTER_MODS.night; }
     const roll = 1 + Math.floor(Math.random() * 20);
     const hit = roll <= th.need;
@@ -240,7 +247,8 @@ export function createWorldMapScene() {
     log(`${t('world.day')} ${sv.day} · ${t('map.roll')} ${i}/${n}: d20 = ${roll} ${t('map.vs')} ≤ ${th.need} (3×${th.danger}${mod}) — ${hit ? t('map.encounter') : t('map.quiet')}`, hit ? 'c' : '4');
     if (!hit) return false;
     const reg = hop.r.region === 'sea' ? 'sea' : LOCATIONS[hop.to].region;
-    const e = pickEncounter(sv, reg) || pickEncounter(sv, LOCATIONS[hop.to].region);
+    // world-consequences.md §2: bounty hunters (wanted ≥ 3) come first
+    const e = hunterEncounter(sv) || pickEncounter(sv, reg) || pickEncounter(sv, LOCATIONS[hop.to].region);
     if (!e) return false;
     S.paused = true;
     runEncounter(game, e, LOCATIONS[hop.to].region, self, () => { S.paused = false; });
@@ -294,6 +302,7 @@ export function createWorldMapScene() {
     if (id === 'center') return centerOn(save(game).location);
     if (id === 'night') { S.night = !S.night; layout(game); return; }
     if (id === 'enter') return enterLocation(game);
+    if (id === 'base') return S.travel ? undefined : startTravel(game, BASE_LOC);
     if (id === 'toMenu') { saveGame(save(game)); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
     if (id === 'menu') { if (S.travel) return; saveGame(save(game)); return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') }); }
     if (id === 'enter' && S.travel) return;
@@ -432,6 +441,7 @@ export function createWorldMapScene() {
       ctx.lineWidth = l.tier === 'capital' ? 3 : 2;
       ctx.strokeRect(x - half - 2, y - half - 2, half * 2 + 4, half * 2 + 4);
       drawMapIcon(ctx, iconOf(l, sv, visited, S.pflags), x - half, y - half, scale);
+      drawNodeMark(ctx, sv, id, x + half, y - half);
     }
     // labels: greedy by priority (current, hover, capitals, cities…), skipped on overlap
     for (const id of order) {
@@ -466,6 +476,17 @@ export function createWorldMapScene() {
     void game;
   }
 
+  /** world-consequences.md: a quest changed the node — its glyph in the tone colour at the icon's corner. */
+  function drawNodeMark(ctx, sv, id, x, y) {
+    const m = nodeMark(sv, id);
+    if (!m?.glyph) return;
+    const col = C[TONE_COLOR[m.tone] || 'a'];
+    ctx.fillStyle = 'rgba(16,16,24,0.92)';
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+    text(ctx, m.glyph, x, y - 7, col, 'bold 12px monospace', 'center');
+  }
+
   function prio(sv, id) {
     const l = LOCATIONS[id];
     if (id === sv.location) return 100;
@@ -495,11 +516,13 @@ export function createWorldMapScene() {
       ...(l.services.length ? [{ text: l.services.map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
     ];
     // v4: the node description (locations-lore.js desc, else locations.js desc), up to CARD_DESC_LINES lines
-    const desc = locationLore(id)?.desc || l.desc || '';
+    const mark = nodeMark(sv, id); // world-consequences.md: the latest change replaces the description
+    if (closedLoc(sv, id)) lines.push({ text: tf('cq.closed', { loc: l.name }), color: C.c });
+    const desc = mark ? mark.descs.at(-1) : locationLore(id)?.desc || l.desc || '';
     const w = desc ? 440 : 360;
     if (desc) {
       const dl = wrap(ctx, desc, w - 20, SMALL_FONT);
-      dl.slice(0, CARD_DESC_LINES).forEach((s, i, a) => lines.push({ text: i === a.length - 1 && dl.length > CARD_DESC_LINES ? `${s.replace(/\s*\S*$/, '')}…` : s, color: C['5'], font: SMALL_FONT, small: true }));
+      dl.slice(0, CARD_DESC_LINES).forEach((s, i, a) => lines.push({ text: i === a.length - 1 && dl.length > CARD_DESC_LINES ? `${s.replace(/\s*\S*$/, '')}…` : s, color: mark ? C[TONE_COLOR[mark.tone] || '5'] : C['5'], font: SMALL_FONT, small: true }));
     }
     const h = 16 + lines.reduce((s, ln) => s + (ln.small ? SMALL_LINE : LINE), 0);
     const p = nodePos(id);
@@ -579,6 +602,7 @@ export function createWorldMapScene() {
       }
       if (inp.wasPressed('Enter')) nav(game, 'enter');
       else if (inp.wasPressed('KeyN')) nav(game, 'night');
+      else if (inp.wasPressed('KeyH') && baseOpen(sv)) nav(game, 'base');
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');

@@ -32,6 +32,7 @@ import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
 import { SKILL_RULES } from '../data/world/skill-rules.js';
+import { TRICKS2, trick2 } from '../world/skill-uses.js';
 
 /** v7: quick slots on 1–6, abilities on letters (inventory-mods.md §2). */
 const QUICK_KEYS = 6;
@@ -473,6 +474,11 @@ export function createBattleScene(opts) {
       case 'athletics': return foes.filter(adj);
       case 'stealth': return b.round <= SKILL_RULES.tricks.stealth.round ? [u] : [];
       case 'acrobatics': return combat.hasSafePassage(b, u) ? [] : [u];
+      // world-consequences.md ч.5 (SKILL_USES2 battle tricks)
+      case 'endurance': return [u];
+      case 'meditation': return [u];
+      case 'judge': return foes.filter((x) => /skrilet|soul|ghost/.test(x.baseId || x.id) || (x.tags || []).includes('soul'));
+      case 'lockpicking': { const ids = trick2('lockpicking').fx.cleanse; return friends.filter((x) => adj(x) && x.statuses.some((st) => ids.includes(st.id))); }
       default: return [];
     }
   }
@@ -483,7 +489,7 @@ export function createBattleScene(opts) {
     const b = S.b;
     const u = b.byId[S.heroId];
     const used = (S.tricksUsed[u.id] = S.tricksUsed[u.id] || []);
-    const skills = Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc');
+    const skills = [...new Set([...Object.keys(SKILL_RULES.tricks).filter((k) => k !== 'dc'), ...Object.keys(TRICKS2)])];
     game.openModal({
       title: t('trick.title'), width: 900,
       options: [...skills.map((sk) => {
@@ -497,7 +503,7 @@ export function createBattleScene(opts) {
       }), { label: t('loc.close'), run: () => {} }],
     });
   }
-  const trickDc = (sk, x) => SKILL_RULES.tricks.dc + (x.team === 'enemies' ? Math.floor((x.level || 0) / 2) : 0);
+  const trickDc = (sk, x) => (SKILL_RULES.tricks[sk] ? SKILL_RULES.tricks.dc : trick2(sk)?.dc ?? SKILL_RULES.tricks.dc) + (x.team === 'enemies' ? Math.floor((x.level || 0) / 2) : 0);
 
   function doTrick(sk, u, x) {
     const b = S.b;
@@ -517,7 +523,19 @@ export function createBattleScene(opts) {
       else if (sk === 'medicine') combat.applyOp(b, u, x, { op: 'stabilize' });
       else if (sk === 'athletics') combat.applyOp(b, u, x, { op: 'push', tiles: T.athletics.push });
       else if (sk === 'stealth') combat.applyStatus(b, u, T.stealth.status, T.stealth.turns, u);
-      else if (sk === 'acrobatics') { if (combat.grantSafePassage(b, u)) pushLog([[t('trick.safe'), C.j]]); }
+      else if (sk === 'acrobatics') {
+        if (combat.grantSafePassage(b, u)) pushLog([[t('trick.safe'), C.j]]);
+        const kb = trick2('acrobatics')?.fx.kb; if (kb) combat.applyOp(b, u, u, { op: 'buff', stat: 'kb', value: kb, turns: 1 });
+      } else if (sk === 'endurance') {
+        const m = /(\d+)\+L\/(\d+)/.exec(trick2('endurance').fx.tempHp) || [0, 2, 2];
+        combat.applyOp(b, u, u, { op: 'shield', value: +m[1] + Math.floor((u.level || 1) / +m[2]) });
+      } else if (sk === 'meditation') combat.applyOp(b, u, u, { op: 'cleanse', ids: trick2('meditation').fx.cleanse });
+      else if (sk === 'lockpicking') combat.applyOp(b, u, x, { op: 'cleanse', ids: trick2('lockpicking').fx.cleanse });
+      else if (sk === 'judge') {
+        const buff = x.statuses.find((st) => b.data.statuses?.[st.id]?.kind === 'buff');
+        if (buff) combat.removeStatus(b, x, buff.id);
+        combat.dealDamage(b, u, x, trick2('judge').fx.mrlDmg, 'psychic');
+      }
       else if (sk === 'biology') {
         const res = Object.entries(x.resist || {}).filter(([, v]) => v).map(([k, v]) => `${t(`dmg.${k}`)} — ${t(`trick.r.${v}`)}`);
         const imm = (x.immuneStatus || []).map((id) => S.b.data.statuses?.[id]?.name || id);

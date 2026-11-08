@@ -6,7 +6,7 @@
 //                                                add/remove — id предметов ассортимента (`vendorStock`), close — лавка закрыта навсегда
 //   npcs     { appear: [{ npc, at }], vanish: [npc], move: [{ npc, to }] } — NPC в узлах (`npcsAt`)
 //   access   { open: [loc], close: [loc] }        — доступ к местам (вход/маршруты)
-//   nodes    [{ loc, desc, glyph, tone }]         — новое описание узла (дописывается в «Осмотреться») и иконка на карте; tone good|bad|warn
+//   nodes    [{ loc, desc, glyph, tone }]         — новое описание узла (дописывается в «Осмотреться») и иконка на карте; tone good|bad|warn; until: [flag] — скрыть при флаге-антагонисте
 //   rumors   [string]                             — слухи: попадают в «Купить слух» и привалы, пока флаг стоит
 //   slides   [slideId]                            — какие слайды эпилога подсвечены (EPILOGUE ниже)
 export const CQ_FLAG = (qid, outcome = 'default') => `cq:${qid}:${outcome}`;

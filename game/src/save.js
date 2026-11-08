@@ -123,6 +123,11 @@ export function normalizeSave(s, data) {
   out.settings = { aiCompanions: false, ...obj(s.settings) };
   out.cyberspace = s.cyberspace && typeof s.cyberspace === 'object' ? s.cyberspace : null;
   out.pendingTalentChoice = arr(s.pendingTalentChoice);
+  // world-consequences.md: applied quest consequences, wanted by faction, heirs, crime rumors (old saves — empty)
+  out.cq = arr(s.cq).filter((c) => c && QUESTS[c.qid] && typeof c.o === 'string');
+  out.wanted = Object.fromEntries(Object.entries(obj(s.wanted)).filter(([f, w]) => FACTION_IDS.includes(f) && w && typeof w === 'object')
+    .map(([f, w]) => [f, { heat: Math.max(0, Math.min(5, num(w.heat))), since: num(w.since, out.day), bounty: num(w.bounty) }]));
+  out.heirs = obj(s.heirs); out.crimeRumors = arr(s.crimeRumors).filter((r) => r && typeof r.text === 'string');
   out.codex = normCodex(s.codex); // vendors-bestiary.md: bestiary progress (old saves — empty)
   out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)

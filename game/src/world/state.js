@@ -12,6 +12,7 @@ import { TALENTS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js
 import { RELATIONS } from '../data/factions.js';
 import { isBattleItem } from '../rules/combat.js';
 import { clearWithdrawal } from '../rules/aftermath.js';
+import { applyBackstory, backstoryWorld } from './backstory.js';
 import {
   LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
   PLAY_DATA as GAME_DATA, resolveLocation, starterKit, FINALE_TERMINALS,
@@ -47,6 +48,7 @@ export function newSave(hero) {
     journal: [], cyberspace: null, settings: { aiCompanions: false },
   };
   for (const l of Object.values(LOCATIONS)) if (l.terminal) save.terminals[l.terminal.id] = l.terminal.state;
+  applyBackstory(save); // world-consequences.md ч.4: hero.bg — start rep/items/credits/flags/topics, drawback
   visit(save, START_LOCATION);
   normalizeInventory(save); // v7: hero.items → backpack grid + quick slots (world/inventory.js)
   return save;
@@ -87,6 +89,8 @@ function gadgetWithItems(save, data) {
   const range = weaponRangeOf(data, h.cls, h.path);
   const items = Object.entries(h.items || {}).filter(([id, n]) => n > 0 && ITEMS[id] && (ITEMS[id].passives || ITEMS[id].world))
     .map(([id]) => ITEMS[id]).filter((it) => !it.req?.weapon || (it.req.weapon === 'ranged' ? range > 1 : range <= 1));
+  const bgWorld = backstoryWorld(h); // world-consequences.md ч.4: backstory skill bonuses ride on the merged gadget
+  if (bgWorld.length) items.push({ name: bgWorld[0].name, world: bgWorld });
   if (!items.length) return { data, gadget: h.gadget || undefined };
   const id = `${h.gadget || 'none'}+items`;
   const merged = {

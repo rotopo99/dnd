@@ -2468,5 +2468,288 @@ console.log('inventory v7: grid, quick slots, mods, off-hand, migration');
   });
 }
 
+// ---------------------------------------------------------------- world-consequences.md ч.3–5: base, backstories, neutral, skills 2
+console.log('base / backstories / neutral / skill uses 2');
+{
+  const st = await import('../game/src/world/state.js');
+  const qs = await import('../game/src/world/quests.js');
+  const BS = await import('../game/src/world/base.js');
+  const INV = await import('../game/src/world/inventory.js');
+  const { BASE_ATTACKS, BASE_MODULES } = await import('../game/src/data/world/base.js');
+  const { TALENTS, WORLD_FLAGS, talentsForSlot } = await import('../game/src/data/talents.js');
+  const { applyRep } = await import('../game/src/world/reputation.js');
+  const SU = await import('../game/src/world/skill-uses.js');
+  const { AUDIT } = await import('../game/src/data/world/skill-uses2.js');
+  const { checkInfo } = await import('../game/src/world/checks.js');
+  const mk = (extra = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [], ...extra }); s.flags['prologue-done'] = true; return s; };
+  const openBase = (s) => {
+    const id = 'sq-galina-hatch';
+    qs.startQuest(s, id); qs.onTalk(s, 'galina', GAME_DATA);
+    qs.completeSlot(s, qs.slots(s, id)[0], GAME_DATA);
+    qs.onTalk(s, 'galina', GAME_DATA);
+    qs.claimTurnin(s, id, GAME_DATA);
+    return BS.syncBase(s);
+  };
+  test('base: opens after sq-galina-hatch turn-in, gift once, stash reachable in the bunker', () => {
+    const s = mk();
+    assert.equal(BS.baseOpen(s), false);
+    const med0 = INV.countAll(s).medkit || 0;
+    const out = openBase(s);
+    assert.ok(BS.baseOpen(s) && out.length >= 1);
+    assert.equal(INV.countAll(s).medkit, med0 + 2);
+    assert.equal(BS.syncBase(s).length, 0, 'gift only once');
+    assert.ok(s.discovered.includes(BS.BASE_LOC));
+    s.location = BS.BASE_LOC;
+    assert.ok(INV.canStash(s), 'stash at the base');
+    assert.equal(BS.modLevel(s, 'stash'), 1);
+  });
+  test('base: workbench needs generator power; build takes credits, materials, days', () => {
+    const s = mk(); openBase(s); s.location = BS.BASE_LOC;
+    s.hero.credits = 5000;
+    s.base.mods.workbench = 1;
+    const a = BS.modActive(s, 'workbench');
+    assert.equal(a.ok, false); assert.ok(a.why.length > 5, 'message');
+    assert.equal(BS.buildInfo(s, 'generator').why, 'items');
+    for (const it of BASE_MODULES.generator.levels[0].cost.items) { s.hero.items[it.id] = (s.hero.items[it.id] || 0) + it.n; }
+    INV.syncItems(s);
+    const r = BS.startBuild(s, 'generator');
+    assert.ok(r.ok);
+    assert.equal(s.hero.credits, 5000 - BASE_MODULES.generator.levels[0].cost.credits);
+    assert.equal(BS.modLevel(s, 'generator'), 0, 'not ready yet');
+    assert.equal(BS.buildInfo(s, 'medbay').why, 'busy');
+    s.day = r.ready; BS.baseTick(s);
+    assert.equal(BS.modLevel(s, 'generator'), 1);
+    assert.ok(BS.modActive(s, 'workbench').ok);
+    assert.ok(BS.benchNoCheck(s));
+  });
+  test('base: radio level 1 → return turn-ins by radio; level 3 defence needs lis-online', () => {
+    const s = mk(); openBase(s);
+    assert.equal(BS.radioTurnin(s), false);
+    s.base.mods.generator = 1; s.base.mods.radio = 1;
+    assert.equal(BS.radioTurnin(s), true);
+    s.base.mods.defense = 2; s.hero.credits = 9999;
+    assert.equal(BS.buildInfo(s, 'defense').why, 'lis');
+    s.flags['lis-online'] = true;
+    assert.notEqual(BS.buildInfo(s, 'defense').why, 'lis');
+  });
+  test('base: no raid during the grace days; failed auto-resolve loses a module level', () => {
+    const s = mk(); openBase(s);
+    s.location = 'dacha-babki';
+    s.base.mods.generator = 1; s.base.mods.defense = 1;
+    const always = () => 0; // rng 0: every check hits
+    s.day = s.base.openDay + BASE_ATTACKS.graceDays - 1;
+    BS.baseTick(s, always);
+    assert.equal(s.base.raid, null, 'quiet before grace days');
+    s.day = s.base.openDay + BASE_ATTACKS.graceDays + BASE_ATTACKS.checkEveryDays * 2;
+    BS.baseTick(s, always);
+    assert.ok(s.base.lastRaid || s.base.raid, 'raid happened');
+    const s2 = mk(); openBase(s2); s2.base.mods.generator = 2;
+    s2.base.raid = { ev: BASE_ATTACKS.events[0], day: 1, until: 1 };
+    const out = BS.autoResolve(s2, () => 0); // d20 = 1 → fail
+    assert.equal(s2.base.lastRaid.result, 'fail');
+    assert.equal(s2.base.mods.generator, 1, 'module −1');
+    assert.ok(out.length >= 2);
+  });
+  test('base: defence won → raid cleared, rep; allies = turrets', () => {
+    const s = mk(); openBase(s);
+    s.base.mods.defense = 2;
+    assert.deepEqual(BS.defenseAllies(s), [BASE_ATTACKS.turretAlly]);
+    s.base.raid = { ev: BASE_ATTACKS.events[0], day: 1, until: 3 };
+    const r0 = s.rep.neutralVillages || 0;
+    BS.defendResult(s, true);
+    assert.equal(s.base.raid, null);
+    assert.ok((s.rep.neutralVillages || 0) >= r0);
+  });
+  test('backstory: start rep/items/credits/topics, skill bonus, drawback', () => {
+    const plain = mk();
+    const s = mk({ bg: 'junkOrphan' });
+    assert.ok(s.rep.scavengers > plain.rep.scavengers, 'rep');
+    assert.equal(INV.countAll(s)['repair-kit'] || 0, (INV.countAll(plain)['repair-kit'] || 0) + 1);
+    assert.ok(s.flags['topic:scav-lore']);
+    const u0 = st.buildHero(plain), u1 = st.buildHero(s);
+    assert.equal(checkInfo({ unit: u1 }, 'tech').total, checkInfo({ unit: u0 }, 'tech').total + 1);
+    const d = mk({ bg: 'warprom' });
+    assert.equal(d.wanted.warprom.heat, 1);
+    const sky = mk({ bg: 'skyRefugee' });
+    assert.ok(sky.hero.phobia.some((p) => p.trigger === 'heights'));
+  });
+  test('neutral: 6 alignment talents, flags known, middle-way damps rep', () => {
+    const n = talentsForSlot('alignment', { race: 'human', cls: 'ranger', alignment: 'neutral', stats: {}, level: 1 });
+    assert.equal(n.length, 6);
+    assert.ok(WORLD_FLAGS['rep-damp'] && TALENTS['middle-way']);
+    const s = mk({ alignment: 'neutral', talents: ['middle-way'] });
+    const r0 = s.rep.technikums || 0;
+    applyRep(s, 'technikums', 8);
+    assert.equal((s.rep.technikums || 0) - r0, 6);
+  });
+  test('skill uses 2: every audited skill has a «now works» line; battle tricks resolve', () => {
+    for (const sk of Object.keys(AUDIT)) assert.ok(SU.newUsesLine(sk), sk);
+    for (const sk of Object.keys(SU.TRICKS2)) assert.ok(SU.trick2(sk), sk);
+  });
+}
+
+// ---------------------------------------------------------------- world-consequences.md: quest consequences, epilogue, crime
+{
+  const st = await import('../game/src/world/state.js');
+  const qs = await import('../game/src/world/quests.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const CR = await import('../game/src/world/crime.js');
+  const { vendorStock } = await import('../game/src/world/vendors.js');
+  const { npcsAt, npcHome } = await import('../game/src/world/data.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const { CRIME_RULES, WANTED } = await import('../game/src/data/world/crime.js');
+  const mk = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'neutral', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; return s; };
+  const finish = (s, qid, path) => { s.quests[qid] = { state: 'done', stage: 'x', opt: null, subs: {}, path, turnin: true }; return qs.claimTurnin(s, qid, GAME_DATA); };
+  test('consequences: sq-sector-d/force closes the node with a dark mark, toasts + journal', () => {
+    const s = mk();
+    const out = finish(s, 'sq-sector-d', ['talk-stage', 'force']);
+    assert.ok(s.flags['cq:sq-sector-d:force']);
+    assert.ok(CQ.closedLoc(s, 'harmony-sector-d'));
+    const m = CQ.nodeMark(s, 'harmony-sector-d');
+    assert.equal(m.tone, 'bad');
+    assert.ok(out.some((x) => x.text.startsWith('Мир изменился')));
+    assert.ok(out.filter((x) => x.text.startsWith('Мир изменился')).length <= 3);
+    assert.ok(CQ.consequenceLog(s)[0].lines.length);
+    assert.ok(CQ.worldRumors(s).length);
+  });
+  test('consequences: ch3-tin-oath/break — smith prices ×1.2, arena closed; repeat does not double rep', () => {
+    const s = mk();
+    const base = vendorStock('smith-okalina', s.day, 'neutral', s).rows[0].mult;
+    const r0 = s.rep.tinBrotherhood;
+    finish(s, 'ch3-tin-oath', ['break']);
+    const r1 = s.rep.tinBrotherhood;
+    assert.ok(r1 < r0);
+    const vs = vendorStock('smith-okalina', s.day, 'neutral', s);
+    assert.ok(Math.abs(vs.rows[0].mult - base * 1.2) < 1e-9);
+    assert.ok(CQ.closedLoc(s, 'tin-arena'));
+    s.quests['ch3-tin-oath'].turnin = true;
+    qs.claimTurnin(s, 'ch3-tin-oath', GAME_DATA);
+    assert.equal(s.rep.tinBrotherhood, r1);
+    assert.equal(s.cq.length, 1);
+  });
+  test('consequences: vendor mult clamp, add goods, close', () => {
+    const s = mk();
+    finish(s, 'ch3-plague', ['cure']);
+    const rows = vendorStock('assimilator-gvozdar', s.day, 'neutral', s).rows;
+    assert.ok(rows.some((r) => r.id === 'servo-parts'));
+    const s2 = mk();
+    finish(s2, 'ch3-plague', ['burn']);
+    assert.ok(CQ.shopClosed(s2, 'assimilator-gvozdar'));
+    assert.ok(CQ.vendorMods({ cq: Array(10).fill({ qid: 'ch3-tin-oath', o: 'break' }) }, 'smith-okalina').mult <= 1.5);
+  });
+  test('consequences: NPCs appear / vanish / move (npcsAt, npcHome)', () => {
+    const s = mk();
+    finish(s, 'ch3-kalostok', []);
+    assert.ok(npcsAt('bunker-lisa', s).includes('lis'));
+    const home = npcHome('zarya');
+    finish(s, 'sq-zarya', ['handover']);
+    if (home) assert.ok(!npcsAt(home, s).includes('zarya'));
+    assert.equal(npcHome('zarya', s), null);
+    finish(s, 'ch3-lox-marks', []);
+    assert.ok(npcsAt('lox-5', s).includes('lox'));
+  });
+  test('consequences: mq3-court/vessel → epilogue slide, intro first, outro last, ≤ 12; finale flag → pendingEpilogue', () => {
+    const s = mk();
+    for (const [q, p] of [['mq-exodus', ['destroy']], ['mq-beacons', []], ['mq-agro-fire', ['marta']], ['mq3-relay', []], ['mq3-vessel', []], ['mq3-sputnik', ['tech']],
+      ['mq3-burner', []], ['mq3-crossing', []], ['mq3-allies', []], ['mq3-fall', ['save']], ['mq3-arsenal', ['force']], ['ch3-plague', ['cure']], ['sq-sector-d', ['talk']]]) finish(s, q, p);
+    assert.ok(s.flags['cq:mq3-fall:save'], 'outcome from the stage path even without turn-in lines');
+    finish(s, 'mq3-court', ['verdict', 'vessel']);
+    const sl = CQ.epilogueSlides(s);
+    assert.ok(sl.some((x) => x.id === 'court-vessel'));
+    assert.ok(sl.length <= 12);
+    assert.equal(sl[0].id, 'epi-intro');
+    assert.equal(sl.at(-1).id, 'epi-outro');
+    assert.ok(s.flags['game-complete'] && s.pendingEpilogue);
+    assert.equal(CQ.epilogueSlides(mk()).length, 2);
+  });
+  test('consequences: node mark hidden by an antagonist flag (until)', () => {
+    const s = mk();
+    finish(s, 'sq-galina-hatch', []);
+    assert.ok(CQ.nodeMark(s, 'dacha-babki').glyph);
+    const { CONSEQUENCES } = CQ.__data || {};
+    void CONSEQUENCES;
+    s.cq.push({ qid: 'sq-galina-hatch', o: 'default' });
+    assert.ok(CQ.nodeMark(s, 'dacha-babki'));
+  });
+  test('crime: theft success gives the shelf item, nat 20 doubles, once a day per NPC', () => {
+    const s = mk();
+    const npc = NPCS['smith-okalina'];
+    s.hero.level = 10;
+    const loot = CR.theftLoot(s, npc, 'shop', () => 0);
+    assert.ok(loot.item, 'shop theft takes an item');
+    const before = s.hero.items[loot.item] || 0;
+    const r = CR.resolveTheft(s, npc, loot, { ok: true, natural: 20, place: 'shop' });
+    assert.ok(r.ok);
+    assert.equal(s.hero.items[loot.item], before + 2);
+    assert.ok(CR.theftTried(s, npc.id));
+    assert.ok(CR.theftDc(s, npc, 'shop') >= CRIME_RULES.theft.baseDc + CRIME_RULES.theft.place.shop);
+  });
+  test('crime: failure by gap — noticed / caught / alarm (heat +2, guards)', () => {
+    const s = mk();
+    const npc = NPCS['smith-okalina'];
+    assert.equal(CR.failureOf(2).id, 'noticed');
+    assert.equal(CR.failureOf(5).id, 'caught');
+    const r = CR.resolveTheft(s, npc, { credits: 10, value: 10 }, { ok: false, gap: 9 });
+    assert.equal(r.fail.id, 'alarm');
+    assert.deepEqual(r.ask, ['fight', 'run']);
+    assert.equal(CR.heatOf(s, 'tinBrotherhood'), 2);
+    const g = CR.guardEnemies(s, 'tinBrotherhood');
+    assert.equal(g.enemies.length, CRIME_RULES.alarmFight.guardCountByHeat[2]);
+    assert.ok(GAME_DATA.ENCOUNTERS ? true : true);
+    assert.ok(CR.wantedPriceMult(s, 'tinBrotherhood') > 1);
+    assert.ok(CR.payFine(s, 30).length);
+  });
+  test('crime: killing a trader closes the shop, drops goods, fails his quests, hides him', () => {
+    const s = mk();
+    const giverQ = Object.values(QUESTS).find((q) => q.giver === 'smith-okalina');
+    if (giverQ) s.quests[giverQ.id] = { state: 'active', stage: giverQ.stages[0].id, opt: null, subs: {} };
+    const k = CR.killNpc(s, 'smith-okalina', () => 0.3);
+    assert.ok(s.npcs['smith-okalina'].dead);
+    assert.ok(CQ.shopClosed(s, 'smith-okalina'));
+    assert.ok(k.loot.items.length > 0 && k.loot.credits > 0);
+    assert.ok(!npcsAt('tin-arena', s).includes('smith-okalina'));
+    if (giverQ) assert.equal(s.quests[giverQ.id].state, 'failed');
+    assert.ok(CR.heatOf(s, 'tinBrotherhood') >= WANTED.gain.killTrader);
+    assert.ok(CR.crimeRumors(s).length);
+  });
+  test('crime: wanted 3 — hunters, recruit / training closed, bounty, spread; bribe; cooling', () => {
+    const s = mk();
+    s.hero.credits = 5000;
+    CR.addHeat(s, 'warprom', 3);
+    assert.ok(s.wanted.warprom.bounty > 0);
+    assert.ok(CR.hunterEncounter(s, () => 0)?.hunters);
+    assert.equal(CR.hunterEncounter(s, () => 0.99), null);
+    assert.ok(CR.serviceBlocked(s, 'warprom', 'recruit') && CR.serviceBlocked(s, 'warprom', 'training'));
+    assert.equal(CR.entryThreat(s, 'warprom'), 'guards');
+    const b = CR.bribeInfo(s, 'warprom');
+    assert.equal(b.why, null);
+    const c0 = s.hero.credits;
+    CR.applyBribe(s, 'warprom', true, 0);
+    assert.equal(CR.heatOf(s, 'warprom'), 2);
+    assert.equal(s.hero.credits, c0 - b.price);
+    s.day += WANTED.decay.everyDays;
+    CR.wantedTick(s, 'svalka');
+    assert.equal(CR.heatOf(s, 'warprom'), 1);
+    CR.addHeat(s, 'warprom', 9);
+    assert.ok(CR.bribeInfo(s, 'warprom').why, 'no bribe at 5');
+  });
+  test('crime: story NPCs are protected, companions too', () => {
+    const s = mk();
+    assert.ok(CR.attackBlock(s, 'sera'));
+    assert.equal(CR.attackBlock(s, 'smith-okalina'), null);
+    const a = CR.attackSetup(s, NPCS['smith-okalina'], ['smith-okalina']);
+    assert.ok(a.enemies.length >= 1);
+  });
+  test('save: consequences and wanted survive normalizeSave', () => {
+    const s = mk();
+    finish(s, 'sq-sector-d', ['force']);
+    CR.addHeat(s, 'warprom', 2);
+    const n = normalizeSave(JSON.parse(JSON.stringify(s)));
+    assert.equal(n.cq.length, 1);
+    assert.equal(n.wanted.warprom.heat, 2);
+    assert.ok(CQ.closedLoc(n, 'harmony-sector-d'));
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

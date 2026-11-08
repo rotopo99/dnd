@@ -19,6 +19,7 @@ import { WORLD_RULES as R } from '../data/world/rules.js';
 import { saveGame } from '../save.js';
 import { C } from '../ui/draw.js';
 import { vendorStock, vendorSellRate } from '../world/vendors.js';
+import { wantedPriceMult } from '../world/crime.js';
 import { QUALITY } from '../data/items/mods.js';
 import { syncItems, addInst, makeInst, instValue, bagKeys, contOf, holderOf, mutate, isGear } from '../world/inventory.js';
 
@@ -38,6 +39,7 @@ export function shopPrices(game, tier, faction, key = null) {
   const st = key ? shopState(game.save, key) : {};
   buy *= cha.buy * (st.haggle === 'ok' ? 1 - T.haggle.discount : 1);
   buy *= exodusPrice(game.save); // third-exodus.md: marks 3+ raise prices
+  buy *= wantedPriceMult(game.save, faction); // world-consequences.md §2: wanted levels raise prices
   const sellMul = (1 + sellBonus) * cha.sell;
   const sell = st.junk === 'ok' ? T.junk.sellRate : R.prices.sell * sellMul;
   return { buy, sell, sellMul, cha: cha.mod, haggled: st.haggle === 'ok', junk: st.junk === 'ok' };
@@ -46,9 +48,9 @@ export function shopPrices(game, tier, faction, key = null) {
 export function openShop(game, { title, stock, tier = 'neutral', faction = null, key = null, vendor = null, onClose }) {
   const sv = game.save;
   key = key || vendor || title;
-  if (vendor && !vendorStock(vendor, sv.day, tier)) vendor = null;
+  if (vendor && !vendorStock(vendor, sv.day, tier, sv)) vendor = null;
   if (vendor) {
-    const per = vendorStock(vendor, sv.day, tier).period, fk = `vstock:${vendor}`;
+    const per = vendorStock(vendor, sv.day, tier, sv).period, fk = `vstock:${vendor}`;
     if (sv.flags[fk] != null && sv.flags[fk] !== per) game.toast(t('shop.newStock'), 'b');
     sv.flags[fk] = per;
   }
@@ -79,7 +81,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
           } }) });
       const hero = ms[0]?.unit;
       const tipOf = (id, price, q, mods) => () => itemTip(ITEMS[id], { u: hero, price, have: sv.hero.items[id] || 0, equipped: ITEMS[sv.hero.equipment?.[ITEMS[id].slot]], q, mods });
-      const vs = vendor ? vendorStock(vendor, sv.day, tier) : null;
+      const vs = vendor ? vendorStock(vendor, sv.day, tier, sv) : null;
       const rows = vs ? vs.rows : stock.filter((id) => ITEMS[id]).map((id) => ({ id, q: 'working', kind: 'stock', mult: 1 }));
       const MARK = { sig: ['shop.sig', C.b], edition: ['shop.edition', C.b], rare: ['shop.rare', C.a] };
       const buy = rows.filter((r) => ITEMS[r.id]).map((r) => {
