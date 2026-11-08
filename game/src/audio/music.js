@@ -862,6 +862,132 @@ function tick(tr, t, f, peak = 0.03) {
   tone(tr, t, { type: 'sine', f, dur: 0.06, peak, attack: 0.008, cut: 4000 });
 }
 
+// ---------- voices for the new tracks (boss-final, romance, tragic) ----------
+
+/**
+ * Vocalise voice (ooh/aah): sawtooth and breath noise through three bandpass formants, vibrato 5–6 Hz
+ * (±20 cents on detune). Permanent, three voices. Returns null without room. Starts silent: voxLevel() opens it.
+ */
+function voxStart(tr, t, peak, midi) {
+  if (!room(3)) return null;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = mtof(midi);
+  const nz = ctx.createBufferSource();
+  nz.buffer = getNoiseBuffer();
+  nz.loop = true;
+  const breath = ctx.createGain();
+  breath.gain.value = 0.2;
+  nz.connect(breath);
+  const out = ctx.createGain();
+  out.gain.setValueAtTime(0, t);
+  out.connect(tr.out);
+  const bank = VOX.a.map((f, k) => {
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = f;
+    bp.Q.value = 7;
+    const g = ctx.createGain();
+    g.gain.value = [1, 0.55, 0.3][k];
+    osc.connect(bp);
+    breath.connect(bp);
+    bp.connect(g).connect(out);
+    return bp;
+  });
+  const vib = ctx.createGain();
+  vib.gain.value = 20;
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = rr(tr, 5, 6);
+  lfo.connect(vib).connect(osc.detune);
+  hold(tr, osc, [out, breath, ...bank]);
+  hold(tr, nz, [breath]);
+  hold(tr, lfo, [vib]);
+  osc.start(t);
+  nz.start(t);
+  lfo.start(t);
+  return { osc, bank, out, peak };
+}
+
+/** Portamento: glide an oscillator holder (voxStart, cello) to a MIDI pitch, time constant tc seconds. */
+function pitchTo(o, t, midi, tc = 0.08) {
+  if (o) o.osc.frequency.setTargetAtTime(mtof(midi), t, tc);
+}
+
+/** Vowel: move the three formants to VOX[which] over about 0.1 s. */
+function voxVowel(vx, t, which) {
+  if (!vx || !VOX[which]) return;
+  vx.bank.forEach((bp, k) => bp.frequency.setTargetAtTime(VOX[which][k], t, 0.1));
+}
+
+/** Voice level k (0..1 of its peak), approached over about 0.6 s: no click. */
+function voxLevel(vx, t, k) {
+  if (vx) vx.out.gain.setTargetAtTime(vx.peak * k, t, 0.6);
+}
+
+/** Cello: sawtooth through a lowpass, vibrato about 5 Hz, slow swell. Permanent, two voices. */
+function cello(tr, t, midi, peak) {
+  if (!room(2)) return null;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = mtof(midi);
+  const fl = ctx.createBiquadFilter();
+  fl.type = 'lowpass';
+  fl.frequency.value = 650;
+  fl.Q.value = 1.5;
+  const out = ctx.createGain();
+  out.gain.setValueAtTime(0, t);
+  out.gain.setTargetAtTime(peak, t, 0.7);
+  osc.connect(fl).connect(out).connect(tr.out);
+  const vib = ctx.createGain();
+  vib.gain.value = 14;
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = rr(tr, 4.8, 5.5);
+  lfo.connect(vib).connect(osc.detune);
+  hold(tr, osc, [fl, out]);
+  hold(tr, lfo, [vib]);
+  osc.start(t);
+  lfo.start(t);
+  return { osc, out, peak };
+}
+
+/** Soft keys (piano-like): sine carrier, ratio-2 modulator whose index dies in 0.35 s (hammer), mellow tail. */
+function softKey(tr, t, midi, dur, peak = 0.05) {
+  if (!room(2)) return;
+  const f = mtof(midi);
+  const car = ctx.createOscillator();
+  car.type = 'sine';
+  car.frequency.value = f;
+  const mod = ctx.createOscillator();
+  mod.type = 'sine';
+  mod.frequency.value = f * 2;
+  const mg = ctx.createGain();
+  mg.gain.setValueAtTime(f * 1.2, t);
+  mg.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
+  mod.connect(mg).connect(car.frequency);
+  const g = env(tr, t, peak, 0.004, dur);
+  car.connect(g);
+  own(car, [g, mg]);
+  own(mod, []);
+  car.start(t);
+  mod.start(t);
+  car.stop(t + dur + 0.05);
+  mod.stop(t + 0.4);
+}
+
+/** Final boss chant: two voices an octave-ish apart, vowels a–o–u–o every two bars, pitch steps up in between. */
+function chant(tr, t, b) {
+  const x = tr.st;
+  const sl = Math.floor(b / 2) % 4;
+  const up = sl % 2 ? 2 : 0;
+  const vw = FINAL_VOW[sl];
+  pitchTo(x.v1, t, x.chord[1] + 12 + x.shift + up, 0.1);
+  pitchTo(x.v2, t, x.chord[0] + 12 + x.shift + up, 0.1);
+  voxVowel(x.v1, t, vw);
+  voxVowel(x.v2, t, vw);
+}
+
 // ---------- song engine ----------
 
 const SEC = (b) => (b < 8 ? 0 : b < 20 ? 1 : b < 28 ? 2 : b < 40 ? 3 : 4);
@@ -942,6 +1068,31 @@ function songStep(tr, t, cfg) {
   layers(tr, t, pos, b, p, cfg);
   return cfg.st;
 }
+
+// Final boss: Dm – Bb – F – C, four bars each (138 BPM). Lowest notes stay above ~110 Hz.
+const FINAL_CH = [[50, 57, 62, 65], [46, 53, 58, 62], [48, 53, 57, 60], [48, 55, 60, 64]];
+const FINAL_VOW = ['a', 'o', 'u', 'o']; // vowel per two-bar slot of the chant
+// Sections of the 32-bar cycle: 0 intro (organ, chant), 1 lift, 2 climax, 3 final hits.
+const FINAL_SEC = (b) => (b < 8 ? 0 : b < 16 ? 1 : b < 24 ? 2 : 3);
+const FINAL_P = [
+  {},
+  { k: KQ, kv: 0.36, s: S24, sv: 0.09, h: H8, hv: 0.016, bass: 0.07, duck: true },
+  { k: 'X..xX...X..xX.x.', kv: 0.5, s: S24, fs: FILL, sv: 0.1, h: H16, hv: 0.024, hp: 0.9, duck: true, bass: 0.085, cl: CL8, clv: 0.08, cf: [280, 340], rise: true, bell: 0.04, bellNotes: [74, 77, 81] },
+  { k: 'X.......X.......', kv: 0.6, s: S24, sv: 0.12, duck: true, bass: 0.075, bell: 0.05, bellNotes: [74, 77, 81] },
+];
+
+// Romance: F – Em – Dm – G, one chord per bar (70 BPM). Melody rows: [offset from chord[0] + 12, step, length].
+const ROM = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [55, 59, 62, 65]];
+const ROM_MEL = [
+  [[4, 0, 6], [2, 8, 4], [0, 12, 4]],
+  [[7, 0, 6], [3, 8, 4], [0, 12, 4]],
+  [[7, 0, 4], [10, 4, 4], [7, 8, 4], [3, 12, 4]],
+  [[4, 0, 4], [7, 4, 4], [10, 8, 4], [7, 12, 4]],
+];
+
+// Tragic: Am – F – Dm – E, one chord per bar (60 BPM). Lonely voice steps per two bars.
+const TRAG = [[57, 60, 64, 69], [53, 57, 60, 65], [50, 57, 62, 65], [52, 56, 59, 62]];
+const TRAG_VOX = [0, 2, 0, -2];
 
 // ---------- tracks ----------
 
