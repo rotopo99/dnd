@@ -36,7 +36,7 @@ const restHud = (sv) => { const st = restState(sv); return tf('rest.hud', { n: s
 
 const SMALL_FONT = '12px monospace', SMALL_LINE = 16, CARD_DESC_LINES = 5;
 
-const TRAVEL_DAY_S = 0.55;
+const TRAVEL_DAY_S = 0.22; // was 0.55: travel felt too long (human feedback 2026-11-08)
 const MAP_IMG = new URL('../../assets/world-map.jpg', import.meta.url).href;
 const ZOOM_MAX = 4;
 const BOTTOM = 178, TOP = 52;
