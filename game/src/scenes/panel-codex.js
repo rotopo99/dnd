@@ -2,6 +2,7 @@
 // list on the left (scroll.js), the card on the right (details.js); enemy records open by level (world/codex.js).
 // Used by scenes/panels.js: layoutCodex / clickCodex / updateCodex / renderCodex; codexEntries — tests.
 import { t } from '../data/text/index.js';
+import { drawStatusIcon } from '../assets/status-icons.js';
 import { NPCS } from '../data/npcs.js';
 import { STATUSES } from '../data/effects.js';
 import { SURFACES } from '../data/surfaces.js';
@@ -132,9 +133,9 @@ export function codexCard(save, section, id) {
   if (kind === 'res') return { title: t(`res.${tid}.full`), lines: [t(`tip.res.${tid}`)] };
   const terms = codexOf(save).terms;
   if (!terms[id]) return { title: CODEX_UNKNOWN, lines: [lock] };
-  if (kind === 'status') { const s = STATUSES[tid]; return { title: s.name, lines: [{ text: t(s.kind === 'buff' ? 'tip.buff' : 'tip.debuff'), color: '4' }, s.desc || '', ...(s.removal ? [{ text: `${t('tip.removal')}: ${s.removal}`, color: '4' }] : [])] }; }
+  if (kind === 'status') { const s = STATUSES[tid]; return { title: s.name, glyph: { icon: tid, color: C['4'] }, lines: [{ text: t(s.kind === 'buff' ? 'tip.buff' : 'tip.debuff'), color: '4' }, s.desc || '', ...(s.removal ? [{ text: `${t('tip.removal')}: ${s.removal}`, color: '4' }] : [])] }; }
   const s = SURFACES[tid];
-  return { title: s.name, titleColor: C[s.color], lines: [s.desc || '', ...(s.interacts && s.interacts !== '—' ? [{ text: `${t('codex.interacts')}: ${s.interacts}`, color: 'b' }] : [])] };
+  return { title: s.name, titleColor: C[s.color], glyph: { icon: `surface:${tid}`, color: C[s.color] }, lines: [s.desc || '', ...(s.interacts && s.interacts !== '—' ? [{ text: `${t('codex.interacts')}: ${s.interacts}`, color: 'b' }] : [])] };
 }
 
 // ---------------------------------------------------------------- scene part
@@ -181,7 +182,9 @@ export function renderCodex(game, S) {
     if (y < R.list.y - ROW || y > R.list.y + R.list.h) return;
     if (r.head) { text(ctx, fit(ctx, r.head, R.list.w - 30, FONT_B), R.list.x + 10, y + 3, C['4'], FONT_B); return; }
     if (r.id === S.cx.sel) { ctx.fillStyle = C['2']; ctx.fillRect(R.list.x + 4, y, R.list.w - SCROLLBAR_W - 10, ROW - 2); }
-    text(ctx, fit(ctx, r.label, R.list.w - 50, FONT), R.list.x + 24, y + 3, r.color || (r.open ? C['5'] : C['3']), FONT);
+    const ic = r.open && /^(status|surface):/.test(String(r.id)) ? String(r.id) : null;
+    if (ic) drawStatusIcon(ctx, ic.replace(/^status:/, ''), R.list.x + 6, y + 1, 16);
+    text(ctx, fit(ctx, r.label, R.list.w - 50 - (ic ? 6 : 0), FONT), R.list.x + 24 + (ic ? 0 : 0), y + 3, r.color || (r.open ? C['5'] : C['3']), FONT);
   });
   endClip(ctx);
   drawScrollbar(ctx, S.cx.list, R.list);

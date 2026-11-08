@@ -7,6 +7,7 @@ import { hotspot } from './tooltip.js';
 import { T_COVER, T_FULL, T_RUBBLE, T_BARREL, OBJECT_CHARS, elevAt } from '../rules/grid.js';
 import { objectAt } from '../rules/terrain.js';
 import { intentText } from './unit-pin.js';
+import { drawStatusIcon } from '../assets/status-icons.js';
 
 const rgba = (hex, a) => {
   const n = parseInt(hex.slice(1), 16);
@@ -36,9 +37,8 @@ export function drawTileExtra(c, b, ch, x, y, cell) {
     c.fillStyle = rgba(C['0'], 0.5);
     if (elevAt(g, x, y + 1) < e) c.fillRect(px, py + cell - rim, cell, rim);
     if (elevAt(g, x + 1, y) < e) c.fillRect(px + cell - rim, py, rim, cell);
-    c.fillStyle = rgba(C.b, 0.8);
-    c.font = `${Math.max(9, cell / 4) | 0}px monospace`;
-    c.fillText('▲'.repeat(e), px + 2, py + cell - 3);
+    const hs = Math.max(10, (cell / 4) | 0); // height steps: one pixel icon per level
+    for (let i = 0; i < e; i++) drawStatusIcon(c, 'height', px + 2 + i * (hs - 2), py + cell - hs - 2, hs, { bare: true });
   }
   const tl = g.tiles[y * g.w + x];
   const k = cell / 16;
@@ -102,22 +102,6 @@ export function drawObjects(ctx, S) {
 }
 
 // ---------------------------------------------------------------- intents
-function icon(ctx, kind, x, y, s) {
-  ctx.lineWidth = Math.max(1.5, s / 7);
-  ctx.fillStyle = C['0'];
-  ctx.fillRect(x - 1, y - 1, s + 2, s + 2);
-  const cx = x + s / 2, cy = y + s / 2;
-  switch (kind) {
-    case 'melee': ctx.strokeStyle = C.c; ctx.beginPath(); ctx.moveTo(x + 2, y + s - 2); ctx.lineTo(x + s - 2, y + 2); ctx.moveTo(x + 2, y + s * 0.55); ctx.lineTo(x + s * 0.45, y + s - 2); ctx.stroke(); break;
-    case 'ranged': ctx.strokeStyle = C.c; ctx.beginPath(); ctx.arc(cx, cy, s * 0.35, 0, Math.PI * 2); ctx.moveTo(cx, y + 1); ctx.lineTo(cx, y + s - 1); ctx.moveTo(x + 1, cy); ctx.lineTo(x + s - 1, cy); ctx.stroke(); break;
-    case 'heal': ctx.fillStyle = C.j; ctx.fillRect(cx - s * 0.12, y + 2, s * 0.24, s - 4); ctx.fillRect(x + 2, cy - s * 0.12, s - 4, s * 0.24); break;
-    case 'zone': ctx.strokeStyle = C.n; ctx.beginPath(); for (let i = 0; i <= 5; i++) { const a = -Math.PI / 2 + i * 4 * Math.PI / 5; const px = cx + Math.cos(a) * s * 0.42, py = cy + Math.sin(a) * s * 0.42; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); } ctx.stroke(); break;
-    case 'summon': ctx.strokeStyle = C.f; ctx.beginPath(); ctx.arc(cx, cy, s * 0.38, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = C.f; ctx.fillRect(cx - 1, cy - 1, 3, 3); break;
-    case 'flee': ctx.strokeStyle = C['5']; ctx.beginPath(); ctx.moveTo(x + 2, cy); ctx.lineTo(x + s - 2, cy); ctx.moveTo(x + s * 0.6, y + 2); ctx.lineTo(x + s - 2, cy); ctx.lineTo(x + s * 0.6, y + s - 2); ctx.stroke(); break;
-    default: break;
-  }
-}
-
 /** Icons over enemies (not over the one acting now) with a tip «Бьёт Имя, ~N урона». */
 export function drawIntents(ctx, S) {
   const b = S.b, L = S.L;
@@ -130,7 +114,8 @@ export function drawIntents(ctx, S) {
     if (!it || !u || u.dead || u.removed || u.down || id === cur) continue;
     const d = S.dispOf(u);
     const x = Math.round(L.mapX + d.x * L.cell + L.cell - s - 1), y = Math.round(L.mapY + d.y * L.cell + 1);
-    icon(ctx, it.kind, x, y, s);
+    ctx.fillStyle = C['0']; ctx.fillRect(x - 1, y - 1, s + 2, s + 2);
+    drawStatusIcon(ctx, `intent:${it.kind}`, x, y, s);
     hotspot(x - 1, y - 1, s + 2, s + 2, { title: `${t('intent.title')}: ${S.name(id)}`, lines: [intentText(S, it)] });
   }
 }

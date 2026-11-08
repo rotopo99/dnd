@@ -31,7 +31,7 @@ export function statusTip(id, statuses = STATUSES, extra = null) {
     if (extra.resist) lines.push({ text: t(extra.resist === 'I' ? 'tip.immune' : extra.resist === 'R' ? 'tip.resist' : 'tip.vuln'), color: extra.resist === 'V' ? 'c' : 'j' });
   }
   if (s.removal) lines.push({ text: `${t('tip.removal')}: ${s.removal}`, color: '4' });
-  return { title: s.name, titleColor: s.kind === 'buff' ? C.j : C.a, glyph: s.icon ? { ch: '●', color: C[s.icon] } : undefined, lines };
+  return { title: s.name, titleColor: s.kind === 'buff' ? C.j : C.a, glyph: { icon: id, color: s.kind === 'buff' ? C.j : C.c }, lines };
 }
 
 /** Surface layer tip (battle tile hover). layer: { kind, turns, charged?, acidic?, proxied? }; step — enter preview. */
@@ -48,7 +48,7 @@ export function surfaceTip(layer, step = null, surfaces = SURFACES) {
     for (const id of step.statuses) parts.push(STATUSES[id]?.name || id);
     lines.push({ text: `${t('tip.step')}: ${parts.length ? parts.join(', ') : t('tip.harmless')}`, color: step.dmg > 0 ? 'c' : 'a' });
   }
-  return { title: d.name + (flags.length ? ` (${flags.join(', ')})` : ''), titleColor: C[d.color], glyph: { ch: '▒', color: C[d.color] }, lines };
+  return { title: d.name + (flags.length ? ` (${flags.join(', ')})` : ''), titleColor: C[d.color], glyph: { icon: `surface:${layer.kind}`, color: C[d.color] }, lines };
 }
 
 /** «Создаёт: Огонь R1, 4 р.» / «Накладывает: Горение, Шок» lines of an ability or item. */
@@ -142,7 +142,7 @@ export function resLineTip(ctx, x, y, w, res, value, max, label, tmp = 0) {
 
 /** Temporary HP term tip; `base` (the HP tip) goes first when given. */
 export function tmpHpTip(value, base = null) {
-  const tip = resTip('tmp');
+  const tip = { ...resTip('tmp'), glyph: { icon: 'tmp', color: C.h } };
   const head = { text: `${t('res.tmp')}: ${value}`, color: RES_COL.tmp };
   if (!base) return value == null ? tip : { ...tip, lines: [head, ...tip.lines] };
   return { ...base, lines: [...base.lines, head, ...tip.lines] };

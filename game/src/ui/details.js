@@ -3,6 +3,7 @@
 // loot) and the creation talent page. Also shared row layout for hover tooltips (specRows).
 //   const d = createDetails();  updateDetails(d, rect, mouse) in update();  drawDetails(ctx, d, rect, spec, key) in render
 import { C, FONT, FONT_B, LINE, text, wrap, panel } from './draw.js';
+import { drawStatusIcon } from '../assets/status-icons.js';
 import { createScroll, updateScroll, beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
 
 const PAD = 10;
@@ -27,7 +28,8 @@ export function specRows(ctx, spec, w) {
 export function drawRows(ctx, spec, rows, x, y) {
   if (spec.glyph) {
     panel(ctx, x - 2, y + 2, 34, 34, C['2'], spec.glyph.color || C['4']);
-    text(ctx, spec.glyph.ch, x + 15, y + 9, spec.glyph.color || C['5'], 'bold 20px monospace', 'center');
+    if (spec.glyph.icon) drawStatusIcon(ctx, spec.glyph.icon, x - 1, y + 3, 32);
+    else text(ctx, spec.glyph.ch, x + 15, y + 9, spec.glyph.color || C['5'], 'bold 20px monospace', 'center');
   }
   let yy = y;
   for (const r of rows) {

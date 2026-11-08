@@ -8,6 +8,7 @@ import { C, FONT, FONT_B, LINE, text, wrap, fit, panel, inRect } from './draw.js
 import { createScroll, updateScroll, beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
 import { hotspot } from './tooltip.js';
 import { resLineTip, statusTip, abilityTip, resTip } from './tips.js';
+import { drawStatusIcon } from '../assets/status-icons.js';
 import { drawUnitPortrait } from './portrait-of.js';
 import { unitView, isDeathAbility } from '../rules/combat.js';
 import { intentOf } from '../rules/archetypes.js';
@@ -97,7 +98,8 @@ export function drawPin(ctx, S) {
   for (const st of u.statuses) {
     const sd = b.data.statuses[st.id];
     const s = `${sd?.name || st.id}${st.turns != null ? ` (${st.turns})` : ''}`;
-    text(ctx, fit(ctx, s, w), x, y, sd?.kind === 'buff' ? C.j : C.a);
+    drawStatusIcon(ctx, st.id, x, y, 14, { bare: true });
+    text(ctx, fit(ctx, s, w - 18), x + 18, y, sd?.kind === 'buff' ? C.j : C.a);
     hs(x, y, w, LINE, () => statusTip(st.id, b.data.statuses));
     y += LINE;
   }
