@@ -3,7 +3,7 @@
 export const WORLD_TEXT = {
   // ---------- consequences
   'cq.toast': 'Мир изменился: {text}',
-  'cq.node': '«{loc}» изменился',
+  'cq.node': '«{loc}» изменился', 'cq.rep': 'отношение: {faction} {d}',
   'cq.vendorClose': 'лавка «{npc}» закрыта',
   'cq.vendorUp': '{npc}: цены выше',
   'cq.vendorDown': '{npc}: цены ниже',

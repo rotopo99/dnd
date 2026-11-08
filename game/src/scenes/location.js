@@ -2,12 +2,13 @@
 // (talk, trade, train/implant, recruit, quest), location actions (rest, heal, revive, trade, rumors, terminal, battles,
 // caches, quest goals, field camp), entry gate by reputation, unique events on enter/rest,
 // bottom bar: map / party / reputation / journal / menu. Every change is autosaved.
+import { giveItem, dropItem } from '../world/inventory.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, talentAllowed, isCombatTalent } from '../data/talents.js';
 import { drawPortrait } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, bar } from '../ui/draw.js';
+import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, bar, flowButtons } from '../ui/draw.js';
 import { openCheck, openGroupCheck, openChallenge } from '../ui/checks-ui.js';
 import {
   LOCATIONS, REGIONS, ITEMS, SHOP_STOCK, TERMINAL_ACTIONS, SERVICE_PRICES, QUESTS, ENCOUNTER_TABLES,
@@ -60,6 +61,8 @@ const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPo
 
 const BASE_W = 1280, BASE_H = 720;
 const PAGE = 7;
+const NPC_NAME_W = 140; // name / role column of an NPC row (buttons get the rest)
+const NPC_BTN_FONT = 'bold 13px monospace';
 const MAX_ACTIONS = 9;
 const TIER_COL = { hostile: 'c', suspicious: 'a', neutral: '4', friendly: 'j', ally: 'h' };
 export const tierColor = (tier) => C[TIER_COL[tier] || '4'];
@@ -498,7 +501,7 @@ export function createLocationScene(rawId) {
       const CA = SKILL_RULES.economy.camp;
       const r = autoCheck(party, [CA.skill], CA.dc);
       if (r.success) {
-        sv.hero.items[CA.item] = (sv.hero.items[CA.item] || 0) + CA.n;
+        giveItem(sv, CA.item, CA.n);
         game.toast(`${r.member.name}: ${t('skillUse.camp')}`, 'j');
         persist(game);
         return;
@@ -600,7 +603,7 @@ export function createLocationScene(rawId) {
         return { label: `${it.name} ×${n}`, sub: tried ? t('skillUse.disassembleFail') : `${t(`skill.${D.skill}`)} ${t('battle.dc')} ${disassembleDc(it)} → ${ITEMS[D.item]?.name || D.item} ×${disassembleParts(it)}`, disabled: !!tried,
           run: (g) => openCheck(g, { title: `${t('skillUse.disassemble')}: ${it.name}`, skill: D.skill, dc: disassembleDc(it), members: ms(g), cancel: true, memoKey: `dis:${id}:${sv.day}`,
             onDone: (g2, ok) => {
-              if (ok) { sv.hero.items[id]--; toastAll(g2, grant(sv, { items: [{ item: D.item, n: disassembleParts(it) }] }, g2.data)); } else { sv.flags[`dis:${id}:${sv.day}`] = true; g2.toast(t('skillUse.disassembleFail'), 'c'); }
+              if (ok) { dropItem(sv, id, 1); toastAll(g2, grant(sv, { items: [{ item: D.item, n: disassembleParts(it) }] }, g2.data)); } else { sv.flags[`dis:${id}:${sv.day}`] = true; g2.toast(t('skillUse.disassembleFail'), 'c'); }
               refresh(g2);
             } }) };
       }), { label: t('loc.close'), run: () => {} }] });
@@ -887,15 +890,11 @@ export function createLocationScene(rawId) {
     ids.slice(S.page * PAGE, S.page * PAGE + PAGE).forEach((id, i) => {
       const npc = NPCS[id];
       const y = oy + 120 + i * 66;
-      let x = ox + 24 + 600 - 8;
       const acts = npcActions(game, npc);
-      for (let k = acts.length - 1; k >= 0; k--) {
-        const a = acts[k];
-        // world-consequences.md: crime buttons are narrow; many buttons shrink to keep room for the name
-        const bw = Math.min(a.crime ? 74 : 92, Math.floor((600 - 70 - 150) / acts.length) - 4);
-        x -= bw + 4;
-        btns.push({ ...a, kind: 'npc', npc: id, act: a.id, x, y: y + 14, w: bw, h: 34, font: bw < 92 ? '12px monospace' : FONT });
-      }
+      // QA v9 B3: natural widths, a second row when they do not fit; the name column keeps NPC_NAME_W
+      const bx0 = ox + 86 + NPC_NAME_W, pos = flowButtons(game.ctx, acts, { x: bx0, y: y + 4, w: ox + 24 + 600 - 8 - bx0, h: 52, font: NPC_BTN_FONT, minW: 52 });
+      const one = pos.every((p) => p.row === 0);
+      acts.forEach((a, k) => btns.push({ ...a, kind: 'npc', npc: id, act: a.id, x: pos[k].x, y: one ? y + 13 : pos[k].y, w: pos[k].w, h: one ? 34 : pos[k].h, font: NPC_BTN_FONT }));
       const all = questsOffered(sv, id);
       S.rows.push({ id, y, quest: offeredBy(game, npc).length > 0 || pendingTurnins(sv, id).length > 0, questLocked: all.length > 0 && !offeredBy(game, npc).length, tier: sv.rep[normFaction(npcRepFaction(npc))] != null ? repTier(sv.rep[normFaction(npcRepFaction(npc))]) : null });
     });
@@ -969,6 +968,7 @@ export function createLocationScene(rawId) {
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
+      else if (inp.wasPressed('KeyG')) nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) nav(game, 'codex');
       else if (inp.wasPressed('KeyS')) nav(game, 'save');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
@@ -995,7 +995,9 @@ export function createLocationScene(rawId) {
         const bx = Math.min(ox + 24 + 600, ...S.buttons.filter((b) => b.kind === 'npc' && b.npc === row.id).map((b) => b.x));
         const tw = bx - (ox + 86) - 8;
         text(ctx, fit(ctx, `${npc.name}${row.quest ? ' !' : row.questLocked ? ` · ${t('loc.questLocked')}` : ''}`, tw, FONT_B), ox + 86, row.y + 8, row.quest ? C.a : C['5'], FONT_B);
-        text(ctx, fit(ctx, npc.role || '', tw, '12px monospace'), ox + 86, row.y + 34, row.tier ? tierColor(row.tier) : C['4'], '12px monospace');
+        const role = fit(ctx, npc.role || '', tw, '12px monospace');
+        text(ctx, role, ox + 86, row.y + 34, row.tier ? tierColor(row.tier) : C['4'], '12px monospace');
+        if (role !== (npc.role || '')) hotspot(ox + 86, row.y + 30, tw, 20, { title: npc.name, lines: [npc.role] });
       });
       if (!S.npcs.length) text(ctx, t('loc.nobody'), ox + 24, oy + 130, C['3']);
       text(ctx, t('loc.actions'), ox + 648, oy + 100, C['4'], FONT_B);

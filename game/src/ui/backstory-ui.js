@@ -14,5 +14,6 @@ export function openBackstoryPick(game, { race, current, onPick }) {
     opts.push({ label: `${b.id === current ? '● ' : ''}${b.name}`, sub: b.skills.map((s) => `+${s.bonus}`).join(' / ') + ` · ${b.drawback?.note || b.drawback?.trust || ''}`,
       run: (g) => onPick(g, b.id), detail: backstoryTip(b) });
   }
-  game.openModal({ title: t('bg.title'), lines: [t('bg.pickHint')], width: 1000, options: opts });
+  const cur = opts.findIndex((o, i) => i > 0 && backstoryList(race)[i - 1]?.id === current);
+  game.openModal({ title: t('bg.title'), lines: [t('bg.pickHint')], width: 1000, options: opts, detailIdx: cur > 0 ? cur : Math.min(1, opts.length - 1) });
 }

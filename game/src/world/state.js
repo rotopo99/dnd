@@ -21,7 +21,7 @@ import { EXODUS } from '../data/world/exodus.js';
 import { applyRep, repTier, normFaction, startingRep, factionName, tierAtLeast, meetFaction, startMet } from './reputation.js';
 import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
-import { normalizeInventory, battleKit, bagOf, eqInst } from './inventory.js';
+import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from './inventory.js';
 
 export const MAX_PARTY = 3; // companions besides the hero
 export { levelForXp };
@@ -292,8 +292,8 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   const out = [];
   if (!r) return out;
   if (r.credits) { save.hero.credits = Math.max(0, save.hero.credits + r.credits); out.push({ text: tf('fx.credits', { n: `${r.credits > 0 ? '+' : ''}${r.credits}` }), color: 'b' }); }
-  for (const it of r.items || []) { save.hero.items[it.item] = (save.hero.items[it.item] || 0) + (it.n || 1); out.push({ text: `+ ${itemName(it.item)}${it.n > 1 ? ` ×${it.n}` : ''}`, color: 'a' }); }
-  for (const it of r.removeItems || []) save.hero.items[it.item] = Math.max(0, (save.hero.items[it.item] || 0) - (it.n || 1));
+  for (const it of r.items || []) { giveItem(save, it.item, it.n || 1, it.q); out.push({ text: `+ ${itemName(it.item)}${it.n > 1 ? ` ×${it.n}` : ''}`, color: 'a' }); }
+  for (const it of r.removeItems || []) dropItem(save, it.item, it.n || 1);
   // vendors-bestiary.md: a new `cx-*` flag opens a codex find
   if ([...(r.flags || []), r.flag].some((f) => typeof f === 'string' && f.startsWith('cx-') && !save.flags[f])) out.push({ text: t('codex.newFind'), color: 'f' });
   for (const f of r.flags || []) save.flags[f] = true;

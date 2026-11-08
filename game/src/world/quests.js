@@ -15,6 +15,7 @@
 //     (location scene: the NPC is on the node / in the party). NPC nowhere to be found → reward at once + short line.
 //   'radio': reward at once, qid queued in save.pendingRadio (the location scene shows the radio modal).
 //   Failed quest with lines.failed: same delivery, no reward. Quests without an entry — as before.
+import { dropItem } from './inventory.js';
 import { QUESTS, sameLocation, QUEST_TURNIN, npcHome } from './data.js';
 import { t } from '../data/text/index.js';
 import { grant, journal, requiresOk, tf, repToasts } from './state.js';
@@ -396,7 +397,7 @@ export function autoProgress(save, data) {
       || (x.goal.kind === 'item' && (save.hero.items[x.goal.item] || 0) >= (x.goal.n || 1))
       || (x.goal.kind === 'terminal' && save.terminals[x.goal.terminal] && save.terminals[x.goal.terminal] !== 'ritual')));
     if (!s) break;
-    if (s.goal.kind === 'item') save.hero.items[s.goal.item] -= s.goal.n || 1;
+    if (s.goal.kind === 'item') dropItem(save, s.goal.item, s.goal.n || 1);
     out.push(...completeSlot(save, s, data));
   }
   // 'all' stages whose subgoals are done by flags

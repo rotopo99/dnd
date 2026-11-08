@@ -8,7 +8,7 @@ export const BACKSTORIES = {
     start: { rep: { technikums: 10, pirates: 5 }, items: [{ id: 'rations', n: 2 }], credits: 20, flags: ['bs-sky'] },
     skills: [{ skill: 'acrobatics', bonus: 1 }, { skill: 'survival', bonus: 1 }],
     conditional: [{ skill: 'perception', adv: true, when: 'падение, обрыв, платформа, высота' }],
-    topics: ['sky-bazaar', 'harmony-old'], drawback: { phobia: 'heights', note: 'добавляется фобия высоты (триггер как в create-build)' } },
+    topics: ['sky-bazaar', 'harmony-old'], drawback: { phobia: 'heights', note: 'фобия высоты' } },
   aiCourier: { id: 'aiCourier', name: 'Бывший курьер АИ Партии', races: ['human', 'skeleton', 'android'],
     desc: 'Носил пакеты между кабинетами и однажды прочитал один. С тех пор ты в бегах, но с хорошими манерами.',
     start: { rep: { aiParty: 5, renegades: 10 }, items: [{ id: 'electrical-tape', n: 1 }], credits: 40, flags: ['bs-courier'] },
@@ -47,8 +47,8 @@ export const backstoryHint = (b) => ({ title: b.name, lines: [b.desc, 'Плюс:
 
 /** Диалоговые «топики», открываемые предысториями: NPC в данных могут ссылаться `needsTopic`. */
 export const TOPIC_NOTES = {
-  'sky-bazaar': 'Расспросы о падении Небесного базара у выживших пиратов и Люстры; скидка -5% у nb-lyustra.',
-  'harmony-old': 'Старые слухи Гармонии: подсказка к sq-terminals.',
+  'sky-bazaar': 'Расспросы о падении Небесного базара у выживших пиратов и Люстры; скидка 5% у Барахольщицы Люстры.',
+  'harmony-old': 'Старые слухи Гармонии: подсказка к заданию «Сеть терминалов».',
   'ai-bureaucracy': 'С чиновниками АИ: реплика «я из канцелярии», проверка Обмана с преимуществом.',
   'putin-leaks': 'Вопрос о «Путине Марк 2»: открывает слух про кабель связи.',
   'scav-lore': 'Мусорщики говорят как со своим: вход на Свалку без проверки.',
@@ -56,7 +56,7 @@ export const TOPIC_NOTES = {
   'technikum-gossip': 'Слухи об изобретениях: скидка на мод у техников (-5%).',
   vazgen: 'Разговор с Вазгеном: дополнительная реплика-подсказка.',
   'warprom-barracks': 'Знаешь пароли казарм: Военпром даёт вход без пошлины.',
-  'kreml-rumors': 'Слухи о Кремле: открывает скрытый узел «warprom-corridor».',
+  'kreml-rumors': 'Слухи о Кремле: открывает скрытый узел «Коридоры под Кремлём».',
   'bard-songs': 'Спеть в таверне: заработок и слух раз в день.',
   'inn-gossip': 'Трактирщики делятся слухами без платы.',
 };

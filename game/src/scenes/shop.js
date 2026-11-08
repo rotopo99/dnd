@@ -11,7 +11,7 @@ import { priceMult as exodusPrice } from '../world/exodus.js';
 import { play } from '../audio/sfx.js';
 import { ITEMS, SKILL_RULES } from '../world/data.js';
 import { itemStats, soonNote, itemTip } from '../ui/items-ui.js';
-import { members } from '../world/state.js';
+import { members, tf } from '../world/state.js';
 import { worldFlagValues } from '../world/checks.js';
 import { chaTrade, knowsSkill } from '../world/skill-uses.js';
 import { openCheck } from '../ui/checks-ui.js';
@@ -21,7 +21,7 @@ import { C } from '../ui/draw.js';
 import { vendorStock, vendorSellRate } from '../world/vendors.js';
 import { wantedPriceMult } from '../world/crime.js';
 import { QUALITY } from '../data/items/mods.js';
-import { syncItems, addInst, makeInst, instValue, bagKeys, contOf, holderOf, mutate, isGear } from '../world/inventory.js';
+import { syncItems, receive, makeInst, instValue, bagKeys, contOf, holderOf, mutate, isGear } from '../world/inventory.js';
 
 const T = SKILL_RULES.trade;
 const shopKey = (sv, key) => `shop:${key}:${sv.day}`;
@@ -69,10 +69,10 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
       const appraise = knowsSkill(ms, T.appraise.skill);
       const st = shopState(sv, key);
       const social = [];
-      social.push({ label: `${t('shop.haggle')}: ${t(`skill.${T.haggle.skill}`)} ${t('battle.dc')} ${T.haggle.dc}`, sub: st.haggle ? t('shop.done') : `−${Math.round(T.haggle.discount * 100)}%`, disabled: !!st.haggle,
+      social.push({ label: t('shop.haggle'), sub: `${t(`skill.${T.haggle.skill}`)} ${t('battle.dc')} ${T.haggle.dc} · ${st.haggle ? t('shop.done') : `−${Math.round(T.haggle.discount * 100)}%`}`, disabled: !!st.haggle,
         run: (g) => openCheck(g, { title: t('shop.haggle'), skill: T.haggle.skill, dc: T.haggle.dc, members: ms, memoKey: `${shopKey(sv, key)}:haggle`,
           onDone: (g2, ok) => { setShopState(sv, key, { haggle: ok ? 'ok' : 'fail' }); g2.toast(t(ok ? 'shop.haggleOk' : 'shop.haggleFail'), ok ? 'j' : 'c'); saveGame(sv); reopen(g2); } }) });
-      social.push({ label: `${t('shop.junk')}: ${t(`skill.${T.junk.skill}`)} ${t('battle.dc')} ${T.junk.dc}`, sub: st.junk ? t('shop.done') : `×${T.junk.sellRate}`, disabled: !!st.junk,
+      social.push({ label: t('shop.junk'), sub: `${t(`skill.${T.junk.skill}`)} ${t('battle.dc')} ${T.junk.dc} · ${st.junk ? t('shop.done') : `×${T.junk.sellRate}`}`, disabled: !!st.junk,
         run: (g) => openCheck(g, { title: t('shop.junk'), skill: T.junk.skill, dc: T.junk.dc, members: ms, memoKey: `${shopKey(sv, key)}:junk`,
           onDone: (g2, ok) => {
             setShopState(sv, key, ok ? { junk: 'ok' } : { junk: 'fail', closed: true });
@@ -87,15 +87,15 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
       const buy = rows.filter((r) => ITEMS[r.id]).map((r) => {
         const id = r.id, it = ITEMS[id];
         const price = Math.max(1, Math.round(it.price * r.mult * pr.buy));
-        const q = appraise && it.slot === 'weapon' && it.tier ? ` · ${t('shop.quality')} ${it.tier}` : '';
+        const q = appraise && it.slot === 'weapon' && it.tier ? `${tf('shop.weaponClass', { n: it.tier })} · ` : ''; // N7, QA v9 B7: words, in the sub line
         const qn = r.q !== 'working' ? ` (${QUALITY[r.q]?.name || r.q})` : '';
         const mk = MARK[r.kind];
         if (r.locked) return { label: `${it.name}${qn}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${t(`tier.${r.locked}`)}: ${t('shop.needRep')}`, disabled: true, detail: tipOf(id, price, r.q) };
-        return { label: `${t('shop.buy')}: ${it.name}${qn} — ${price}${q}`, sub: `${mk ? `${t(mk[0])} · ` : ''}${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`,
+        return { label: `${t('shop.buy')}: ${it.name}${qn} — ${price}`, sub: `${q}${mk ? `${t(mk[0])} · ` : ''}${it.slot && it.slot !== 'consumable' ? itemStats(it) : it.desc || ''}${soonNote(it) ? ` · ${soonNote(it)}` : ''} (${t('loc.have')} ${sv.hero.items[id] || 0})`,
           subColor: mk ? mk[1] : undefined, keep: true, disabled: sv.hero.credits < price, detail: tipOf(id, price, r.q),
           run: (g) => {
             // v7: an instance of the shelf quality → hero's backpack, then companions; no room — no sale
-            const left = mutate(sv, () => addInst(sv, makeInst(id, r.q), 1, { overflow: null }));
+            const left = receive(sv, makeInst(id, r.q), 1).left; // inventory.js: the single item path (keeps hero.items in step)
             if (left) { g.toast(t('inv.noRoom'), 'c'); return; }
             sv.hero.credits -= price; play('buff'); saveGame(sv);
           } };

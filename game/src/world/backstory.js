@@ -2,6 +2,7 @@
 // Start effects are applied once by state.newSave (applyBackstory): rep (applyRep with spread), items, credits,
 // flags, topics (flag `topic:<id>`), drawback (rep / phobia / wanted). Skill bonuses work through buildHero
 // (backstoryWorld → the merged gadget's world entries { check, bonus }), so checks and the skills window see them.
+import { giveItem } from './inventory.js';
 import { BACKSTORIES, TOPIC_NOTES } from '../data/world/backstories.js';
 import { SKILLS } from '../data/talents.js';
 import { applyRep, factionName } from './reputation.js';
@@ -29,7 +30,7 @@ export function applyBackstory(save) {
   const st = b.start || {};
   const changes = [];
   for (const [f, d] of Object.entries(st.rep || {})) changes.push(...applyRep(save, f, d));
-  for (const it of st.items || []) save.hero.items[it.id] = (save.hero.items[it.id] || 0) + it.n;
+  for (const it of st.items || []) giveItem(save, it.id, it.n);
   save.hero.credits += st.credits || 0;
   for (const f of st.flags || []) save.flags[f] = true;
   for (const tp of b.topics || []) save.flags[`topic:${tp}`] = true;

@@ -1,5 +1,6 @@
 // Party / Reputation / Journal / Codex screens (tabs). createPanelsScene({ tab: 'party'|'stats'|'gear'|'rep'|'journal'|'codex', back, canSwap })
 // back — scene to resume on Esc. canSwap — combat talent loadout can be changed (on a node with rest).
+import { dropItem } from '../world/inventory.js';
 import { newUsesLine } from '../world/skill-uses.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
@@ -51,7 +52,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     const u = S.units[key];
     const h = it?.use?.heal || it?.field?.heal;
     if (!u || !h || !(sv.hero.items[item] > 0)) return;
-    sv.hero.items[item]--;
+    dropItem(sv, item, 1);
     const entry = key === 'hero' ? sv.hero : sv.party.find((p) => p.npc === key);
     let v = rollDice(Math.random, h.dice) + (h.bonus || 0);
     // N7 Medicine: a healing item heals 50% more on a check by the best medic of the party
@@ -287,7 +288,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     const order = { active: 0, done: 1, failed: 2 };
     const rank = (st) => (st.turnin ? 0 : order[st.state] ?? 0); // waiting for a turn-in — with the active ones
     entries.sort((a, b) => rank(a[1]) - rank(b[1]));
-    if (!entries.length) rows.push({ text: t('journal.none'), color: C['3'], font: FONT, x: 0 });
+    if (!entries.length && !consequenceLog(sv).length) rows.push({ text: t('journal.none'), color: C['3'], font: FONT, x: 0 });
     for (const [id, st] of entries) {
       const q = QUESTS[id];
       const col = st.turnin && st.state === 'done' ? C.a : st.state === 'done' ? C.j : st.state === 'failed' ? C.c : q.key ? C.a : C['5'];

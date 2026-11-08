@@ -2749,5 +2749,46 @@ console.log('base / backstories / neutral / skill uses 2');
   });
 }
 
+console.log('B1: loot after battle stays in the backpack (single item path)');
+{
+  const INV = await import('../game/src/world/inventory.js');
+  const st = await import('../game/src/world/state.js');
+  const { openLoot } = await import('../game/src/scenes/world-battle.js');
+  const mkSave = () => st.newSave({ name: 'T', race: 'human', cls: 'zabivnoy', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+  const fakeGame = (save) => ({ save, data: GAME_DATA, toasts: [], toast(t) { this.toasts.push(t); }, openModal(spec) { spec.options.at(-1).run(); } });
+  const counts = (s, ids) => Object.fromEntries(ids.map((id) => [id, INV.countAll(s)[id] || 0]));
+  test('B1: openLoot «Забрать всё» → items in bags, survive syncItems', () => {
+    const s = mkSave();
+    for (const k of Object.keys(s.hero.items)) delete s.hero.items[k];
+    s.hero.items.medkit = 2; s.hero.items.grenade = 1; INV.syncItems(s);
+    const before = counts(s, ['medkit', 'grenade', 'rusty-plate']);
+    let done = false;
+    openLoot(fakeGame(s), { credits: 12, items: [{ id: 'grenade', n: 2 }, { id: 'rusty-plate', n: 1 }, { id: 'medkit', n: 1 }] }, () => { done = true; });
+    assert.ok(done);
+    const want = { medkit: before.medkit + 1, grenade: before.grenade + 2, 'rusty-plate': before['rusty-plate'] + 1 };
+    assert.deepEqual(counts(s, Object.keys(want)), want, 'instances after loot');
+    for (const [id, n] of Object.entries(want)) assert.equal(s.hero.items[id], n, `view ${id}`);
+    INV.syncItems(s);
+    assert.deepEqual(counts(s, Object.keys(want)), want, 'instances after syncItems');
+  });
+  test('B1: addInst / takeItem / giveItem keep the view in step; old-style edits still sync', () => {
+    const s = mkSave();
+    INV.syncItems(s);
+    const m0 = INV.countAll(s).medkit || 0;
+    INV.addInst(s, INV.makeInst('medkit'), 2);
+    INV.syncItems(s);
+    assert.equal(INV.countAll(s).medkit, m0 + 2);
+    s.hero.items.medkit += 1; // old code: pending edit
+    INV.giveItem(s, 'medkit', 1);
+    INV.takeItem(s, 'medkit', 1);
+    INV.syncItems(s);
+    assert.equal(INV.countAll(s).medkit, m0 + 3);
+    st.grant(s, { items: [{ item: 'grenade', n: 1 }] });
+    const g = INV.countAll(s).grenade;
+    INV.syncItems(s);
+    assert.equal(INV.countAll(s).grenade, g, 'grant goes straight to instances');
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

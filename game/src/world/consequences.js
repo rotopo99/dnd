@@ -7,7 +7,7 @@
 import { CONSEQUENCES, CQ_FLAG, EPILOGUE } from '../data/world/consequences.js';
 import { NPCS } from '../data/npcs.js';
 import { LOCATIONS, resolveLocation, ROUTES, QUESTS } from './data.js';
-import { applyRep } from './reputation.js';
+import { applyRep, factionName } from './reputation.js';
 import { journal, tf, repToasts } from './state.js';
 
 export { CQ_FLAG };
@@ -142,7 +142,13 @@ export function worldRumors(save) {
 
 /** Journal section «Последствия»: [{ qid, name, day, lines }], newest first. */
 export function consequenceLog(save) {
-  return entries(save).map(({ qid, day, e }) => ({ qid, name: QUESTS[qid]?.name || qid, day, lines: cqLines(e) })).reverse();
+  return entries(save).map(({ qid, day, e }) => ({ qid, name: QUESTS[qid]?.name || qid, day, lines: cqDetail(e) })).reverse();
+}
+/** Journal lines of an entry (QA v9 B11): what the places look like now, the reputation shifts, then the short lines. */
+export function cqDetail(e) {
+  const out = (e.nodes || []).map((n) => n.desc).filter(Boolean);
+  for (const [f, d] of Object.entries(e.rep || {})) if (d) out.push(tf('cq.rep', { faction: factionName(f), d: `${d > 0 ? '+' : ''}${d}` }));
+  return [...out, ...cqLines(e).filter((l) => !(e.nodes || []).some((n) => l === tf('cq.node', { loc: locName(n.loc) })))];
 }
 
 /** Epilogue slides by flags: when.all / any / not; ≤ EPI_MAX by prio, shown by order; intro and outro always. */

@@ -4,6 +4,7 @@
 // Click / Enter / Space skips to the result (the roll is made before the animation, skipping changes nothing).
 // fx are applied once at the roll and the result is kept in save.memo[memoKey] until «Дальше»: a reload shows the same result.
 // Logic — world/check-run.js. Opened as a scene over the caller; returns with game.resume(back).
+import { dropItem } from '../world/inventory.js';
 import { t } from '../data/text/index.js';
 import { CHECK_SCENE_RULES as CS } from '../data/world/check-scenes.js';
 import { approachStates, rollApproach, outcomeOf, applyFx, skillName } from '../world/check-run.js';
@@ -48,7 +49,7 @@ export function openCheckScene(game, o) {
 
   const roll = (g, st) => {
     if (!st.ok) return;
-    if (st.ap.item && st.ap.consume) save.hero.items[st.ap.item] = Math.max(0, (save.hero.items[st.ap.item] || 0) - 1);
+    if (st.ap.item && st.ap.consume) dropItem(save, st.ap.item, 1);
     const r = rollApproach(st, { group: !!o.group, ms: o.members });
     const out = outcomeOf(o.scene, r.outcome, { name: st.member?.name || '', stage: o.stageText || '' });
     const fx = applyFx(save, out.fx, { xpBase: o.xpBase || 0, data: g.data });

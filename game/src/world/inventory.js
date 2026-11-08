@@ -10,6 +10,8 @@
 //   save.hero.items — COUNT VIEW { id: n } of all bags + quick slots + stash (equipped not counted). Old code still
 //   writes it (quests, events, location); syncItems(save) turns such edits into instances (+: hero bag → companions →
 //   stash; −: quick → bag → companions → stash, junk first). Every mutator here syncs first and recounts after.
+//   addInst / takeItem / receive keep the view in step themselves (B1: a stale view made syncItems delete fresh loot),
+//   so new code may call them without syncItems/refreshView around; old code may keep writing the counter.
 // Containers: ref { c: 'bag', key } | { c: 'stash' } | { c: 'ground' }.
 import { BASE_LOCATION, BASE_UNLOCK } from '../data/world/base.js';
 import { ITEMS, LOCATIONS, resolveLocation } from './data.js';
@@ -213,18 +215,57 @@ export function takeItem(save, id, n = 1) {
     }
     if (ref.c !== 'quick') for (let i = list.length - 1; i >= 0; i--) if (list[i].dead) list.splice(i, 1);
   });
+  bump(save, id, -(n - left));
   return n - left;
+}
+/** Keep the count view in step with a direct instance change (counted stores only: bags, quick, stash). */
+function bump(save, id, d) {
+  if (!d || !save?.hero) return;
+  const v = save.hero.items || (save.hero.items = {});
+  const k = Math.max(0, (v[id] || 0) + d);
+  if (k) v[id] = k; else delete v[id];
 }
 /**
  * Add n of an id/instance to a member (hero by default): his bag, then other members, then the stash
  * (`overflow: 'stash'`, default) or nothing. Returns the count that did not fit anywhere.
  */
 export function addInst(save, inst, n = 1, { key = 'hero', overflow = 'stash', others = true } = {}) {
+  const r = receive(save, inst, n, { key, others, stash: overflow === 'stash', ground: overflow === 'ground' });
+  return r.left;
+}
+/**
+ * The single way to put items into the party's inventory: member's bag → other members → stash (if `stash`)
+ * → «На земле» (if `ground`). Updates the count view. → { bag, stash, ground, left } (counts).
+ */
+export function receive(save, inst, n = 1, { key = 'hero', others = true, stash = false, ground = false } = {}) {
+  const out = { bag: 0, stash: 0, ground: 0, left: n };
+  if (!ITEMS[inst?.item] || n <= 0) return out;
   let left = placeAuto(contOf(save, { c: 'bag', key }), inst, n);
   if (left && others) for (const k of bagKeys(save)) if (k !== key && left) left = placeAuto(contOf(save, { c: 'bag', key: k }), inst, left);
-  if (left && overflow === 'stash') left = placeAuto(contOf(save, { c: 'stash' }), inst, left);
-  if (left && overflow === 'ground') left = placeAuto(contOf(save, { c: 'ground' }), inst, left);
-  return left;
+  out.bag = n - left;
+  if (left && stash) { const l2 = placeAuto(contOf(save, { c: 'stash' }), inst, left); out.stash = left - l2; left = l2; }
+  if (left && ground) { const l2 = placeAuto(contOf(save, { c: 'ground' }), inst, left); out.ground = left - l2; left = l2; }
+  out.left = left;
+  bump(save, inst.item, out.bag + out.stash);
+  return out;
+}
+const v7 = (save) => (save?.v || 1) >= 2 && !!save.hero?.bag;
+/**
+ * Single entry point for game code (quests, events, caches, shop gifts, theft, turn-ins…): add n of an id to the
+ * party — hero bag → companions → stash → «На земле». Before the v7 migration (newSave) — the count view only.
+ * Returns the count placed (bags + stash + ground).
+ */
+export function giveItem(save, id, n = 1, q) {
+  if (!ITEMS[id] || !(n > 0)) return 0;
+  if (!v7(save)) { bump(save, id, n); return n; }
+  const r = receive(save, makeInst(id, q), n, { stash: true, ground: true });
+  return n - r.left;
+}
+/** Remove n of an id from the party (see takeItem); view-only before v7. Returns the count removed. */
+export function dropItem(save, id, n = 1) {
+  if (!(n > 0)) return 0;
+  if (!v7(save)) { const had = save.hero.items?.[id] || 0; bump(save, id, -n); return Math.min(had, n); }
+  return takeItem(save, id, n);
 }
 /** Turn edits of the count view by old code into instances (see header). Returns ids that went to the stash. */
 export function syncItems(save) {
@@ -233,8 +274,7 @@ export function syncItems(save) {
   for (const p of save.party || []) {
     if (p.state !== 'left' || !p.bag) continue;
     const b = bagOf(p);
-    const view = save.hero.items || (save.hero.items = {});
-    for (const e of [...b.grid, ...b.quick.filter(Boolean)]) { addInst(save, e, e.n || 1); view[e.item] = (view[e.item] || 0) + (e.n || 1); }
+    for (const e of [...b.grid, ...b.quick.filter(Boolean)]) addInst(save, e, e.n || 1); // addInst bumps the view
     p.bag = { grid: [], quick: Array(QUICK_MAX).fill(null) };
   }
   const items = save.hero.items || (save.hero.items = {});

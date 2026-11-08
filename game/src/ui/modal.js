@@ -4,6 +4,7 @@
 //               detail — same spec format (or () => spec): if any option has one, the modal gets a details panel on the
 //                 right (ui/details.js: full wrapped text, scroll) showing the hovered / last hovered option; no tip then
 //               inert — an info row (loot item): shows its detail, cannot be picked
+//               detailIdx — option whose card the details panel shows first (default: the first with a detail)
 //               build?(game) -> spec (re-evaluated every frame: live shops), width?, onCancel?(game) }
 // Clicking an option closes the modal first (unless keep) and then calls run — so run may open the next modal.
 // Keys: 1–9 pick options, Esc — cancel (onCancel or close), Enter/Space — the only enabled option.
@@ -85,6 +86,7 @@ export function updateModal(game) {
   let busy = false;
   if (L.detail) {
     // details panel: the hovered option with a detail, else the last one shown, else the first
+    if (m._detailIdx == null && spec.detailIdx != null) m._detailIdx = spec.detailIdx; // initial card (e.g. the current pick)
     if (hb?.detail) m._detailIdx = hb.idx;
     if (!spec.options[m._detailIdx]?.detail) m._detailIdx = spec.options.findIndex((o) => o.detail);
     const d = spec.options[m._detailIdx]?.detail;

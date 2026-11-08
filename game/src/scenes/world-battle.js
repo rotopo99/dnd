@@ -16,7 +16,7 @@ import { applyRep, meetFaction } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
 import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
-import { syncItems, consumeBattle, addInst, makeInst, canStash, contOf, placeAuto, qualityName } from '../world/inventory.js';
+import { syncItems, consumeBattle, receive, makeInst, canStash, qualityName } from '../world/inventory.js';
 import { itemTip, itemStats } from '../ui/items-ui.js';
 import { C } from '../ui/draw.js';
 import { saveGame } from '../save.js';
@@ -163,15 +163,11 @@ export function openLoot(game, loot, then) {
     const h = game.save.hero;
     h.credits += loot.credits;
     // v7: instances with quality → hero bag → companions → stash (hub) → «На земле» (gear screen; dropped only by hand)
-    syncItems(game.save);
     let stashed = 0, ground = 0, lost = 0;
     for (const { id, n, q } of loot.items) {
-      if (!ITEMS[id]) continue;
-      let left = addInst(game.save, makeInst(id, q), n, { overflow: null });
-      if (left && canStash(game.save)) { const l2 = placeAuto(contOf(game.save, { c: 'stash' }), makeInst(id, q), left); stashed += left - l2; left = l2; }
-      if (left) { const l2 = placeAuto(contOf(game.save, { c: 'ground' }), makeInst(id, q), left); ground += left - l2; lost += l2; }
+      const r = receive(game.save, makeInst(id, q), n, { stash: canStash(game.save), ground: true }); // B1: one path, view in step
+      stashed += r.stash; ground += r.ground; lost += r.left;
     }
-    syncItems(game.save);
     if (loot.credits) game.toast(tf('fx.credits', { n: `+${loot.credits}` }), 'b');
     if (loot.items.length) game.toast(tf('loot.got', { n: loot.items.reduce((s, x) => s + x.n, 0) }), 'j');
     if (stashed) game.toast(tf('inv.lootStash', { n: stashed }), 'a');

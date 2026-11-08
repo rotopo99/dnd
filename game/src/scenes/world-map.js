@@ -6,7 +6,7 @@ import { baseOpen, BASE_LOC } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, fit, wrap, panel, button, hitButton, clear } from '../ui/draw.js';
+import { C, FONT, FONT_B, FONT_L, LINE, text, fit, wrap, panel, button, hitButton, clear, flowButtons, buttonWidth } from '../ui/draw.js';
 import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, MAP_SPACE, MAP_NODES, FARE, TIER_NAMES, encounterName, resolveLocation, locationLore } from '../world/data.js';
 import { checkInfo, checkChance, rollCheck } from '../world/checks.js';
 import { WORLD_RULES as R } from '../data/world/rules.js';
@@ -140,6 +140,14 @@ export function createWorldMapScene() {
     return { x: sx(p.px.x) + Math.cos(a) * RING, y: sy(p.px.y) + Math.sin(a) * RING };
   }
 
+  /** «На базу»: disabled with a reason while no known route leads there (QA v9 B10). */
+  function baseButton(game) {
+    const sv = game.save;
+    const none = resolveLocation(sv.location) !== resolveLocation(BASE_LOC) && !findRoute(sv, sv.location, BASE_LOC, partyFlagSet(sv, game.data));
+    return { id: 'base', label: t('base.toBase'), key: 'H', w: 100, disabled: none, reason: none ? t('base.noRoute') : null,
+      tip: none ? { title: t('base.toBase'), lines: [{ text: t('base.noRoute'), color: 'c' }] } : null };
+  }
+
   function layout(game) {
     const W = game.width, H = game.height;
     S.area = { x: 0, y: TOP, w: W, h: H - TOP - BOTTOM };
@@ -148,18 +156,19 @@ export function createWorldMapScene() {
       { id: 'zoomOut', label: '−', key: '-', w: 44 }, { id: 'zoomIn', label: '+', key: '+', w: 44 }, { id: 'center', label: t('map.center'), key: 'C', w: 110 },
       { id: 'night', label: `${t('map.night')}: ${S.night ? t('party.on') : t('party.off')}`, key: 'N', selected: S.night },
       { id: 'enter', label: t('map.enter'), key: 'Enter' },
-      ...(baseOpen(game.save) ? [{ id: 'base', label: t('base.toBase'), key: 'H', w: 100 }] : []), // world-consequences.md ч.3
+      ...(baseOpen(game.save) ? [baseButton(game)] : []), // world-consequences.md ч.3
       { id: 'party', label: t('panel.party'), key: 'P' },
       { id: 'rep', label: t('panel.rep'), key: 'R' },
       { id: 'journal', label: t('panel.journal'), key: 'J' },
       { id: 'codex', label: t('panel.codex'), key: 'B' },
       { id: 'menu', label: t('loc.toMenu'), key: 'Esc' },
     ];
-    let x = W - 16;
-    for (let i = S.buttons.length - 1; i >= 0; i--) {
-      const b = S.buttons[i];
-      b.w = b.w || bw; b.h = 44; x -= b.w; b.x = x; b.y = H - 56; x -= gap;
-    }
+    // QA v9: widths by text (at least the old ones when there is room), squeezed into one row right-aligned
+    const want = S.buttons.map((b) => ({ ...b, minW: b.w || bw }));
+    const room = W - 32, total = want.reduce((s, b) => s + b.minW + gap, -gap);
+    if (total > room) for (const b of want) b.minW = Math.min(b.minW, Math.max(44, buttonWidth(game.ctx, b.label, FONT_B, b.key)));
+    const pos = flowButtons(game.ctx, want, { x: 16, y: H - 56, w: room, h: 44, gap, rows: 1, minW: 44 });
+    S.buttons.forEach((b, i) => Object.assign(b, pos[i]));
     S.logW = W - 32;
     S.pflags = partyFlagSet(game.save, game.data);
     S.stigma = stigmaRep(game.save, game.data);
@@ -588,12 +597,13 @@ export function createWorldMapScene() {
         if (inp.wasPressed('KeyP')) return nav(game, 'party');
         if (inp.wasPressed('KeyR')) return nav(game, 'rep');
         if (inp.wasPressed('KeyJ')) return nav(game, 'journal');
+        if (inp.wasPressed('KeyG')) return nav(game, 'gear');
         if (inp.wasPressed('KeyB')) return nav(game, 'codex');
         if (!S.paused) stepTravel(game, dt);
         return;
       }
       S.hoverNode = !S.hover && m.inside && m.y >= S.area.y && m.y < S.area.y + S.area.h ? nodeAt(sv, m.x, m.y) : null;
-      if (m.clicked && S.hover) { play('uiClick'); S.drag = null; nav(game, S.hover.id); return; }
+      if (m.clicked && S.hover) { S.drag = null; if (S.hover.disabled) { if (S.hover.reason) game.toast(S.hover.reason, 'c'); return; } play('uiClick'); nav(game, S.hover.id); return; }
       // click on a node = pointer released without dragging (a quick click may release within the same step)
       const release = m.released || (S.drag && !m.down);
       if (release && S.drag) {
@@ -602,10 +612,11 @@ export function createWorldMapScene() {
       }
       if (inp.wasPressed('Enter')) nav(game, 'enter');
       else if (inp.wasPressed('KeyN')) nav(game, 'night');
-      else if (inp.wasPressed('KeyH') && baseOpen(sv)) nav(game, 'base');
+      else if (inp.wasPressed('KeyH') && baseOpen(sv)) { const b = S.buttons.find((x) => x.id === 'base'); if (b?.disabled) game.toast(b.reason, 'c'); else nav(game, 'base'); }
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
       else if (inp.wasPressed('KeyR')) nav(game, 'rep');
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
+      else if (inp.wasPressed('KeyG')) nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) nav(game, 'codex');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },
@@ -640,8 +651,12 @@ export function createWorldMapScene() {
       panel(ctx, 16, H - BOTTOM + 6, S.logW, 108, C['1'], C['2']);
       S.log.forEach((l, i) => text(ctx, fit(ctx, l.text, S.logW - 24), 28, H - BOTTOM + 12 + i * LINE, C[l.color] || C['4']));
       if (!S.log.length) text(ctx, fit(ctx, t('map.hint'), S.logW - 24), 28, H - BOTTOM + 12, C['3']);
-      for (const b of S.buttons) button(ctx, b, S.hover === b);
-      text(ctx, `${t('map.zoom')} ×${S.cam.z.toFixed(1)} · ${t('map.panHint')}`, 16, H - 40, C['3'], '12px monospace');
+      for (const b of S.buttons) { button(ctx, b, S.hover === b); if (b.tip) hotspot(b.x, b.y, b.w, b.h, b.tip); }
+      // QA v9 B9: the zoom hint sits in the map's bottom-left corner, not under the buttons
+      const zh = `${t('map.zoom')} ×${S.cam.z.toFixed(1)} · ${t('map.panHint')}`;
+      ctx.font = '12px monospace';
+      ctx.fillStyle = 'rgba(20,20,28,0.7)'; ctx.fillRect(12, H - BOTTOM - 22, ctx.measureText(zh).width + 8, 18);
+      text(ctx, zh, 16, H - BOTTOM - 19, C['4'], '12px monospace');
     },
   };
   return self;

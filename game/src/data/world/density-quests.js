@@ -122,7 +122,7 @@ export const QUESTS_DENSITY = [
     'Татами молча смотрит в сторону пустого коврика.', 'Найти ученицу.',
     check(['persuasion', 'survival', 'religion'], 13), 'Рассказать Татами, что ученица жива.',
     { xp: 105, credits: 40, rep: { tinBrotherhood: 5 } }),
-  mini('dq-kassa', 'Касса сбежавшего букмекера', 'd-gong', 'velikaya-arena', 'tinBrotherhood', 5,
+  mini('dq-kassa', 'Касса сбежавшего букмекера', 'sl-gong', 'velikaya-arena', 'tinBrotherhood', 5,
     'Букмекер с Великой Арены сбежал с кассой. Гонг хочет вернуть деньги или хотя бы объяснения.',
     'Гонг стучит себя по лбу, звон идёт долгий.', 'Догнать букмекера.',
     choice([

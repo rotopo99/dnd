@@ -10,7 +10,8 @@ const n = (id, name, faction, race, location, role, services, character, speech,
 
 // NPC, которым задание назначено после создания (id NPC → id квеста из density-quests.js).
 const GIVERS = {
-  'd-tatami': 'dq-ucheniza', 'd-gong': 'dq-kassa', 'd-konsul': 'dq-shtamp', 'd-dublon': 'dq-klyuch-kazny',
+// QA v9 B5: «Распорядитель Гонг» — один NPC (sl-gong из npcs.js); его задание dq-kassa выдаёт sl-gong.
+  'd-tatami': 'dq-ucheniza', 'd-konsul': 'dq-shtamp', 'd-dublon': 'dq-klyuch-kazny',
   'd-lopukh': 'dq-gorshok', 'd-vechevoy': 'dq-kolokol', 'd-listva': 'dq-koren', 'd-sluh': 'dq-podval',
   'd-evrika': 'dq-tom', 'd-poslushnik': 'dq-zapiska',
 };
@@ -112,9 +113,6 @@ export const DENSITY_NPCS = [
   n('d-konsul', 'Младший консул Печать', 'tinBrotherhood', 'human', 'selyshko', 'выдаёт справки на въезд, любит штамп сильнее людей', ['info'],
     'Бюрократ-энтузиаст. Утверждает, что штамп — это тоже форма честности.', 'Официально, с оттяжкой слов.',
     'Бумажка есть? Нет бумажки? Тогда заведите бумажку, а потом приходите без бумажки.', 'Хочет, чтобы ему вернули штамп, пропавший ещё до ЭВК.'),
-  n('d-gong', 'Распорядитель Гонг', 'tinBrotherhood', 'human', 'velikaya-arena', 'следит за порядком боёв на Великой Арене', ['info'],
-    'Бьёт в гонг и не жалеет. Особенно себя — рука вечно в мозолях.', 'Громко, как в рупор.',
-    'Следующий бой — через пять минут! Ставки принимаются, сочувствие — нет!', 'Букмекер сбежал с кассой. Гонг хочет вернуть хотя бы совесть.'),
 
   // ============================== Мусорщики ==============================
   n('d-metchik', 'Метчик', 'scavengers', 'human', 'svalka', 'ставит клеймо на добычу', ['trade', 'info'],

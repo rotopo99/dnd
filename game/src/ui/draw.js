@@ -110,20 +110,100 @@ export function hitButton(list, m) {
  * Button: { x, y, w, h, label, sub?, disabled?, selected?, key? }.
  * hover — highlight; colours: normal steel, selected cyan (player colour), disabled grey text.
  */
+const KEY_FONT = '12px monospace';
+const MIN_PX = 11;
+const sized = (font, px) => font.replace(/\d+px/, `${px}px`);
+const pxOf = (font) => Number(/(\d+)px/.exec(font)?.[1]) || 16;
+/**
+ * Auto-fit a label into width (and up to maxLines lines): the font shrinks down to 11 px, then the label wraps,
+ * then it is cut with an ellipsis. → { lines, font, px, cut } (cut — the full text needs a tooltip).
+ */
+export function fitLabel(ctx, s, width, font = FONT_B, maxLines = 1, minPx = MIN_PX) {
+  s = String(s ?? '');
+  for (let px = pxOf(font); px >= minPx; px--) {
+    const f = sized(font, px);
+    ctx.font = f;
+    if (ctx.measureText(s).width <= width) return { lines: [s], font: f, px, cut: false };
+    if (maxLines > 1 && px <= pxOf(font) - 2) {
+      const ls = wrap(ctx, s, width, f);
+      if (ls.length <= maxLines && ls.every((l) => ctx.measureText(l).width <= width)) return { lines: ls, font: f, px, cut: false };
+    }
+  }
+  const f = sized(font, minPx);
+  if (maxLines > 1) {
+    const ls = wrap(ctx, s, width, f).slice(0, maxLines);
+    ls[maxLines - 1] = fit(ctx, ls[maxLines - 1] + (wrap(ctx, s, width, f).length > maxLines ? '…' : ''), width, f);
+    return { lines: ls, font: f, px: minPx, cut: true };
+  }
+  return { lines: [fit(ctx, s, width, f)], font: f, px: minPx, cut: true };
+}
+/** Natural width of a button for a label (padding and the hotkey included). */
+export function buttonWidth(ctx, label, font = FONT_B, key = '') {
+  ctx.font = font;
+  const lw = ctx.measureText(String(label ?? '')).width;
+  ctx.font = KEY_FONT;
+  return Math.ceil(lw + 16 + (key ? (ctx.measureText(key).width + 6) * 2 : 0));
+}
+/**
+ * Place buttons of natural width into up to `rows` rows inside [x, x + w] (right-aligned by default).
+ * items: [{ label, key?, minW? }] → [{ x, y, w, h, row }] in the same order; rows share the height h.
+ */
+export function flowButtons(ctx, items, { x, y, w, h, gap = 4, rows = 2, font = FONT_B, minW = 48, align = 'right' }) {
+  const nat = items.map((b) => Math.max(b.minW || minW, buttonWidth(ctx, b.label, font, b.key)));
+  const sum = (a) => a.reduce((t, v) => t + v, 0) + gap * Math.max(0, a.length - 1);
+  let split = [items.map((_, i) => i)];
+  if (sum(nat) > w && rows > 1 && items.length > 1) {
+    // two rows: the split with the smallest wider row
+    let best = null;
+    for (let k = 1; k < items.length; k++) {
+      const m = Math.max(sum(nat.slice(0, k)), sum(nat.slice(k)));
+      if (!best || m < best.m) best = { k, m };
+    }
+    split = [items.map((_, i) => i).slice(0, best.k), items.map((_, i) => i).slice(best.k)];
+  }
+  const rh = split.length > 1 ? Math.floor((h - gap) / 2) : h;
+  const out = [];
+  split.forEach((idx, r) => {
+    const ws = idx.map((i) => nat[i]);
+    const total = sum(ws);
+    if (total > w) { const k = (w - gap * (ws.length - 1)) / (total - gap * (ws.length - 1)); for (let i = 0; i < ws.length; i++) ws[i] = Math.floor(ws[i] * k); }
+    let cx = align === 'right' ? x + w - sum(ws) : x;
+    idx.forEach((i, j) => { out[i] = { x: cx, y: y + r * (rh + gap), w: ws[j], h: rh, row: r }; cx += ws[j] + gap; });
+  });
+  return out;
+}
+
 export function button(ctx, b, hover) {
   const fill = b.selected ? C.i : hover && !b.disabled ? C['3'] : C['2'];
   const border = b.selected ? C.h : hover && !b.disabled ? C['4'] : C['3'];
   panel(ctx, b.x, b.y, b.w, b.h, fill, border);
   const col = b.disabled ? C['3'] : C['5'];
   const font = b.font || FONT_B;
+  // the hotkey sits in the top-left corner: the label is centred in the space right of it
+  ctx.font = KEY_FONT;
+  const kw = b.key ? ctx.measureText(b.key).width + 6 : 0;
+  const left = b.x + 6 + kw, right = b.x + b.w - 6;
+  const cx = (left + right) / 2, aw = right - left;
+  let cut = false;
   if (b.sub) {
-    text(ctx, fit(ctx, b.label, b.w - 12, font), b.x + b.w / 2, b.y + b.h / 2 - 19, col, font, 'center');
-    text(ctx, fit(ctx, b.sub, b.w - 12), b.x + b.w / 2, b.y + b.h / 2 + 1, b.disabled ? C['3'] : b.subColor || C['4'], FONT, 'center');
+    const L = fitLabel(ctx, b.label, aw, font, 1);
+    const S = fitLabel(ctx, b.sub, aw, FONT, 1, 13); // descriptions stay readable: cut (full text in the tip) below 13 px
+    const gapY = Math.max(0, (b.h - L.px - S.px - 4) / 2);
+    text(ctx, L.lines[0], cx, b.y + gapY, col, L.font, 'center');
+    text(ctx, S.lines[0], cx, b.y + gapY + L.px + 4, b.disabled ? C['3'] : b.subColor || C['4'], S.font, 'center');
+    cut = L.cut || S.cut;
   } else {
-    text(ctx, fit(ctx, b.label, b.w - 12, font), b.x + b.w / 2, b.y + b.h / 2 - 9, col, font, 'center');
+    const L = fitLabel(ctx, b.label, aw, font, b.h >= 30 ? 2 : 1);
+    const lh = L.px + 2, top = b.y + (b.h - lh * L.lines.length) / 2 + 1;
+    L.lines.forEach((l, i) => text(ctx, l, cx, top + i * lh, col, L.font, 'center'));
+    cut = L.cut;
   }
-  if (b.key) text(ctx, b.key, b.x + 5, b.y + 3, b.disabled ? C['3'] : C.a, '12px monospace');
+  if (b.key) text(ctx, b.key, b.x + 5, b.y + 3, b.disabled ? C['3'] : C.a, KEY_FONT);
+  if (cut && !b.tip && !b.detail) tipHook?.(b.x, b.y, b.w, b.h, { title: b.label, lines: b.sub ? [b.sub] : [] });
 }
+let tipHook = null;
+/** ui/tooltip.js registers its hotspot here (no import cycle): cut button labels get their full text as a tip. */
+export function setButtonTipHook(fn) { tipHook = fn; }
 
 /** Resource bar with a 1 px frame of colour 0. */
 export function bar(ctx, x, y, w, h, value, max, res) {

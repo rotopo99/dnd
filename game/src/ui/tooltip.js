@@ -2,7 +2,7 @@
 // hovered one last (over the scene and modals) and clears the list every frame.
 //   hotspot(x, y, w, h, tip) — tip: spec or () => spec; showTip(spec) — tip at the mouse right now
 //   spec (full text, word-wrapped, height grows; too tall — wider; see ui/details.js specRows): { title, titleColor?, glyph?: { ch, color }, lines: [string | { text, color }], width? }
-import { C, panel, inRect } from './draw.js';
+import { C, panel, inRect, setButtonTipHook } from './draw.js';
 import { specRows, drawRows } from './details.js';
 
 let spots = [];
@@ -11,6 +11,7 @@ let last = null; // the tip drawn in the last frame (tests: lastTip())
 export const lastTip = () => last;
 
 export function hotspot(x, y, w, h, tip) { if (tip) spots.push({ x, y, w, h, tip }); }
+setButtonTipHook(hotspot);
 export function showTip(spec) { forced = spec; }
 export function clearTips() { spots = []; forced = null; }
 
