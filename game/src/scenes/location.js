@@ -24,7 +24,7 @@ import { hotspot } from '../ui/tooltip.js';
 import { resTip, xpInfo, talentTip } from '../ui/tips.js';
 import {
   members, activeCompanions, buildHero, canRecruit, recruit, hireInfo, grant, restParty, restDepartures, journal, tf,
-  locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY, requiresOk,
+  locFaction, regionOf, hasFlagInParty, effectiveRep, discover, pickEncounter, learnTalent, talentOk, openHidden, encounterThreshold, MAX_PARTY, squadFree, requiresOk,
 } from '../world/state.js';
 import { exodusSync, passDays, serviceOff, tollMult } from '../world/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
@@ -457,7 +457,7 @@ export function createLocationScene(rawId) {
       const free = loc.region === 'harmony' && tierAtLeast(facTier(game, 'technikums'), 'friendly');
       const cost = free ? 0 : SERVICE_PRICES.revive(sv.hero.level) * cyber.length;
       out.push({ label: t('loc.revive'), sub: cost ? `${cost} ${t('world.credits')}` : t('loc.free'), disabled: sv.hero.credits < cost,
-        run: (g) => { sv.hero.credits -= cost; for (const p of cyber) { p.state = activeCompanions(sv).length < MAX_PARTY ? 'active' : 'waiting'; p.hp = null; p.mrl = null; } g.toast(t('loc.revived'), 'j'); refresh(g); } });
+        run: (g) => { sv.hero.credits -= cost; for (const p of cyber) { p.state = squadFree(sv) > 0 ? 'active' : 'waiting'; p.hp = null; p.mrl = null; } g.toast(t('loc.revived'), 'j'); refresh(g); } });
     }
     if (svc.includes('trade') && !npcsAt(locId, sv).some((id) => (NPCS[id].services || []).includes('trade'))) out.push({ label: t('loc.trade'), sub: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market') ? t('loc.closedHostile') : t('loc.shopSub'), disabled: tier === 'hostile' && !hasFlagInParty(sv, game.data, 'black-market'), run: (g) => openShopHere(g, loc.name, tier) });
     if (hasFlagInParty(sv, game.data, 'black-market') && ['town', 'hub'].includes(loc.kind)) out.push({ label: t('loc.blackMarket'), sub: t('loc.blackMarketSub'), run: (g) => openShopHere(g, t('loc.blackMarket'), tier, WORLD_RULES.blackMarket) });

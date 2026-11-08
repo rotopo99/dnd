@@ -6,9 +6,7 @@ import { NPCS } from '../data/npcs.js';
 import { TALENTS, isCombatTalent, talentsForSlot } from '../data/talents.js';
 import { STATS, ASI_STAT_MAX } from '../rules/character.js';
 import { levelGains } from '../rules/progression.js';
-import { buildHero, buildCompanion, chooseAsi, chooseCompanionAsi, learnTalent, tf } from '../world/state.js';
-import { COMPANION_RULES as CR } from '../data/companions.js';
-import { hashSeed, createRng } from '../rules/rng.js';
+import { buildHero, buildCompanion, chooseAsi, chooseCompanionAsi, chooseMemberTalent, memberEntry, memberUnit, memberPending, talentCtx, tf } from '../world/state.js';
 import { saveGame } from '../save.js';
 
 const statName = (k) => t(`stat.${k}`);
@@ -92,8 +90,7 @@ export function openLevelUp(game, onDone) {
         const gl = gainLines(cls, p.path || n.path, lv).filter((x) => x.text !== t('lvl.asi'));
         lines.push(...(lvls.length > 1 ? [{ text: tf('lvl.level', { n: lv }), color: '5' }] : []), ...(gl.length ? gl : [{ text: t('lvl.nothing'), color: '4' }]));
       }
-      for (const note of p.asiNotes || []) lines.push({ text: note, color: 'b' });
-      if ((p.asiNotes || []).length) lines.push({ text: tf('comp.autoAsiWhy', { n: CR.loyalty.trustsChoicesAt }), color: '4' });
+      if (p.pendingTalents > 0) lines.push({ text: t('comp.talentLine'), color: 'a' });
       p.levelNews = []; p.asiNotes = [];
       saveGame(sv);
       game.openModal({ title: tf('comp.levelTitle', { name: n.name, n: lvls[lvls.length - 1] }), width: 980, lines: lines.slice(0, MAX_LINES + 4),
@@ -105,19 +102,17 @@ export function openLevelUp(game, onDone) {
   return false;
 }
 
-/** Companion talent offers for an ASI level: COMPANION_RULES.levelup.talentOffers random ones + the favourite (talents[1]). */
-export function companionTalentOffers(sv, p, u, level) {
-  const n = NPCS[p.npc];
-  const ctx = { race: n.race, cls: n.cls, stats: u.stats, level: u.level, weaponRange: u.weapon?.range || 1, tags: u.tags };
-  const own = new Set([...(p.talents || []), ...(u.talents || []).map((x) => x.id || x)]);
-  const seen = new Set();
-  const pool = ['race', 'job', 'stat'].flatMap((slot) => talentsForSlot(slot, ctx)).filter((x) => !own.has(x.id) && !seen.has(x.id) && seen.add(x.id));
-  const rng = createRng(hashSeed(`${p.npc}:${level}`));
-  const pick = [];
-  while (pick.length < CR.levelup.talentOffers && pool.length) pick.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
-  const fav = n.companion?.talents?.[1];
-  if (fav && TALENTS[fav] && !own.has(fav) && !pick.some((x) => x.id === fav)) pick.push({ ...TALENTS[fav], id: fav, fav: true });
-  return pick;
+/**
+ * «Повысить уровень» of any member: pending ASI (lowest level first), then pending level talents, one window after
+ * another. onDone(game) — when nothing is left or the player postponed a choice (Esc).
+ */
+export function openMemberLevelUp(game, key, onDone) {
+  const sv = game.save;
+  const pend = memberPending(sv, key);
+  const next = (g) => openMemberLevelUp(g, key, onDone);
+  if (pend.asi.length) return openAsi(game, pend.asi[0], next, (g) => onDone?.(g), key === 'hero' ? {} : { npc: key });
+  if (pend.talents > 0) return openTalentPick(game, null, (g) => onDone?.(g), { key, onDone: next });
+  onDone?.(game);
 }
 
 /** ASI choice for a pending level. Esc — later (stays pending). opts.npc — a companion's choice (companions-scenes.md). */
@@ -135,11 +130,8 @@ export function openAsi(game, level, onDone, onCancel = onDone, opts = {}) {
     return { label: `${statName(k)} ${u.stats[k]} → ${Math.min(ASI_STAT_MAX, u.stats[k] + n)}`, disabled: capped, reason: t('lvl.capped'), run };
   };
   const back = (g) => openAsi(g, level, onDone, onCancel, opts);
-  const talentOpt = p
-    ? { label: t('lvl.talent'), run: (g) => g.openModal({ title: t('lvl.talent'), width: 980, onCancel: back,
-      options: companionTalentOffers(sv, p, u, level).map((x) => ({ label: `${x.name}${x.fav ? ` · ${t('comp.talentFav')}` : ''}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`,
-        sub: x.desc, detail: talentTip(x.id), run: (g2) => apply(g2, { talent: x.id }) })) }) }
-    : { label: t('lvl.talent'), run: (g) => openTalentPick(g, (g2, id) => apply(g2, { talent: id }), back) };
+  // the same talent window for the hero and companions (panel of details, requirements by the member's own build)
+  const talentOpt = { label: t('lvl.talent'), run: (g) => openTalentPick(g, (g2, id) => apply(g2, { talent: id }), back, { key: p ? p.npc : 'hero' }) };
   game.openModal({
     title: p ? tf('comp.asiTitle', { name: NPCS[p.npc].name, n: level }) : tf('lvl.asiTitle', { n: level }), width: 820,
     lines: [{ text: t('lvl.asiText'), color: '4' }],
@@ -159,25 +151,32 @@ export function openAsi(game, level, onDone, onCancel = onDone, opts = {}) {
   });
 }
 
-/** Talents the hero can take on a level: race / job / stat lists, not owned yet. */
-export function talentPool(sv, u) {
-  const ctx = { race: sv.hero.race, cls: sv.hero.cls, origin: sv.hero.origin, alignment: sv.hero.alignment, stats: u.stats, level: sv.hero.level, weaponRange: u.weapon?.range || 1, tags: u.tags };
+/** Talents a member (hero by default) can take on a level: race / job / stat lists by its race, class and stats, not owned yet. */
+export function talentPool(sv, u, key = 'hero') {
+  const ctx = talentCtx(sv, key, u);
+  const own = new Set([...(memberEntry(sv, key)?.talents || []), ...(u.talents || []).map((x) => x.id || x)]);
   const seen = new Set();
-  return ['race', 'job', 'stat'].flatMap((slot) => talentsForSlot(slot, ctx)).filter((x) => !sv.hero.talents.includes(x.id) && !seen.has(x.id) && seen.add(x.id));
+  return ['race', 'job', 'stat'].flatMap((slot) => talentsForSlot(slot, ctx)).filter((x) => !own.has(x.id) && !seen.has(x.id) && seen.add(x.id));
 }
 
-/** Talent pick window. onPick(game, id); without onPick the talent is learned as a level talent (pendingTalents). */
-export function openTalentPick(game, onPick, onCancel) {
+/**
+ * Talent pick window. onPick(game, id); without onPick the talent is learned as a level talent (pendingTalents) of
+ * opts.key (hero by default), then opts.onDone(game).
+ */
+export function openTalentPick(game, onPick, onCancel, { key = 'hero', onDone } = {}) {
   const sv = game.save;
-  const pool = talentPool(sv, buildHero(sv, game.data));
+  const u = memberUnit(sv, key, game.data);
+  if (!u) return onCancel?.(game);
+  const pool = talentPool(sv, u, key);
+  const name = key === 'hero' ? null : NPCS[key]?.name || key;
   game.openModal({
-    title: t('talent.pending'), width: 980,
+    title: name ? tf('comp.talentTitle', { name }) : t('talent.pending'), width: 980,
     lines: [{ text: t('talent.pickLevel'), color: 'a' }],
     options: pool.map((x) => ({ label: `${x.name}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: x.desc, detail: talentTip(x.id), run: (g) => {
       if (onPick) return onPick(g, x.id);
-      sv.hero.pendingTalents--;
-      for (const m of learnTalent(sv, x.id, g.data, { force: true })) g.toast(m.text, m.color);
+      for (const m of chooseMemberTalent(sv, key, x.id, g.data)) g.toast(m.text, m.color);
       saveGame(sv);
+      onDone?.(g);
     } })),
     onCancel,
   });

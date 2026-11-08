@@ -13,7 +13,7 @@ import {
   defendResult, defenseAllies, MODULE_IDS, lisOnline,
 } from '../world/base.js';
 import { ITEMS, LORE_RUMORS, LOCATIONS } from '../world/data.js';
-import { restParty, activeCompanions, members, journal, MAX_PARTY } from '../world/state.js';
+import { restParty, activeCompanions, members, journal, MAX_PARTY, squadFree } from '../world/state.js';
 import { addLoyalty } from '../world/companions.js';
 import { passDays } from '../world/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
@@ -127,7 +127,7 @@ export function createBaseScene(back = null) {
     if (med?.withdrawalClear) { delete sv.hero.withdrawal; for (const p of sv.party) delete p.withdrawal; }
     if (plan.revive) {
       for (const p of sv.party.filter((x) => x.state === 'cyberspace')) {
-        p.state = activeCompanions(sv).length < MAX_PARTY ? 'active' : 'waiting'; p.hp = null; p.mrl = null;
+        p.state = squadFree(sv) > 0 ? 'active' : 'waiting'; p.hp = null; p.mrl = null;
         game.toast(tf('base.revived', { name: NPCS[p.npc]?.name || p.npc }), 'j');
       }
     }

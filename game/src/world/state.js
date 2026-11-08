@@ -23,7 +23,7 @@ import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
 import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from './inventory.js';
 
-export const MAX_PARTY = 3; // companions besides the hero
+export const MAX_PARTY = 3; // legacy default: companions besides the hero (real limit — squadMax(save) − 1)
 export { levelForXp };
 
 /** New save after the prologue. hero: { name, race, cls, path, origin, alignment, anyStat, talents }. */
@@ -222,6 +222,21 @@ export function partyUnits(save, data = GAME_DATA) {
 /** CHA modifier of the hero (N2 recruitment). */
 export const heroChaMod = (save, data = GAME_DATA) => mod(buildHero(save, data).stats?.cha ?? 10);
 
+/**
+ * Squad size (with the hero): COMPANION_RULES.squad.base + perChaMod × positive CHA mod of the hero + 'squad-size'
+ * world flags of the hero's talents. → { max, base, cha, lead }.
+ */
+export function squadInfo(save, data = GAME_DATA) {
+  const u = buildHero(save, data);
+  const Q = CR.squad || { base: 4, perChaMod: 1 };
+  const cha = Math.max(0, mod(u.stats?.cha ?? 10)) * Q.perChaMod;
+  const lead = (u.worldFlags || []).filter((f) => f.id === 'squad-size').reduce((a, f) => a + (Number(f.value) || 1), 0);
+  return { max: Q.base + cha + lead, base: Q.base, cha, lead };
+}
+export const squadMax = (save, data = GAME_DATA) => squadInfo(save, data).max;
+/** Free companion places in the squad (0 — full). */
+export const squadFree = (save, data = GAME_DATA) => Math.max(0, squadMax(save, data) - 1 - activeCompanions(save).length);
+
 /** N2: the hostile threshold for recruitment is lowered by SR.recruit.repPerMod per hero CHA modifier point. */
 export function canRecruit(save, npcId, data = GAME_DATA) {
   const n = NPCS[npcId];
@@ -255,11 +270,12 @@ export function hireInfo(save, npcId, tier, data = GAME_DATA) {
 export function recruit(save, npcId) {
   const n = NPCS[npcId];
   const old = save.party.find((p) => p.npc === npcId);
-  const state = activeCompanions(save).length < MAX_PARTY ? 'active' : 'waiting';
+  const state = squadFree(save) > 0 ? 'active' : 'waiting';
   // companions-scenes.md: a returning companion starts cold (returnLoyalty), a new one — at loyalty.start; own XP from the hero's level
   if (old) Object.assign(old, { state, approval: old.state === 'left' ? CR.loyalty.returnLoyalty : Math.max(old.approval, CR.loyalty.returnLoyalty), warned: false, waitDay: save.day });
   else save.party.push({ npc: npcId, state, hp: null, mrl: null, approval: COMPANIONS[npcId]?.loyalty?.start || 0, level: save.hero.level, xp: xpForLevel(save.hero.level), waitDay: save.day, talents: safeTalents(n.companion?.talents), warned: false, ultimatum: false, equipment: companionKit(n), bag: null });
   bagOf(save.party.find((p) => p.npc === npcId));
+  if (state === 'waiting') save.party.find((p) => p.npc === npcId).waitAt = save.location; // reserve waits where hired
   ensureCompanionXp(save, save.party.find((p) => p.npc === npcId)); // unspent level-ups up to the join level (picked like the hero's)
   save.npcs[npcId] = { ...(save.npcs[npcId] || {}), met: true, recruited: true };
   journal(save, tf('fx.joined', { name: n.name }));
@@ -814,5 +830,5 @@ export const effectiveRep = (save, f, data = GAME_DATA) => Math.max(-100, Math.m
 
 export const hasFlagInParty = (save, data, flag) => hasWorldFlag(members(save, data), flag);
 export const partySize = (save) => 1 + activeCompanions(save).filter((p) => p.hp !== 0).length;
-export const partyMax = MAX_PARTY;
+export const partyMax = MAX_PARTY; // legacy; see squadMax
 export { levelForXp as levelFor };

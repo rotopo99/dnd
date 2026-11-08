@@ -53,8 +53,11 @@ export const COMPANION_RULES = {
     leaveAt: -70, warnAt: -50, teachAt: 50, trustsChoicesAt: 20, // как rules.js + новый порог доверия к выбору прокачки
     returnLoyalty: -40,                      // вернувшись, стартует с −40 (recruit уже так делает) и требует извинения (return Cond)
   },
-  // Прокачка: на повышении напарник предлагает варианты, игрок выбирает — если лояльность >= trustsChoicesAt;
-  // иначе напарник выбирает сам (autoAsi), игрок видит строку «X выбрал: …» (и −0 лояльности).
+  // Прокачка (человек, 2026-11-08): напарники прокачиваются как герой — таланты по уровням, ASI или талант;
+  // всё выбирает игрок (trustsChoicesAt больше не влияет на ASI).
+  // Размер отряда (человек, 2026-11-07): base мест (вместе с героем) + perChaMod за каждую единицу положительного
+  // мод. ХАР героя + value флага мира 'squad-size' у талантов героя («Лидерство», «Командный голос»).
+  squad: { base: 4, perChaMod: 1 },
   levelup: {
     asi: true,            // движок levelup.js openAsi(game, level, …, { unit: companion }) на уровнях asiLevelsFor(cls)
     talentOffers: 3,      // «Талант вместо роста»: 3 случайных из talentPool(sv, u) + любимый (companion.talents[1])

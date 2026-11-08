@@ -3,11 +3,12 @@
 // thresholds — world/state.js (shareXp, companionLevelUp, adjustApproval). No DOM.
 import { COMPANIONS, COMPANION_RULES as CR, PERSONAL_QUESTS } from '../data/companions.js';
 import { NPCS } from '../data/npcs.js';
-import { ITEMS } from './data.js';
+import { ITEMS, LOCATIONS, sameLocation } from './data.js';
+import { BASE_LOCATION, BASE_UNLOCK } from '../data/world/base.js';
 import { SKILLS } from '../data/talents.js';
 import { t } from '../data/text/index.js';
 import { repTier, tierAtLeast, normFaction, factionName, TIER_NAMES } from './reputation.js';
-import { recruit, journal, tf, adjustApproval, effectiveRep, ensureCompanionXp } from './state.js';
+import { recruit, journal, tf, adjustApproval, effectiveRep, ensureCompanionXp, squadFree, squadInfo } from './state.js';
 import { queueBark } from './barks.js';
 
 const E = CR.loyalty.events;
@@ -219,3 +220,49 @@ export function waitingLoyalty(save) {
   }
   return out;
 }
+
+// ----------------------------------------------------------------------------- where the reserve lives (feedback 2026-11-07)
+// Companions out of the squad ('waiting') wait where they were hired / sent to the reserve (p.waitAt); once the
+// bunker is open (base.js) they all rest at the base (BASE_LOCATION). Taking one into the squad needs the party
+// there (old entries without waitAt — anywhere) and a free squad place (state.squadFree).
+const baseIsOpen = (save) => !!save?.flags?.[BASE_UNLOCK.openOn.flag];
+
+/** Node where a waiting companion stays: the base once it is open, else p.waitAt (null — unknown, old saves). */
+export function idleHome(save, p) {
+  if (!p || p.state !== 'waiting') return null;
+  return baseIsOpen(save) ? BASE_LOCATION : p.waitAt || null;
+}
+
+/** Display name of idleHome. */
+export const idleHomeName = (save, p) => { const h = idleHome(save, p); return h ? LOCATIONS[h]?.name || h : ''; };
+
+/** Can a waiting companion join the squad now? → { ok, why: 'full' | 'away' | null }. */
+export function canRejoin(save, p, data) {
+  if (!p || p.state !== 'waiting') return { ok: false, why: null };
+  const home = idleHome(save, p);
+  if (home && !sameLocation(save.location, home)) return { ok: false, why: 'away' };
+  if (squadFree(save, data) <= 0) return { ok: false, why: 'full' };
+  return { ok: true, why: null };
+}
+
+/** Take a waiting companion into the squad (checks canRejoin). → bool. */
+export function rejoin(save, npcId, data) {
+  const p = partyEntry(save, npcId);
+  if (!canRejoin(save, p, data).ok) return false;
+  p.state = 'active';
+  delete p.waitAt;
+  return true;
+}
+
+/** Leave an active companion in the reserve: at the base once it is open, else on the current node. */
+export function sendToReserve(save, npcId) {
+  const p = partyEntry(save, npcId);
+  if (!p || p.state !== 'active') return false;
+  p.state = 'waiting'; p.waitDay = save.day;
+  p.waitAt = baseIsOpen(save) ? BASE_LOCATION : save.location;
+  return true;
+}
+
+/** Companions resting at the base (waiting, base open). */
+export const baseIdle = (save) => (baseIsOpen(save) ? save.party.filter((p) => p.state === 'waiting') : []);
+export { squadInfo };
