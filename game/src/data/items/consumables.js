@@ -215,10 +215,17 @@ const LIST = [
     tier: 2, price: 55, factions: ['aiParty', 'warprom'], desc: 'С надписью «ПОЛИЦИЯ ПАРТИИ».' }),
 
   // ---------------------------------------------------------------- Еда (вне боя)
-  c({ id: 'tushenka', name: 'Тушёнка', kind: 'food', stack: 5, field: { heal: { dice: '1d6', resource: 'hp' } },
+  // provision: N — рационов для длинного отдыха (data/world/rest.js)
+  c({ id: 'tushenka', name: 'Тушёнка', kind: 'food', stack: 5, provision: 1, field: { heal: { dice: '1d6', resource: 'hp' } },
     tier: 1, price: 5, factions: ['pirates', 'neutralVillages', 'scavengers'], desc: 'Валюта Боцмана Сухаря.' }),
   c({ id: 'pelmeni', name: 'Пельмени трактирщика', kind: 'food', stack: 5, field: { heal: { dice: '1d6', resource: 'mrl' } },
     tier: 1, price: 8, factions: ['neutralVillages'], desc: '«Слухи без пельменей не усваиваются».' }),
+  c({ id: 'ration', name: 'Сухпаёк', kind: 'food', stack: 6, provision: 1, size: [1, 1],
+    tier: 1, price: 6, factions: ['neutralVillages', 'scavengers', 'warprom', 'renegades'], desc: 'Рацион на одного на ночь. Галеты, сахар, бульонный кубик неизвестного происхождения.' }),
+  c({ id: 'army-ration', name: 'Армейский рацион', kind: 'food', stack: 3, provision: 2, size: [1, 2],
+    tier: 2, price: 14, factions: ['warprom', 'aiParty'], desc: 'ИРП Варпрома: хватает на двоих. Срок годности — «до победы».' }),
+  c({ id: 'mutant-stew', name: 'Мутантская похлёбка', kind: 'food', stack: 4, provision: 1, field: { heal: { dice: '1d4', resource: 'hp' } },
+    tier: 1, price: 3, factions: ['mutants', 'scavengers'], desc: 'Рацион на ночь. Что-то в ней плавает и смотрит в ответ.' }),
 ];
 
 export const CONSUMABLES = Object.fromEntries(LIST.map((it) => [it.id, it]));
