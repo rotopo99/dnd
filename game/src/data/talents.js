@@ -479,8 +479,8 @@ const LIST = [
     desc: 'Системы АИ его не узнают: ни чипа, ни следа.' }),
   T({ id: 'smart-prosthesis', name: 'Умный протез', slot: 'faction', kind: 'combat', req: { origins: ['technikums'] },
     abilities: [ab({ id: 'talent-smart-prosthesis', name: 'Щиток протеза', action: 'bonus', range: 0, target: 'self',
-      effects: [{ op: 'shield', dice: '1d6', bonus: 2, turns: 2 }],
-      desc: 'Протез Николы раскрывает щиток: щит 1d6 + 2 на 2 хода. Раз за бой.' })],
+      effects: [{ op: 'shield', dice: '1d6', bonus: 2 }],
+      desc: 'Протез Николы раскрывает щиток: 1d6 + 2 врем. ЗДР. Раз за бой.' })],
     canon: 'вне канона, не противоречит: «умные протезы» Николы (lore/timeline.md)',
     desc: 'Экспериментальный протез техникумов со своим мнением.' }),
 
@@ -510,8 +510,8 @@ const LIST = [
   // ============================== МИРОВОЗЗРЕНИЕ: ДОБРЫЕ (rules/talents.md, «Светлые таланты»)
   T({ id: 'shield-innocent', name: 'Щит невинных', slot: 'alignment', kind: 'combat', req: { alignment: 'good' },
     abilities: [ab({ id: 'talent-shield-innocent', name: 'Щит невинных', action: 'reaction', trigger: 'allyDamaged', range: 2, target: 'ally',
-      effects: [{ op: 'shield', value: 6, turns: 1 }],
-      desc: 'Реакция, когда раненого союзника (≤ 60% ЗДР) бьют: щит 6 до конца раунда. Раз за бой.' })],
+      effects: [{ op: 'shield', value: 6 }],
+      desc: 'Реакция, когда раненого союзника (≤ 60% ЗДР) бьют: 6 врем. ЗДР. Раз за бой.' })],
     desc: 'Может принять удар, предназначенный другому.' }),
   T({ id: 'healing-hands', name: 'Исцеляющие руки', slot: 'alignment', kind: 'combat', req: { alignment: 'good' },
     abilities: [ab({ id: 'talent-healing-hands', name: 'Исцеляющие руки', action: 'action', range: 1, target: 'ally',

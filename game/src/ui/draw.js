@@ -206,15 +206,28 @@ let tipHook = null;
 export function setButtonTipHook(fn) { tipHook = fn; }
 
 /** Resource bar with a 1 px frame of colour 0. */
-export function bar(ctx, x, y, w, h, value, max, res) {
+export function bar(ctx, x, y, w, h, value, max, res, tmp = 0) {
   const c = RES_COLORS[res];
   ctx.fillStyle = C['0'];
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = c.empty;
   ctx.fillRect(x, y, w, h);
   const k = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  const fw = Math.round(w * k);
   ctx.fillStyle = c.fill;
-  ctx.fillRect(x, y, Math.round(w * k), h);
+  ctx.fillRect(x, y, fw, h);
+  if (tmp > 0 && max > 0) tmpSegment(ctx, x, y, w, h, fw, tmp / max);
+}
+
+/** Temporary HP segment (colour TMP_COLOR): right after the HP fill; if it does not fit — from the right edge back. */
+export const TMP_COLOR = C.h;
+function tmpSegment(ctx, x, y, w, h, fw, k) {
+  const sw = Math.max(2, Math.min(w, Math.round(w * k)));
+  const sx = fw + sw <= w ? x + fw : x + w - sw;
+  ctx.fillStyle = TMP_COLOR;
+  ctx.fillRect(sx, y, sw, h);
+  if (h >= 4) { ctx.fillStyle = C['5']; ctx.fillRect(sx, y, sw, 1); }
+  if (sx > x) { ctx.fillStyle = C['0']; ctx.fillRect(sx - 1, y, 1, h); }
 }
 
 // ---------- PNG icons (game/assets/icons/*.png, 256x256) ----------
@@ -243,14 +256,19 @@ export function drawIcon(ctx, name, x, y, size) {
 }
 
 /** Resource line: icon, bar, "value/max". */
-export function resLine(ctx, x, y, w, res, value, max, label) {
+export function resLine(ctx, x, y, w, res, value, max, label, tmp = 0) {
   const iconName = res === 'hp' ? 'res_hp' : res === 'mrl' ? 'res_morale' : 'res_energy';
   if (!drawIcon(ctx, iconName, x, y, 16)) text(ctx, label[0], x + 4, y, RES_COLORS[res].fill, FONT_B);
   text(ctx, label, x + 22, y, C['4']);
   const bx = x + 64;
-  const bw = w - 64 - 72;
-  bar(ctx, bx, y + 3, bw, 10, value, max, res);
-  text(ctx, `${Math.max(0, value)}/${max}`, x + w, y, C['5'], FONT, 'right');
+  const tail = tmp > 0 ? `+${tmp}` : '';
+  ctx.font = FONT;
+  const tw = tail ? Math.ceil(ctx.measureText(tail).width) + 4 : 0;
+  const bw = w - 64 - 72 - tw;
+  bar(ctx, bx, y + 3, bw, 10, value, max, res, tmp);
+  const num = `${Math.max(0, value)}/${max}`;
+  text(ctx, num, x + w - tw, y, C['5'], FONT, 'right');
+  if (tail) text(ctx, tail, x + w, y, TMP_COLOR, FONT_B, 'right');
 }
 
 /** Fill the whole screen with the background colour 0. */

@@ -4,6 +4,7 @@
 //  1. Status durations count the target's own turns: tick at the start of its turn, `turns` decrease at the
 //     end of its turn. Statuses/buffs/shields applied during the owner's own turn are "fresh" and skip that
 //     first decrement (a self-buff with turns:1 lasts until the end of the owner's next turn).
+//     Shields = temporary HP: without explicit `turns` they last until the battle ends (addShield).
 //  2. Status semantics are data-driven: STATUSES[id].mods flags as documented in effects.js header
 //     (kb, hit, dmg, dmgMelee, saves, init, speed, speedMul, initDice, attackAdv/Disadv, attackedAdv/Disadv,
 //     attackedAdvMelee, attackedDisadvRanged, incomingDmg, resist, blockCost, blockWeapon, randomTarget,
@@ -1071,14 +1072,24 @@ function addBuff(b, src, tgt, stat, value, turns) {
   emit(b, { type: 'buff', actor: src ? src.id : null, target: tgt.id, stat, value, turns: turns ?? 1 });
 }
 
+/**
+ * Temporary HP (UI «Врем. ЗДР», D&D temp hit points). Default: until the battle ends (turns null);
+ * explicit `turns` (enemy shields) count the owner's turns as statuses do. Never stacks: the bigger value
+ * stays (a kept shield still gets the longer duration). Mech armour shields share the same slot.
+ */
 function addShield(b, src, tgt, value, turns) {
-  if (value <= 0) return;
+  value = Math.floor(value);
+  if (!(value > 0)) return;
+  const tn = turns ?? null;
+  const fresh = !!(b.turn && b.turn.unitId === tgt.id);
   if (tgt.shield && tgt.shield.value >= value) {
-    emit(b, { type: 'shield', actor: src ? src.id : null, target: tgt.id, value: tgt.shield.value, kept: true });
+    const cur = tgt.shield;
+    if (cur.turns != null && (tn == null || tn > cur.turns)) { cur.turns = tn; cur.fresh = fresh; }
+    emit(b, { type: 'shield', actor: src ? src.id : null, target: tgt.id, value: cur.value, kept: true, turns: cur.turns });
     return;
   }
-  tgt.shield = { value, turns: turns ?? 1, fresh: !!(b.turn && b.turn.unitId === tgt.id) };
-  emit(b, { type: 'shield', actor: src ? src.id : null, target: tgt.id, value, turns: turns ?? 1 });
+  tgt.shield = { value, turns: tn, fresh, mech: tgt.shield?.mech || undefined };
+  emit(b, { type: 'shield', actor: src ? src.id : null, target: tgt.id, value, turns: tn });
 }
 
 /** +dice from a nextRollDice status (inspired); the status is consumed. */

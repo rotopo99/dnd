@@ -220,14 +220,14 @@ export default {
       effects: [{ op: 'heal', dice: '4d8', resource: 'hp' }, { op: 'status', id: 'regen', turns: 3 }],
       desc: 'Ты и союзники в радиусе 4: лечение 4d8 ЗДР и регенерация на 3 хода. Дважды за бой.' }),
     ab('golem-form', 'Каменный голем', 13, 'survivor', { cost: 7, action: 'bonus', usesPerBattle: 1,
-      effects: [{ op: 'shield', dice: '8d6', turns: 4 }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'status', id: 'fortified', turns: 3 }],
-      desc: 'Шкура каменеет: щит 8d6, +3 КБ на 4 хода и сопротивление физическому урону на 3. Раз за бой.' }),
+      effects: [{ op: 'shield', dice: '8d6' }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'status', id: 'fortified', turns: 3 }],
+      desc: 'Шкура каменеет: 8d6 врем. ЗДР, +3 КБ на 4 хода и сопротивление физическому урону на 3. Раз за бой.' }),
     ab('earth-lord', 'Хозяин земли', 17, 'survivor', { ...AOE, cost: 11, range: 12, area: zone(4), save: 'dex', onSave: 'half', usesPerBattle: 2,
       effects: [{ op: 'damage', dice: '4d8', dmgType: 'blunt' }, { op: 'status', id: 'root', turns: 2 }],
       desc: 'Земля встаёт на дыбы: 4d8 дробящего урона в радиусе 4; провалившие спасбросок ЛВК обездвижены на 2 хода.' }),
     ab('nature-avatar', 'Аватар природы', 20, 'survivor', { cost: 12, action: 'bonus', usesPerBattle: 1,
-      effects: [{ op: 'heal', dice: '8d8', resource: 'hp' }, { op: 'shield', dice: '6d6', turns: 4 }, { op: 'buff', stat: 'dmg', value: 4, turns: 4 }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'status', id: 'regen', turns: 4 }],
-      desc: 'Капстоун: лечение 8d8 ЗДР, щит 6d6, +4 к урону и +3 КБ на 4 хода, регенерация. Раз за бой.' }),
+      effects: [{ op: 'heal', dice: '8d8', resource: 'hp' }, { op: 'shield', dice: '6d6' }, { op: 'buff', stat: 'dmg', value: 4, turns: 4 }, { op: 'buff', stat: 'kb', value: 3, turns: 4 }, { op: 'status', id: 'regen', turns: 4 }],
+      desc: 'Капстоун: лечение 8d8 ЗДР, 6d6 врем. ЗДР, +4 к урону и +3 КБ на 4 хода, регенерация. Раз за бой.' }),
 
     // ---------- Путь Саботажника, 7–20 ----------
     ab('planted-bomb', 'Бомба в рюкзаке', 7, 'saboteur', { cost: 6, ...SHOT,

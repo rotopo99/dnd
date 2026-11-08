@@ -8,7 +8,7 @@ import { C, text, bar, resLine } from './draw.js';
 import { hotspot } from './tooltip.js';
 import { xpProgress } from '../rules/progression.js';
 
-const RES_COL = { hp: 'c', mrl: 'f', enr: 'b', kb: '5', xp: 'a' };
+const RES_COL = { hp: 'c', mrl: 'f', enr: 'b', kb: '5', xp: 'a', tmp: 'h' };
 
 /** ЗДР / МРЛ / ЭНР / КБ / опыт. */
 export function resTip(res) {
@@ -108,6 +108,8 @@ export function talentTip(id) {
 
 /** Find a term (status / ability name) inside a log segment «…» and return its tip. */
 export function termTip(str, statuses, abilities = []) {
+  if (String(str).includes(t('battle.absorbed'))) return tmpHpTip(null);
+  if (String(str).includes(t('battle.shield'))) return tmpHpTip(null);
   const name = String(str).replace(/[«»]/g, '').replace(/\s*\(\d+\)$/, '').trim();
   for (const s of Object.values(statuses || STATUSES)) if (s.name === name) return statusTip(s.id || name, statuses);
   const a = abilities.find((x) => x && x.name === name);
@@ -133,9 +135,17 @@ export function xpLine(ctx, x, y, w, xp, level, { h = 8, small = false } = {}) {
 }
 
 /** draw.js resLine + hover description of the resource. */
-export function resLineTip(ctx, x, y, w, res, value, max, label) {
-  resLine(ctx, x, y, w, res, value, max, label);
-  hotspot(x, y - 2, w, 20, resTip(res));
+export function resLineTip(ctx, x, y, w, res, value, max, label, tmp = 0) {
+  resLine(ctx, x, y, w, res, value, max, label, tmp);
+  hotspot(x, y - 2, w, 20, tmp > 0 ? tmpHpTip(tmp, resTip(res)) : resTip(res));
+}
+
+/** Temporary HP term tip; `base` (the HP tip) goes first when given. */
+export function tmpHpTip(value, base = null) {
+  const tip = resTip('tmp');
+  const head = { text: `${t('res.tmp')}: ${value}`, color: RES_COL.tmp };
+  if (!base) return value == null ? tip : { ...tip, lines: [head, ...tip.lines] };
+  return { ...base, lines: [...base.lines, head, ...tip.lines] };
 }
 
 /** A word/term drawn with a hover tip (KB line etc.). Returns its width. */

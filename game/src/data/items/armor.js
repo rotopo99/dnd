@@ -143,7 +143,7 @@ const LIST = [
     passives: [{ id: 'item-lis1-ai', name: 'Бортовой ИИ «Лис»', desc: '+2 СИЛ, +1 к инициативе.', op: { statBonus: { str: 2 } } },
       { id: 'item-lis1-init', name: 'Бортовой ИИ «Лис»', desc: '', op: { init: 1 } }],
     grants: [ability({ id: 'item-lis1-core', name: 'Протокол «Лис»', action: 'bonus', usesPerBattle: 1,
-      effects: [{ op: 'shield', value: 15, turns: 3 }, { op: 'status', id: 'haste', turns: 2 }], desc: 'Щит 15 на 3 хода и ускорение на 2 хода: ИИ берёт на себя манёвр.' })],
+      effects: [{ op: 'shield', value: 15 }, { op: 'status', id: 'haste', turns: 2 }], desc: '15 врем. ЗДР и ускорение на 2 хода: ИИ берёт на себя манёвр.' })],
     mech: { shield: 20, weapon: 'lis-2', tag: 'hybrid' }, slots: ['plate'], tier: 5, price: 0, factions: [],
     desc: 'Огромный экзокостюм с собственным ИИ. Требует мастерства мехов (ступень 3+, иначе помеха). Хранился в Бункере Лиса.' }),
   a({ id: 'lis-8-hide', name: 'Лис-8 «Шкура» (накидка-хамелеон)', atype: 'light', kb: 3, noise: 0, quality: 'masterwork', slots: ['lining', 'sole'],
@@ -160,7 +160,7 @@ const LIST = [
     slots: ['plate', 'lining'], tier: 4, price: 0, factions: [], desc: 'Шинель Предложки. Кринжгоны не помнят, куда бить.', canon: 'lore/faction-stances.md' }),
   a({ id: 'gans-camo', name: 'Камуфляж Ганса', atype: 'light', kb: 3, quality: 'relic', unique: true,
     grants: [ability({ id: 'item-gans-camo', name: 'Без жертв', action: 'bonus', usesPerBattle: 1,
-      effects: [{ op: 'status', id: 'stealth', turns: 2 }, { op: 'shield', value: 5, turns: 2 }], desc: 'Скрытность и щит 5 на 2 хода.' })],
+      effects: [{ op: 'status', id: 'stealth', turns: 2 }, { op: 'shield', value: 5 }], desc: 'Скрытность на 2 хода и 5 врем. ЗДР.' })],
     slots: ['plate', 'lining'], tier: 3, price: 0, factions: [], desc: 'Если Ганс отдал его сам — значит, верит.', canon: 'lore/history.md' }),
 ];
 

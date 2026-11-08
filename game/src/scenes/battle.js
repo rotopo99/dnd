@@ -693,14 +693,14 @@ export function createBattleScene(opts) {
           const col = e.resource === 'mrl' ? C.n : e.dmgType === 'proxy' ? C.a : C.c;
           popup(T, `${e.crit ? '!' : ''}−${e.amount}`, col);
         }
-        if (e.absorbed) popup(T, `◊${e.absorbed}`, C.f);
+        if (e.absorbed) popup(T, `◊−${e.absorbed}`, C.f);
         if (e.amount > 0) emote(T, e.resource === 'mrl' || d.hp < T.maxHp * 0.4 ? 'scared' : 'angry');
         if (e.crit && A && A !== T) emote(A, pick2('smug', 'happy'));
         if (e.crit) S.shake = Math.max(S.shake || 0, 0.15);
         break;
       }
       case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); emote(T, 'happy'); } break;
-      case 'shield': if (T) popup(T, `◊${e.value}`, C.f); break;
+      case 'shield': if (T && !e.kept) popup(T, `+${e.value} ${t('battle.shield').toLowerCase()}`, C.f); break;
       case 'nadlom': if (T) popup(T, t('state.strain'), C.n); break;
       case 'breakdown':
         if (T) {

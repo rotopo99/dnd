@@ -59,13 +59,14 @@ export function formatEvent(S, e) {
       if (e.resist === 'resist') notes.push(t('battle.resisted'));
       if (e.resist === 'vuln') notes.push(t('battle.vulnerable'));
       if (e.resist === 'immune') notes.push(t('battle.immune'));
-      if (e.absorbed) notes.push(`${t('battle.shield').toLowerCase()} −${e.absorbed}`);
       if (e.crit) notes.push(t('battle.crit'));
-      out.push(g(` (${notes.filter(Boolean).join(', ')})`));
+      const ns = notes.filter(Boolean);
+      if (ns.length) out.push(g(` (${ns.join(', ')})`));
+      if (e.absorbed) out.push([` ${t('battle.absorbed')} ${e.absorbed}`, C.f]);
       return out;
     }
     case 'heal': return [a(T), g(': '), [`+${e.amount} ${resName(e.resource)}`, e.resource === 'mrl' ? C.f : C.j]];
-    case 'shield': return [a(T), g(': '), [`${t('battle.shield')} ${e.value}`, C.f]];
+    case 'shield': return [a(T), g(': '), e.kept ? [`${t('battle.shield')} ${e.value} (${t('battle.shieldKept')})`, C.f] : [`+${e.value} ${t('battle.shield')}`, C.f]];
     case 'shieldBreak': return [a(T), g(': '), [`${t('battle.shield')} ✕`, C.f]];
     case 'status': {
       const d = b.data.statuses[e.id];

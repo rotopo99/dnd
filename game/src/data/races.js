@@ -212,8 +212,8 @@ export const RACES = {
         level: 1, path: null, cost: 0, action: 'bonus', trigger: null,
         range: 0, target: 'self', area: null, roll: 'auto', save: null, onSave: 'none',
         usesPerBattle: 1, castStat: null,
-        effects: [{ op: 'shield', dice: '1d6', turns: 2 }],
-        desc: 'Энергетический щит поглощает 1d6 урона.',
+        effects: [{ op: 'shield', dice: '1d6' }],
+        desc: 'Энергетический щит: 1d6 врем. ЗДР.',
         canon: 'rules/races.md',
       },
       {

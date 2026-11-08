@@ -59,7 +59,7 @@ const LIST = [
     field: { heal: { dice: '3d4', bonus: 3, resource: 'hp' } },
     tier: 3, price: 70, factions: ['warprom', 'aiParty'], desc: 'Списано по акту. Акт тоже списан.' }),
   c({ id: 'analgin', name: 'Анальгин из довоенной аптеки', kind: 'medicine', stack: 5,
-    battle: ability({ id: 'use-analgin', name: 'Анальгин', action: 'bonus', effects: [{ op: 'shield', dice: '1d6', turns: 2 }], desc: 'Щит 1d6 на 2 хода: боль глуше.' }),
+    battle: ability({ id: 'use-analgin', name: 'Анальгин', action: 'bonus', effects: [{ op: 'shield', dice: '1d6' }], desc: '1d6 врем. ЗДР: боль глуше.' }),
     tier: 1, price: 15, factions: ['neutralVillages', 'scavengers'], desc: 'Срок годности — 2009. Работает на честном слове.' }),
   c({ id: 'repair-kit', name: 'Ремкомплект', kind: 'medicine', stack: 3,
     battle: ability({ id: 'use-repair-kit', name: 'Ремонт', range: 1, target: 'ally',
@@ -211,7 +211,7 @@ const LIST = [
     battle: ability({ id: 'use-holo-decoy', name: 'Приманка', action: 'bonus', range: 1, target: 'tile', effects: [{ op: 'summon', unit: 'hologram', turns: 2 }], desc: 'Голограмма на 2 хода.' }),
     tier: 2, price: 60, factions: ['pirates'], desc: 'Фальшивый сигнал Кибер-Ловкача в кармане.' }),
   c({ id: 'portable-barricade', name: 'Складной щит ОМОНа', kind: 'tool', stack: 1,
-    battle: ability({ id: 'use-barricade', name: 'Щит', action: 'bonus', effects: [{ op: 'shield', value: 8, turns: 3 }], desc: 'Щит 8 на 3 хода.' }),
+    battle: ability({ id: 'use-barricade', name: 'Щит', action: 'bonus', effects: [{ op: 'shield', value: 8 }], desc: '8 врем. ЗДР.' }),
     tier: 2, price: 55, factions: ['aiParty', 'warprom'], desc: 'С надписью «ПОЛИЦИЯ ПАРТИИ».' }),
 
   // ---------------------------------------------------------------- Еда (вне боя)
