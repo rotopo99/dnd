@@ -6,6 +6,7 @@ import { WORLD_TEXT } from './world.js';
 import { REST_TEXT } from './rest.js';
 import { OBJECTIVE_TEXT } from './objectives.js';
 import { ROAM_TEXT } from './roam.js';
+import { FIELDS_TEXT } from './fields.js';
 import { ROMANCE_TEXT } from './romance.js';
 
 const ru = {
@@ -797,6 +798,7 @@ Object.assign(ru, INVENTORY_TEXT); // v7 inventory strings (override older gear/
 Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
 Object.assign(ru, WORLD_TEXT); // world-consequences.md: consequences, epilogue, crime
 Object.assign(ru, REST_TEXT); // rest: short / long rests, provisions
+Object.assign(ru, FIELDS_TEXT); // battlefields.md weather, skills-v3.md node actions / hints / tricks
 Object.assign(ru, OBJECTIVE_TEXT); // combat-rework §6: battle objectives, chests, retreat, jam
 Object.assign(ru, ROAM_TEXT); // free-roam.md: the free node map
 Object.assign(ru, ROMANCE_TEXT); // romance.md: romances with companions

@@ -106,7 +106,7 @@ export function startWorldBattle(game, o) {
     heroes: () => partyUnits(save, data),
     enemies: setup.enemies,
     allies,
-    map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, hazard: o.hazard ?? loc?.hazard, biome: o.biome, region: loc?.region, faction: o.faction, id: o.id || 'world' }),
+    map: fixed ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies, hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)

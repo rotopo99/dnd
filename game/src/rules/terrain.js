@@ -38,6 +38,19 @@ export function initTerrain(b) {
     const hp = objectHp(def, L);
     b.objects.set(o.y * b.grid.w + o.x, { kind: o.kind, x: o.x, y: o.y, hp, maxHp: hp, armor: def.armor ?? 10, cover: def.cover });
   }
+  // battlefields.md: props of the map def (assets/props.js metadata copied by world/battlefields.js) replace the char objects
+  // of their footprint: destructible blocking props get hp = prop.hp + perL × L and leave rubble + their debris surface;
+  // the rest stay static (indestructible) cover / blocks.
+  const PD = C.objects.prop || {};
+  for (const p of b.grid.def?.props || []) {
+    const cells = [];
+    for (let i = 0; i < (p.w || 1); i++) if (inBounds(b.grid, p.x + i, p.y)) cells.push((p.y) * b.grid.w + p.x + i);
+    for (const i of cells) b.objects.delete(i);
+    if (!p.destructible || !p.blocks || !cells.length) continue;
+    const hp = Math.max(1, Math.round((p.hp || 6) + (PD.perL ?? 1) * L));
+    const o = { kind: 'prop', prop: p.id, name: p.name || null, x: p.x, y: p.y, cells, hp, maxHp: hp, armor: PD.armor ?? 8, cover: p.cover || 'none', debris: p.debris || null };
+    for (const i of cells) b.objects.set(i, o);
+  }
   const bd = C.objects.barrel;
   if (bd) for (const br of b.barrels || []) { br.maxHp = br.hp = objectHp(bd, L); br.armor = bd.armor ?? 6; }
 }
@@ -78,14 +91,15 @@ export function breakObject(b, o, src) {
   const C = cfg(b);
   const def = (C && C.objects[o.kind]) || {};
   const g = b.grid;
-  b.objects.delete(o.y * g.w + o.x);
+  const cells = o.cells || [o.y * g.w + o.x];
   const rubble = def.leaves === 'rubble';
-  g.tiles[o.y * g.w + o.x] = rubble ? T_RUBBLE : T_FLOOR;
+  for (const i of cells) { b.objects.delete(i); g.tiles[i] = rubble ? T_RUBBLE : T_FLOOR; }
   if (rubble) g.costly = true;
   b.gridVersion = (b.gridVersion || 0) + 1;
   b.occVersion++;
   b.reachCache = null;
   emitEvent(b, { type: 'objectBreak', actor: src ? src.id : null, x: o.x, y: o.y, kind: o.kind });
+  if (o.debris && b.data.surfaces) createSurface(b, o.debris, cells.map((i) => ({ x: i % g.w, y: (i / g.w) | 0 })), src, { turns: def.turns });
   if (def.surface && b.data.surfaces) createSurface(b, def.surface.kind, radiusTiles(b, o.x, o.y, def.surface.r || 1), src, { turns: def.surface.turns });
   if (def.fireLeaves && o.burnt && b.data.surfaces) createSurface(b, def.fireLeaves, [{ x: o.x, y: o.y }], src, {});
   if (def.junk && b.rng() < def.junk) {
@@ -98,7 +112,7 @@ export function breakObject(b, o, src) {
 export function damageObjectsIn(b, test, amount, src, dmgType) {
   if (!terrainOn(b) || !b.objects.size || amount <= 0) return;
   const amt = amount * (cfg(b).areaObjectMul ?? 1);
-  for (const o of [...b.objects.values()]) if (test(o.x, o.y)) damageObject(b, o.x, o.y, amt, src, dmgType);
+  for (const o of new Set(b.objects.values())) if (o.hp > 0 && (o.cells ? o.cells.some((i) => test(i % b.grid.w, (i / b.grid.w) | 0)) : test(o.x, o.y))) damageObject(b, o.x, o.y, amt, src, dmgType);
 }
 
 // ---------------------------------------------------------------- attack modifiers

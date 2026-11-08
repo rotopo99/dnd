@@ -75,6 +75,8 @@ export function initSurfaces(b) {
     if (t === T_HAZARD) setLayer(b, x, y, 'floor', { kind: 'fire', turns: null, src: null, team: null, level: null, perm: true, hazard: true });
     else if (t === T_WATER && defs.water) setLayer(b, x, y, 'floor', { kind: 'water', turns: null, src: null, team: null, level: null, perm: true });
   }
+  // battlefields.md: permanent pools of the map def (oil in a workshop, acid in the mutant forest)
+  for (const s of g.def?.surfaces || []) if (defs[s.kind] && inBounds(g, s.x, s.y)) setLayer(b, s.x, s.y, 'floor', { kind: s.kind, turns: null, src: null, team: null, level: null, perm: true });
 }
 
 export const cellAt = (b, x, y) => (b.surfaces ? b.surfaces.get(`${x},${y}`) || null : null);

@@ -1856,6 +1856,12 @@ export function applyOp(b, caster, t, op, ctx = {}) {
     case 'clearSurface':
       if (ctx.trap || !a) clearSurfaces(b, op.kinds || [], t.x, t.y, op.size ?? 1, caster);
       break;
+    case 'reveal': { // skills-v3: «Заметить засаду» — stealth / invisibility off, the unit stays seen through fog / night for `turns`
+      for (const id of ['invisible', 'stealth']) if (t.statuses.some((s) => s.id === id)) removeStatus(b, t, id);
+      t.revealedUntil = b.round + (op.turns || 1);
+      emit(b, { type: 'cleanse', actor: caster.id, target: t.id, removed: ['stealth'] });
+      break;
+    }
     case 'cleanse': {
       let n = op.ids ? op.ids.length : op.count || 1;
       const list = t.statuses
@@ -2476,7 +2482,10 @@ export function smashOk(b, u, x, y) {
 export function smashTargets(b, u) {
   const out = [];
   if (!b.objects) return out;
-  for (const o of b.objects.values()) if (smashOk(b, u, o.x, o.y)) out.push(o);
+  for (const o of new Set(b.objects.values())) {
+    const at = (o.cells || [o.y * b.grid.w + o.x]).find((i) => smashOk(b, u, i % b.grid.w, (i / b.grid.w) | 0));
+    if (at != null) out.push(at === o.y * b.grid.w + o.x ? o : { ...o, x: at % b.grid.w, y: (at / b.grid.w) | 0 });
+  }
   for (const br of b.barrels || []) if (br.hp != null && smashOk(b, u, br.x, br.y)) out.push(br);
   return out;
 }

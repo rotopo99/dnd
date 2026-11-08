@@ -8,6 +8,7 @@ import { BATTLEFIELD as BF, WEATHER, BIOMES } from '../data/combat.js';
 import { TEMPLATES, BOSS_ARENAS } from '../data/maps/fields/layouts.js';
 import { PROPS, PROP_IDS } from '../assets/props.js';
 import { BIOME_IDS } from '../assets/tilesets.js';
+import { parseMap, reachable, blocksMove, DIRS8 } from '../rules/grid.js';
 
 export { TEMPLATES, BOSS_ARENAS };
 export const TEMPLATE_IDS = Object.keys(TEMPLATES);
@@ -104,6 +105,15 @@ export function fillSlots(g, biome, rnd, { plain = BF.plainCover, drop = BF.drop
     return e;
   };
   const liquid = BF.liquid[biome] || 'water';
+  // heights h / H; a non-height cell boxed by ≥ 2 raised neighbours (the boss spot on a dais) takes their height
+  const ev = src.map((r) => r.map((ch) => (ch === 'h' ? 1 : ch === 'H' ? 2 : 0)));
+  let elev = null;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (ev[y][x] || src[y][x] === '#') continue;
+    const ns = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ev[y + dy]?.[x + dx] || 0).filter((v) => v > 0);
+    if (ns.length >= 2) ev[y][x] = Math.max(...ns);
+  }
+  if (ev.some((r) => r.some((v) => v))) elev = ev.map((r) => r.join(''));
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const ch = src[y][x];
     if (g[y][x] !== ch) continue; // already taken by a wide prop
@@ -113,8 +123,7 @@ export function fillSlots(g, biome, rnd, { plain = BF.plainCover, drop = BF.drop
         else if (liquid === 'water') g[y][x] = 'w';
         else { g[y][x] = '.'; surfaces.push({ kind: liquid, x, y }); }
         break;
-      case 'h': g[y][x] = '1'; break;
-      case 'H': g[y][x] = '2'; break;
+      case 'h': case 'H': g[y][x] = '.'; break; // heights go to def.elev
       case 'x': g[y][x] = ','; break;
       case 'B': g[y][x] = 'E'; break;
       case 'f': place('fence', x, y); break;
@@ -144,7 +153,7 @@ export function fillSlots(g, biome, rnd, { plain = BF.plainCover, drop = BF.drop
       default: break;
     }
   }
-  return { props, surfaces };
+  return { props, surfaces, elev };
 }
 
 /** Mirror a layout horizontally; hero / enemy sides swap (P/A <-> E). */
@@ -209,13 +218,14 @@ export function buildField({ template = null, boss = null, biome = null, seed = 
   // boss start (before slots: 'B' becomes 'E')
   let bossAt = null;
   g.forEach((r, y) => r.forEach((ch, x) => { if (ch === 'B') bossAt = [x, y]; }));
-  const { props, surfaces } = fillSlots(g, bio, rnd, arena ? { plain: 0.5, drop: 0 } : {});
+  const { props, surfaces, elev } = fillSlots(g, bio, rnd, arena ? { plain: 0.5, drop: 0 } : {});
   const w = weather && tod ? { weather, tod } : pickWeather(bio, seed, day);
   if (w.weather === 'rain') addPuddles(g, rnd, WEATHER.weather.rain.puddles);
   ensureStarts(g, 'P', 5, 'left');
   ensureStarts(g, 'A', 2, 'left');
   ensureStarts(g, 'E', Math.max(4, enemies) + 1, 'right');
-  const def = finishDef(g, { id, biome: bio, ...w, props, surfaces, template: arena ? `boss:${boss}` : template });
+  repairConnectivity(g, props, elev);
+  const def = finishDef(g, { id, biome: bio, ...w, props, surfaces, template: arena ? `boss:${boss}` : template, ...(elev ? { elev } : {}) });
   if (bossAt) {
     const es = [];
     g.forEach((r, y) => r.forEach((ch, x) => { if (ch === 'E' && !(x === bossAt[0] && y === bossAt[1])) es.push([x, y]); }));
@@ -229,9 +239,41 @@ export function buildField({ template = null, boss = null, biome = null, seed = 
 export function paintProcedural(g, { biome, seed, day = 1, weather = null, tod = null }) {
   const rnd = fieldRng(`${seed}:paint`);
   const { props, surfaces } = fillSlots(g, biome, rnd);
+  repairConnectivity(g, props);
   const w = weather && tod ? { weather, tod } : pickWeather(biome, seed, day);
   if (w.weather === 'rain') addPuddles(g, rnd, WEATHER.weather.rain.puddles);
   return { props, surfaces, ...w };
+}
+
+/**
+ * Templates may fence a side off with a zigzag of cover (8-way moves cannot cut corners): open the cover cell next to the
+ * reached area that touches an unreached walkable cell, until every start is reachable (≤ 8 cells). Mutates g / props.
+ */
+export function repairConnectivity(g, props, elev = null) {
+  const OPEN = new Set(['c', 'C', 'f', 'b', 'g', ',', 'x']);
+  for (let k = 0; k < 8; k++) {
+    const grid = parseMap({ grid: g.map((r) => r.join('')), ...(elev ? { elev } : {}) });
+    const all = [...grid.starts.P, ...grid.starts.A, ...grid.starts.E];
+    if (!all.length) return;
+    const r = reachable(grid, all[0].x, all[0].y, 9999, null);
+    const ok = (x, y) => r.dist[y * grid.w + x] >= 0;
+    if (all.every((p) => ok(p.x, p.y))) return;
+    let fix = null;
+    for (let y = 1; y < grid.h - 1 && !fix; y++) for (let x = 1; x < grid.w - 1 && !fix; x++) {
+      if (!OPEN.has(g[y][x]) || !blocksMove(grid.tiles[y * grid.w + x])) continue;
+      let near = false, far = false;
+      for (const [dx, dy] of DIRS8) {
+        const nx = x + dx, ny = y + dy, t = grid.tiles[ny * grid.w + nx];
+        if (blocksMove(t)) continue;
+        if (ok(nx, ny)) near = true; else far = true;
+      }
+      if (near && far) fix = [x, y];
+    }
+    if (!fix) return;
+    const [fx, fy] = fix;
+    const pi = props.findIndex((p) => p.y === fy && fx >= p.x && fx < p.x + (p.w || 1));
+    if (pi >= 0) { const p = props[pi]; for (let i = 0; i < p.w; i++) g[fy][p.x + i] = '.'; props.splice(pi, 1); } else g[fy][fx] = '.';
+  }
 }
 
 function finishDef(g, extra) {

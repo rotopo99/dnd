@@ -4,18 +4,43 @@
 // heights '1'/'2' (hills 3×3 of h1; platforms: 2×2 h2 in a ring of h1 — every height has a ramp).
 // Objects are placed on the left half and mirrored (80%) to the right — fair access to cover for both sides.
 // Connectivity check (every start reaches every other); ≤ 5 attempts, then a map without objects.
-import { BIOMES, biomeOf } from '../data/combat.js';
+// battlefields.md: a boss of BOSS_ARENAS among the enemies -> its hand-made arena; else a template (BATTLEFIELD.templateChance,
+// by place kind / biome / ambush) or this procedural arena; both are painted by the tile biome (props, pools, weather).
+import { BIOMES, biomeOf, BATTLEFIELD } from '../data/combat.js';
 import { parseMap, reachable } from '../rules/grid.js';
+import { tileBiomeOf, buildField, templateFor, paintProcedural, fieldRng, BOSS_ARENAS } from './battlefields.js';
 
 const W = 22, H = 12;
+const enemyKey = (e) => String(typeof e === 'string' ? e : e?.enemyId || e?.id || '').split('^')[0];
 
-export function makeWorldMap({ seed = 1, enemies = 4, hazard = null, biome = null, region = null, faction = null, id = 'world' } = {}) {
+/**
+ * makeWorldMap({ seed, enemies (count), enemyIds?, hazard, biome, region, faction, id, kind? (location kind), ambush?, day?,
+ *                template? (force), weather?, tod? })
+ */
+export function makeWorldMap({ seed = 1, enemies = 4, enemyIds = [], hazard = null, biome = null, region = null, faction = null, id = 'world',
+  kind = null, ambush = false, day = 1, template = null, weather = null, tod = null } = {}) {
+  const bi = enemyIds.findIndex((e) => BOSS_ARENAS[enemyKey(e)]);
+  if (bi >= 0) {
+    const boss = enemyKey(enemyIds[bi]);
+    const def = buildField({ boss, seed, enemies, bossIndex: bi, day, id, weather, tod });
+    if (connectedDef(def)) return def;
+  }
+  const tile = tileBiomeOf({ biome, region, faction, hazard, seed });
+  if (template || fieldRng(`${seed}:tplc`)() < BATTLEFIELD.templateChance) {
+    const tpl = template || templateFor({ kind, biome: tile, ambush, seed });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const def = buildField({ template: tpl, biome: tile, seed: seed + attempt * 7919, enemies, day, id, weather, tod });
+      if (connectedDef(def)) return def;
+    }
+  }
   const bio = biomeOf({ biome, region, faction, hazard });
   for (let attempt = 0; attempt < 5; attempt++) {
     const g = build(seed + attempt * 7919, enemies, hazard, bio, true);
-    if (connected(g)) return finish(g, id, bio);
+    const paint = paintProcedural(g, { biome: tile, seed: seed + attempt, day, weather, tod });
+    if (connected(g)) return finish(g, id, tile, paint);
   }
-  return finish(build(seed, enemies, hazard, bio, false), id, bio);
+  const g = build(seed, enemies, hazard, bio, false);
+  return finish(g, id, tile, paintProcedural(g, { biome: tile, seed, day, weather, tod }));
 }
 
 function build(seed, enemies, hazard, bio, withObjects) {
@@ -84,13 +109,14 @@ function build(seed, enemies, hazard, bio, withObjects) {
   return g;
 }
 
-function connected(g) {
-  const grid = parseMap({ grid: g.map((r) => r.join('')) });
-  const all = [...grid.starts.P, ...grid.starts.E];
+const connected = (g) => connectedDef({ grid: g.map((r) => r.join('')) });
+function connectedDef(def) {
+  const grid = parseMap(def);
+  const all = [...grid.starts.P, ...grid.starts.A, ...grid.starts.E];
   const r = reachable(grid, all[0].x, all[0].y, 999, null);
   return all.every((p) => r.dist[p.y * grid.w + p.x] >= 0);
 }
 
-function finish(g, id, biome) {
-  return { id, name: id, biome, grid: g.map((r) => r.join('')), enemies: [], allies: [], win: 'killAll', lose: 'allDown' };
+function finish(g, id, biome, paint = {}) {
+  return { id, name: id, biome, grid: g.map((r) => r.join('')), enemies: [], allies: [], win: 'killAll', lose: 'allDown', ...paint };
 }

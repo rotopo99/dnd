@@ -13,15 +13,17 @@ export const T_BARREL = 7;
 export const T_FULL = 8;
 /** Rubble left by a broken object (',' in maps): passable for 2 movement, +1 KB vs ranged, no LOS block. */
 export const T_RUBBLE = 9;
+/** battlefields.md: blocks movement, gives no cover and does not block sight — fence 'f', deep water 'W'. */
+export const T_BLOCK = 10;
 
 const CHAR_TILE = {
   '#': T_WALL, c: T_COVER, '~': T_HAZARD, D: T_EXIT, w: T_WATER, b: T_BARREL, g: T_BARREL,
-  C: T_FULL, x: T_FULL, m: T_COVER, G: T_COVER, ',': T_RUBBLE,
+  C: T_FULL, x: T_FULL, m: T_COVER, G: T_COVER, ',': T_RUBBLE, f: T_BLOCK, W: T_BLOCK,
 };
 /** Map chars of destructible objects (combat-rework §3.2) -> object kind (numbers in data/combat.js OBJECTS). */
 export const OBJECT_CHARS = { c: 'crate', C: 'concrete', m: 'machine', x: 'wall', G: 'generator' };
 /** Tiles that cannot be entered (walls, cover, full cover, barrels). */
-export const blocksMove = (t) => t === T_WALL || t === T_COVER || t === T_BARREL || t === T_FULL;
+export const blocksMove = (t) => t === T_WALL || t === T_COVER || t === T_BARREL || t === T_FULL || t === T_BLOCK;
 /** Cover level a tile gives: 0 none, 1 rubble, 2 half, 3 full. */
 export const tileCover = (t) => (t === T_FULL ? 3 : t === T_COVER || t === T_BARREL ? 2 : t === T_RUBBLE ? 1 : 0);
 export const COVER_NAMES = ['none', 'rubble', 'half', 'full'];
@@ -57,6 +59,8 @@ export function parseMap(def) {
       if (e) { if (!elev) elev = new Uint8Array(w * h); elev[y * w + x] = e; }
     }
   }
+  // battlefields.md: explicit enemy start order (boss arenas: the boss start at the boss's index)
+  if (def.starts?.E) starts.E = def.starts.E.map(([x, y]) => ({ x, y }));
   return { w, h, tiles, starts, exits, barrels, objects, elev, costly: !!(elev || rubble), def };
 }
 
