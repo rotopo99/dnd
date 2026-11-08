@@ -24,6 +24,7 @@ import {
   roamMapFor, roamGrid, roamNpcIds, placeNpcs, liveObjects, objectAction, approachCell, roamPath, inReach, restorePos, stashKey,
 } from '../world/roam.js';
 
+const HUD_H = 70; // px above the map for the node name
 const NPC_CLASSES = ['zabivnoy', 'ranger', 'reper', 'technik', 'shaman'];
 const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
 const toastAll = (game, list) => { for (const x of list || []) game.toast(x.text, x.color); };
@@ -291,7 +292,8 @@ export function createRoamScene(rawId) {
     const c = cell(), ld = S.party[0];
     const mw = W * c, mh = H * c;
     const tx = mw <= game.width ? (mw - game.width) / 2 : Math.max(0, Math.min(mw - game.width, (ld.x + 0.5) * c - game.width / 2));
-    const ty = mh <= game.height - 60 ? (mh - game.height + 60) / 2 : Math.max(0, Math.min(mh - game.height + 60, (ld.y + 0.5) * c - (game.height - 60) / 2));
+    const top = -HUD_H, vh = game.height - 60 - HUD_H; // the map lives between the HUD and the button bar
+    const ty = mh <= vh ? top + (mh - vh) / 2 : Math.max(top, Math.min(mh - vh + top, (ld.y + 0.5) * c - vh / 2 + top));
     return { x: tx, y: ty };
   }
   function nav(game, id) {

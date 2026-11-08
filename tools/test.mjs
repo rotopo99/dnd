@@ -3486,5 +3486,120 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
   });
 }
 
+// romance.md: bond growth, stages, one active romance, jealousy, farewell on death, gender forms
+{
+  console.log('Romances: bond, stages, one partner, jealousy, farewell, gender');
+  const st = await import('../game/src/world/state.js');
+  const RM = await import('../game/src/world/romance.js');
+  const CP = await import('../game/src/world/companions.js');
+  const { ROMANCE, ROMANCE_RULES: RR, romanceEpilogueKey } = await import('../game/src/data/romance.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const { NPCS } = await import('../game/src/data/npcs.js');
+  const { epilogueSlides } = await import('../game/src/world/consequences.js');
+  const mk = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; s.hero.level = 5; return s; };
+  const yes = () => true, no = () => false;
+  const P = (s, id) => s.party.find((p) => p.npc === id);
+  const grow = (s, id, bond, loyalty = 60) => { RM.romanceEntry(s, id).bond = bond; RM.romanceEntry(s, id).flirted = true; P(s, id).approval = loyalty; };
+  test('romance data: companions classes match, all 6 recruitable', () => {
+    for (const id of Object.keys(ROMANCE)) {
+      assert.ok(NPCS[id]?.recruitable, id);
+      assert.equal(NPCS[id].cls, ROMANCE[id].cls, `${id} class`);
+      assert.equal(ROMANCE[id].dates.length, 3, id);
+    }
+  });
+  test('flirt: once a day, fail −1 not below 0, success +3, DC grows to the cap', () => {
+    const s = mk(); st.recruit(s, 'lox');
+    let r = RM.flirt(s, 'lox', 0, no);
+    assert.equal(r.ok, false); assert.equal(RM.peekRomance(s, 'lox').bond, 0);
+    assert.equal(RM.flirt(s, 'lox', 0, yes), null, 'same day blocked');
+    s.day++; r = RM.flirt(s, 'lox', 0, yes);
+    assert.equal(r.ok, true); assert.equal(RM.peekRomance(s, 'lox').bond, RR.gain.flirtOk);
+    s.day++; RM.flirt(s, 'lox', 0, no);
+    assert.equal(RM.peekRomance(s, 'lox').bond, RR.gain.flirtOk + RR.gain.flirtFail);
+    RM.romanceEntry(s, 'lox').flirts = 50; assert.equal(RM.flirtDc(s, 'lox'), RR.flirt.dcCap);
+  });
+  test('gifts / battles / quest feed bond with limits', () => {
+    const s = mk(); st.recruit(s, 'lox'); RM.romanceEntry(s, 'lox').flirted = true;
+    RM.romanceGift(s, 'lox', true); RM.romanceGift(s, 'lox', true);
+    assert.equal(RM.peekRomance(s, 'lox').bond, RR.gain.giftLoved, 'gift once a day');
+    const units = [{ id: 'c-lox' }, { id: 'hero' }];
+    for (let i = 0; i < 4; i++) RM.romanceBattle(s, units);
+    assert.equal(RM.peekRomance(s, 'lox').bond, RR.gain.giftLoved + RR.gain.battlePerDay * RR.gain.battleNoLoss);
+    CP.personalQuestDone(s, { personal: { npc: 'lox', loyalty: 5 } });
+    assert.equal(RM.peekRomance(s, 'lox').bond, RR.gain.giftLoved + 2 + RR.gain.questDone);
+  });
+  test('dates: gates by bond / loyalty / days / place, in order, stages follow', () => {
+    const s = mk(); st.recruit(s, 'lox');
+    grow(s, 'lox', 14, 60);
+    assert.equal(RM.dateStatus(s, 'lox', 'camp').why, 'bond');
+    grow(s, 'lox', 20, 10);
+    assert.equal(RM.dateStatus(s, 'lox', 'camp').why, 'loyalty');
+    P(s, 'lox').approval = 60;
+    assert.equal(RM.dateStatus(s, 'lox', 'base').why, 'place');
+    assert.ok(RM.dateStatus(s, 'lox', 'camp').ok);
+    RM.finishDate(s, 'lox', { sum: 3, flags: [] });
+    assert.deepEqual(RM.peekRomance(s, 'lox').dates, ['lox-d1']);
+    assert.equal(RM.partnerOf(s), 'lox');
+    RM.romanceEntry(s, 'lox').bond = 50;
+    assert.equal(RM.dateStatus(s, 'lox', 'camp').why, 'days');
+    s.day += 2; assert.ok(RM.dateStatus(s, 'lox', 'camp').ok);
+    RM.finishDate(s, 'lox', { sum: 0, flags: [] });
+    assert.equal(RM.stageFor(RM.peekRomance(s, 'lox')).id, 'date');
+    RM.romanceEntry(s, 'lox').bond = 75; s.day += 2;
+    assert.equal(RM.dateStatus(s, 'lox', 'base').n, 3);
+    RM.finishDate(s, 'lox', { sum: 0, flags: [] });
+    assert.equal(RM.peekRomance(s, 'lox').stage, 'bond');
+    assert.equal(RM.dateStatus(s, 'lox').why, 'done');
+    assert.equal(RM.finishDate(s, 'lox', { sum: 0 }).length, 0, 'no repeat');
+  });
+  test('one active romance: a second cannot date; jealousy once, loser blocked', () => {
+    const s = mk(); st.recruit(s, 'lox'); st.recruit(s, 'zarya');
+    grow(s, 'lox', 30); grow(s, 'zarya', 30);
+    RM.finishDate(s, 'lox', { sum: 0 });
+    assert.equal(RM.dateStatus(s, 'zarya', 'camp').why, 'taken');
+    const c = RM.conflictPending(s);
+    assert.equal(c.key, 'lox+zarya');
+    RM.resolveConflict(s, c, { flags: ['rom-pick-lox'], sum: 0 });
+    assert.equal(s.flags['rom-pick-lox'], true);
+    assert.equal(RM.peekRomance(s, 'zarya').bond, 30 + RR.conflict.bondPenalty);
+    assert.equal(P(s, 'zarya').approval, 60 + RR.conflict.loyaltyPenalty);
+    assert.equal(RM.conflictPending(s), null, 'once per pair');
+    RM.addBond(s, 'zarya', 10); assert.equal(RM.peekRomance(s, 'zarya').bond, 24, 'loser does not grow');
+  });
+  test('death of the partner: lost, farewell queued, tragedy epilogue; low bond — nothing', () => {
+    const s = mk(); st.recruit(s, 'sedmaya'); st.recruit(s, 'yarosh');
+    grow(s, 'yarosh', 20); assert.equal(RM.romanceDeath(s, 'yarosh').length, 0);
+    grow(s, 'sedmaya', 50); RM.finishDate(s, 'sedmaya', { sum: 0 });
+    RM.romanceDeath(s, 'sedmaya');
+    assert.equal(RM.peekRomance(s, 'sedmaya').lost, true);
+    assert.equal(RM.mourning(s), -1);
+    assert.deepEqual(RM.takeRomanceEvent(s), { kind: 'farewell', npc: 'sedmaya' });
+    assert.equal(romanceEpilogueKey(RM.peekRomance(s, 'sedmaya')), 'tragedy');
+    const ep = RM.romanceEpilogue(s);
+    assert.equal(ep.key, 'tragedy'); assert.equal(ep.slides.length, 3); assert.equal(ep.music, 'tragic');
+    assert.ok(epilogueSlides(s).some((x) => x.id === 'rom-sedmaya-tragedy'));
+  });
+  test('breakup: bond −30, loyalty −10, scene queued, epilogue parted; crisis −8 breaks', () => {
+    const s = mk(); st.recruit(s, 'diss'); st.recruit(s, 'zarya');
+    grow(s, 'diss', 60); RM.finishDate(s, 'diss', { sum: 0 });
+    RM.breakUp(s, 'diss', 'talk');
+    assert.equal(RM.peekRomance(s, 'diss').bond, 30); assert.equal(P(s, 'diss').approval, 50);
+    assert.equal(RM.partnerOf(s), null); assert.equal(RM.romanceEpilogue(s).key, 'parted');
+    assert.equal(RM.takeRomanceEvent(s).kind, 'breakup');
+    grow(s, 'zarya', 90); RM.romanceEntry(s, 'zarya').dates = ['zarya-d1', 'zarya-d2', 'zarya-d3'];
+    RM.finishCrisis(s, 'zarya', { sum: -8, flags: ['zarya-fall'], picks: [{ d: -8 }] });
+    assert.equal(RM.peekRomance(s, 'zarya').broken, true);
+  });
+  test('gender: (а) endings by hero.avatar.gender; save keeps save.romance', () => {
+    assert.equal(RM.genderize('Ты был(а) прав(а).', 'm'), 'Ты был прав.');
+    assert.equal(RM.genderize('Ты был(а) прав(а).', 'f'), 'Ты была права.');
+    assert.equal(RM.genderize('Ты был(а) прав(а).', 'x'), 'Ты был(а) прав(а).');
+    const s = mk(); s.hero.avatar = { v: 1, gender: 'f' }; assert.equal(RM.heroGender(s), 'f');
+    st.recruit(s, 'lox'); grow(s, 'lox', 33); RM.finishDate(s, 'lox', { sum: 0, flags: ['x-flag'] });
+    const back = normalizeSave(JSON.parse(JSON.stringify(s)), GAME_DATA);
+    assert.equal(back.romance.lox.bond, 33); assert.deepEqual(back.romance.lox.dates, ['lox-d1']); assert.equal(back.romance._.active, 'lox');
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
