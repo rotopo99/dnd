@@ -5,8 +5,8 @@ import { newUsesLine } from '../world/skill-uses.js';
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { TALENTS, SKILLS, isCombatTalent, COMBAT_TALENT_LIMIT } from '../data/talents.js';
-import { drawPortrait, drawHeroPortrait } from '../assets/sprites.js';
-import { heroBuild, wounds } from '../ui/portrait-of.js';
+import { drawPortrait } from '../assets/sprites.js';
+import { heroBuild, wounds, drawHeroPic } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, LINE, text, textBlock, fit, wrap, panel, button, hitButton, clear } from '../ui/draw.js';
 import { FACTION_IDS, factionName, repTier, TIERS, isMet } from '../world/reputation.js';
@@ -177,7 +177,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       // portraits v2 (native 48 px): live wounds; companions show their mood by approval
       const po = { native: true, ...wounds(u), emotion: m.p ? (m.p.approval >= 50 ? 'happy' : m.p.approval <= -50 ? 'angry' : 'neutral') : 'neutral' };
       panel(ctx, ox + 34, y + 6, 52, 52, C['0'], C['2']);
-      if (isHero) drawHeroPortrait(ctx, heroBuild(sv.hero), ox + 36, y + 8, 1, po);
+      if (isHero) drawHeroPic(ctx, heroBuild(sv.hero), ox + 36, y + 8, 1, po);
       else drawPortrait(ctx, m.key, ox + 36, y + 8, 1, po);
       const name = isHero ? sv.hero.name : NPCS[m.key].name;
       text(ctx, fit(ctx, name, 220, FONT_B), ox + 104, y + 8, isHero ? C.h : C['5'], FONT_B);

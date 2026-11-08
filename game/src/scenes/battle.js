@@ -120,7 +120,7 @@ export function createBattleScene(opts) {
       const flex = { stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined, equipment: h.equipment || undefined };
       let u;
       try { u = buildCreature({ ...base, ...flex }); } catch { u = buildCreature(base); }
-      u.look = h.look || null;
+      u.look = h.look || null; u.avatar = h.avatar || null;
       heroes = [u];
     }
     S.queue = [];
@@ -688,7 +688,7 @@ export function createBattleScene(opts) {
         const d = dispOf(T);
         d[e.resource] = e.value;
         if (e.amount > 0 || !e.absorbed) {
-          d.flash = 0.12;
+          d.flash = 0.12; d.hurtAt = typeof performance !== 'undefined' ? performance.now() : 0;
           const col = e.resource === 'mrl' ? C.n : e.dmgType === 'proxy' ? C.a : C.c;
           popup(T, `${e.crit ? '!' : ''}−${e.amount}`, col);
         }

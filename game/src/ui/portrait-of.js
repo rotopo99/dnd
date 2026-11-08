@@ -1,4 +1,5 @@
 // Who is on the portrait: dialogue speakers, battle units, the hero — resolved to portraits v2 (assets/portraits.js).
+//   drawHeroPic(ctx, hero, x, y, scale, opts)   hero portrait = animated 3D avatar (ui/hero-avatar.js)
 //   heroBuild(h)                         save.hero or a battle unit -> build for drawHeroPortrait
 //   speakerSubject(who)                  dialogue `who` -> NPC id | { id, race, faction } | null (narrator, radio)
 //   enemySubject(enemyId)                enemy def -> NPC id | { id, race, faction } (by faction / tags)
@@ -7,8 +8,8 @@
 //   drawSpeaker(ctx, who, x, y, scale, opts, info)  dialogue speaker; info { hero (build), wounds { [npcId|'hero']: {hp, mrl} } }
 //   partyWounds(members)                 members() of world/state.js -> wounds map for drawSpeaker
 //   crispScale(boxPx, max = 4)           largest integer scale with 48*scale <= boxPx (at least 1)
-import { drawPortrait, drawHeroPortrait, PORTRAIT_SIZE } from '../assets/sprites.js';
-import { avatarToPortrait, isLook3d } from './avatar3d.js';
+import { drawPortrait, PORTRAIT_SIZE } from '../assets/sprites.js';
+import { drawHeroAvatar } from './hero-avatar.js';
 import { NPCS } from '../data/npcs.js';
 import { ENEMIES } from '../data/enemies.js';
 import { ENEMIES_V3 } from '../data/enemies-v3.js';
@@ -31,7 +32,12 @@ export const crispScale = (boxPx, max = 4) => Math.max(1, Math.min(max, Math.flo
 export function heroBuild(h) {
   if (!h) return { race: 'human' };
   // no name: the face hash then depends on race/class only, so it stays the same from creation (name typed later) to the end
-  return { race: h.race ?? h.raceId ?? 'human', cls: h.cls ?? h.classId, look: h.look ?? null };
+  return { race: h.race ?? h.raceId ?? 'human', cls: h.cls ?? h.classId, look: h.look ?? null, avatar: h.avatar ?? null, name: h.name };
+}
+
+/** The hero's portrait is always the animated 3D avatar (hero.avatar; none -> default from race/name). opts as drawPortrait + hurtAt. */
+export function drawHeroPic(ctx, hero, x, y, scale, opts = {}) {
+  drawHeroAvatar(ctx, hero, x, y, (opts.native ? PORTRAIT_SIZE : 32) * scale, opts);
 }
 
 export function partyWounds(list) {
@@ -81,7 +87,7 @@ export function drawUnitPortrait(ctx, u, x, y, scale, opts = {}) {
   const o = { ...wounds(u), ...opts };
   const id = String(u.id || '');
   if (id.startsWith('c-') && NPCS[id.slice(2)]) drawPortrait(ctx, id.slice(2), x, y, scale, o);
-  else if (u.kind === 'hero' && !u.enemyId) drawHeroPortrait(ctx, heroBuild(u), x, y, scale, o);
+  else if (u.kind === 'hero' && !u.enemyId) drawHeroPic(ctx, u, x, y, scale, o);
   else drawPortrait(ctx, enemySubject(u.enemyId || id), x, y, scale, o);
 }
 
@@ -92,14 +98,7 @@ export function drawSpeaker(ctx, who, x, y, scale, opts = {}, info = {}) {
   const o = { ...(key && info.wounds?.[key]), ...opts };
   if (who === 'hero') {
     if (!info.hero) return false;
-    if (isLook3d(info.hero.avatar)) { // 3D avatar (hero.avatar); old saves have none -> 2D portrait
-      const box = (o.native ? PORTRAIT_SIZE : 32) * scale;
-      const ps = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(avatarToPortrait({ ...info.hero.avatar, cloth: info.hero.look || info.hero.avatar.cloth }, 96), x, y, box, box);
-      ctx.imageSmoothingEnabled = ps;
-      return true;
-    }
-    drawHeroPortrait(ctx, heroBuild(info.hero), x, y, scale, o);
+    drawHeroPic(ctx, info.hero, x, y, scale, o);
     return true;
   }
   if (!sub) return false;

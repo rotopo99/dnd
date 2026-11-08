@@ -128,7 +128,7 @@ export function buildHero(save, data = GAME_DATA, { race } = {}) {
   const marks = h.judgeMarks || 0;
   if (marks) { u.maxMrl = Math.max(1, u.maxMrl - R.cyberspace.mrlPerMark * marks); u.mrl = Math.min(u.mrl, u.maxMrl); }
   restore(u, h.hp, h.mrl);
-  u.look = h.look || null;
+  u.look = h.look || null; u.avatar = h.avatar || null;
   if (h.withdrawal) u.withdrawal = { ...h.withdrawal };
   return u;
 }

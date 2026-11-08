@@ -11,6 +11,7 @@ import { MAX_LEVEL } from './rules/progression.js';
 import { EXODUS } from './data/world/exodus.js';
 import { normCodex } from './world/codex.js';
 import { normalizeInventory, syncItems } from './world/inventory.js';
+import { defaultLook } from './ui/avatar3d.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -86,8 +87,8 @@ export function normalizeSave(s, data) {
     asi: arr(h.asi).filter((e) => e && Number.isInteger(e.level) && (e.talent ? TALENTS[e.talent] : e.stats && typeof e.stats === 'object')),
     pendingAsi: uniq(arr(h.pendingAsi).filter((l) => Number.isInteger(l))), levelNews: uniq(arr(h.levelNews).filter((l) => Number.isInteger(l))),
     equipment: normEquipment(h.equipment, h.cls, h.path),
-    // 3D avatar (ui/avatar3d.js look object); old saves have none -> 2D portrait
-    avatar: h.avatar && typeof h.avatar === 'object' && h.avatar.v === 1 ? h.avatar : null,
+    // 3D avatar (ui/avatar3d.js look object); old saves have none -> generated from race / name (everyone has a 3D hero)
+    avatar: h.avatar && typeof h.avatar === 'object' && h.avatar.v === 1 ? h.avatar : { ...defaultLook(typeof h.race === 'string' ? h.race : 'human', 'x', String(h.name || h.cls || 'hero')), cloth: typeof h.look === 'string' ? h.look : null },
   };
   out.party = arr(s.party).filter((p) => p && NPCS[p.npc]).map((p) => ({
     approval: 0, talents: [], warned: false, ultimatum: false, ...p,

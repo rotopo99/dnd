@@ -10,8 +10,7 @@ import { PHOBIA_COMBAT_TRIGGERS, PHOBIA_WORLD_TRIGGERS } from '../rules/combat.j
 import { SKILLS } from '../data/talents.js';
 import { SPECIALIZATIONS } from '../data/skills.js';
 import { ITEMS, WEAPONS, ARMOR, starterKit } from '../world/data.js';
-import { drawHeroPortrait } from '../assets/sprites.js';
-import { heroBuild } from '../ui/portrait-of.js';
+import { drawHeroPic } from '../ui/portrait-of.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear } from '../ui/draw.js';
 import { itemStats, soonNote, weaponTypeName, armorTypeName, tierName, itemTip } from '../ui/items-ui.js';
@@ -21,7 +20,6 @@ import { openBackstoryPick, backstoryLabel } from '../ui/backstory-ui.js';
 const BASE_W = 1280, BASE_H = 720;
 const STORY_MAX = 240;
 /** Clothes colours: palette keys (STYLE palette). null — class default. */
-export const LOOK_COLORS = [null, 'c', 'a', 'j', 'b', 'n', 'f', 'e', '4', 'o'];
 const SMALL = '12px monospace';
 
 /** Weapon / armour choices of the starter kit: the kit item + same-tier alternatives the class handles well. */
@@ -124,7 +122,6 @@ export function createBuildScene(hero, back, onNext) {
     // world-consequences.md ч.4: one backstory next to the free text
     buttons.push({ kind: 'bg', id: 'bg', label: fit(game.ctx, backstoryLabel(st.bg), 260, SMALL), x: ox + 568, y: oy + 581, w: 272, h: 26, font: SMALL, selected: !!st.bg });
     // C: look, kit
-    LOOK_COLORS.forEach((k, i) => buttons.push({ kind: 'look', id: k, label: k ? '' : '×', x: ox + 860 + i * 38, y: oy + 220, w: 34, h: 30, selected: st.look === k }));
     opts.weapons.forEach((id, i) => buttons.push({ kind: 'weapon', id, label: ITEMS[id].name, sub: itemStats(ITEMS[id]), font: SMALL, x: ox + 860, y: oy + 284 + i * 44, w: 396, h: 40, selected: st.weapon === id }));
     const ay = oy + 284 + opts.weapons.length * 44 + 24;
     opts.armor.forEach((id, i) => buttons.push({ kind: 'armor', id, label: ITEMS[id].name, sub: itemStats(ITEMS[id]), font: SMALL, x: ox + 860, y: ay + i * 44, w: 396, h: 40, selected: st.armor === id }));
@@ -157,7 +154,6 @@ export function createBuildScene(hero, back, onNext) {
       else if (st.extra.length < EXTRA_SKILLS) st.extra.push(id);
       else game.toast(t('create.skillsFull'), 'c');
     } else if (b.kind === 'phobia') st.phobia = st.phobia.includes(b.id) ? st.phobia.filter((x) => x !== b.id) : [...st.phobia, b.id];
-    else if (b.kind === 'look') st.look = b.id;
     else if (b.kind === 'weapon') st.weapon = b.id;
     else if (b.kind === 'armor') st.armor = b.id;
     else if (b.kind === 'back') { game.setScene(back); return; }
@@ -215,7 +211,7 @@ export function createBuildScene(hero, back, onNext) {
   function drawRight(ctx) {
     const x = ox + 860, y = oy + 64;
     panel(ctx, x, y, 396, 120, C['1'], C['3']);
-    drawHeroPortrait(ctx, heroBuild({ race: hero.race, cls: hero.cls, look: st.look }), x + 10, y + 12, 2, { native: true }); // portraits v2
+    drawHeroPic(ctx, { race: hero.race, name: hero.name }, x + 10, y + 12, 2, { native: true }); // 3D preview (the real look is chosen in the next step)
     text(ctx, fit(ctx, hero.name, 270, FONT_B), x + 120, y + 10, C.h, FONT_B);
     if (built) {
       text(ctx, `${t('res.hp')} ${built.maxHp} · ${t('res.mrl')} ${built.maxMrl} · ${t('res.enr')} ${built.maxEnr}`, x + 120, y + 34, C['5'], SMALL);
@@ -223,7 +219,6 @@ export function createBuildScene(hero, back, onNext) {
       text(ctx, fit(ctx, `${t('create.weapon')}: ${built.weapon?.name || '—'} (${t('prof.tier')} ${built.weaponTier})`, 270, SMALL), x + 120, y + 70, C['4'], SMALL);
       text(ctx, fit(ctx, `${t('create.armor')}: ${ITEMS[st.armor]?.name || '—'} (${t('prof.tier')} ${built.armorTier})`, 270, SMALL), x + 120, y + 88, built.armorPenalty ? C.c : C['4'], SMALL);
     }
-    text(ctx, t('create.look'), x, oy + 196, C['4'], FONT_B);
     text(ctx, t('create.kit'), x, oy + 262, C['4'], FONT_B);
     const kitBelt = (opts.kit.belt || []).map((id) => ITEMS[id]?.name || id).join(', ');
     text(ctx, fit(ctx, `${t('create.belt')}: ${kitBelt || '—'}`, 396, SMALL), x, S.armorY - 18, C['4'], SMALL);
@@ -271,12 +266,6 @@ export function createBuildScene(hero, back, onNext) {
           const caret = st.focus === 'story' && Math.floor(st.time * 2) % 2 === 0 ? '_' : '';
           if (st.story || caret) textBlock(ctx, st.story + caret, b.x + 8, b.y + 6, b.w - 16, C['5'], SMALL, 16, 5);
           else text(ctx, t('create.backstoryHint'), b.x + 8, b.y + 6, C['3'], SMALL);
-          continue;
-        }
-        if (b.kind === 'look') {
-          panel(ctx, b.x, b.y, b.w, b.h, b.id ? C[b.id] : C['2'], b.selected ? C.h : hover === b ? C['5'] : C['3']);
-          if (!b.id) text(ctx, '×', b.x + b.w / 2, b.y + 7, C['5'], FONT_B, 'center');
-          if (b.selected) { ctx.strokeStyle = C.h; ctx.lineWidth = 2; ctx.strokeRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4); }
           continue;
         }
         if (b.kind === 'skill') {

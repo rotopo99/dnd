@@ -168,7 +168,7 @@ const byDispY = (S) => (a, c) => S.disp[a.id].y - S.disp[c.id].y;
 function battlePortrait(ctx, S, u, x, y, scale) {
   const d = S.dispOf(u);
   const emotion = d.emoT > 0 && d.emo ? d.emo : 'neutral';
-  drawUnitPortrait(ctx, u, x, y, scale, { native: true, emotion, hp: u.maxHp ? d.hp / u.maxHp : 1, mrl: u.maxMrl ? d.mrl / u.maxMrl : 1 });
+  drawUnitPortrait(ctx, u, x, y, scale, { native: true, emotion, hurtAt: d.hurtAt, hp: u.maxHp ? d.hp / u.maxHp : 1, mrl: u.maxMrl ? d.mrl / u.maxMrl : 1 });
 }
 
 function unitSprite(u) {

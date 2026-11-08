@@ -40,7 +40,7 @@ const KIND = { human: 'human', skeleton: 'skeleton', android: 'android', 'mutant
 const kindOf = (race) => KIND[race] || 'human';
 
 // ---------------------------------------------------------------- rng / defaults
-function rngOf(seed) {
+export function rngOf(seed) {
   let s = (typeof seed === 'string' ? [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7) : (seed | 0)) + 0x9e3779b9;
   return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
@@ -153,8 +153,47 @@ function band(F, y, hh, rx, rz, m) {
   ell(F, [0, y, -0.02], [rx, 0.5, rz], { seg: 10, rings: 1, t0: Math.PI / 2 - a, t1: Math.PI / 2 + a, m });
 }
 
+/** Mouth by emotion at height y, depth z, half-width w. */
+function mouth(F, kind, y, z, w, fem) {
+  const lipM = fem ? 'lip' : 'dark';
+  if (kind === 'smile') {
+    plate(F, 0, y - 0.012, z, w * 0.8, 0.03, 'dark', 0); plate(F, 0, y - 0.0, z + 0.004, w * 0.62, 0.012, 'white', 0);
+    for (const s of [-1, 1]) plate(F, s * w * 0.9, y + 0.012, z, w * 0.3, 0.012, 'dark', s * 0.6);
+  } else if (kind === 'smirk') {
+    plate(F, -w * 0.25, y, z, w * 0.7, 0.014, lipM, 0); plate(F, w * 0.68, y + 0.016, z, w * 0.34, 0.013, lipM, 0.6);
+  } else if (kind === 'frown') {
+    plate(F, 0, y - 0.01, z, w * 0.55, 0.014, lipM, 0);
+    for (const s of [-1, 1]) plate(F, s * w * 0.72, y - 0.03, z, w * 0.34, 0.013, lipM, -s * 0.6);
+  } else if (kind === 'grit') {
+    plate(F, 0, y - 0.005, z, w * 0.95, 0.032, 'white', 0); plate(F, 0, y - 0.005, z + 0.004, w * 0.95, 0.006, 'dark', 0);
+    plate(F, 0, y + 0.03, z, w * 0.95, 0.008, 'dark', 0); plate(F, 0, y - 0.04, z, w * 0.95, 0.008, 'dark', 0);
+  } else if (kind === 'gasp') {
+    plate(F, 0, y - 0.015, z, w * 0.6, 0.04, 'dark', 0); plate(F, 0, y + 0.01, z + 0.004, w * 0.5, 0.01, 'white', 0);
+  } else if (kind === 'o') {
+    plate(F, 0, y - 0.03, z, 0.045, 0.06, 'dark', 0); plate(F, 0, y - 0.03, z + 0.004, 0.025, 0.04, 'red', 0);
+  } else if (kind === 'wavy') {
+    for (let i = 0; i < 4; i++) plate(F, (i - 1.5) * w * 0.5, y + (i % 2 ? 0.012 : -0.012), z, w * 0.26, 0.012, 'dark', i % 2 ? 0.5 : -0.5);
+  } else plate(F, 0, y, z, w, fem ? 0.026 : 0.018, lipM, 0);
+}
+
 // ---------------------------------------------------------------- mesh
-export function buildAvatarMesh(lookIn) {
+// emotion -> face params: eye = eye height factor, lift/liftR = brow raise (L/R), ang = brow tilt (> 0 inner ends up = sad/scared, < 0 = angry), mouth kind, visor colour (androids)
+const EMO = {
+  neutral: { eye: 1, lift: 0, ang: 0, mouth: 'flat', visor: 'h' },
+  happy: { eye: 0.55, lift: 0.02, ang: 0.05, mouth: 'smile', visor: 'j' },
+  angry: { eye: 0.8, lift: -0.02, ang: -0.5, mouth: 'grit', visor: 'c' },
+  sad: { eye: 0.8, lift: 0, ang: 0.55, mouth: 'frown', visor: 'f' },
+  scared: { eye: 1.5, lift: 0.06, ang: 0.3, mouth: 'gasp', visor: 'c', sweat: true },
+  smug: { eye: 0.6, lift: 0.01, liftR: 0.06, ang: -0.12, mouth: 'smirk', visor: 'a' },
+  surprised: { eye: 1.5, lift: 0.08, ang: 0, mouth: 'o', visor: 'b' },
+  cringe: { eye: 0.7, lift: 0.03, ang: 0.35, mouth: 'wavy', visor: 'n', sweat: true },
+};
+export const AVATAR_EMOTIONS = Object.keys(EMO);
+/** hp share (0..1) -> wound level 0..3 (same thresholds as the 2D portraits). */
+export const woundLevel = (hp) => (hp == null ? 0 : hp < 0.15 ? 3 : hp < 0.4 ? 2 : hp < 0.7 ? 1 : 0);
+
+/** st: { emo, lvl (wounds 0..3), nervous, blink } — face state; the default is the calm neutral face. */
+export function buildAvatarMesh(lookIn, st = {}) {
   const look = isLook3d(lookIn) ? lookIn : defaultLook(lookIn?.race || 'human', 'x', 1);
   const kind = kindOf(look.race), g = look.gender, F = [];
   const acc = new Set(look.acc || []);
@@ -192,6 +231,11 @@ export function buildAvatarMesh(lookIn) {
   mats.blush = ramp(['n', 'n', 'n']);
   mats.glass = ramp(['i', 'a', 'a']); mats.glass.glow = true;
   mats.rust = ramp(['6', '7', '8']);
+  mats.bandage = ramp(['4', '5', '5']);
+  mats.bruise = ramp(['o', 'o', 'o']);
+  const E = EMO[st.emo] || EMO.neutral, lvl = st.lvl | 0, eh = st.blink ? 0.1 : E.eye;
+  mats.visor = ramp([E.visor, E.visor, E.visor]); mats.visor.glow = true;
+  const BL = robot ? 'amber' : 'blood'; // «blood» of machines is oil sparks
 
   // proportions
   const fem = g === 'f', masc = g === 'm';
@@ -234,23 +278,28 @@ export function buildAvatarMesh(lookIn) {
     const x = s * eyeX, z = sz(x, eyeY) + 0.012;
     if (kind === 'skeleton') {
       plate(F, x, eyeY, z, 0.1, 0.1, 'dark', s * 0.12);
-      plate(F, x, eyeY, z + 0.012, 0.035, 0.035, 'red', 0);
+      plate(F, x, eyeY, z + 0.012, 0.035 * Math.max(0.5, eh), 0.035 * Math.max(0.5, eh), 'red', 0);
     } else if (kind === 'android') {
       // single visor band added below
     } else {
       if (s === 1 && acc.has('eyepatch')) continue;
-      plate(F, x, eyeY, z, 0.1, 0.055, 'white', 0);
-      plate(F, x, eyeY, z + 0.01, 0.048, 0.05, s === 1 && (acc.has('cyberEye') || kind === 'tekhonok') ? 'red' : 'eye', 0);
-      plate(F, x + s * 0.005, eyeY, z + 0.02, 0.02, 0.025, 'dark', 0);
+      if (eh < 0.25) plate(F, x, eyeY - 0.01, z + 0.01, 0.1, 0.014, 'dark', 0); // closed eye: lash line
+      else {
+        plate(F, x, eyeY, z, 0.1, 0.055 * eh, 'white', 0);
+        plate(F, x, eyeY, z + 0.01, 0.048, 0.05 * Math.min(eh, 1.15), s === 1 && (acc.has('cyberEye') || kind === 'tekhonok') ? 'red' : 'eye', 0);
+        plate(F, x + s * 0.005, eyeY, z + 0.02, 0.02, 0.025 * Math.min(eh, 1.2), 'dark', 0);
+        if (eh < 0.9) plate(F, x, eyeY + 0.055 * eh, z + 0.025, 0.105, 0.055 * (1 - eh) + 0.004, 'skin', 0); // lowered lid
+      }
     }
     if (!robot) {
-      const bz = sz(x, eyeY + 0.14) + 0.012;
-      plate(F, x, eyeY + 0.14, bz, 0.12, masc ? 0.032 : 0.018, 'hair', -s * (masc ? 0.12 : 0.2));
+      const lift = (s === 1 && E.liftR != null ? E.liftR : E.lift) + (st.nervous ? 0.012 : 0);
+      const bz = sz(x, eyeY + 0.14 + lift) + 0.012;
+      plate(F, x, eyeY + 0.14 + lift, bz, 0.12, masc ? 0.032 : 0.018, 'hair', -s * ((masc ? 0.12 : 0.2) + E.ang));
     }
   }
   if (kind === 'android') {
     const z = sz(0, eyeY) + 0.02;
-    plate(F, 0, eyeY, z, rx * 0.82, 0.055, 'glow', 0, -0.07);
+    plate(F, 0, eyeY, z, rx * 0.82, Math.max(0.012, 0.055 * eh), 'visor', 0, -0.07);
     plate(F, 0, eyeY + 0.3, sz(0, eyeY + 0.3) + 0.01, 0.02, 0.28, 'dark', 0); // panel seam
   }
   // nose
@@ -273,8 +322,9 @@ export function buildAvatarMesh(lookIn) {
   if (!covered && !acc.has('respirator') && kind !== 'beast') {
     if (kind === 'skeleton') {
       plate(F, 0, my, mz, 0.17, 0.05, 'white', 0); plate(F, 0, my, mz + 0.01, 0.17, 0.008, 'dark', 0);
-    } else plate(F, 0, my, mz + 0.01, fem ? 0.085 : 0.1, fem ? 0.026 : 0.018, fem ? 'lip' : 'dark', 0);
+    } else mouth(F, E.mouth, my, mz + 0.01, fem ? 0.085 : 0.1, fem);
   }
+  if (kind === 'skeleton' && ['o', 'gasp'].includes(E.mouth)) plate(F, 0, my - 0.05, mz + 0.02, 0.1, 0.07, 'dark', 0);
   if (!robot && kind !== 'beast' && !covered) {
     if (beard === 'stubble' || beard === 'full') {
       ell(F, head, [rx * 1.04, ry * 1.03, rz * 1.04], { seg: 10, rings: 4, t0: Math.PI * 0.56, t1: Math.PI * 0.97, m: beard === 'full' ? 'hair' : 'stub', deform: headDeform });
@@ -285,6 +335,30 @@ export function buildAvatarMesh(lookIn) {
   }
   if (kind === 'cringe') for (const s of [-1, 1]) plate(F, s * 0.28, -0.1, sz(0.28, -0.1) + 0.012, 0.06, 0.035, 'blush', 0);
   if (kind === 'plant') for (const s of [-1, 1]) plate(F, s * 0.3, -0.2, sz(0.3, -0.2) + 0.012, 0.012, 0.1, 'dark', s * 0.4);
+
+  // ---- state: nervous (low morale) and wounds (hp share): scrapes, bruises, blood, bandages
+  if (st.nervous || E.sweat) {
+    for (const s2 of [-1, 1]) plate(F, s2 * eyeX, eyeY - 0.1, sz(s2 * eyeX, eyeY - 0.1) + 0.012, 0.09, 0.016, 'stub', 0);
+    plate(F, rx * 0.78, 0.22, sz(rx * 0.78, 0.22) + 0.012, 0.028, 0.055, 'glow', 0.15);
+  }
+  if (lvl >= 1) {
+    plate(F, -0.3, -0.12, sz(-0.3, -0.12) + 0.016, 0.1, 0.012, BL, 0.5);
+    plate(F, -0.24, -0.17, sz(-0.24, -0.17) + 0.016, 0.05, 0.01, BL, 0.4);
+  }
+  if (lvl >= 2) {
+    plate(F, -eyeX, eyeY - 0.1, sz(-eyeX, eyeY - 0.1) + 0.02, 0.11, 0.045, robot ? 'rust' : 'bruise', 0);
+    plate(F, eyeX * 1.15, eyeY + 0.02, sz(eyeX, eyeY) + 0.022, 0.014, 0.1, BL, 0);
+    band(F, 0.36, 0.08, rx * 1.07, rz * 1.07, 'bandage');
+    plate(F, 0.12, 0.36, sz(0.12, 0.36) + 0.08, 0.05, 0.04, BL, 0.2);
+  }
+  if (lvl >= 3) {
+    plate(F, 0.02, -0.2, sz(0, -0.2) + 0.045, 0.012, 0.07, BL, 0);
+    plate(F, 0.3, -0.12, sz(0.3, -0.12) + 0.024, 0.1, 0.075, 'bandage', 0.2);
+    plate(F, 0.3, -0.12, sz(0.3, -0.12) + 0.03, 0.07, 0.01, 'metal', 0.2);
+    plate(F, eyeX, eyeY - 0.1, sz(eyeX, eyeY - 0.1) + 0.02, 0.11, 0.045, robot ? 'rust' : 'bruise', 0);
+    plate(F, -0.1, -0.36, mz + 0.03, 0.012, 0.06, BL, 0);
+    tube(F, [0, -0.66, -0.04], [0, -0.78, -0.04], nk * 1.28, nk * 1.28, 'bandage', 8);
+  }
 
   // ---- hair
   const hairHidden = acc.has('helmet') || acc.has('hood') || kind === 'skeleton' || kind === 'android';

@@ -61,7 +61,7 @@ export function drawPin(ctx, S) {
   const hs = (hx, hy, hw, hh, tip) => { if (hy + hh > view.y && hy < view.y + view.h) hotspot(hx, Math.max(hy, view.y), hw, Math.min(hh, view.y + view.h - hy), tip); };
   const v = unitView(b, u);
   const d = S.dispOf(u);
-  drawUnitPortrait(ctx, u, x, y, 1, { native: true, emotion: 'neutral', hp: u.maxHp ? d.hp / u.maxHp : 1, mrl: u.maxMrl ? d.mrl / u.maxMrl : 1 });
+  drawUnitPortrait(ctx, u, x, y, 1, { native: true, emotion: d.emoT > 0 && d.emo ? d.emo : 'neutral', hurtAt: d.hurtAt, hp: u.maxHp ? d.hp / u.maxHp : 1, mrl: u.maxMrl ? d.mrl / u.maxMrl : 1 });
   const tx = x + 56, tw = w - 56;
   text(ctx, fit(ctx, S.name(u.id), tw, FONT_B), tx, y, teamColor(u), FONT_B);
   const def = u.enemyId ? b.data.enemies[u.enemyId] || b.data.summons[u.enemyId] : null;
