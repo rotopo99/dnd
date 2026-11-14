@@ -27,6 +27,7 @@ import { STATS, mod } from '../rules/character.js';
 import { weaponTypeName, armorTypeName, tierName } from '../ui/items-ui.js';
 import { openSheet, openMemberLevelUp } from './levelup.js';
 import { layoutCodex, clickCodex, updateCodex, renderCodex } from './panel-codex.js';
+import { layoutCards, clickCards, updateCards, renderCards } from './panel-cards.js'; // cards-casino.md: tab «Карты» (K)
 import { loyaltyBand, canChangePath, changePath, canRejoin, rejoin, sendToReserve, idleHomeName } from '../world/companions.js';
 import { COMPANIONS } from '../data/companions.js';
 import { consequenceLog } from '../world/consequences.js';
@@ -36,7 +37,8 @@ import { peekRomance, partnerOf, stageFor, nextHint, isRomanceable } from '../wo
 import { ROMANCE_RULES } from '../data/romance.js';
 
 const BASE_W = 1280, BASE_H = 720;
-const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex'];
+const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex', 'cards'];
+const TAB_STEP = Math.min(170, Math.floor((BASE_W - 200) / TABS.length));
 
 export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKey = 'hero', sel }) {
   // S.sel — the selected party member, shared by «Партия», «Характеристики», «Снаряжение» (S.statKey / S.gearKey mirror it)
@@ -105,7 +107,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     const ox = Math.max(0, Math.floor((game.width - BASE_W) / 2)), oy = Math.max(0, Math.floor((game.height - BASE_H) / 2));
     S.ox = ox; S.oy = oy;
     const b = [];
-    TABS.forEach((id, i) => b.push({ kind: 'tab', id, label: t(`panel.${id}`), x: ox + 24 + i * 170, y: oy + 16, w: 160, h: 40, selected: S.tab === id }));
+    TABS.forEach((id, i) => b.push({ kind: 'tab', id, label: t(`panel.${id}`), x: ox + 24 + i * TAB_STEP, y: oy + 16, w: TAB_STEP - 10, h: 40, selected: S.tab === id }));
     b.push({ kind: 'back', label: t('panel.back'), key: 'Esc', x: ox + BASE_W - 164, y: oy + 16, w: 140, h: 40 });
     if (S.tab === 'party') layoutParty(game, b);
     if (S.tab === 'gear') {
@@ -115,6 +117,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       b.push({ kind: 'bestAll', label: t('gear.bestAll'), x: ox + 176, y: oy + 452, w: 148, h: 30, font: FONT });
     }
     if (S.tab === 'codex') layoutCodex(game, S, b);
+    if (S.tab === 'cards') layoutCards(game, S, b);
     if (S.tab === 'journal') b.push({ kind: 'epilogue', label: t('journal.epilogue'), x: ox + BASE_W - 184, y: oy + 70, w: 160, h: 32, font: FONT }); // world-consequences.md
     if (S.tab === 'stats') {
       const ms = statMembers(sv);
@@ -134,6 +137,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'back') { game.resume(back); return; }
     if (b.kind === 'epilogue') { openEpilogue(game, { onDone: (g) => g.resume(self) }); return; }
     if (clickCodex(game, S, b)) { layout(game); return; }
+    if (S.tab === 'cards' && clickCards(game, S, b)) { layout(game); return; }
     if (b.kind === 'best' || b.kind === 'bestAll') return bestGear(game, b.kind === 'bestAll');
     if (clickGear(game, S, b, (g) => rebuild(g))) { if (b.kind === 'gearMember') S.sel = S.statKey = S.gearKey; rebuild(game); return; }
     if (b.kind === 'm') {
@@ -623,6 +627,9 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
         used = updateScroll(S.jq, jqView(), rowsH(rows) + 8, inp.mouse) || updateScroll(S.je, jeView(), rowsH(ev) + 8, inp.mouse);
       } else if (S.tab === 'codex') {
         used = updateCodex(game, S);
+      } else if (S.tab === 'cards') {
+        used = updateCards(game, S);
+        if (S.relayout) { S.relayout = false; layout(game); S.hover = hitButton(S.buttons, inp.mouse); }
       } else if (S.tab === 'gear') {
         used = updateGear(game, S, rebuild);
       } else if (S.tab === 'stats') {
@@ -652,6 +659,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else if (inp.wasPressed('KeyR')) { S.tab = 'rep'; layout(game); }
       else if (inp.wasPressed('KeyJ')) { S.tab = 'journal'; layout(game); }
       else if (inp.wasPressed('KeyB')) { S.tab = 'codex'; layout(game); }
+      else if (inp.wasPressed('KeyK')) { S.tab = 'cards'; layout(game); }
     },
     render(game) {
       const { ctx, width: W, height: H } = game;
@@ -661,6 +669,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else if (S.tab === 'stats') renderStats(game);
       else if (S.tab === 'rep') renderRep(game);
       else if (S.tab === 'codex') renderCodex(game, S);
+      else if (S.tab === 'cards') renderCards(game, S);
       else renderJournal(game);
       for (const b of S.buttons) if (!b.hidden) button(ctx, b, S.hover === b);
       if (S.tab === 'gear') renderGearHover(game, S);

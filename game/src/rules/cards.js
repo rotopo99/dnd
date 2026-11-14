@@ -277,7 +277,7 @@ function destroyRef(M, ref) {
   if (!u || u.hp <= 0) return;
   u.hp = 0;
   u.destroyed = true;
-  push(M, { t: 'destroy', ref: { ...ref } });
+  push(M, { t: 'destroy', ref: { ...ref }, id: u.id });
 }
 
 /** Remove the dead, fire «Финал» effects; repeat while somebody dies. Then check the end of the match. */
@@ -533,7 +533,7 @@ export function act(M, a) {
     const u = S.field[a.from];
     u.attacked = true;
     const from = { s, slot: a.from };
-    push(M, { t: 'attack', from, target: { ...a.target } });
+    push(M, { t: 'attack', from, target: { ...a.target }, id: u.id, tid: a.target.hero ? null : unitAt(M, a.target)?.id });
     const da = atkOf(M, s, a.from);
     if (a.target.hero) damageHero(M, a.target.s, da);
     else {
@@ -660,6 +660,18 @@ function ahead(M, s) {
   return pw(s) >= pw(other(s));
 }
 
+/** Ready attackers of side s together kill the creature at t (a Taunt wall is broken by a gang attack). */
+function gangKills(M, s, t) {
+  const d = unitAt(M, t);
+  if (d.shield) return true; // the first hit only pops the Shield: worth it when the rest follows
+  let sum = 0;
+  for (let slot = 0; slot < M.sides[s].field.length; slot++) if (canAttack(M, s, slot)) {
+    if (hasKw(M.sides[s].field[slot], 'poison')) return true;
+    sum += atkOf(M, s, slot);
+  }
+  return sum >= d.hp;
+}
+
 function chooseAttack(M, s, prof) {
   const o = other(s);
   for (let slot = 0; slot < M.sides[s].field.length; slot++) {
@@ -677,7 +689,7 @@ function chooseAttack(M, s, prof) {
       const survives = u.shield || dAtk === 0 || (dAtk < u.hp && !hasKw(d, 'poison'));
       if (kills && survives) { if (!good || dc > good.c) good = { t, c: dc }; }
       else if (kills && dc >= myCost && prof.risk >= 0.5) { if (!trade || dc > trade.c) trade = { t, c: dc }; }
-      else if (survives && hasKw(d, 'taunt')) { if (!chip || d.hp < chip.hp) chip = { t, hp: d.hp }; }
+      else if (hasKw(d, 'taunt') && (survives || (prof.risk >= 0.3 && gangKills(M, s, t)))) { if (!chip || d.hp < chip.hp) chip = { t, hp: d.hp }; }
     }
     const hero = targets.find((t) => t.hero);
     const pick = good?.t || trade?.t || (hero && (prof.aggro >= 0.5 || ahead(M, s)) ? hero : null) || chip?.t;

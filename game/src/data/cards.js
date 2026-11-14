@@ -204,6 +204,8 @@ const deck = (s) => s.split(/\s+/).flatMap((t) => { const [id, n = 1] = t.split(
 export const STARTER_DECK = deck('neu_beggar:2 neu_refugee:2 neu_scav:2 neu_rustdroid:2 neu_seer:2 neu_caravan:2 neu_militia:2 neu_mechanid neu_cultist neu_rebel:2 neu_medkit:1 neu_grenade:1');
 // длина 20 проверяется в tools (см. спеку §7)
 
+// 2026-11-14 game-programmer: колоды shchup, duel-master, colonel-shurup, sekiro, ritualist-iskra, cringe-jester ослаблены
+// (симуляция tools/test.mjs: ни одна колода не выигрывает у STARTER_DECK > 80%); точная подстройка — balance-tester.
 // 12 соперников: узел — npcHome(id). stake — ставка в кредитах; reward — карты за победу (первая победа).
 // ai — профиль ИИ: aggro 0..1 (охота за лицом), risk 0..1 (готовность к невыгодному размену).
 export const CARD_RIVALS = [
@@ -214,21 +216,21 @@ export const CARD_RIVALS = [
   { npc: 'rat-toma', node: 'svalka', hero: 'h-scv', stake: 30, tier: 2, ai: { aggro: 0.4, risk: 0.3 }, reward: ['scv_digger'],
     deck: deck('scv_rat:2 scv_hoarder:2 scv_digger:2 scv_raider:2 scv_pile:2 scv_junk:2 scv_welder:2 scv_hunter neu_scav:2 neu_rustdroid:2 neu_medkit') },
   { npc: 'shchup', node: 'svalka', hero: 'h-scv', stake: 40, tier: 2, ai: { aggro: 0.7, risk: 0.5 }, reward: ['scv_raider'],
-    deck: deck('scv_rat:2 scv_raider:2 scv_digger:2 scv_junk:2 scv_welder:2 scv_hunter:2 scv_slide scv_salvage neu_mechanid:2 neu_rebel:2 neu_grenade:2') },
+    deck: deck('neu_scav:2 scv_raider:2 scv_digger:2 scv_junk:2 neu_seer:2 neu_cultist:2 neu_beggar:2 scv_slide scv_salvage neu_mechanid:2 neu_grenade:2') },
   { npc: 'duel-master', node: 'cc-duel-club', hero: 'h-ai', stake: 50, tier: 2, ai: { aggro: 0.5, risk: 0.4 }, reward: ['ai_inspector'],
-    deck: deck('ai_clerk:2 ai_stenog:2 ai_drone:2 ai_guard:2 ai_inspector:2 ai_decree:2 ai_terminal:2 ai_tank neu_militia:2 neu_grenade:2 neu_medkit') },
+    deck: deck('ai_clerk:2 ai_stenog:2 ai_drone:2 ai_guard:2 ai_inspector:2 ai_decree:2 ai_terminal:2 neu_scav:2 neu_militia neu_grenade:2 neu_medkit') },
   { npc: 'boomerang', node: 'putinlyandiya', hero: 'h-ai', stake: 60, tier: 3, ai: { aggro: 0.4, risk: 0.5 }, reward: ['ai_audit'],
     deck: deck('ai_drone:2 ai_stenog:2 ai_bureaucrat:2 ai_agitator ai_guard:2 ai_audit:2 ai_decree:2 ai_terminal ai_tank:2 neu_caravan:2 neu_radio:2') },
   { npc: 'colonel-shurup', node: 'kreml', hero: 'h-ai', stake: 80, tier: 3, ai: { aggro: 0.8, risk: 0.5 }, reward: ['neu_warprom'],
-    deck: deck('ai_drone:2 ai_guard:2 ai_tank:2 ai_agitator ai_bureaucrat:2 ai_decree:2 ai_purge ai_terminal:2 neu_warprom:2 neu_rebel:2 neu_grenade:2') },
+    deck: deck('neu_beggar:2 ai_guard:2 neu_seer:2 neu_caravan:2 neu_cultist:2 ai_decree:2 ai_purge ai_terminal:2 neu_warprom neu_scav:2 neu_grenade:2') },
   { npc: 'sekiro', node: 'velikaya-arena', hero: 'h-tin', stake: 100, tier: 4, ai: { aggro: 0.6, risk: 0.6 }, reward: ['tin_nail'],
-    deck: deck('tin_ronin:2 tin_duelist:2 tin_archer:2 tin_monk:2 tin_smith:2 tin_samurai:2 tin_nail tin_kata:2 tin_duel:2 tin_rain tin_dojo:2') },
+    deck: deck('tin_ronin:2 neu_scav:2 tin_duelist tin_archer:2 tin_monk:2 tin_smith:2 tin_samurai tin_nail tin_kata:2 tin_duel:2 tin_rain tin_dojo:2') },
   { npc: 'aunt-loza', node: 'garmoniya', hero: 'h-mut', stake: 120, tier: 4, ai: { aggro: 0.4, risk: 0.4 }, reward: ['mut_loza'],
     deck: deck('mut_sprout:2 mut_wolf:2 mut_toad:2 mut_cap:2 mut_loza:2 mut_grunya:2 mut_chimera mut_bloom:2 mut_howl:2 mut_spores mut_greenhouse:2') },
   { npc: 'ritualist-iskra', node: 'stanok', hero: 'h-tkh', stake: 150, tier: 5, ai: { aggro: 0.5, risk: 0.5 }, reward: ['tkh_iskra'],
-    deck: deck('tkh_fetish:2 tkh_shaman:2 tkh_proxy:2 tkh_drummer:2 tkh_totem:2 tkh_rzhaven:2 tkh_iskra:2 tkh_idol tkh_overload:2 tkh_storm:2 tkh_altar') },
+    deck: deck('tkh_fetish:2 tkh_shaman:2 neu_scav:2 tkh_proxy tkh_drummer:2 tkh_totem:2 neu_beggar:2 tkh_iskra:2 tkh_overload:2 tkh_storm:2 tkh_altar') },
   { npc: 'cringe-jester', node: 'pepelnoe-gornilo', hero: 'h-crg', stake: 200, tier: 5, ai: { aggro: 0.6, risk: 0.7 }, reward: ['crg_wave'],
-    deck: deck('crg_giggle:2 crg_mime:2 crg_diss:2 crg_beacon:2 crg_scribe:2 crg_knight:2 crg_collector crg_horror crg_joke:2 crg_roast:2 crg_wave crg_projector') },
+    deck: deck('crg_giggle:2 crg_mime:2 neu_scav:2 crg_diss crg_beacon:2 crg_scribe crg_knight:2 neu_beggar:2 crg_joke:2 crg_roast:2 crg_wave crg_projector') },
   { npc: 'madam-stavka', node: 'pirates-m30', hero: 'h-pir', stake: 250, tier: 5, ai: { aggro: 0.6, risk: 0.8 }, reward: ['pir_stavka'], boss: true,
     deck: deck('pir_rat:2 pir_barrel:2 pir_sharper:2 pir_gunner:2 pir_boarder:2 pir_bet:2 pir_boarding:2 pir_storm pir_cannon:2 pir_stavka neu_radio:2') },
 ];

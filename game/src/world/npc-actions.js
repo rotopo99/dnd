@@ -28,6 +28,7 @@ import { createDialogueScene } from '../scenes/dialogue.js';
 import { openShop } from '../scenes/shop.js';
 import { openRecruit } from '../ui/recruit-ui.js';
 import { startWorldBattle, openLoot } from '../scenes/world-battle.js';
+import { cardActs, doCardAct } from '../scenes/card-hub.js'; // cards-casino.md: «Сыграть в карты», card shop, casino
 
 /** «Trial» quests for suspicious factions: side quests (sq-*) without key (no explicit mark in the data). */
 export const isTrialQuest = (q) => !q.key && (q.trial ?? q.id.startsWith('sq-'));
@@ -108,10 +109,11 @@ export function createNpcActions(ctx) {
       const h = hireInfo(save(game), npc.id, hireTier(game, npc), game.data);
       if (h.why !== 'already' && h.why !== 'no') acts.push({ id: 'hire', label: `${t('loc.hire')} ${h.price}`, disabled: !!h.why, reason: h.why ? t(`loc.hire.${h.why}`) : null });
     }
-    return worldActs(game, npc, acts);
+    return worldActs(game, npc, cardActs(game, npc, acts));
   }
 
   function doNpc(game, npc, act, opts = {}) {
+    if (act.startsWith('cards:')) return doCardAct(game, npc, act);
     const sv = save(game);
     const tier = facTier(game, npcRepFaction(npc));
     if (act === 'talk') return talk(game, npc, tier);

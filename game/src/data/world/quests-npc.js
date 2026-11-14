@@ -412,6 +412,32 @@ const LIST = [
       st('back', 'Попрощаться с Контузией.', talk('w-kontuziya', 'battlefields-m9'), 'done'),
     ],
     { xp: 280, rep: { warprom: 3 } }),
+
+  // ==================================================================== Казино «Бар Лагуны» (docs/specs/cards-casino.md §6)
+  // goal { kind: 'card', npc, location, stake?, tournament? } — партия в «Хлам и Кринж»: world/cards.js cardSlots / cardSlotResult
+  // (кнопка у NPC «Сыграть в карты» / в зале казино). Квест долга стартует сам при займе (world/cards.js takeLoan).
+  quest('q-casino-debt', 'Долг Мадам Ставке', 'mixed', 'madam-stavka', 'pirates', 2,
+    'Мадам Ставка одолжила кредиты под двадцать процентов каждые три дня. Отработать долг, пока сборщики не пришли сами.',
+    [
+      st('work', 'Мадам предлагает отработать: прижать букмекера-конкурента, разогнать должников или сыграть с ней по-крупному.', choice([
+        { id: 'hack', text: 'Взломать кассу букмекера-конкурента.', goal: check(['hacking'], 14, 'fight'), next: 'back' },
+        { id: 'bluff', text: 'Убедить букмекера, что он сам должен Мадам.', goal: check(['deception'], 14, 'fight'), next: 'back' },
+        { id: 'fight', text: 'Разогнать вышибал конкурента.', goal: battle('w-road-pirates', 'pirates-m30'), next: 'back' },
+        { id: 'cards', text: 'Выиграть у Мадам партию на 250 кредитов.', goal: { kind: 'card', npc: 'madam-stavka', location: 'pirates-m30', stake: 250 }, next: 'back' },
+      ]), 'back'),
+      st('back', 'Сообщить Мадам Ставке, что долг отработан.', talk('madam-stavka', 'pirates-m30'), 'done'),
+    ],
+    { xp: 150, rep: { pirates: 5 } }, { requires: { flag: 'casino-loan' } }),
+
+  quest('q-casino-tournament', 'Турнир Мадам Ставки', 'mixed', 'madam-stavka', 'pirates', 2,
+    'Раз в две недели в игорном зале — турнир по «Хламу и Кринжу»: три стола, одна колода, проигрыш — вылет.',
+    [
+      st('entry', 'Внести взнос за участие.', { kind: 'pay', credits: 100, location: 'pirates-m30' }, 'r1'),
+      st('r1', 'Первый стол: Туз.', { kind: 'card', npc: 'rc-tuz', location: 'pirates-m30', stake: 0, tournament: true }, 'r2'),
+      st('r2', 'Второй стол: Дед Отмычка.', { kind: 'card', npc: 'old-lockpick', location: 'pirates-m30', stake: 0, tournament: true }, 'r3'),
+      st('r3', 'Финал: сама Мадам Ставка.', { kind: 'card', npc: 'madam-stavka', location: 'pirates-m30', stake: 0, tournament: true }, 'done'),
+    ],
+    { xp: 200, credits: 500, rep: { pirates: 5 } }),
 ];
 
 export const QUESTS_NPC = Object.fromEntries(LIST.map((q) => [q.id, q]));
