@@ -37,7 +37,7 @@ export const ROAM = {
   },
   // этап 2 (§2.1): battle on the node map
   battle: {
-    cut: [24, 14], // cut area (spec 24×16; 14 rows keep the ×2 tile scale at 1280×720)
+    cut: [24, 13], // cut area (spec 24×16; 13 rows keep the ×2 tile scale and the hint line at 1280×720)
     seeRange: 10, // a hostile with a clear line of sight this close starts the battle
     foeGap: 5, // foes without a place on the map appear this far from the leader (toward the nearest exit)
     chase: 3.5, // hostiles walk toward the party, tiles per second
@@ -55,7 +55,7 @@ export const ROAM_SIZE = { camp: [28, 22], city: [48, 36], default: [40, 30] };
  * in rock and joined by corridors (bunker), '.' — open ground with a border; decor — scattered chars [char, n].
  */
 export const ROAM_TYPES = {
-  hub: { blocks: [['plaza', 1, 1], ['house', 3, 4], ['house2', 1, 2], ['shop', 2, 2], ['barracks', 1, 1], ['workshop', 1, 1]], exits: 3, decor: [['c', 6], ['m', 3]] },
+  hub: { blocks: [['plaza', 1, 1], ['barracks', 1, 1], ['shop', 2, 2], ['house', 3, 4], ['house2', 1, 2], ['workshop', 1, 1]], exits: 3, decor: [['c', 6], ['m', 3]] },
   village: { blocks: [['well', 1, 1], ['house', 4, 5], ['house2', 2, 3], ['shop', 1, 1], ['field', 1, 2]], exits: 2, decor: [['c', 4]] },
   ruins: { blocks: [['ruin', 4, 5], ['ruin2', 1, 2], ['warehouse', 1, 1]], exits: 2, decor: [[',', 60], ['c', 6], ['x', 6]] },
   bunker: { fill: '#', blocks: [['airlock', 1, 1], ['room', 2, 3], ['lab', 1, 1], ['dorm', 1, 1]], exits: 1, decor: [['m', 2]] },

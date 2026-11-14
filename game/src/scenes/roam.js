@@ -21,7 +21,7 @@ import { skillName } from '../world/checks.js';
 import { T_RUBBLE, T_EXIT, isPassable, chebyshev } from '../rules/grid.js';
 import { rollDice } from '../rules/dice.js';
 import { activeCompanions, grant, tf, locFaction, members, pickEncounter } from '../world/state.js';
-import { npcRole, npcFaction, guardEnemies, addHeat, payFine, fineFor, heatOf } from '../world/crime.js';
+import { npcRole, guardEnemies, addHeat, payFine, fineFor, heatOf } from '../world/crime.js';
 import { autoCheck, knowsSkill } from '../world/skill-uses.js';
 import { startWorldBattle, encounterSetup } from './world-battle.js';
 import { encounterName } from '../world/data.js';
@@ -279,10 +279,9 @@ export function createRoamScene(rawId, opts = {}) {
     const n = S.npcs.find((x) => x.id === npc.id), ld = S.party[0];
     const behind = !!n && behindOf(grid, { x: Math.round(n.fx), y: Math.round(n.fy), face: n.face || 0 }, ld.cx, ld.cy);
     const theftMod = behind ? ROAM.stealth.theftBehind : 0;
-    for (const a of acts) if (a.id === 'steal' && theftMod && !a.disabled) a.label = `${a.label} (${tf('roam.theftSub', { n: theftMod })})`;
     game.openModal({
       title: npc.name, lines: [{ text: npc.role || '', color: '4' }, ...(npcHintSkills(npc.id).length ? [{ text: t('hint.title'), color: 'a' }, ...hintLines(game.save, npcHintSkills(npc.id))] : [])],
-      options: [...acts.map((a) => ({ label: a.label, sub: a.disabled ? a.reason : null, disabled: !!a.disabled, reason: a.reason, run: (g) => L.npc.doNpc(g, npc, a.id, { theftMod }) })),
+      options: [...acts.map((a) => ({ label: a.label, sub: a.disabled ? a.reason : a.id === 'steal' && theftMod ? tf('roam.theftSub', { n: theftMod }) : null, disabled: !!a.disabled, reason: a.reason, run: (g) => L.npc.doNpc(g, npc, a.id, { theftMod }) })),
         { label: t('loc.close'), run: () => {} }],
     });
   }
@@ -342,10 +341,10 @@ export function createRoamScene(rawId, opts = {}) {
 
   // ---------------------------------------------------------------- этап 2: guards, stealth, alarm, battles on the map
   const night = (game) => !!game.mapNight;
-  const permit = (game) => !fac || (game.save.rep?.[fac] ?? 0) >= ROAM.stealth.permitRep;
+  const permit = (game) => !!fac && (game.save.rep?.[fac] ?? 0) >= ROAM.stealth.permitRep; // no faction — local militia, no permits
   /** Posts of the node's guards (ROAM.stealth.sentries by map type): by the exits and in restricted zones, turning. */
   function makePosts(game) {
-    const n = fac ? ROAM.stealth.sentries[map.type] || 0 : 0;
+    const n = ROAM.stealth.sentries[map.type] || 0; // no faction — the node's militia (crime.js fallback guards)
     S.posts = [];
     if (!n) return;
     const enemy = guardEnemies(game.save, fac).enemies[0] || 'scavenger';
@@ -376,7 +375,7 @@ export function createRoamScene(rawId, opts = {}) {
   /** Who watches: posts + guard NPCs (crime.js role guard) of a faction. → [{ x, y, face, ref }] */
   function watchers() {
     const out = S.posts.map((p) => ({ x: p.x, y: p.y, face: p.face, ref: p }));
-    for (const n of S.npcs) if (npcRole(NPCS[n.id]) === 'guard' && (npcFaction(NPCS[n.id]) || fac)) out.push({ x: Math.round(n.fx), y: Math.round(n.fy), face: n.face || 0, ref: n });
+    for (const n of S.npcs) if (npcRole(NPCS[n.id]) === 'guard') out.push({ x: Math.round(n.fx), y: Math.round(n.fy), face: n.face || 0, ref: n });
     return out;
   }
   /** The party is suspicious: in a restricted zone without a permit, or wanted by the node's faction. */

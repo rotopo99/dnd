@@ -767,6 +767,7 @@ export function createLocationScene(rawId, opts = {}) {
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
       else if (inp.wasPressed('KeyG')) nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) nav(game, 'codex');
+      else if (inp.wasPressed('KeyK')) nav(game, 'cards'); // cards-casino.md: collection / decks
       else if (inp.wasPressed('KeyS')) nav(game, 'save');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },

@@ -33,6 +33,7 @@ import { COMBAT, biomeOf } from '../data/combat.js';
 import { objectiveSummary } from '../rules/objectives.js';
 import { passDays } from '../world/exodus.js';
 import { locFaction } from '../world/state.js';
+import { battleCard, CARDS } from '../world/cards.js';
 import { roamBattleFor } from '../world/roam-battle.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
@@ -141,6 +142,10 @@ export function startWorldBattle(game, o) {
       if (extra.credits) loot.credits += Math.max(COMBAT.objectives?.creditsMin ?? 10, Math.round(loot.credits * extra.credits));
       if (o.extraLoot) { loot.credits += o.extraLoot.credits || 0; addItems(loot.items, o.extraLoot.items || []); } // skirmishes.md: the dead of a waited-out fight
       o.afterLoot?.(g, loot, notes, S); // skirmishes.md: reputation, «благодарность»
+      // cards-casino.md §4: a card of the enemy faction's set (4% / 25% boss), into the collection — not the inventory grid
+      const won = S.b.units.filter((u) => isFoeTeam(u) && (u.dead || u.removed));
+      const card = battleCard(g.save, o.faction || enemyDef(won[0]?.enemyId)?.faction || locFaction(g.save.location), won.some((u) => u.boss));
+      if (card) notes.push({ text: `🂠 ${tf('cards.lootCard', { name: CARDS[card].name })}`, color: 'a' });
       loot.notes = notes;
       openLoot(g, loot, () => afterBattle(g, S, o));
     },

@@ -10,6 +10,7 @@ import { FIELDS_TEXT } from './fields.js';
 import { ROMANCE_TEXT } from './romance.js';
 import { SKIRM_TEXT } from './skirmishes.js';
 import { CYBER_TEXT } from './cyber.js';
+import { CARDS_TEXT } from './cards.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -806,5 +807,6 @@ Object.assign(ru, ROAM_TEXT); // free-roam.md: the free node map
 Object.assign(ru, ROMANCE_TEXT); // romance.md: romances with companions
 Object.assign(ru, SKIRM_TEXT); // skirmishes.md: fights on the world map
 Object.assign(ru, CYBER_TEXT); // cyberspace-v2.md + expeditions.md
+Object.assign(ru, CARDS_TEXT); // cards-casino.md
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

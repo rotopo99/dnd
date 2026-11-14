@@ -4039,5 +4039,220 @@ console.log('Cyberspace v2 / errands of the reserve');
   });
 }
 
+// ---------------------------------------------------------------- free-roam.md этап 2: battle on the map, stealth; fast travel
+{
+  const ss = await import('../game/src/world/roam-stealth.js');
+  const rb = await import('../game/src/world/roam-battle.js');
+  const rm = await import('../game/src/world/roam.js');
+  const tr = await import('../game/src/world/transit.js');
+  const { ROAM } = await import('../game/src/data/world/roam.js');
+  const { parseMap: pm } = await import('../game/src/rules/grid.js');
+  test('roam stage 2: cones — fov, range, walls block, half cover next to the target hides; theft from behind', () => {
+    const g = pm({ grid: ['############', '#..........#', '#....c.....#', '#..........#', '#....#.....#', '############'] });
+    const w = { x: 1, y: 1, face: 0 }; // looks east
+    assert.ok(ss.seesCell(g, w, 6, 1, 8));
+    assert.ok(!ss.seesCell(g, w, 1, 4, 8), 'outside the 90° cone');
+    assert.ok(!ss.seesCell(g, w, 10, 1, 8), 'out of range');
+    assert.ok(!ss.seesCell(g, { x: 3, y: 2, face: 0 }, 6, 2, 8), 'behind a crate next to the target');
+    assert.ok(!ss.seesCell(g, { x: 3, y: 4, face: 0 }, 7, 4, 8), 'wall');
+    assert.ok(ss.behindOf(g, w, 0 + 1, 3) && !ss.behindOf(g, w, 3, 1));
+    assert.equal(ss.noticeStep(0, 1, true, 'walk'), ROAM.stealth.gain.walk);
+    assert.equal(ss.noticeStep(0, 1, true, 'run', true), ROAM.stealth.gain.run * ROAM.stealth.rollMul);
+    assert.equal(ss.noticeStep(10, 1, false, 'walk'), Math.max(0, 10 - ROAM.stealth.decay));
+    assert.ok(ss.conePoly(g, w, 8).length > 10);
+  });
+  test('roam stage 2: battle cut keeps the party inside, units start on their cells, explicit starts; aftermath back', () => {
+    const m = rm.roamMapFor('alpha-harmony');
+    const g = rm.roamGrid(m);
+    const free = []; for (let i = 0; i < g.tiles.length; i++) if (g.tiles[i] === 0) free.push([i % g.w, (i / g.w) | 0]);
+    const party = [free[10], free[11]], foes = [free[free.length - 5]];
+    const def = rb.roamBattleMap(m, m.objects, { party, foes: [foes[0], foes[0]], id: 'x' });
+    const r = def.roam.region;
+    assert.ok(r.w <= ROAM.battle.cut[0] && r.h <= ROAM.battle.cut[1]);
+    for (const [x, y] of party) assert.ok(x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h, 'party inside the cut');
+    const pg = pm(def);
+    assert.deepEqual(pg.starts.P.map((p) => [p.x + r.x, p.y + r.y]), party);
+    assert.equal(pg.starts.E.length, 2);
+    assert.notDeepEqual(pg.starts.E[0], pg.starts.E[1]);
+    const units = [{ team: 'heroes', kind: 'hero', x: 2, y: 3 }, { team: 'enemies', kind: 'enemy', dead: true, x: 5, y: 5, enemyId: 'scavenger' }];
+    const a = rb.aftermath(def, units);
+    assert.deepEqual(a.party[0], [2 + r.x, 3 + r.y]);
+    assert.deepEqual(a.corpses[0], { x: 5 + r.x, y: 5 + r.y, enemy: 'scavenger' });
+    assert.equal(rb.roamBattleFor({ save: { location: 'nowhere' } }, [], [], {}), null);
+  });
+  test('fast travel: hubs only, rides save days, cost and kind', () => {
+    assert.ok(tr.isTransitHub(LOCS['alpha-harmony']));
+    const s = { visited: ['alpha-harmony', 'b'] };
+    assert.equal(tr.rideDays(5), Math.ceil(5 * 0.4));
+    assert.equal(tr.rideKind([{ r: { kind: 'sea' } }], 2), 'boat');
+    assert.equal(tr.rideKind([{ r: { kind: 'tunnel' } }], 2), 'lift');
+    assert.equal(tr.rideKind([{ r: { kind: 'road' } }], 5), 'train');
+    const hubs = Object.values(LOCS).filter((l) => tr.isTransitHub(l) && l.id !== 'alpha-harmony').map((l) => l.id);
+    const opts = tr.transitOptions({ visited: ['alpha-harmony', ...hubs] }, 'alpha-harmony', () => [{ r: { days: 4, kind: 'road' } }], () => 0);
+    assert.ok(opts.length > 0 && opts.every((o) => o.days < o.full && o.cost > 0));
+    assert.deepEqual(tr.transitOptions(s, 'alpha-harmony', () => null), []);
+  });
+}
+
+console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
+{
+  const CD = await import('../game/src/data/cards.js');
+  const CE = await import('../game/src/rules/cards.js');
+  const WC = await import('../game/src/world/cards.js');
+  const st = await import('../game/src/world/state.js');
+  const { normalizeSave } = await import('../game/src/save.js');
+  const DATA = { CARDS: CD.CARDS, CARD_RULES: CD.CARD_RULES, CARD_HEROES: CD.CARD_HEROES };
+  const side = (deck, hero = 'h-wanderer', ai = { aggro: 0.5, risk: 0.5 }) => ({ name: 'x', hero, deck, ai, tier: 3 });
+  const vanilla = Array(20).fill('neu_scav');
+  const mkM = (o = {}) => CE.createMatch(DATA, { seed: o.seed || 1, first: 0, sides: [side(o.a || vanilla), side(o.b || vanilla)] });
+  const put = (M, s, slot, id, o = {}) => { const c = CD.CARDS[id]; M.sides[s].field[slot] = { uid: M.uid++, id, atk: c.atk, hp: c.hp, maxHp: c.hp, kw: [...c.kw], tags: c.tags || [], shield: c.kw.includes('shield'), sick: false, attacked: false, buffs: [], st: { stun: 0, poison: 0, cringed: 0, cringeAtk: 0 }, ...o }; };
+  const mkSave = () => st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+
+  test('cards data: 111 collectible, unique ids, fx.card exist, decks 20 / ≤2 copies / legend 1', () => {
+    assert.equal(CD.CARD_IDS.length, 111);
+    assert.equal(new Set(CD.CARD_IDS).size, 111);
+    for (const c of Object.values(CD.CARDS)) for (const f of c.fx || []) if (f.card) assert.ok(CD.CARDS[f.card], `${c.id} → ${f.card}`);
+    for (const d of [CD.STARTER_DECK, ...CD.CARD_RIVALS.map((r) => r.deck)]) {
+      assert.equal(d.length, 20);
+      const n = {};
+      for (const id of d) { assert.ok(CD.CARDS[id], id); n[id] = (n[id] || 0) + 1; }
+      for (const [id, k] of Object.entries(n)) assert.ok(k <= (CD.CARDS[id].rarity === 'legendary' ? 1 : 2), id);
+    }
+  });
+
+  test('cards: charge 1→8, hand ≤7, burnout grows, win at HP ≤ 0, second player gets the battery', () => {
+    const M = mkM();
+    assert.equal(M.sides[0].chargeMax, 1);
+    assert.ok(M.sides[1].hand.some((h) => h.id === 'tok_coin'));
+    for (let i = 0; i < 20; i++) CE.act(M, { type: 'end' });
+    assert.equal(M.sides[0].chargeMax, 8);
+    assert.ok(M.sides[0].hand.length <= 7 && M.sides[1].hand.length <= 7);
+    M.sides[0].deck = []; const hp = M.sides[0].hp;
+    CE.act(M, { type: 'end' }); CE.act(M, { type: 'end' }); // side 0 draws from an empty deck: −1
+    CE.act(M, { type: 'end' }); CE.act(M, { type: 'end' }); // −2
+    assert.equal(hp - M.sides[0].hp, 3);
+    M.sides[1].hp = 1; put(M, 0, 0, 'neu_scav');
+    assert.ok(CE.act(M, { type: 'attack', from: 0, target: { s: 1, hero: true } }));
+    assert.equal(M.winner, 0);
+  });
+
+  test('cards: Taunt blocks, Shield eats the first hit, Poison kills, Rush hits creatures on entry', () => {
+    const M = mkM();
+    put(M, 0, 0, 'neu_scav'); put(M, 1, 1, 'neu_militia'); put(M, 1, 2, 'neu_beggar');
+    assert.ok(!CE.act(M, { type: 'attack', from: 0, target: { s: 1, hero: true } }));
+    assert.ok(!CE.act(M, { type: 'attack', from: 0, target: { s: 1, slot: 2 } }));
+    assert.ok(CE.attackTargets(M, 0, 0).every((r) => r.slot === 1));
+    const M2 = mkM(); put(M2, 0, 0, 'neu_rebel'); put(M2, 1, 0, 'neu_ghost');
+    CE.act(M2, { type: 'attack', from: 0, target: { s: 1, slot: 0 } });
+    assert.equal(M2.sides[1].field[0].hp, 3); assert.equal(M2.sides[1].field[0].shield, false);
+    const M3 = mkM(); put(M3, 0, 0, 'neu_rustdroid'); put(M3, 1, 0, 'neu_warprom');
+    CE.act(M3, { type: 'attack', from: 0, target: { s: 1, slot: 0 } });
+    assert.equal(M3.sides[1].field[0], null);
+    const M4 = mkM({ a: Array(20).fill('neu_rebel') });
+    for (let i = 0; i < 6; i++) CE.act(M4, { type: 'end' }); // 4 charge
+    put(M4, 1, 0, 'neu_beggar');
+    const idx = M4.sides[0].hand.findIndex((h) => h.id === 'neu_rebel');
+    assert.ok(CE.act(M4, { type: 'play', idx, slot: 2 }));
+    assert.ok(!CE.attackTargets(M4, 0, 2).some((r) => r.hero), 'Rush: not the hero on entry');
+    assert.ok(CE.act(M4, { type: 'attack', from: 2, target: { s: 1, slot: 0 } }));
+  });
+
+  test('cards: effects — spell damage needs a target, Cringe aura (min 1), summon on death, gain', () => {
+    const M = mkM({ a: Array(20).fill('neu_grenade') });
+    CE.act(M, { type: 'end' }); CE.act(M, { type: 'end' });
+    const gi = M.sides[0].hand.findIndex((h) => h.id === 'neu_grenade');
+    assert.equal(CE.canPlay(M, 0, gi).why, 'target');
+    put(M, 1, 3, 'neu_militia');
+    assert.ok(CE.act(M, { type: 'play', idx: gi, targets: [{ s: 1, slot: 3 }] }));
+    assert.equal(M.sides[1].field[3].hp, 1);
+    put(M, 1, 0, 'crg_giggle'); put(M, 0, 0, 'neu_rebel'); put(M, 0, 1, 'neu_beggar');
+    assert.equal(CE.atkOf(M, 0, 0), 3); assert.equal(CE.atkOf(M, 0, 1), 1);
+    put(M, 0, 4, 'neu_skrilet'); assert.equal(CE.atkOf(M, 0, 4), 5);
+    M.sides[1].field[3] = null; put(M, 1, 4, 'scv_rat'); put(M, 0, 2, 'neu_scav');
+    CE.act(M, { type: 'attack', from: 2, target: { s: 1, slot: 4 } });
+    assert.equal(M.sides[1].field[4]?.id, 'tok_scrap');
+  });
+
+  test('cards AI: lethal → face, makes a move, turn ≤ 8 s', () => {
+    const M = mkM();
+    put(M, 0, 0, 'neu_rebel'); put(M, 0, 1, 'neu_rebel'); put(M, 1, 0, 'neu_scav');
+    M.sides[1].hp = 8;
+    const a = CE.aiAction(M);
+    assert.equal(a.type, 'attack'); assert.ok(a.target.hero);
+    const M2 = mkM({ a: CD.STARTER_DECK });
+    const b = CE.aiAction(M2);
+    assert.equal(b.type, 'play');
+    const M3 = mkM({ a: CD.CARD_RIVALS[9].deck, b: CD.STARTER_DECK, seed: 5 });
+    for (let i = 0; i < 14; i++) CE.act(M3, { type: 'end' });
+    const t0 = Date.now(); let n = 0;
+    while (M3.cur === 0 && M3.winner === null && n++ < 60) CE.act(M3, CE.aiAction(M3, { aggro: 0.6, risk: 0.6 }));
+    assert.ok(Date.now() - t0 < 8000 && M3.cur !== 0 || M3.winner !== null);
+  });
+
+  test('cards AI vs AI: 100 seeds end in ≤ 30 rounds; balance: no rival beats the starter > 80%', () => {
+    for (let i = 0; i < 100; i++) {
+      const r = CD.CARD_RIVALS[i % CD.CARD_RIVALS.length];
+      const M = CE.createMatch(DATA, { seed: 1000 + i, sides: [side(CD.STARTER_DECK), { hero: r.hero, deck: r.deck, ai: r.ai, tier: r.tier }] });
+      const res = CE.autoPlay(M, 61);
+      assert.ok(res.winner !== null, `seed ${i}`);
+      assert.ok(Math.ceil(res.turns / 2) <= 30, `rounds ${res.turns}`);
+    }
+    for (const r of CD.CARD_RIVALS) {
+      let w = 0;
+      for (let i = 0; i < 100; i++) {
+        const M = CE.createMatch(DATA, { seed: i + 1, sides: [side(CD.STARTER_DECK), { hero: r.hero, deck: r.deck, ai: r.ai, tier: r.tier }] });
+        if (CE.autoPlay(M).winner === 1) w++;
+      }
+      assert.ok(w <= 80, `${r.npc}: ${w}%`);
+    }
+  });
+
+  test('cards collection: starter, deck rules, auto-build, save round trip, outside the inventory grid', () => {
+    const s = mkSave();
+    const c = WC.cardsState(s);
+    assert.equal(WC.activeDeck(s).ids.length, 20);
+    assert.deepEqual(WC.deckErrors(s, WC.activeDeck(s)), []);
+    const d = { name: 't', hero: 'h-wanderer', ids: [] };
+    assert.equal(WC.deckAdd(s, d, 'pir_rat'), 'cards.err.set');
+    WC.giveCard(s, 'pir_rat', 3);
+    assert.equal(WC.deckAdd(s, { name: 't', hero: 'h-pir', ids: ['pir_rat', 'pir_rat'] }, 'pir_rat'), 'cards.err.copies');
+    WC.autoBuild(s, d); assert.equal(d.ids.length, 20); assert.deepEqual(WC.deckErrors(s, d), []);
+    c.decks.push(d);
+    const back = normalizeSave(JSON.parse(JSON.stringify(s)), GAME_DATA);
+    assert.equal(back.cards.decks.length, 2);
+    assert.ok(!Object.keys(back.hero.items || {}).some((id) => CD.CARDS[id]));
+    const r = CD.CARD_RIVALS[0];
+    s.hero.credits = 100;
+    const res = WC.settleMatch(s, r, true, { rng: () => 0.9 });
+    assert.equal(s.hero.credits, 100 + r.stake); assert.ok(res.cards.includes(r.reward[0])); assert.ok(c.heroes.includes(r.hero));
+  });
+
+  test('casino: bet limits, −300 closes the tables, slots RTP 93.6% ±1%, debt +20%/3 days and overdue', () => {
+    const s = mkSave(); s.hero.credits = 1000; s.day = 3;
+    assert.equal(WC.betBlock(s, 'dice', 5), 'casino.badBet');
+    assert.equal(WC.betBlock(s, 'dice', 101), 'casino.badBet');
+    assert.equal(WC.betBlock(s, 'dice', 50), null);
+    WC.casinoSettle(s, -300);
+    assert.equal(WC.tablesClosed(s), 'casino.closedLoss');
+    s.day = 4; assert.equal(WC.tablesClosed(s), null);
+    WC.casinoSettle(s, 501); assert.equal(WC.tablesClosed(s), 'casino.closedWin');
+    const rng = createRng(42); let ret = 0;
+    for (let i = 0; i < 1e6; i++) ret += WC.slotMult(WC.spinReels(rng));
+    assert.ok(Math.abs(ret / 1e6 - 0.936) < 0.01, `RTP ${ret / 1e6}`);
+    let rr = 0; for (let p = 0; p < 38; p++) rr += WC.roulettePayout(1, { kind: 'red' }, p);
+    assert.equal(rr, 36);
+    const s2 = mkSave(); s2.day = 10; s2.hero.credits = 0;
+    assert.ok(WC.takeLoan(s2, 100));
+    assert.equal(s2.quests['q-casino-debt'].state, 'active');
+    s2.day = 13; assert.equal(WC.debtOwed(s2), 120);
+    s2.day = 16; assert.equal(WC.debtOwed(s2), 144);
+    const pir = s2.rep.pirates || 0;
+    s2.day = 20; assert.equal(WC.tablesClosed(s2), 'casino.closedDebt');
+    assert.ok((s2.rep.pirates || 0) < pir);
+    s2.hero.credits = 1000; assert.ok(WC.repayLoan(s2));
+    assert.equal(WC.tablesClosed(s2), null);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

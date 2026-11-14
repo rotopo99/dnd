@@ -17,11 +17,17 @@ export function roamBattleFor(game, enemies, allies, o) {
 }
 
 /** Region of the cut: size ≤ ROAM.battle.cut, centred on the points, shifted inside the map. → { x, y, w, h }. */
-export function cutRegion(W, H, pts, size = ROAM.battle.cut) {
+export function cutRegion(W, H, pts, size = ROAM.battle.cut, must = []) {
   const w = Math.min(size[0], W), h = Math.min(size[1], H);
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const mx = (Math.min(...xs) + Math.max(...xs)) / 2, my = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const x = Math.max(0, Math.min(W - w, Math.round(mx - w / 2))), y = Math.max(0, Math.min(H - h, Math.round(my - h / 2)));
+  let x = Math.round(mx - w / 2), y = Math.round(my - h / 2);
+  // `must` (the party) stays inside with a margin of 1; far foes are pulled in by placeStarts
+  for (const [px, py] of must) {
+    x = Math.min(x, px - 1); x = Math.max(x, px + 2 - w);
+    y = Math.min(y, py - 1); y = Math.max(y, py + 2 - h);
+  }
+  x = Math.max(0, Math.min(W - w, x)); y = Math.max(0, Math.min(H - h, y));
   return { x, y, w, h };
 }
 
@@ -99,7 +105,7 @@ export function foeCells(grid, leader, n, exits = []) {
  */
 export function roamBattleMap(map, objects, { party, foes, allies = [], id, name }) {
   const [W, H] = map.size;
-  const r = cutRegion(W, H, [...party, ...foes]);
+  const r = cutRegion(W, H, [...party, ...foes], ROAM.battle.cut, party);
   const def = cutMapDef(map, objects, r, { id, name });
   const taken = new Set();
   const P = placeStarts(def, party, taken);
