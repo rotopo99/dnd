@@ -31,6 +31,7 @@ import { parseDice } from '../rules/dice.js';
 import { createPin, pinUnit, updatePin } from '../ui/unit-pin.js';
 import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
+import { objectiveStripBottom } from '../ui/battle-objectives.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
 import { SKILL_RULES } from '../data/world/skill-rules.js';
@@ -1020,6 +1021,7 @@ export function createBattleScene(opts) {
     },
     render(game) { renderBattle(game, S); },
     // toasts under the top bar, over the map (not over the side panel or the result / banner text)
-    toastAnchor() { return S.L ? { x: S.L.area.x + S.L.area.w / 2, y: S.L.area.y + 8, dir: 1 } : null; },
+    // QA v15 M2: toasts start below the «Цели боя» strip when it is shown above the map
+    toastAnchor() { return S.L ? { x: S.L.area.x + S.L.area.w / 2, y: Math.max(S.L.area.y + 8, (objectiveStripBottom(S) ?? 0) + 6), dir: 1 } : null; },
   };
 }

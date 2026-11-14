@@ -20,6 +20,31 @@ export const ROAM = {
   // generated crates: credits dice and a chance of a ration (the node's own caches go to crates first)
   stash: { credits: '2d6', mult: 3, itemChance: 0.35, items: ['ration', 'tushenka'] },
   skillSpots: 4, // skills-v3.md: open skill actions shown as points on the map (next to NPCs when possible); the rest — «Навыки» button
+  // этап 2 (§2.2): stealth. Cones of guards: fov degrees, range by day / night (N — night), rays every rayStep degrees
+  stealth: {
+    fov: 90, rangeDay: 8, rangeNight: 5, rayStep: 5, coneNear: 15, // cones are computed only for guards ≤ coneNear tiles away
+    sneak: 2, // tiles per second while sneaking (C)
+    gain: { walk: 40, run: 80, sneak: 15 }, decay: 20, // notice meter per second in a cone / outside
+    rollEvery: 5, rollDc: 12, rollMul: 0.5, // a Stealth roll every N s in a cone; success — the gain ×rollMul for the next N s
+    wantedHeat: 2, // the node's faction heat from which guards look at the party everywhere, not only in restricted zones
+    permitRep: 30, // reputation with the node's faction that lets the party into restricted zones
+    alarmTime: 15, // seconds after the alarm to leave the node or pay the fine; then the guards fight
+    alarmHeat: 1, // heat of the alarm (crime.js addHeat)
+    theftBehind: -2, // theft DC from behind / from the side (outside the NPC's cone)
+    sentries: { hub: 2, city: 4, village: 1, port: 1, camp: 0, ruins: 0, bunker: 0 }, // generated posts of the node's faction
+    turn: [3, 6], // a post turns to its next facing every N s
+    restrictBlocks: ['barracks', 'warehouse', 'lab'], // generated blocks that are restricted zones
+  },
+  // этап 2 (§2.1): battle on the node map
+  battle: {
+    cut: [24, 14], // cut area (spec 24×16; 14 rows keep the ×2 tile scale at 1280×720)
+    seeRange: 10, // a hostile with a clear line of sight this close starts the battle
+    foeGap: 5, // foes without a place on the map appear this far from the leader (toward the nearest exit)
+    chase: 3.5, // hostiles walk toward the party, tiles per second
+    repath: 0.5, // seconds between path updates of a hostile
+  },
+  // этап 2: a raid on entering a node (danger ≥ minDanger, not hubs): raiders come from an exit and hunt the party
+  raid: { chance: 0.12, minDanger: 2, kinds: ['town', 'camp', 'dungeon'] },
 };
 
 /** Map size by type, [w, h]. */

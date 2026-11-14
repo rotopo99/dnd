@@ -111,7 +111,7 @@ export function createNpcActions(ctx) {
     return worldActs(game, npc, acts);
   }
 
-  function doNpc(game, npc, act) {
+  function doNpc(game, npc, act, opts = {}) {
     const sv = save(game);
     const tier = facTier(game, npcRepFaction(npc));
     if (act === 'talk') return talk(game, npc, tier);
@@ -121,7 +121,7 @@ export function createNpcActions(ctx) {
       if (ta.bribe) { sv.hero.credits -= ta.bribe; game.toast(`${t('check.bribe')}: −${ta.bribe}`, 'b'); }
       return openShopHere(game, npc.name, tier, null, npc);
     }
-    if (act === 'steal') return openTheft(game, npc);
+    if (act === 'steal') return openTheft(game, npc, opts.theftMod || 0);
     if (act === 'attack') return openAttack(game, npc);
     if (act === 'train') return openTrain(game, npc);
     if (act === 'recruit') return openRecruit(game, npc, (g) => ctx.refresh(g));
@@ -240,12 +240,13 @@ export function createNpcActions(ctx) {
     return acts;
   }
 
-  function openTheft(game, npc) {
+  /** mod — free-roam.md §2.2: DC change from the free map (from behind / from the side −2). */
+  function openTheft(game, npc, mod = 0) {
     const sv = save(game);
     game.openModal({
-      title: tf('crime.stealTitle', { name: npc.name }), lines: [{ text: t('crime.stealLines'), color: 'a' }],
+      title: tf('crime.stealTitle', { name: npc.name }), lines: [{ text: t('crime.stealLines'), color: 'a' }, ...(mod ? [{ text: tf('roam.theftBehind', { n: mod }), color: 'j' }] : [])],
       options: [...theftPlaces(sv, npc, loc).map((pl) => {
-        const dc = theftDc(sv, npc, pl);
+        const dc = theftDc(sv, npc, pl) + mod;
         return { label: t(`crime.place.${pl}`), sub: tf('crime.placeSub', { dc, cap: theftCap(sv) }), run: (g) => stealRoll(g, npc, pl, dc) };
       }), { label: t('check.cancel'), run: () => {} }],
     });
@@ -327,6 +328,7 @@ export function createNpcActions(ctx) {
     ctx.V(game).gate = true;
     startWorldBattle(game, {
       enemies: st.enemies, faction: st.faction, title: tf('crime.attackTitle', { name: npc.name }), heroInit: init,
+      roamTarget: npc.id, roamHelpers: st.helpers, // free-roam.md §2.1: on the free map the NPC and his guards fight where they stand
       onWin: (g) => { const k = killNpc(sv, npc.id); toastAll(g, k.toasts); persist(g); openLoot(g, k.loot, () => { persist(g); ctx.again(g); }); },
       onFlee: (g) => { toastAll(g, attackFailed(sv, npc)); },
     });

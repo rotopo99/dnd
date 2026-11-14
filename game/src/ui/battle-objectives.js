@@ -118,6 +118,18 @@ export function drawObjectiveMarkers(ctx, S) {
 }
 
 /**
+ * QA v15 M2: bottom y of the objectives strip above the map (narrow screens), or null (no strip / the side column) —
+ * battle toasts start below it.
+ */
+export function objectiveStripBottom(S) {
+  const b = S.b, L = S.L, O = b?.objectives;
+  if (!O || !L || S.result) return null;
+  const rows = 1 + (O.goal ? 1 : 0) + (O.chests ? 1 : 0) + (O.exits.length ? 1 : 0);
+  if (rows < 2 || L.mapX - L.area.x - 16 >= 236) return null;
+  return Math.max(L.area.y + 2, L.mapY - 28) + 24;
+}
+
+/**
  * Objectives panel: main goal, optional goal with progress / state, chests, retreat. A column left of the map when the
  * margin is wide enough, else one strip right above the map (1280×720: the map fills the area).
  */

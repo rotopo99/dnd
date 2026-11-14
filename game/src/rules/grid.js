@@ -59,8 +59,9 @@ export function parseMap(def) {
       if (e) { if (!elev) elev = new Uint8Array(w * h); elev[y * w + x] = e; }
     }
   }
-  // battlefields.md: explicit enemy start order (boss arenas: the boss start at the boss's index)
-  if (def.starts?.E) starts.E = def.starts.E.map(([x, y]) => ({ x, y }));
+  // battlefields.md: explicit enemy start order (boss arenas: the boss start at the boss's index);
+  // free-roam.md §2.1: a battle cut from a node map gives explicit P / A / F too (units on their cells)
+  for (const k of ['P', 'E', 'A', 'F']) if (def.starts?.[k]) starts[k] = def.starts[k].map(([x, y]) => ({ x, y }));
   return { w, h, tiles, starts, exits, barrels, objects, elev, costly: !!(elev || rubble), def };
 }
 

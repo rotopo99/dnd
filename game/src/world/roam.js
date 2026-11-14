@@ -7,6 +7,7 @@ import { LOCATIONS, npcsAt, resolveLocation } from './data.js';
 import { NPCS } from '../data/npcs.js';
 import { VENDORS } from './vendors.js';
 import { reachable, findPath, isPassable, DIRS8 } from '../rules/grid.js';
+import { isTransitHub } from './transit.js';
 
 const cache = new Map();
 
@@ -95,7 +96,22 @@ export function liveObjects(map, locId, save) {
     }
     out.push(o);
   }
+  // fast travel: a hub's carrier post near the entry (not solid — the party steps on it)
+  const tc = isTransitHub(loc) ? transitCell(map, out) : null;
+  if (tc) out.push({ id: 'transit', type: 'transit', x: tc[0], y: tc[1], solid: false });
   return out;
+}
+
+/** Cell of the carrier post: open ground 2–4 tiles from the entry, off objects; deterministic. */
+export function transitCell(map, objects = map.objects) {
+  const [sx, sy] = map.spawn.world;
+  const busy = new Set(objects.flatMap((o) => (o.cells || [[o.x, o.y]]).map(([x, y]) => `${x},${y}`)));
+  for (let r = 2; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    const x = sx + dx, y = sy + dy;
+    if (map.grid[y]?.[x] === '.' && !busy.has(`${x},${y}`) && !(map.spots || []).some((p) => p[0] === x && p[1] === y)) return [x, y];
+  }
+  return null;
 }
 
 /** What an interaction with an object does (the scene maps it to the existing windows). */
@@ -107,6 +123,8 @@ export function objectAction(o) {
     case 'bench': return { kind: 'disassemble' };
     case 'terminal': return { kind: 'terminal' };
     case 'exit': return { kind: 'exit', to: o.to || 'world' };
+    case 'transit': return { kind: 'transit' };
+    case 'corpse': return { kind: 'corpse' };
     default: return { kind: 'flavor' };
   }
 }
@@ -131,7 +149,7 @@ export const roamPath = (grid, sx, sy, tx, ty) => (sx === tx && sy === ty ? [] :
 /** Within the interaction radius (free-roam.md: 1.5 tiles). */
 export const inReach = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by) <= ROAM.interact + 1e-6;
 
-/** save.roam = { loc, x, y, party: [[x,y]…] } — restored only if the cell is still walkable. */
+/** save.roam = { loc, x, y, party: [[x,y]…], corpses?, gone? } — restored only if the cell is still walkable. */
 export function restorePos(grid, save, locId) {
   const r = save?.roam;
   if (!r || r.loc !== locId || !isPassable(grid, r.x, r.y)) return null;

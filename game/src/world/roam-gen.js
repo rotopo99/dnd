@@ -148,6 +148,8 @@ function tryGen(locId, type, seed) {
     for (let x = 1; x < W - 1; x++) if (g[fy][x] === '.' && !occ[fy][x] && !gaps.some(([a, b]) => x >= a && x <= b)) g[fy][x] = 'x';
     zones.push({ id: 'inner', rect: [1, 1, W - 2, fy - 1], restricted: true });
   }
+  // этап 2: barracks / warehouses / labs are restricted (guards' cones, alarm)
+  for (const r of rooms) if ((ROAM.stealth?.restrictBlocks || []).includes(r.id)) zones.push({ id: `${r.id}${zones.length + 1}`, rect: [r.x, r.y, r.w, r.h], restricted: true });
   // decor on free ground (never on the ring next to the border, never in blocks' margins)
   for (const [ch, n] of R.decor || []) {
     for (let i = 0; i < n; i++) {

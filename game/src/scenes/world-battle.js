@@ -33,6 +33,7 @@ import { COMBAT, biomeOf } from '../data/combat.js';
 import { objectiveSummary } from '../rules/objectives.js';
 import { passDays } from '../world/exodus.js';
 import { locFaction } from '../world/state.js';
+import { roamBattleFor } from '../world/roam-battle.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -113,11 +114,13 @@ export function startWorldBattle(game, o) {
   if (mil.success) game.toast(`${mil.member.name}: ${t('skillUse.military')}`, 'j');
   const mapId = (o.encounter && encounterMap(o.encounter)) || o.map || loc?.battleMap || null;
   const fixed = mapId && MAPS[mapId];
+  // free-roam.md §2.1: in a free node map the battle is cut out of the node grid (not for fixed encounter / given maps)
+  const roamCut = !rivals && !o.map && !(o.encounter && encounterMap(o.encounter)) ? roamBattleFor(game, setup.enemies, allies, o) : null;
   const scene = createBattleScene({
     heroes: () => partyUnits(save, data),
     enemies: setup.enemies,
     allies, rivals, partyLose: !!rivals,
-    map: fixed && !rivals ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies.map(elemId), ...(rivals ? { sides: 3, rivals: rivals.length } : {}), hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }),
+    map: roamCut ? roamCut.map : fixed && !rivals ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies.map(elemId), ...(rivals ? { sides: 3, rivals: rivals.length } : {}), hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)
@@ -129,6 +132,7 @@ export function startWorldBattle(game, o) {
     onRetreatExit: (g, S) => retreatExit(g, S, o),
     race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {
+      roamCut?.after?.(g, S); // the party stays where the battle ended, corpses on the node map
       queueBark('victory');
       for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
       const notes = [];

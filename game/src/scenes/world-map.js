@@ -34,6 +34,7 @@ import { restState, provisionCount } from '../world/rest.js';
 import { clashAt, clashOnRoute, roadClash, clashName, daysLeft, clashWhere } from '../world/clashes.js';
 import { SPAWN as CLASH_SPAWN } from '../data/world/skirmishes.js';
 import { openClash, clashLines } from './clash.js';
+import { transitOptions, isTransitHub } from '../world/transit.js';
 
 const restHud = (sv) => { const st = restState(sv); return tf('rest.hud', { n: st.short, max: st.max, food: provisionCount(sv) }); };
 
@@ -57,6 +58,48 @@ function mapImage() {
 /** Night travel: one day less on routes of 2+ days (world.md §2). */
 const hopDays = (r, night) => (night && r.days >= 2 ? r.days - 1 : r.days);
 /** Days of hop i of a trip: night travel, Endurance forced march (march hop −1, min 1). */
+/**
+ * Fast travel (data/world/transit.js): the carrier's window — rides to open hubs, instant, fewer days, no encounters.
+ * Opened from the world map («Транспорт», T) and from the carrier on a hub's free map. o.before(g) — leave the node first.
+ */
+export function transitRides(game) {
+  const sv = game.save;
+  const pf = partyFlagSet(sv, game.data);
+  return transitOptions(sv, sv.location, (a, b) => findRoute(sv, a, b, pf), (r) => routeFare(sv, r));
+}
+export function openTransit(game, o = {}) {
+  const sv = game.save;
+  if (!isTransitHub(LOCATIONS[resolveLocation(sv.location)])) { game.toast(t('transit.notHub'), 'c'); return; }
+  const rides = transitRides(game);
+  const kindName = (k) => t(`transit.kind.${k}`);
+  game.openModal({
+    title: t('transit.title'), lines: [{ text: rides.length ? t('transit.lines') : t('transit.none'), color: rides.length ? '5' : 'c' }],
+    options: [...rides.map((x) => {
+      const poor = x.cost > sv.hero.credits;
+      return { label: x.name, sub: tf('transit.sub', { kind: kindName(x.kind), days: x.days, full: x.full, cost: x.cost }), disabled: poor, reason: poor ? t('transit.noMoney') : null,
+        run: (g) => rideTo(g, x, o) };
+    }), { label: t('loc.close'), run: () => {} }],
+  });
+}
+function rideTo(game, x, o) {
+  const sv = game.save;
+  o.before?.(game);
+  sv.hero.credits -= x.cost;
+  const ex = passDays(sv, x.days);
+  for (const e of ex.out) game.toast(e.text, e.color);
+  visit(sv, x.to);
+  for (const e of onArrive(sv, x.to, game.data)) game.toast(e.text, e.color);
+  game.toast(tf('transit.arrive', { kind: t(`transit.kind.${x.kind}`), name: x.name, days: x.days }), 'j');
+  journal(sv, tf('transit.arrive', { kind: t(`transit.kind.${x.kind}`), name: x.name, days: x.days }));
+  game.visit = null;
+  sv.roam = null;
+  saveGame(sv);
+  play('uiClick');
+  if (ex.zero && !sv.cyberspace) { startExodusZero(game); return; }
+  const go = (g) => g.setScene(createNodeScene(sv.location));
+  if (ex.marks?.length) openExodusRadio(game, ex.marks, go); else go(game);
+}
+
 const tripDays = (tr, i) => { const d = hopDays(tr.hops[i].r, tr.night); return tr.march === i ? Math.max(1, d - 1) : d; };
 
 /** Sea / canoe fare (travel.js FARE): pirates friendly −50%, ally — free. */
@@ -167,8 +210,16 @@ export function createWorldMapScene() {
     return { id: 'rest', label: t('rest.button'), key: 'Z', w: 100, disabled: no, reason: no ? t('rest.notHere') : null };
   }
 
+  /** «Транспорт» (T): the carrier of a hub; grey elsewhere / with no rides. */
+  function transitButton(game) {
+    const hub = isTransitHub(LOCATIONS[resolveLocation(game.save.location)]);
+    const n = hub ? transitRides(game).length : 0;
+    return { id: 'transit', label: t('map.transit'), key: 'T', w: 110, disabled: !n, none: !n, reason: hub ? t('transit.none') : t('transit.notHub') };
+  }
+
   function layout(game) {
     const W = game.width, H = game.height;
+    if (S.night == null) S.night = !!game.mapNight; // M1: N toggles the same night flag on the node map
     S.area = { x: 0, y: TOP, w: W, h: H - TOP - BOTTOM };
     const bw = 124, gap = 8;
     S.buttons = [
@@ -176,6 +227,7 @@ export function createWorldMapScene() {
       { id: 'night', label: `${t('map.night')}: ${S.night ? t('party.on') : t('party.off')}`, key: 'N', selected: S.night },
       { id: 'enter', label: t('map.enter'), key: 'Enter' },
       restButton(game), // rest: «Привал» (Z)
+      transitButton(game), // fast travel between hubs (T)
       ...(baseOpen(game.save) ? [baseButton(game)] : []), // world-consequences.md ч.3
       { id: 'party', label: t('panel.party'), key: 'P' },
       { id: 'rep', label: t('panel.rep'), key: 'R' },
@@ -362,7 +414,9 @@ export function createWorldMapScene() {
     if (id === 'zoomIn') return zoomAt(1.4, S.area.x + S.area.w / 2, S.area.y + S.area.h / 2);
     if (id === 'zoomOut') return zoomAt(1 / 1.4, S.area.x + S.area.w / 2, S.area.y + S.area.h / 2);
     if (id === 'center') return centerOn(save(game).location);
-    if (id === 'night') { S.night = !S.night; layout(game); return; }
+    if (id === 'night') { S.night = !S.night; game.mapNight = S.night; layout(game); return; }
+    if (id === 'transit') return S.travel ? undefined : openTransit(game);
+    if (id === 'skip') { S.skip = true; return; }
     if (id === 'enter') return enterLocation(game);
     if (id === 'rest') return S.travel ? undefined : openRestMenu(game, { back: self, done: (g) => layout(g) });
     if (id === 'base') return S.travel ? undefined : startTravel(game, BASE_LOC);
@@ -700,7 +754,9 @@ export function createWorldMapScene() {
       if (inp.wasPressed('Equal') || inp.wasPressed('NumpadAdd')) nav(game, 'zoomIn');
       if (inp.wasPressed('Minus') || inp.wasPressed('NumpadSubtract')) nav(game, 'zoomOut');
       if (inp.wasPressed('KeyC')) nav(game, 'center');
-      for (const b of S.buttons) if (b.id === 'enter' || b.id === 'menu') b.disabled = !!S.travel;
+      for (const b of S.buttons) if (b.id === 'enter' || b.id === 'menu' || b.id === 'transit') b.disabled = !!S.travel || !!b.none;
+      const sk = S.buttons.find((b) => b.id === 'enter');
+      if (sk) Object.assign(sk, S.travel ? { id2: 'skip', label: t('map.skip'), key: 'Space', disabled: !!S.skip } : { id2: null, label: t('map.enter'), key: 'Enter' });
       const rb = S.buttons.find((b) => b.id === 'rest');
       if (rb) { rb.disabled = !!S.travel || !canCampAt(sv.location); rb.reason = S.travel ? t('rest.travel') : t('rest.notHere'); }
       S.hover = hitButton(S.buttons, m);
@@ -713,13 +769,20 @@ export function createWorldMapScene() {
       if (S.travel) {
         if (m.released) S.drag = null;
         // while travelling: zoom / centre / night and the panels work (the trip waits while a panel is open)
-        if (m.clicked && S.hover && !S.hover.disabled) { play('uiClick'); S.drag = null; nav(game, S.hover.id); return; }
+        if (m.clicked && S.hover && !S.hover.disabled) { play('uiClick'); S.drag = null; nav(game, S.hover.id2 || S.hover.id); return; }
+        // «Пропустить путь»: Space / double click — walk to the arrival without the animation (encounter rolls stay)
+        if (m.clicked && !S.hover) { if (S.lastTravelClick && S.time - S.lastTravelClick < 0.35) S.skip = true; S.lastTravelClick = S.time; }
+        if (inp.wasPressed('Space')) S.skip = true;
         if (inp.wasPressed('KeyP')) return nav(game, 'party');
         if (inp.wasPressed('KeyR')) return nav(game, 'rep');
         if (inp.wasPressed('KeyJ')) return nav(game, 'journal');
         if (inp.wasPressed('KeyG')) return nav(game, 'gear');
         if (inp.wasPressed('KeyB')) return nav(game, 'codex');
-        if (!S.paused) stepTravel(game, dt);
+        if (!S.paused) {
+          if (S.skip) { for (let k = 0; k < 4000 && S.travel && !S.paused && game.scene === self && !game.modals.length; k++) stepTravel(game, 0.05); }
+          else stepTravel(game, dt);
+        }
+        if (!S.travel) S.skip = false;
         return;
       }
       const inMap = !S.hover && m.inside && m.y >= S.area.y && m.y < S.area.y + S.area.h;
@@ -738,6 +801,7 @@ export function createWorldMapScene() {
       }
       if (inp.wasPressed('Enter')) nav(game, 'enter');
       else if (inp.wasPressed('KeyN')) nav(game, 'night');
+      else if (inp.wasPressed('KeyT')) { const b = S.buttons.find((x) => x.id === 'transit'); if (b?.disabled) game.toast(b.reason, 'c'); else nav(game, 'transit'); }
       else if (inp.wasPressed('KeyZ')) { const b = S.buttons.find((x) => x.id === 'rest'); if (b?.disabled) game.toast(b.reason, 'c'); else nav(game, 'rest'); }
       else if (inp.wasPressed('KeyH') && baseOpen(sv)) { const b = S.buttons.find((x) => x.id === 'base'); if (b?.disabled) game.toast(b.reason, 'c'); else nav(game, 'base'); }
       else if (inp.wasPressed('KeyP')) nav(game, 'party');
