@@ -4,10 +4,10 @@
 //           proficiencies?: { weaponTypes, dmgTypes, armor }, phobia?: { trigger, effect? } | [...],
 //           talents?, activeCombat?, gadget?, multiclass?: { cls, path? }, equipment?,
 //           asi?: [{ level, stats: { str: 2 } | { str: 1, dex: 1 } } | { level, talent }] }  (levels-20.md)
-// validateBuild(build, data) -> [{ field, code, msg }] (empty = valid).
+// validateBuild(build, data) -> [{ field, code, msg }] (empty = valid). Point buy: pointBuyTotal(phobias) = 27 + 2 per phobia.
 
 import { STATS, normalizeData, pointBuyCost, isAllowed, buildCreature, MULTICLASS_MIN_LEVEL, asiLevelsFor, ASI_STAT_MAX } from './character.js';
-import { defaultProficiencies, proficiencyCost, profPoints, CREATION_MAX_TIER, ARMOR_ORDER } from './equipment.js';
+import { defaultProficiencies, proficiencyCost, profPoints, CREATION_MAX_TIER, ARMOR_ORDER, ownWeaponType } from './equipment.js';
 import { SKILL_STATS } from './skills.js';
 import { PHOBIA_COMBAT_TRIGGERS, PHOBIA_WORLD_TRIGGERS } from './combat.js';
 
@@ -19,6 +19,12 @@ export const STAT_MAX = 15;
 export const BASE_SKILLS = 2;
 export const EXTRA_SKILLS = 2;
 export const MAX_PHOBIAS = 3;
+/** Each phobia taken at creation (up to MAX_PHOBIAS) adds this many point-buy points. */
+export const PHOBIA_STAT_POINTS = 2;
+/** Point-buy budget with `phobias` phobias taken (27 … 33). */
+export const pointBuyTotal = (phobias = 0) => POINT_BUY_TOTAL + Math.min(MAX_PHOBIAS, Math.max(0, phobias || 0)) * PHOBIA_STAT_POINTS;
+/** Can a phobia be dropped without overspending the stats? (stats — before racial bonuses) */
+export const canDropPhobia = (stats, phobias) => pointBuyCost(stats) <= pointBuyTotal(phobias - 1);
 
 export function validateBuild(build, data) {
   const D = normalizeData(data);
@@ -34,7 +40,9 @@ export function validateBuild(build, data) {
   const pathDef = cls && build.path ? (cls.paths || []).find((p) => p.id === build.path) : null;
   if (cls && build.path && !pathDef) err('path', 'unknownPath', `У класса "${cls.id}" нет пути "${build.path}"`);
 
-  // stats
+  // stats (phobias add PHOBIA_STAT_POINTS each to the budget)
+  const phList = build.phobia ? (Array.isArray(build.phobia) ? build.phobia : [build.phobia]) : [];
+  const total = pointBuyTotal(phList.length);
   const st = build.stats || {};
   for (const k of STATS) {
     const v = st[k];
@@ -43,8 +51,8 @@ export function validateBuild(build, data) {
   }
   if (STATS.every((k) => Number.isInteger(st[k]))) {
     const cost = pointBuyCost(st);
-    if (cost > POINT_BUY_TOTAL) err('stats', 'overspent', `Потрачено ${cost} очков из ${POINT_BUY_TOTAL}`);
-    else if (cost < POINT_BUY_TOTAL) err('stats', 'unspent', `Не распределено ${POINT_BUY_TOTAL - cost} очков`);
+    if (cost > total) err('stats', 'overspent', `Потрачено ${cost} очков из ${total}`);
+    else if (cost < total) err('stats', 'unspent', `Не распределено ${total - cost} очков`);
   }
   if (build.anyStat && !STATS.includes(build.anyStat)) err('anyStat', 'unknownStat', `Неизвестная характеристика "${build.anyStat}"`);
 
@@ -64,7 +72,7 @@ export function validateBuild(build, data) {
     const cost = proficiencyCost(def, build.proficiencies);
     const budget = profPoints(level);
     if (cost > budget) err('proficiencies', 'profOverspent', `Владения: потрачено ${cost} из ${budget} очков`);
-    const ownType = (pathDef && pathDef.weapon && pathDef.weapon.type) || (cls.weapon && cls.weapon.type) || null;
+    const ownType = ownWeaponType(cls, pathDef);
     for (const k of ['weaponTypes', 'dmgTypes', 'armor']) {
       for (const [t, v] of Object.entries(build.proficiencies[k] || {})) {
         if (!Number.isInteger(v) || v < 1 || v > 4) err('proficiencies', 'tierRange', `${k}.${t} = ${v}: ступени 1–4`);
@@ -77,7 +85,7 @@ export function validateBuild(build, data) {
   }
 
   // phobias (optional, canon: «фобии по желанию»)
-  const ph = build.phobia ? (Array.isArray(build.phobia) ? build.phobia : [build.phobia]) : [];
+  const ph = phList;
   if (ph.length > MAX_PHOBIAS) err('phobia', 'tooMany', `Не больше ${MAX_PHOBIAS} фобий`);
   for (const p of ph) {
     if (!PHOBIA_COMBAT_TRIGGERS.includes(p.trigger) && !PHOBIA_WORLD_TRIGGERS.includes(p.trigger)) {

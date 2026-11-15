@@ -12,7 +12,7 @@ import { applyWithdrawal, clearWithdrawal } from '../game/src/rules/aftermath.js
 import { skillCheck, skillTier } from '../game/src/rules/skills.js';
 import { levelForXp, xpToNext, battleXp, questXp, gainXp, rebuildHero, XP_THRESHOLDS, levelGains, xpScale, enemyXpForLevel } from '../game/src/rules/progression.js';
 import { SUMMON_HP_PER_LEVEL, SUMMON_DMG_PER_LEVEL, grantSafePassage, hasSafePassage } from '../game/src/rules/combat.js';
-import { validateBuild } from '../game/src/rules/build.js';
+import { validateBuild, pointBuyTotal, canDropPhobia, PHOBIA_STAT_POINTS, POINT_BUY_TOTAL } from '../game/src/rules/build.js';
 import { profPoints, proficiencyCost, defaultProficiencies } from '../game/src/rules/equipment.js';
 import { simulateBattle } from '../game/src/rules/simulate.js';
 import { createSurface, radiusTiles, floorAt, gasAt, surfaceHarm, surfaceEnterPreview, tierOf } from '../game/src/rules/surfaces.js';
@@ -973,7 +973,7 @@ test('skillCheck: base +2 / extra +1 skills, stealth disadvantage from armour', 
 test('validateBuild: valid build, stats, skills, proficiencies, phobia, multiclass, equipment', () => {
   const ok = { race: 'human', cls: 'zabivnoy', path: 'titan', stats: DATA.CLASSES.zabivnoy.recommended,
     skills: { base: ['athletics', 'intimidation'], extra: ['perception', 'survival'] },
-    proficiencies: { weaponTypes: { pistol: 3 }, armor: {} }, phobia: { trigger: 'water' },
+    proficiencies: { weaponTypes: { pistol: 3 }, armor: {} },
     equipment: { weapon: 'sabre', armor: 'plate' } };
   assert.deepEqual(validateBuild(ok, DATA), []);
   const codes = (b) => validateBuild(b, DATA).map((e) => e.code);
@@ -985,6 +985,11 @@ test('validateBuild: valid build, stats, skills, proficiencies, phobia, multicla
   assert.ok(codes({ ...ok, proficiencies: { weaponTypes: { pistol: 3, rifle: 3, smg: 3, bow: 3 } } }).includes('profOverspent'));
   assert.ok(codes({ ...ok, proficiencies: { weaponTypes: { pistol: 4 } } }).includes('masteryAtCreation'));
   assert.ok(codes({ ...ok, phobia: { trigger: 'spiders' } }).includes('unknownTrigger'));
+  // phobias add PHOBIA_STAT_POINTS each: 27 spent + 1 phobia → 2 unspent; spend them → valid
+  assert.ok(codes({ ...ok, phobia: { trigger: 'water' } }).includes('unspent'));
+  const rec = ok.stats, k2 = Object.keys(rec).find((k) => rec[k] <= 11);
+  assert.deepEqual(codes({ ...ok, phobia: [{ trigger: 'water' }], stats: { ...rec, [k2]: rec[k2] + 2 } }), []);
+  assert.ok(codes({ ...ok, stats: { ...rec, [k2]: rec[k2] + 2 } }).includes('overspent'));
   assert.ok(codes({ ...ok, multiclass: { cls: 'itishnik' } }).includes('level'));
   assert.ok(codes({ ...ok, race: 'skeleton' }).includes('raceNotAllowed'));
   assert.ok(codes({ ...ok, equipment: { weapon: 'greatsword', offhand: 'buckler' } }).includes('build'));
@@ -1002,6 +1007,14 @@ test('multiclass (level 3+): second class abilities up to level − 2 and the MU
   assert.equal(rebuildHero(h, { level: 5, data: DATA }).multiclass.cls, 'itishnik');
 });
 
+test('creation: phobias give point-buy points; slider list (all types, budget cap, drop-phobia guard)', () => {
+  assert.equal(PHOBIA_STAT_POINTS, 2);
+  assert.equal(pointBuyTotal(0), POINT_BUY_TOTAL); assert.equal(pointBuyTotal(2), POINT_BUY_TOTAL + 4); assert.equal(pointBuyTotal(9), POINT_BUY_TOTAL + 6);
+  const st29 = { str: 15, dex: 15, con: 15, int: 8, wil: 8, cha: 8, per: 10 }; // 9·3 + 2 = 29
+  assert.equal(pointBuyCost(st29), 29);
+  assert.equal(canDropPhobia(st29, 1), false, '29 spent: the only phobia cannot be dropped');
+  assert.equal(canDropPhobia(st29, 2), true);
+});
 console.log('v3.1: item properties (reach, thrown, arc, area, charges, enr, overheat, extra, onCrit, only, zone, ...)');
 const W3 = (o) => ({ slot: 'weapon', stat: 'str', range: 1, dmgType: 'pierce', dice: '1d8', ...o });
 const D31 = {
@@ -4776,5 +4789,64 @@ console.log('metric movement (metric-combat.md stage 1)');
   });
 }
 
+{
+  console.log('creation screen: proficiency sliders, phobia points');
+  const CB = await import('../game/src/scenes/create-build.js');
+  const EQ = await import('../game/src/rules/equipment.js');
+  const WT = (await import('../game/src/data/items/weapons.js')).WEAPON_TYPES;
+  const toasts = [];
+  const mouse = { x: 0, y: 0, clicked: false, down: false, wheel: 0, inside: true };
+  const ctx = new Proxy({ measureText: (s) => ({ width: String(s).length * 7 }) }, { get: (o, k) => (k in o ? o[k] : () => {}), set: () => true });
+  const game = { data: GAME_DATA, ctx, width: 1280, height: 720, input: { mouse, typed: () => [], wasPressed: () => false }, toast: (m) => toasts.push(m), setScene() {} };
+  const sc = CB.createBuildScene({ race: 'human', cls: 'ranger', path: null, name: 'T' }, null, () => {});
+  sc.enter(game);
+  const S = sc.S;
+  const click = (b, x) => { Object.assign(mouse, { x: x ?? b.x + b.w / 2, y: b.y + b.h / 2, clicked: true, down: false }); sc.update(game, 1 / 60); mouse.clicked = false; sc.update(game, 1 / 60); };
+  test('slider list: every armour / weapon / damage type', () => {
+    const rows = CB.profListRows().filter((r) => !r.head);
+    for (const a of EQ.ARMOR_ORDER) assert.ok(rows.some((r) => r.k === 'armor' && r.id === a), a);
+    for (const w of Object.keys(WT)) assert.ok(rows.some((r) => r.k === 'weaponTypes' && r.id === w), w);
+    for (const d of EQ.DMG_TYPES) assert.ok(rows.some((r) => r.k === 'dmgTypes' && r.id === d), d);
+    assert.ok(CB.tierEffect('weaponTypes', 'pistol', 3).includes('+1'));
+  });
+  test('slider: click on a tick sets the tier, capped by the proficiency budget', () => {
+    const row = (pred) => S.buttons.find((b) => b.kind === 'prof' && pred(b.id));
+    // armour rows are at the top of the list (visible without scrolling)
+    let b = row((r) => r.k === 'armor' && r.id === 'cloth');
+    const base = b.tier;
+    assert.ok(base >= 1);
+    b = row((r) => r.k === 'armor' && r.id === 'mech');
+    assert.ok(b, 'mech row visible');
+    click(b, b.ticks[2]); // tier 3: mech base 1 → 3 costs 2
+    const spent = () => EQ.proficiencyCost(EQ.defaultProficiencies(GAME_DATA.CLASSES.ranger, {}), S.chosen);
+    const mech = S.chosen.armor.mech;
+    assert.ok(mech > 1 && spent() <= EQ.profPoints(1));
+    // scroll to the weapons and push several to tier 3: never exceeds the budget, a hint appears
+    for (let i = 0; i < 12; i++) {
+      mouse.x = 200; mouse.y = 560; mouse.wheel = 1; sc.update(game, 1 / 60); mouse.wheel = 0;
+      for (const bb of S.buttons.filter((x) => x.kind === 'prof' && x.id.k === 'weaponTypes')) click(bb, bb.ticks[2]);
+    }
+    assert.ok(spent() <= EQ.profPoints(1), `spent ${spent()}`);
+    assert.equal(spent(), EQ.profPoints(1));
+    assert.ok(S.profMsg && /очков/.test(S.profMsg.text), 'limit hint');
+    assert.ok(S.profScroll.off > 0, 'list scrolled');
+  });
+  test('phobias: +2 points each; a phobia cannot be dropped while those points are spent', () => {
+    const ph = () => S.buttons.find((b) => b.kind === 'phobia' && b.id === 'fire');
+    click(ph());
+    assert.deepEqual(S.phobia, ['fire']);
+    const plus = () => S.buttons.find((b) => b.kind === 'stat+' && !b.disabled);
+    for (let i = 0; i < 4 && plus(); i++) click(plus());
+    assert.equal(pointBuyCost(S.stats), POINT_BUY_TOTAL + PHOBIA_STAT_POINTS);
+    assert.ok(!plus(), 'no more points');
+    click(ph());
+    assert.deepEqual(S.phobia, ['fire'], 'drop blocked');
+    assert.ok(toasts.some((m) => /освободи 2/i.test(m)));
+    click(S.buttons.find((b) => b.kind === 'stat-' && !b.disabled && S.stats[b.id] > 8));
+    click(S.buttons.find((b) => b.kind === 'stat-' && !b.disabled && S.stats[b.id] > 8));
+    click(ph());
+    assert.deepEqual(S.phobia, [], 'dropped after freeing 2 points');
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

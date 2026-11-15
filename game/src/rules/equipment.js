@@ -37,6 +37,8 @@ export const WEAPON_TYPES = [
   'sabre', 'polearm', 'fist', 'knife', 'sword', 'axe', 'hammer', 'katana', 'bastard', 'twoHanded',
   'pistol', 'smg', 'rifle', 'auto', 'mg', 'launcher', 'crossbow', 'bow', 'throw', 'bolter',
 ];
+/** Damage types a player can train (creation list; text keys `dmg.<type>`). */
+export const DMG_TYPES = ['slash', 'pierce', 'blunt', 'energy', 'fire', 'electric', 'toxin', 'proxy', 'cyber', 'cringe', 'psychic'];
 /** Proficiency tiers (canon): 1 none, 2 can use, 3 proficient, 4 mastery. */
 export const TIERS = { none: 1, can: 2, proficient: 3, mastery: 4 };
 /** Attack bonus by weapon-type tier (tier 1 also gives disadvantage). */
@@ -50,6 +52,15 @@ export const LIGHT_MASTERY_BONUS_ACTIONS = 1;
 export const profPoints = (level) => 2 + Math.max(1, level || 1);
 /** Highest tier a player may buy at creation (mastery only for the class's own weapon type). */
 export const CREATION_MAX_TIER = 3;
+
+/** Tier a proficiency has without any choice (the slider's floor). */
+export const baseTier = (defaults, k, id) => defaults[k][id] || (k === 'weaponTypes' ? 2 : 1);
+/** The class's own weapon type (mastery allowed at creation). */
+export const ownWeaponType = (cls, pathDef) => (pathDef && pathDef.weapon && pathDef.weapon.type) || (cls && cls.weapon && cls.weapon.type) || null;
+/** Highest tier a level-1 player may buy for one proficiency. */
+export const creationMaxTier = (k, id, ownType) => (k === 'weaponTypes' && id === ownType ? 4 : CREATION_MAX_TIER);
+/** Points to raise one proficiency from its base tier to `tier` (same pricing as proficiencyCost). */
+export const tierCost = (defaults, k, id, tier) => proficiencyCost(defaults, { [k]: { [id]: tier } });
 
 /** Reach weapons (props.reach): melee at this distance. */
 export const REACH_RANGE = 2;

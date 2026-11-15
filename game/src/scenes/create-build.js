@@ -1,11 +1,15 @@
 // Flexible creation («Свободная раскладка», v3): point buy 27, skills 2 base + 2 extra, proficiencies within
-// profPoints, optional phobias, clothes colour (sprite variant), backstory, starter kit with choices.
+// profPoints (scrollable slider list: every armour / weapon / damage type), optional phobias (+PHOBIA_STAT_POINTS
+// to the point buy each), backstory, starter kit with choices.
 // Errors come from rules/build.js validateBuild; «Далее» is locked while there are errors.
 // createBuildScene(hero {race, cls, path, name}, back scene, onNext(game, hero + build fields))
 import { t } from '../data/text/index.js';
 import { buildCreature, mod, STATS, pointBuyCost } from '../rules/character.js';
-import { validateBuild, POINT_BUY_TOTAL, STAT_MIN, STAT_MAX, BASE_SKILLS, EXTRA_SKILLS, MAX_PHOBIAS } from '../rules/build.js';
-import { defaultProficiencies, mergeProficiencies, proficiencyCost, profPoints, CREATION_MAX_TIER, ARMOR_ORDER } from '../rules/equipment.js';
+import { validateBuild, POINT_BUY_TOTAL, STAT_MIN, STAT_MAX, BASE_SKILLS, EXTRA_SKILLS, MAX_PHOBIAS, PHOBIA_STAT_POINTS, pointBuyTotal, canDropPhobia } from '../rules/build.js';
+import { defaultProficiencies, proficiencyCost, profPoints, ARMOR_ORDER, DMG_TYPES, baseTier, ownWeaponType, creationMaxTier, tierCost,
+  WEAPON_TIER_HIT, DMG_TYPE_TIER_DMG, HEAVY_MASTERY_KB, LIGHT_MASTERY_BONUS_ACTIONS, MECH_MIN_TIER } from '../rules/equipment.js';
+import { WEAPON_TYPES } from '../data/items/weapons.js';
+import { createScroll, updateScroll, beginClip, endClip, drawScrollbar, SCROLLBAR_W } from '../ui/scroll.js';
 import { PHOBIA_COMBAT_TRIGGERS, PHOBIA_WORLD_TRIGGERS } from '../rules/combat.js';
 import { SKILLS } from '../data/talents.js';
 import { SPECIALIZATIONS } from '../data/skills.js';
@@ -21,6 +25,30 @@ const BASE_W = 1280, BASE_H = 720;
 const STORY_MAX = 240;
 /** Clothes colours: palette keys (STYLE palette). null — class default. */
 const SMALL = '12px monospace';
+const TINY = '10px monospace';
+/** Proficiency slider list: view (relative to ox/oy), row / group heights, tick spacing; tiers 1..4 always drawn. */
+const PL = { x: 24, y: 440, w: 400, h: 264, row: 24, head: 20, tick0: 168, tickW: 58 };
+const TOP_TIER = 4;
+const fmt = (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => o[k] ?? '');
+
+/** Full proficiency list for the slider screen: groups + rows { k, id, name }. */
+export function profListRows() {
+  const rows = [];
+  const group = (k, ids, name) => { rows.push({ head: true, k }); for (const id of ids) rows.push({ k, id, name: name(id) }); };
+  group('armor', ARMOR_ORDER, armorTypeName);
+  group('weaponTypes', Object.keys(WEAPON_TYPES), weaponTypeName);
+  group('dmgTypes', DMG_TYPES, (d) => t(`dmg.${d}`));
+  return rows;
+}
+
+/** What a proficiency tier gives (one line). */
+export function tierEffect(k, id, tier) {
+  if (k === 'weaponTypes') return fmt(t(`prof.eff.weaponTypes.${tier}`), { n: WEAPON_TIER_HIT[tier] });
+  if (k === 'dmgTypes') return fmt(t(`prof.eff.dmgTypes.${tier}`), { n: DMG_TYPE_TIER_DMG[tier] });
+  if (id === 'mech' && tier < MECH_MIN_TIER) return t('prof.eff.armor.1');
+  if (tier === 4) return fmt(t(`prof.eff.armor.4.${id}`), { n: id === 'light' ? LIGHT_MASTERY_BONUS_ACTIONS : HEAVY_MASTERY_KB });
+  return t(id === 'mech' && tier === 3 ? 'prof.eff.armor.mech3' : `prof.eff.armor.${tier}`);
+}
 
 /** Weapon / armour choices of the starter kit: the kit item + same-tier alternatives the class handles well. */
 export function kitOptions(cls, pathId, prof) {
@@ -37,9 +65,10 @@ export function createBuildScene(hero, back, onNext) {
   const st = {
     stats: Object.fromEntries(STATS.map((k) => [k, STAT_MIN])), base: [], extra: [], chosen: { weaponTypes: {}, dmgTypes: {}, armor: {} },
     phobia: [], look: null, story: '', bg: hero.bg || null, focus: null, weapon: null, armor: null, time: 0,
+    profScroll: createScroll(), profDrag: null, profMsg: null, profRows: profListRows(),
   };
   let buttons = [], hover = null, ox = 0, oy = 0, errors = [], built = null, opts = null, defaults = null;
-  let self;
+  let self, ownType = null;
 
   function init(game) {
     const cls = game.data.CLASSES[hero.cls];
@@ -52,22 +81,36 @@ export function createBuildScene(hero, back, onNext) {
     st.base = spec.slice(0, BASE_SKILLS);
     st.extra = (SPECIALIZATIONS[hero.cls]?.related || []).slice(0, EXTRA_SKILLS);
     defaults = defaultProficiencies(cls, pathDef);
+    ownType = ownWeaponType(cls, pathDef);
     opts = kitOptions(hero.cls, hero.path, defaults);
     st.weapon = opts.weapons[0] || null;
     st.armor = opts.armor[0] || null;
   }
 
-  const profRows = (game) => {
-    const kw = ITEMS[st.weapon];
-    const cls = game.data.CLASSES[hero.cls];
-    const rows = ARMOR_ORDER.map((a) => ({ k: 'armor', id: a, name: `${t('create.armor')}: ${armorTypeName(a)}` }));
-    const wt = [...new Set([kw?.type, ...opts.weapons.map((id) => ITEMS[id]?.type)].filter(Boolean))].slice(0, 2);
-    for (const w of wt) rows.push({ k: 'weaponTypes', id: w, name: `${t('create.weapon')}: ${weaponTypeName(w)}` });
-    const dt = kw?.dmgType || cls.weapon?.dmgType;
-    if (dt) rows.push({ k: 'dmgTypes', id: dt, name: `${t('prof.dmgType')}: ${t(`dmg.${dt}`)}` });
-    return rows;
-  };
-  const tierOf = (k, id) => mergeProficiencies(defaults, st.chosen)[k][id] ?? (k === 'weaponTypes' ? 2 : 1);
+  const tierOf = (k, id) => st.chosen[k][id] ?? baseTier(defaults, k, id);
+  const pointsTotal = () => pointBuyTotal(st.phobia.length);
+  const view = () => ({ x: ox + PL.x, y: oy + PL.y, w: PL.w, h: PL.h });
+  const tickX = (tier) => ox + PL.x + PL.tick0 + (tier - 1) * PL.tickW;
+  const profContentH = () => st.profRows.reduce((h, r) => h + (r.head ? PL.head : PL.row), 0);
+  /** Set one proficiency to `want`, clamped by the class floor, the creation cap and the point budget. */
+  function setTier(game, r, want) {
+    const floor = baseTier(defaults, r.k, r.id), max = creationMaxTier(r.k, r.id, ownType), cur = tierOf(r.k, r.id);
+    const budget = profPoints(1), others = profSpent() - tierCost(defaults, r.k, r.id, cur);
+    let v = Math.max(floor, Math.min(max, want)), msg = null;
+    if (want < floor) msg = fmt(t('create.profFloor'), { name: r.name });
+    else if (want > max) msg = fmt(t('create.profMastery'), { name: r.name });
+    const target = v;
+    while (v > floor && others + tierCost(defaults, r.k, r.id, v) > budget) v--;
+    if (v < target) msg = fmt(t('create.profNoPoints'), { name: r.name, need: tierCost(defaults, r.k, r.id, target) - tierCost(defaults, r.k, r.id, cur), left: budget - profSpent() });
+    if (msg) st.profMsg = { text: msg, until: st.time + 3 };
+    else st.profMsg = null;
+    if (v === cur) { if (msg && !st.profDrag?.warned) { play('miss'); if (st.profDrag) st.profDrag.warned = true; } return; }
+    if (v <= floor) delete st.chosen[r.k][r.id]; else st.chosen[r.k][r.id] = v;
+    play('uiClick');
+    revalidate(game);
+    layout(game);
+  }
+  const nearestTier = (x) => Math.max(1, Math.min(TOP_TIER, Math.round((x - tickX(1)) / PL.tickW) + 1));
   const profSpent = () => proficiencyCost(defaults, st.chosen);
 
   function buildSpec() {
@@ -96,15 +139,21 @@ export function createBuildScene(hero, back, onNext) {
     STATS.forEach((k, i) => {
       const y = oy + 100 + i * 38;
       buttons.push({ kind: 'stat-', id: k, label: '−', x: ox + 180, y, w: 32, h: 32, disabled: st.stats[k] <= STAT_MIN });
-      buttons.push({ kind: 'stat+', id: k, label: '+', x: ox + 262, y, w: 32, h: 32, disabled: st.stats[k] >= STAT_MAX || costIf(k, 1) > POINT_BUY_TOTAL });
+      buttons.push({ kind: 'stat+', id: k, label: '+', x: ox + 262, y, w: 32, h: 32, disabled: st.stats[k] >= STAT_MAX || costIf(k, 1) > pointsTotal() });
     });
-    // A: proficiencies
-    profRows(game).forEach((r, i) => {
-      const y = oy + 436 + i * 30;
-      const v = tierOf(r.k, r.id), def = defaults[r.k][r.id] ?? (r.k === 'weaponTypes' ? 2 : 1);
-      buttons.push({ kind: 'prof-', id: r, label: '−', x: ox + 262, y, w: 26, h: 26, font: SMALL, disabled: v <= def });
-      buttons.push({ kind: 'prof+', id: r, label: '+', x: ox + 398, y, w: 26, h: 26, font: SMALL, disabled: v >= CREATION_MAX_TIER });
-    });
+    // A: proficiencies — one 'prof' button per visible slider row (b.ticks: x of tiers 1..4, for clicks / tests)
+    const v = view();
+    let cy = v.y - st.profScroll.off;
+    for (const r of st.profRows) {
+      const h = r.head ? PL.head : PL.row;
+      r.y = cy;
+      if (!r.head && cy + h / 2 > v.y && cy + h / 2 < v.y + v.h) {
+        const y0 = Math.max(v.y, cy), y1 = Math.min(v.y + v.h, cy + h);
+        buttons.push({ kind: 'prof', id: r, label: '', x: v.x, y: y0, w: v.w - SCROLLBAR_W - 4, h: y1 - y0, rowY: cy,
+          ticks: [1, 2, 3, 4].map(tickX), tier: tierOf(r.k, r.id) });
+      }
+      cy += h;
+    }
     // B: skills (2 columns)
     Object.keys(SKILLS).forEach((id, i) => {
       const col = i % 2, row = Math.floor(i / 2);
@@ -135,17 +184,24 @@ export function createBuildScene(hero, back, onNext) {
 
   function choose(game, b) {
     if (b.disabled) { play('miss'); return; }
+    if (b.kind === 'prof') {
+      const m = game.input.mouse;
+      if (m.x < tickX(1) - PL.tickW / 2) return; // the name column: hover only
+      st.profDrag = { r: b.id, warned: false };
+      setTier(game, b.id, nearestTier(m.x));
+      return;
+    }
+    if (b.kind === 'phobia' && st.phobia.includes(b.id) && !canDropPhobia(st.stats, st.phobia.length)) {
+      play('miss');
+      game.toast(fmt(t('create.phobiaFree'), { n: PHOBIA_STAT_POINTS }), 'c');
+      return;
+    }
     play('uiClick');
     st.focus = b.kind === 'story' ? 'story' : null;
     if (b.kind === 'bg') { openBackstoryPick(game, { race: hero.race, current: st.bg, onPick: (g, id) => { st.bg = id; layout(g); } }); return; }
     if (b.kind === 'stat-') st.stats[b.id]--;
     else if (b.kind === 'stat+') st.stats[b.id]++;
-    else if (b.kind === 'prof+' || b.kind === 'prof-') {
-      const r = b.id;
-      const v = tierOf(r.k, r.id) + (b.kind === 'prof+' ? 1 : -1);
-      const def = defaults[r.k][r.id] ?? (r.k === 'weaponTypes' ? 2 : 1);
-      if (v <= def) delete st.chosen[r.k][r.id]; else st.chosen[r.k][r.id] = v;
-    } else if (b.kind === 'skill') {
+    else if (b.kind === 'skill') {
       // cycle: — → base (+2) → extra (+1) → —
       const id = b.id;
       if (st.base.includes(id)) { st.base = st.base.filter((x) => x !== id); if (st.extra.length < EXTRA_SKILLS) st.extra.push(id); }
@@ -174,9 +230,10 @@ export function createBuildScene(hero, back, onNext) {
 
   // ---------------------------------------------------------------- render
   function drawStats(ctx) {
-    const spent = pointBuyCost(st.stats);
+    const spent = pointBuyCost(st.stats), total = pointsTotal(), bonus = total - POINT_BUY_TOTAL;
     text(ctx, t('create.pointBuy'), ox + 24, oy + 72, C['4'], FONT_B);
-    text(ctx, `${t('create.points')}: ${POINT_BUY_TOTAL - spent} / ${POINT_BUY_TOTAL}`, ox + 424, oy + 72, spent === POINT_BUY_TOTAL ? C.j : spent > POINT_BUY_TOTAL ? C.c : C.a, FONT_B, 'right');
+    const pts = `${t('create.points')}: ${total - spent} / ${POINT_BUY_TOTAL}${bonus ? ` + ${bonus} (${t('create.pointsPhobia')})` : ''}`;
+    text(ctx, pts, ox + 424, oy + 72, spent === total ? C.j : spent > total ? C.c : C.a, FONT_B, 'right');
     STATS.forEach((k, i) => {
       const y = oy + 100 + i * 38;
       const final = built?.stats?.[k] ?? st.stats[k];
@@ -187,16 +244,61 @@ export function createBuildScene(hero, back, onNext) {
       text(ctx, `→ ${final} (${m >= 0 ? '+' : ''}${m})`, ox + 304, y + 8, m > 0 ? C.j : m < 0 ? C.c : C['4']);
     });
     text(ctx, t('create.pointBuyHint'), ox + 24, oy + 368, C['3'], SMALL);
-    // proficiencies
-    const budget = profPoints(1), spentP = profSpent();
-    text(ctx, t('create.profs'), ox + 24, oy + 408, C['4'], FONT_B);
-    text(ctx, `${t('create.points')}: ${budget - spentP} / ${budget}`, ox + 424, oy + 408, spentP > budget ? C.c : spentP === budget ? C.j : C.a, FONT_B, 'right');
-    // need the game for profRows: rows were laid out already, read from the buttons
+    drawProfs(ctx);
+  }
+
+  function drawProfs(ctx) {
+    const budget = profPoints(1), spentP = profSpent(), v = view();
+    text(ctx, t('create.profs'), ox + 24, oy + 392, C['4'], FONT_B);
+    text(ctx, `${t('create.points')}: ${budget - spentP} / ${budget}`, ox + 424, oy + 392, spentP > budget ? C.c : spentP === budget ? C.j : C.a, FONT_B, 'right');
+    // hint line: limit message > hovered tick > usage hint
+    let hint = t('create.profHint'), hc = C['3'];
+    if (st.profMsg && st.time < st.profMsg.until) { hint = st.profMsg.text; hc = C.c; }
+    else if (hover?.kind === 'prof' && hover.hoverTier) {
+      const r = hover.id, tr = hover.hoverTier;
+      hint = `${r.name} → ${tierName(tr)}: ${tierEffect(r.k, r.id, tr)}`; hc = C['5'];
+    }
+    text(ctx, fit(ctx, hint, v.w, SMALL), v.x, oy + 410, hc, SMALL);
+    for (let tr = 1; tr <= TOP_TIER; tr++) text(ctx, tierName(tr), tickX(tr), oy + 428, C['4'], TINY, 'center');
+    beginClip(ctx, v);
+    for (const r of st.profRows) {
+      if (r.y + PL.row < v.y || r.y > v.y + v.h) continue;
+      if (r.head) { text(ctx, t(`create.profGroup.${r.k}`), v.x, r.y + 5, C.a, SMALL); continue; }
+      const cur = tierOf(r.k, r.id), floor = baseTier(defaults, r.k, r.id), max = creationMaxTier(r.k, r.id, ownType);
+      const cyy = r.y + PL.row / 2, isHover = hover?.kind === 'prof' && hover.id === r;
+      if (isHover) { ctx.fillStyle = C['1']; ctx.fillRect(v.x, r.y + 1, v.w - SCROLLBAR_W - 4, PL.row - 2); }
+      text(ctx, fit(ctx, r.name, PL.tick0 - 22, SMALL), v.x + 4, r.y + 6, cur > floor ? C.h : C['5'], SMALL);
+      ctx.fillStyle = C['3'];
+      ctx.fillRect(tickX(1), cyy - 1, tickX(max) - tickX(1), 2);
+      ctx.fillStyle = cur > floor ? C.j : C['4'];
+      ctx.fillRect(tickX(1), cyy - 2, tickX(cur) - tickX(1), 4);
+      for (let tr = 1; tr <= TOP_TIER; tr++) {
+        const x = tickX(tr);
+        if (tr > max) { text(ctx, '×', x, r.y + 5, C['2'], SMALL, 'center'); continue; }
+        ctx.fillStyle = tr <= cur ? (tr <= floor ? C['4'] : C.j) : C['2'];
+        const s = tr === cur ? 6 : 4;
+        ctx.fillRect(x - s, cyy - s, s * 2, s * 2);
+        if (isHover && hover.hoverTier === tr) { ctx.strokeStyle = C.h; ctx.lineWidth = 1; ctx.strokeRect(x - 7.5, cyy - 7.5, 15, 15); }
+      }
+      // price of the next step (the slider's own cost is in the tooltip)
+      const nextCost = cur < max ? tierCost(defaults, r.k, r.id, cur + 1) - tierCost(defaults, r.k, r.id, cur) : 0;
+      text(ctx, cur < max ? `+${nextCost}` : t('create.profMax'), v.x + v.w - SCROLLBAR_W - 6, r.y + 6, cur < max && nextCost > budget - spentP ? C.c : C['4'], SMALL, 'right');
+    }
+    endClip(ctx);
+    drawScrollbar(ctx, st.profScroll, v);
     for (const b of buttons) {
-      if (b.kind !== 'prof-') continue;
+      if (b.kind !== 'prof') continue;
       const r = b.id;
-      text(ctx, fit(ctx, r.name, 232, SMALL), ox + 24, b.y + 7, C['5'], SMALL);
-      text(ctx, `${tierOf(r.k, r.id)} · ${tierName(tierOf(r.k, r.id))}`, ox + 345, b.y + 7, C.h, SMALL, 'center');
+      hotspot(b.x, b.y, b.w, b.h, () => {
+        const floor = baseTier(defaults, r.k, r.id), max = creationMaxTier(r.k, r.id, ownType), cur = tierOf(r.k, r.id);
+        const lines = [];
+        for (let tr = 1; tr <= TOP_TIER; tr++) {
+          const c = tierCost(defaults, r.k, r.id, tr);
+          const price = tr > max ? t('create.profMax') : tr <= floor ? t('create.profFree') : `${t('create.profCost')} ${c}`;
+          lines.push({ text: `${tr === cur ? '▶ ' : '  '}${tr} ${tierName(tr)}: ${tierEffect(r.k, r.id, tr)} · ${price}`, color: tr === cur ? 'h' : tr > max ? '3' : '5' });
+        }
+        return { title: `${t(`create.profGroup.${r.k}`)}: ${r.name}`, lines };
+      });
     }
   }
 
@@ -204,7 +306,7 @@ export function createBuildScene(hero, back, onNext) {
     text(ctx, t('create.skills'), ox + 444, oy + 72, C['4'], FONT_B);
     text(ctx, `${st.base.length}/${BASE_SKILLS} + ${st.extra.length}/${EXTRA_SKILLS}`, ox + 840, oy + 72, st.base.length === BASE_SKILLS && st.extra.length === EXTRA_SKILLS ? C.j : C.a, FONT_B, 'right');
     text(ctx, `${t('create.phobias')} (${st.phobia.length}/${MAX_PHOBIAS})`, ox + 444, oy + 396, C['4'], FONT_B);
-    text(ctx, t('create.phobiaHint'), ox + 840, oy + 399, C['3'], SMALL, 'right');
+    text(ctx, `${fmt(t('create.phobiaBonus'), { n: PHOBIA_STAT_POINTS })}; ${t('create.phobiaHint')}`, ox + 840, oy + 399, C['3'], SMALL, 'right');
     text(ctx, t('create.backstory'), ox + 444, oy + 586, C['4'], FONT_B);
   }
 
@@ -238,10 +340,19 @@ export function createBuildScene(hero, back, onNext) {
     update(game, dt) {
       st.time += dt;
       const inp = game.input, m = inp.mouse;
-      const h = hitButton(buttons, m);
-      if (h !== hover && h && !h.disabled) play('uiHover');
+      // proficiency list: wheel / scrollbar, slider drag
+      const off0 = st.profScroll.off;
+      const sbUsed = updateScroll(st.profScroll, view(), profContentH(), m, { step: PL.row * 2 });
+      if (st.profScroll.off !== off0) layout(game);
+      if (st.profDrag) {
+        if (!m.down && !m.clicked) st.profDrag = null;
+        else if (!m.clicked) setTier(game, st.profDrag.r, nearestTier(m.x));
+      }
+      const h = sbUsed ? null : hitButton(buttons, m);
+      if (h?.kind === 'prof') h.hoverTier = m.x >= tickX(1) - PL.tickW / 2 ? nearestTier(m.x) : null;
+      if (h !== hover && h && !h.disabled && h.kind !== 'prof') play('uiHover');
       hover = h;
-      if (m.clicked) {
+      if (m.clicked && !sbUsed) {
         if (h) { choose(game, h); if (game.scene !== self) return; } else st.focus = null;
       }
       if (st.focus === 'story') {
@@ -268,6 +379,7 @@ export function createBuildScene(hero, back, onNext) {
           else text(ctx, t('create.backstoryHint'), b.x + 8, b.y + 6, C['3'], SMALL);
           continue;
         }
+        if (b.kind === 'prof') continue; // drawn by drawProfs
         if (b.kind === 'skill') {
           button(ctx, { ...b, label: `${b.mark === 'base' ? '+2 ' : b.mark === 'extra' ? '+1 ' : ''}${b.label}` }, hover === b);
           continue;
