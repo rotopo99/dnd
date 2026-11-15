@@ -313,7 +313,7 @@ export function createCardScene(game, o) {
   self = {
     id: 'cards',
     S,
-    enter(g) { layout(); absorb(); playTrack(CYBER_SETS.has(CARD_HEROES[rival.hero]?.set) ? 'cyberspace' : 'town'); },
+    enter(g) { layout(); absorb(); playTrack(CYBER_SETS.has(CARD_HEROES[rival.hero]?.set) ? 'cyberspace' : 'card-game'); },
     resume() { layout(); },
     resize() { layout(); },
     update(g, dt) {

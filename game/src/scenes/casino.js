@@ -160,7 +160,7 @@ export function createCasinoScene(back) {
   self = {
     id: 'casino',
     S,
-    enter(game) { prevTrack = getMusicState().track; playTrack('town'); casinoState(game.save); layout(game); },
+    enter(game) { prevTrack = getMusicState().track; playTrack('casino'); casinoState(game.save); layout(game); },
     resume(game) { layout(game); },
     resize(game) { layout(game); },
     update(game, dt) {

@@ -1,201 +1,385 @@
-// music.js — game music: procedural WebAudio tracks, or audio files when they exist.
+// music.js — game music: procedural WebAudio orchestration (no samples, no files).
 // Shares AudioContext and masterGain with sfx.js. Nothing plays before the first user gesture.
 //
-//   import { playTrack, stopMusic, setMusicVolume } from './audio/music.js';
-//   playTrack('menu');                   // crossfade 1.5 s (clamped to 1–2 s)
-//   playTrack('battle', { seed: 42 });   // seed = reproducible variation (procedural only)
+//   import { playTrack, stopMusic, setMusicVolume, setIntensity } from './audio/music.js';
+//   playTrack('menu');                            // crossfade 1.5 s (clamped to 1–2 s)
+//   playTrack('battle', { seed: 42 });            // seed = reproducible variation
+//   playTrack('town', { leit: [0, 3, 7, 10] });   // faction leitmotif: 4 semitone offsets from the chord root
+//   setIntensity(0.8);                            // dynamic tracks (battle, boss, boss-final): 0..1, from the next bar
 //   stopMusic(1500);  setMusicVolume(0.6);
 //
-// Style: Rogue Trader (menu, town, boss) = organ and choir pads, FM bell, lead on triangle with light
-// detune and chorus, big hall reverb; boss and battle get a driving beat. Quasimorph (world, battle)
-// = dry industrial kicks, hats from noise, metal hits into a short echo, saturated drums.
-// Cyberspace and tension = digital and pulse textures. No bare square or saw, no continuous sub-bass
-// (bass notes sit at 80–200 Hz behind a lowpass), no beating drones, no clicks (every envelope has an
-// attack of 3 ms or more).
+// Orchestra: string section (detuned saws, lowpass that opens on a slow bow attack), brass (saw pair through
+// a resonant lowpass with an envelope: "брр"), FM keys, celesta and bells, organ, formant choir,
+// Karplus–Strong plucks (balalaika, guitar), reed (garmon: square through a swept bandpass), bass (sub plus
+// lowpass saw), drums (kick, taiko, snare, hats, cymbal, industrial anvil, glitch). Reverb: procedural IR.
+// Delay: one feedback line into the music bus. Drums: saturation and compressor. Music bus: light tanh.
 //
-// Form: 48-bar cycle = intro (8) → verse (12) → lift (8) → climax (12) → fall (8). Every new cycle
-// picks a seeded variation (transposition of the melody). Melody: 4–8 note motif, 4-bar phrase with
-// an inverted bar. Drums are written as 16-step patterns per section.
+// Form: a track is a list of sections (bars, pads, drum pattern, bass pattern, melody style, layer flags).
+// The melody is a 4-bar question; bars 4–7 are the answer made from it, ending on the tonic. Each new cycle
+// picks a seeded transposition. Bars are scheduled one bar ahead (lookahead 0.15 s, timer 25 ms).
 //
-// Audio files: MUSIC_FILES maps a track id to a path relative to game/index.html. If the file loads
-// and decodes, it loops through overlapping passes (LOOP_XFADE seam crossfade). Otherwise the
-// procedural track plays. A file that appears while a procedural track is playing replaces it.
-// Folder game/assets/music is empty for now; missing files cost one HEAD request per track.
+// Layers (dynamic tracks): 1 drums always, 2 bass at intensity ≥ 0.25, 3 melody and reed at ≥ 0.5,
+// 4 choir, brass stabs and strings at full level at ≥ 0.75.
 //
-// Voices: at most MAX_VOICES live oscillators, noise and LFO sources across both crossfading tracks.
-// Extra one-shot events are dropped silently (drums are scheduled first, so they win). Pads and drones
-// are permanent per track and stopped on retire. Every source disconnects itself in onended.
-// File passes do not count as voices.
+// Voices: MAX_VOICES = 32 sources across both crossfading tracks. Priority: melody 4 > bass 3 > drums 2 >
+// pads 1. A full bus lets a note steal the lowest-priority non-permanent voice below its own priority; when
+// nothing can be stolen the note is dropped. Pads are permanent and cannot be stolen. Every source disconnects
+// itself when it ends, and the track disconnects its own nodes on retire.
 //
 // Where to call: see the comment at the end of this file.
 
 import { initAudio, getAudioContext, getNoiseBuffer, masterGain } from './sfx.js';
 import { getBusVolume, setBusVolume } from './core.js';
 
-const MAX_VOICES = 16;
+const MAX_VOICES = 32;
+const PRIO = { pad: 1, drum: 2, bass: 3, mel: 4 };
 const MUSIC_MAX = 0.36; // music under SFX: about −13 dB at default volume (0.6 × 0.36 ≈ 0.22)
-const LOOKAHEAD = 0.12; // s planned ahead
+const LOOKAHEAD = 0.15; // s planned ahead
 const TICK_MS = 25;
 const FADE_MIN = 1000;
 const FADE_MAX = 2000;
 const FADE_DEFAULT = 1500;
-const LOOP_XFADE = 1.5; // s, overlap at the loop seam of an audio file
-const HALL_S = 4.2; // s, impulse response length of the hall
-const HALL_WET = 0.45;
-const ECHO_S = 0.32; // s, percussion echo time
-const ECHO_FB = 0.35; // echo feedback
-const CYC = 48; // bars per cycle (intro 8, verse 12, lift 8, climax 12, fall 8)
+const HALL_S = 3.6; // s, reverb impulse length
+const HALL_WET = 0.4;
 const GESTURES = ['pointerdown', 'keydown', 'touchstart', 'mousedown'];
+const LAYER_I = [0.25, 0.5, 0.75]; // intensity needed for layers 2, 3, 4
+const SHIFTS = [0, 0, 2, -2, 5]; // seeded transposition per cycle
+const REV = { drum: 0.15, mel: 0.35, pad: 0.5, bass: 0, fx: 0.6 }; // reverb send per kind
+const VOWEL = { a: [800, 1150, 2900], o: [450, 800, 2830], u: [325, 700, 2530], e: [500, 1700, 2500] };
+const VSEQ = ['a', 'o', 'u', 'o']; // choir vowel per two bars
+const BI = { R: 0, F: 7, O: 12, S: 10, D: 5 }; // bass steps: root, fifth, octave, minor 7th, fourth
+const NOOP = () => {};
 
-/** Audio files, path relative to game/index.html. A missing file means a procedural track. */
-// Enable a track by uncommenting its line once the file is in game/assets/music (avoids 404 requests).
-const MUSIC_FILES = {
-  // menu: 'assets/music/menu.mp3',
-  // world: 'assets/music/world.mp3',
-  // town: 'assets/music/town.mp3',
-  // battle: 'assets/music/battle.mp3',
-  // boss: 'assets/music/boss.mp3',
-  // cyberspace: 'assets/music/cyberspace.mp3',
-  // tension: 'assets/music/tension.mp3',
-};
-// Track id -> another procedural track to play instead. Empty: boss-final, romance and tragic are procedural.
-const ALIAS = {};
+// ---------- chords (MIDI) ----------
+const DM7 = [50, 57, 60, 65];
+const BB7 = [46, 53, 57, 60];
+const GM7 = [43, 50, 55, 58];
+const AM7 = [45, 52, 57, 60];
+const EM = [52, 59, 64, 67];
+const EMF = [52, 59, 64, 65]; // Em with F: phrygian pull
+const FM = [53, 57, 60, 64];
+const BBD = [46, 53, 58, 61]; // Bb with Db
+const CM = [48, 55, 59, 64];
+const FINAL = [
+  [50, 57, 62, 65],
+  [46, 53, 58, 62],
+  [48, 53, 57, 60],
+  [48, 55, 60, 64],
+];
+const ROM = [FM, [52, 55, 59, 62], [50, 53, 57, 60], [55, 59, 62, 65]];
+const TRAG = [[57, 60, 64, 69], FM, [50, 57, 62, 65], [52, 56, 59, 62]];
+const CYBER = [[50, 57, 60, 64], [48, 55, 58, 62]];
+const TENSE = [[50, 57], [48, 55]];
+const LOCRIAN = [[50, 56, 59, 62], [48, 54, 57, 60], [49, 56, 59, 62], [50, 56, 59, 62]];
 
-// Chords as MIDI notes, kept above ~110 Hz (no sub drone). Each chord lasts 8–16 s.
-const DORIAN = [
-  [50, 57, 60, 65], // Dm7
-  [46, 53, 57, 60], // Bbmaj7
-  [43, 50, 55, 58], // Gm7
-  [45, 52, 57, 60], // Am7
-];
-const PHRYGIAN = [
-  [52, 59, 64, 67], // Em
-  [53, 57, 60, 64], // F (bII against E)
-];
-const BOSS = [
-  [52, 59, 64, 65], // Em, phrygian
-  [46, 53, 58, 61], // Bb with Db (tritone against E)
-  [50, 57, 62, 65], // Dm
-];
-const CYBER = [
-  [50, 57, 60, 64],
-  [48, 55, 58, 62],
-];
-const TENSE = [
-  [50, 57], // fifths only: no beating
-  [48, 55],
-];
-const VOWELS = {
-  a: [800, 1150, 2800],
-  o: [500, 900, 2500],
-};
-// Vocal formants for the vocalise voices (voxStart): a, o, u.
-const VOX = {
-  a: [800, 1150, 2900],
-  o: [450, 800, 2830],
-  u: [325, 700, 2530],
+// ---------- drum patterns: 16 chars per step, X accent, x normal, o open hat, '.' none ----------
+const DR = {
+  drive: { k: 'X..xX...X..xX.x.', s: '....X.......X...', f: '........xxxxxxxx', h: 'x.x.x.x.x.x.x.x.', a: '....x.......x...' },
+  taiko: { t: 'X.......X.......', k: '..x.....x.......', s: '....X.......X...', h: 'x.x.x.x.x.x.x.x.' },
+  anvil: { k: 'X..xX...X..xX.x.', s: '....X.......X...', f: '........xxxxxxxx', a: 'X.x.x.x.x.x.x.x.', t: 'X.......' },
+  trek: { k: 'X...x...X...x...', s: '....x.......x...', h: '..x...x...x...x.', c: 'x.......' },
+  grove: { k: 'X.......x.x.....', s: '....X.......X...', h: 'x.x.x.x.x.x.x.x.', c: 'X.......', a: '......x.......x.' },
+  base: { k: 'X.......X.......', s: '....x.......x...', h: 'x...x...x...x...' },
+  pulse: { k: 'X...X...X...X...', h: 'x.x.x.x.x.x.x.x.', g: 'x.......x.......' },
+  tense: { k: 'X.x.....X.x.....', g: 'x.......x.......' },
+  cyber: { k: 'X...X...X...X...', s: '....X.......X...', h: 'x.x.x.x.x.x.x.x.', g: 'x..x.x..x.x..x.x' },
+  lounge: { k: '....X.......x...', s: '..x...x...x...x.', h: '..x...x...x...x.', c: 'X...X...X...X...' },
+  cult: { t: 'X.......X.......' },
 };
 
-// Motifs: [offset in semitones from the chord root + 12, start step in the bar (16ths), length in steps].
-// Each motif fits one bar (16 steps) and has no overlaps.
-const M_MENU = [[0, 0, 6], [3, 6, 2], [5, 8, 4], [7, 12, 4]];
-const M_TOWN = [[0, 0, 4], [2, 4, 2], [3, 6, 2], [7, 8, 4], [5, 12, 2], [3, 14, 2]];
-const M_WORLD = [[0, 0, 3], [1, 3, 1], [3, 4, 2], [7, 6, 4], [5, 10, 2], [3, 12, 2], [1, 14, 2]];
-const M_BATTLE = [[0, 0, 2], [3, 2, 2], [7, 4, 2], [10, 6, 2], [7, 8, 4], [5, 12, 2], [3, 14, 2]];
-const M_BOSS = [[0, 0, 4], [1, 4, 2], [7, 6, 2], [6, 8, 4], [3, 12, 2], [1, 14, 2]];
+// ---------- track configs ----------
+// m: 4-bar question melody, notes [offset from chord root + 12, start 16th, length 16ths].
+// secs: sections [{ n: bars, d: drum pattern, b: bass steps (16 chars: R F O S D), str/org/cho: pad levels 0..1,
+// m: melody on, ms: melody style override, pw: pluck buffer, pl: plucked arpeggio, rd: reed chord,
+// bl: bell, br: brass stabs, fill: snare roll on bar 4 of each group }].
+// Styles: str, brass, reed, pluck, key, bell.
+const CFG = {};
 
-// Bass lines: offsets from the bass root, one row per bar in a 4-bar phrase, one entry per bass hit.
-const BASS_B = [
-  [0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 3, 5],
-  [0, 0, 5, 0, 3, 0, 7, 0],
-  [0, 0, 0, 0, 0, 0, 5, 3],
-];
+function expandMel(m4) {
+  const out = m4.slice();
+  for (let i = 0; i < 4; i++) out.push(m4[i].map(([d, s, l]) => [d + (i % 2 ? -4 : 5), s, l]));
+  const last = out[7];
+  if (last.length) last[last.length - 1] = [0, last[last.length - 1][1], last[last.length - 1][2]];
+  return out;
+}
 
-// Drum pattern pieces: 16 characters each. 'X' = accent, 'x' = normal, '.' = none.
-const H16 = 'x'.repeat(16);
-const H8 = 'x.'.repeat(8);
-const KQ = 'X...'.repeat(4); // kick on every beat
-const S24 = '....X' + '.'.repeat(7) + 'X...'; // snare on 2 and 4
-const FILL = '.'.repeat(8) + 'x'.repeat(8); // snare roll in the second half of the bar
-const CL8 = '....x' + '.'.repeat(7) + 'x...'; // metal hits on 2 and 4 (the "and" of 2 and 4 is left empty)
+function mk(id, c) {
+  const map = [];
+  c.secs.forEach((s) => {
+    for (let i = 0; i < s.n; i++) map.push(s);
+  });
+  CFG[id] = { ...c, cyc: map.length, map, st: 60 / c.bpm / 4, mel8: expandMel(c.m) };
+}
 
-/** Section patterns. Section index: 0 intro, 1 verse, 2 lift, 3 climax, 4 fall. */
-const MENU_P = [
-  {},
-  { lv: 0.045 },
-  { lv: 0.045, bell: 0.04, bellNotes: [74, 77, 81] },
-  { lv: 0.05, bell: 0.04, bellNotes: [74, 77, 81] },
-  { lv: 0.045, once: true, rest: true },
-];
+const S = (n, o = {}) => ({ n, ...o });
 
-const WORLD_P = [
-  { k: 'X...x...X...x...', kv: 0.3, h: H8, hv: 0.018 },
-  { k: 'X...x...X...x...', kv: 0.4, h: H8, hv: 0.022, hp: 0.9, cl: '......x.......x.', clv: 0.06, cf: [260, 330], lv: 0.05 },
-  { k: 'X...x...X...x.x.', kv: 0.42, s: '....x.......x...', sv: 0.05, h: H8, hv: 0.024, cl: '......x.......x.', clv: 0.07, cf: [200, 320], lv: 0.06, bass: 0.07, be: 4 },
-  { k: 'X...x..xX...x.x.', kv: 0.45, s: '....x.......x...', fs: FILL, sv: 0.06, h: H8, hv: 0.026, cl: '..x...x...x...x.', clv: 0.08, cf: [200, 320], lv: 0.07, bass: 0.08, be: 4, stab: 0.025 },
-  { k: 'X' + '.'.repeat(15), kv: 0.3, h: 'x' + '.'.repeat(7) + 'x' + '.'.repeat(7), hv: 0.02, lv: 0.05, once: true, bass: 0.07, be: 4 },
-];
+mk('menu', {
+  bpm: 72, prog: [DM7, BB7, GM7, AM7], ms: 'str', mv: 0.075, pads: { str: 0.06, org: 0.04, cho: 0.035 },
+  m: [
+    [[7, 0, 4], [10, 4, 4], [12, 8, 8]],
+    [[7, 0, 4], [5, 4, 4], [4, 8, 8]],
+    [[3, 0, 4], [2, 4, 4], [0, 8, 8]],
+    [[4, 0, 4], [7, 4, 4], [9, 8, 4], [4, 12, 4]],
+  ],
+  secs: [
+    S(8, { str: 0.4, org: 0.6 }),
+    S(12, { str: 0.6, org: 0.4, cho: 0.3, m: 1 }),
+    S(8, { str: 0.8, org: 0.5, cho: 0.6, m: 1, bl: 1 }),
+    S(12, { str: 1, org: 0.6, cho: 1, m: 1, ms: 'brass', bl: 1, br: 1 }),
+    S(8, { str: 0.4, org: 0.5, cho: 0.2, m: 1, ms: 'str' }),
+  ],
+});
 
-const TOWN_P = [
-  { k: 'X' + '.'.repeat(15), kv: 0.22, h: H8, hv: 0.016, sw: 0.25 },
-  { k: 'X.......x.x.....', kv: 0.25, s: '....x.......x...', sv: 0.035, h: H16, hv: 0.016, sw: 0.25, lv: 0.05 },
-  { k: 'X.......x.x.....', kv: 0.26, s: '....x.......x...', sv: 0.04, h: H16, hv: 0.017, sw: 0.25, lv: 0.055, bass: 0.06, be: 8, bell: 0.04, bellNotes: [74, 81, 86] },
-  { k: 'X.......x.x.x...', kv: 0.28, s: '....x.......x...', sv: 0.045, h: H16, hv: 0.018, sw: 0.25, lv: 0.06, bass: 0.065, be: 8, bell: 0.045, bellNotes: [74, 81, 86] },
-  { k: 'X' + '.'.repeat(15), kv: 0.2, h: H8, hv: 0.012, sw: 0.25, lv: 0.045, once: true, rest: true, bell: 0.035, bellNotes: [81, 86] },
-];
+mk('world', {
+  bpm: 84, prog: [EM, FM, EM, FM], ms: 'pluck', pw: 'bal', mv: 0.06, pads: { str: 0.05, org: 0.02 }, dv: 0.8,
+  m: [
+    [[0, 0, 3], [1, 3, 1], [3, 4, 2], [7, 6, 4]],
+    [[5, 0, 2], [3, 2, 2], [1, 4, 4], [0, 8, 8]],
+    [[0, 0, 3], [1, 3, 1], [3, 4, 2], [5, 6, 4]],
+    [[7, 0, 4], [5, 4, 4], [3, 8, 4], [1, 12, 4]],
+  ],
+  secs: [
+    S(8, { str: 0.5, d: 'trek', b: 'R.......R.......', pl: 1 }),
+    S(12, { str: 0.6, d: 'trek', b: 'R...R...F...R...', pl: 1, m: 1, rd: 1 }),
+    S(8, { str: 0.5, d: 'trek', b: 'R...R...F...R...', pl: 1, m: 1, rd: 1 }),
+    S(12, { str: 0.7, d: 'trek', b: 'R.R.F.R.R.R.F.R.', m: 1, rd: 1, fill: 1, ms: 'reed' }),
+    S(8, { str: 0.3, pl: 1, m: 1 }),
+  ],
+});
 
-const BATTLE_P = [
-  { k: KQ, kv: 0.4, h: H8, hv: 0.02, duck: true },
-  { k: KQ, kv: 0.5, s: S24, sv: 0.1, h: H16, hv: 0.024, hp: 0.85, duck: true, bass: 0.085, lv: 0.06 },
-  { k: 'X...X...' + 'X..xX...', kv: 0.5, s: S24, fs: FILL, sv: 0.1, h: H16, hv: 0.026, hp: 0.85, duck: true, bass: 0.09, lv: 0.07, stab: 0.03, cl: CL8, clv: 0.08, cf: [260, 420], rise: true },
-  { k: 'X..xX...' + 'X..xX.x.', kv: 0.55, s: S24, fs: FILL, sv: 0.11, h: H16, hv: 0.03, hp: 0.9, duck: true, bass: 0.095, lv: 0.08, stab: 0.035, cl: CL8, clv: 0.09, cf: [260, 420] },
-  { k: 'X.......X.......', kv: 0.36, h: H8, hv: 0.02, hp: 0.7, duck: true, bass: 0.08, lv: 0.06, once: true, stab: 0.025 },
-];
+mk('town', {
+  bpm: 76, prog: [DM7, BB7, GM7, AM7], ms: 'key', mv: 0.055, pads: { str: 0.045, org: 0.03 }, dv: 0.9, pw: 'guit',
+  m: [
+    [[0, 0, 4], [2, 4, 2], [3, 6, 2], [7, 8, 4]],
+    [[5, 0, 4], [3, 4, 2], [2, 6, 2], [0, 8, 8]],
+    [[0, 0, 4], [2, 4, 2], [3, 6, 2], [7, 8, 4]],
+    [[5, 0, 2], [3, 2, 2], [2, 4, 2], [0, 6, 10]],
+  ],
+  secs: [
+    S(8, { str: 0.4, d: 'grove', b: 'R.......F.......', pl: 1 }),
+    S(12, { str: 0.5, d: 'grove', b: 'R...F...R...F...', pl: 1, m: 1 }),
+    S(12, { str: 0.5, d: 'grove', b: 'R...F...R...F...', m: 1, bl: 1 }),
+    S(8, { str: 0.5, d: 'grove', b: 'R.R.F.R.R.R.F.R.', m: 1, bl: 1 }),
+    S(8, { str: 0.3, m: 1, ms: 'str' }),
+  ],
+});
 
-const BOSS_P = [
-  { from: 4, k: KQ, kv: 0.35, h: H8, hv: 0.016, duck: true },
-  { k: KQ, kv: 0.5, s: S24, sv: 0.1, h: H16, hv: 0.022, hp: 0.9, duck: true, bass: 0.08, lv: 0.06 },
-  { k: 'X...X...' + 'X..xX...', kv: 0.5, s: S24, fs: FILL, sv: 0.1, h: H16, hv: 0.025, duck: true, bass: 0.09, lv: 0.07, stab: 0.035, cl: CL8, clv: 0.09, cf: [280, 340], rise: true, bell: 0.045, bellNotes: [76, 79] },
-  { k: 'X..xX...' + 'X..xX.x.', kv: 0.55, s: S24, fs: FILL, sv: 0.11, h: H16, hv: 0.03, hp: 0.9, duck: true, bass: 0.095, lv: 0.08, stab: 0.04, cl: CL8, clv: 0.1, cf: [280, 340], bell: 0.05, bellNotes: [76, 79] },
-  { k: 'X.......X.......', kv: 0.36, duck: true, bass: 0.07, lv: 0.06, once: true, stab: 0.03, bell: 0.05, bellNotes: [76, 79] },
-];
+mk('battle', {
+  bpm: 124, prog: [EM, BBD, DM7, CM], ms: 'brass', mv: 0.07, pads: { str: 0.05, cho: 0.035 }, dv: 1.1, dyn: true,
+  m: [
+    [[0, 0, 2], [3, 2, 2], [7, 4, 2], [10, 6, 2], [7, 8, 4]],
+    [[5, 0, 2], [7, 2, 2], [10, 4, 2], [12, 6, 2], [10, 8, 4]],
+    [[0, 0, 2], [3, 2, 2], [7, 4, 2], [10, 6, 2], [7, 8, 4]],
+    [[5, 0, 4], [3, 4, 4], [0, 8, 8]],
+  ],
+  secs: [
+    S(4, { d: 'drive' }),
+    S(8, { d: 'drive', b: 'R.R.F.R.R.R.F.R.', m: 1, str: 0.3 }),
+    S(8, { d: 'drive', fill: 1, b: 'R.R.F.R.R.R.F.R.', m: 1, str: 0.5, cho: 0.5, br: 1 }),
+    S(8, { d: 'drive', b: 'R.R.R.R.R.R.R.R.', m: 1, br: 1, fill: 1, cho: 0.7 }),
+    S(4, { d: 'drive', m: 1, str: 0.3 }),
+  ],
+});
 
-/** Per-track song config. st = seconds per 16th step (the track clock). */
-const SONG = {
-  menu: { st: 60 / 72 / 4, prog: DORIAN, motif: M_MENU, vowel: true, pats: MENU_P },
-  world: { st: 60 / 84 / 4, prog: PHRYGIAN, motif: M_WORLD, pats: WORLD_P },
-  town: { st: 60 / 76 / 4, prog: DORIAN, motif: M_TOWN, vowel: true, pats: TOWN_P },
-  battle: { st: 60 / 124 / 4, prog: DORIAN, motif: M_BATTLE, pats: BATTLE_P },
-  boss: { st: 60 / 136 / 4, prog: BOSS, motif: M_BOSS, vowel: true, pats: BOSS_P },
-};
+mk('boss', {
+  bpm: 136, prog: [EMF, BBD, DM7, EMF], ms: 'brass', mv: 0.075, pads: { str: 0.06, org: 0.05, cho: 0.05 }, dv: 1.1, dyn: true,
+  m: [
+    [[0, 0, 4], [1, 4, 2], [7, 6, 2], [6, 8, 4]],
+    [[3, 0, 4], [1, 4, 2], [0, 6, 2], [-1, 8, 8]],
+    [[0, 0, 4], [1, 4, 2], [7, 6, 2], [6, 8, 4]],
+    [[3, 0, 2], [1, 2, 2], [0, 4, 4], [-2, 8, 8]],
+  ],
+  secs: [
+    S(8, { d: 'taiko', org: 0.5, cho: 0.3, str: 0.2 }),
+    S(8, { d: 'taiko', b: 'R...R...R...R...', org: 0.5, m: 1, cho: 0.5, str: 0.4 }),
+    S(8, { d: 'drive', b: 'R.R.R.R.F.R.R.R.', m: 1, br: 1, cho: 0.8, org: 0.4, fill: 1, str: 0.6 }),
+    S(8, { d: 'taiko', b: 'R.R.R.R.R.R.R.R.', m: 1, br: 1, cho: 1, org: 0.6, fill: 1, str: 0.8, bl: 1 }),
+    S(4, { org: 0.4, cho: 0.4 }),
+  ],
+});
 
-// Drive curve for the drum bus: soft tanh saturation.
-const DRUM_CURVE = (() => {
+mk('boss-final', {
+  bpm: 138, prog: FINAL, ms: 'brass', mv: 0.08, pads: { str: 0.06, org: 0.06, cho: 0.09 }, dv: 1.2, dyn: true,
+  m: [
+    [[0, 0, 4], [3, 4, 2], [5, 6, 2], [7, 8, 8]],
+    [[7, 0, 4], [5, 4, 2], [3, 6, 2], [2, 8, 8]],
+    [[0, 0, 2], [3, 2, 2], [5, 4, 2], [7, 6, 2], [12, 8, 8]],
+    [[10, 0, 4], [7, 4, 4], [5, 8, 8]],
+  ],
+  secs: [
+    S(8, { org: 0.6, cho: 0.6, str: 0.3 }),
+    S(8, { d: 'taiko', b: 'R...R...R...R...', org: 0.5, cho: 0.7, m: 1, str: 0.5 }),
+    S(8, { d: 'anvil', b: 'R.R.F.R.R.R.F.R.', m: 1, br: 1, cho: 1, org: 0.7, str: 0.7, fill: 1, bl: 1 }),
+    S(8, { d: 'anvil', b: 'R.R.R.R.R.R.R.R.', m: 1, ms: 'brass', br: 1, cho: 1, org: 0.8, str: 0.9, fill: 1, bl: 1 }),
+    S(8, { d: 'taiko', m: 1, cho: 1, org: 0.8, str: 0.5, ms: 'str' }),
+  ],
+});
+
+mk('cyberspace', {
+  bpm: 110, prog: [CYBER[0], CYBER[1], CYBER[0], CYBER[1]], ms: 'key', mv: 0.06, pads: { str: 0.05 }, dv: 0.9,
+  m: [
+    [[0, 0, 2], [4, 2, 2], [7, 4, 4], [12, 8, 8]],
+    [[7, 0, 2], [5, 2, 2], [4, 4, 4], [0, 8, 8]],
+    [[0, 0, 2], [4, 2, 2], [7, 4, 4], [11, 8, 8]],
+    [[12, 0, 4], [7, 4, 4], [4, 8, 8]],
+  ],
+  secs: [
+    S(8, { d: 'cyber', str: 0.6 }),
+    S(12, { d: 'cyber', b: 'R.....R...R.R...', str: 0.5, m: 1 }),
+    S(12, { d: 'cyber', b: 'R.R.R.R.R.R.R.R.', str: 0.7, m: 1, fill: 1 }),
+    S(8, { d: 'cyber', str: 0.4, m: 1, ms: 'bell' }),
+  ],
+});
+
+mk('tension', {
+  bpm: 96, prog: TENSE, ms: 'bell', mv: 0.05, pads: { str: 0.03, org: 0.03 }, dv: 0.9,
+  m: [[[0, 4, 2]], [[0, 4, 2], [-2, 12, 2]], [[7, 0, 2]], [[3, 6, 2]]],
+  secs: [
+    S(8, { d: 'tense', str: 0.3, org: 0.3 }),
+    S(12, { d: 'tense', str: 0.4, org: 0.4, m: 1 }),
+    S(12, { d: 'tense', str: 0.5, org: 0.4, m: 1, ms: 'bell' }),
+    S(8, { d: 'tense', str: 0.3, org: 0.2, m: 1 }),
+  ],
+});
+
+mk('romance', {
+  bpm: 70, prog: ROM, ms: 'key', mv: 0.055, pads: { str: 0.05, org: 0.02 },
+  m: [
+    [[4, 0, 6], [2, 8, 4], [0, 12, 4]],
+    [[7, 0, 6], [3, 8, 4], [0, 12, 4]],
+    [[7, 0, 4], [10, 4, 4], [7, 8, 4], [3, 12, 4]],
+    [[4, 0, 4], [7, 4, 4], [10, 8, 4], [7, 12, 4]],
+  ],
+  secs: [
+    S(8, { str: 0.6, org: 0.2 }),
+    S(12, { str: 0.7, org: 0.2, m: 1, ms: 'key' }),
+    S(12, { str: 0.8, org: 0.3, m: 1, ms: 'str' }),
+    S(8, { str: 0.6, org: 0.2, m: 1, ms: 'key' }),
+  ],
+});
+
+mk('tragic', {
+  bpm: 60, prog: TRAG, ms: 'reed', mv: 0.05, pads: { str: 0.045, cho: 0.02 },
+  m: [
+    [[0, 0, 8], [-2, 8, 8]],
+    [[0, 0, 4], [2, 4, 4], [0, 8, 8]],
+    [[4, 0, 8], [2, 8, 8]],
+    [[0, 0, 8], [-2, 8, 8]],
+  ],
+  secs: [
+    S(8, { str: 0.5 }),
+    S(16, { str: 0.6, m: 1, cho: 0.3, ms: 'reed' }),
+    S(16, { str: 0.4, m: 1, ms: 'bell' }),
+  ],
+});
+
+mk('card-game', {
+  bpm: 104, prog: [[50, 57, 60, 64], [43, 50, 53, 57], [48, 55, 58, 62], [45, 52, 55, 59]], ms: 'key', mv: 0.055,
+  pads: { str: 0.03, org: 0.02 }, dv: 0.8, pw: 'guit',
+  m: [
+    [[0, 0, 2], [4, 2, 2], [7, 4, 2], [10, 6, 2], [12, 8, 4], [10, 12, 4]],
+    [[3, 0, 2], [7, 2, 2], [10, 4, 2], [12, 6, 2], [14, 8, 8]],
+    [[0, 0, 4], [2, 4, 4], [4, 8, 4], [0, 12, 4]],
+    [[-3, 0, 4], [0, 4, 4], [4, 8, 8]],
+  ],
+  secs: [
+    S(8, { d: 'lounge', b: 'R...F...R...F...', str: 0.2 }),
+    S(12, { d: 'lounge', b: 'R.F.R.F.R.F.R.F.', m: 1, ms: 'key', str: 0.3, br: 1 }),
+    S(8, { d: 'lounge', b: 'R.F.R.F.S.F.R.F.', m: 1, ms: 'brass', br: 1, bl: 1, fill: 1 }),
+  ],
+});
+
+mk('casino', {
+  bpm: 112, prog: [CM, [45, 52, 55, 60], [41, 48, 52, 57], [43, 50, 55, 59]], ms: 'brass', mv: 0.055,
+  pads: { str: 0.04 }, dv: 0.9,
+  m: [
+    [[0, 0, 2], [4, 2, 2], [7, 4, 4], [4, 8, 2], [2, 10, 2], [0, 12, 4]],
+    [[0, 0, 4], [4, 4, 2], [7, 6, 2], [9, 8, 8]],
+    [[4, 0, 2], [5, 2, 2], [7, 4, 4], [9, 8, 8]],
+    [[7, 0, 4], [4, 4, 2], [2, 6, 2], [0, 8, 8]],
+  ],
+  secs: [
+    S(8, { d: 'lounge', b: 'R...F...R...F...', str: 0.3 }),
+    S(12, { d: 'lounge', b: 'R.F.R.F.R.F.R.F.', m: 1, br: 1, str: 0.3, bl: 1 }),
+    S(8, { d: 'lounge', b: 'R.F.R.F.S.F.R.F.', m: 1, br: 1, fill: 1, ms: 'key' }),
+  ],
+});
+
+mk('base', {
+  bpm: 92, prog: [DM7, FM, BB7, AM7], ms: 'pluck', pw: 'guit', mv: 0.06, pads: { str: 0.035, org: 0.02 }, dv: 0.7,
+  m: [
+    [[0, 0, 4], [4, 4, 4], [7, 8, 8]],
+    [[5, 0, 4], [7, 4, 4], [9, 8, 8]],
+    [[7, 0, 4], [4, 4, 4], [0, 8, 8]],
+    [[0, 0, 4], [2, 4, 4], [4, 8, 8]],
+  ],
+  secs: [
+    S(8, { str: 0.5, org: 0.3, d: 'base', pl: 1 }),
+    S(16, { str: 0.4, d: 'base', b: 'R.......F.......', pl: 1, m: 1 }),
+    S(8, { str: 0.5, org: 0.3, d: 'base', b: 'R...R...F...R...', m: 1, bl: 1 }),
+  ],
+});
+
+mk('cult', {
+  bpm: 60, prog: LOCRIAN, ms: 'bell', mv: 0.05, pads: { org: 0.05, cho: 0.06, str: 0.02 }, dv: 1.1,
+  m: [
+    [[0, 0, 8], [-2, 8, 8]],
+    [[3, 0, 8], [-1, 8, 8]],
+    [[0, 0, 4], [-2, 4, 4], [-4, 8, 8]],
+    [[6, 0, 8], [0, 8, 8]],
+  ],
+  secs: [
+    S(8, { d: 'cult', org: 0.8, cho: 0.6 }),
+    S(16, { d: 'cult', org: 0.7, cho: 0.8, bl: 1, m: 1 }),
+    S(8, { d: 'cult', org: 0.6, cho: 1, m: 1, ms: 'bell', b: 'R...............' }),
+  ],
+});
+
+mk('roguelike-map', {
+  bpm: 100, prog: [[50, 57, 60, 64], [46, 53, 57, 60]], ms: 'pluck', pw: 'bal', mv: 0.05, pads: { str: 0.03 }, dv: 0.7,
+  m: [
+    [[0, 0, 2], [7, 4, 2], [12, 8, 2], [7, 12, 2]],
+    [[0, 0, 2], [7, 4, 2], [12, 8, 2], [7, 12, 2]],
+    [[5, 0, 2], [9, 4, 2], [12, 8, 2], [9, 12, 2]],
+    [[3, 0, 2], [7, 4, 2], [10, 8, 2], [7, 12, 2]],
+  ],
+  secs: [
+    S(16, { d: 'pulse', str: 0.4, pl: 1, m: 1 }),
+    S(16, { d: 'pulse', str: 0.5, pl: 1, m: 1, b: 'R...R...R...R...' }),
+    S(16, { d: 'pulse', str: 0.3, pl: 1, m: 1, bl: 1 }),
+  ],
+});
+
+const TRACK_IDS_LIST = Object.keys(CFG);
+
+// Drive curves: drum bus (tanh 2.5) and light music bus saturation (tanh 1.3).
+function curve(k) {
   const c = new Float32Array(1024);
   for (let i = 0; i < 1024; i++) {
     const x = (i / 1023) * 2 - 1;
-    c[i] = Math.tanh(2.5 * x) / Math.tanh(2.5);
+    c[i] = Math.tanh(k * x) / Math.tanh(k);
   }
   return c;
-})();
+}
+const DRUM_CURVE = curve(2.5);
+const BUS_CURVE = curve(1.3);
 
 let ctx = null;
 let musicBus = null;
-let sendBus = null; // percussion send into the echo
+let revIn = null; // reverb input (sends from every track)
+let dlyIn = null; // delay input (sends from melody and fx)
+let KS = null; // Karplus–Strong buffers: { bal, guit } = { buf, f0 }
 let volume = getBusVolume('music'); // saved in localStorage via core.js (default 0.6)
-let voices = 0;
+let count = 0; // live sources (both tracks)
+const live = []; // { prio, end, n, perm, kill }
 let current = null; // running track
 let wanted = null; // requested but not yet started (no context yet)
 let hooked = false;
-let organ = null; // PeriodicWave for the organ timbre
-let organCtx = null;
-const fileState = new Map(); // id -> 'none' | 'loading' | 'missing' | AudioBuffer
+let ORG = null; // PeriodicWave for the organ timbre
+let ORG_CTX = null;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
-/** Seconds per step: bpm and subdivision per beat (4 = 16th, 2 = 8th, 8 = 32nd). */
-const S = (bpm, div) => 60 / bpm / div;
 
 function mulberry(seed) {
   let a = seed >>> 0;
@@ -208,27 +392,47 @@ function mulberry(seed) {
   };
 }
 const pick = (tr, arr) => arr[(tr.rnd() * arr.length) | 0];
-const chance = (tr, p) => tr.rnd() < p;
 const rr = (tr, a, b) => a + tr.rnd() * (b - a);
 
-// ---------- context / routing ----------
+// ---------- context, impulse responses, Karplus–Strong tables ----------
 
-/** Synthetic hall: decaying, slightly dark noise with a 20 ms pre-delay. */
-function makeHall(c, seconds) {
+/** Synthetic hall: decaying noise, darker as it goes, 18 ms pre-delay. */
+function makeIR(c, seconds) {
   const sr = c.sampleRate;
   const len = Math.floor(sr * seconds);
-  const pre = Math.floor(sr * 0.02);
+  const pre = Math.floor(sr * 0.018);
   const buf = c.createBuffer(2, len, sr);
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
     let lp = 0;
     for (let i = pre; i < len; i++) {
       const x = (i - pre) / (len - pre);
-      lp += (Math.random() * 2 - 1 - lp) * 0.35;
-      d[i] = lp * Math.exp(-6.5 * x); // about −56 dB at the end
+      lp += (Math.random() * 2 - 1 - lp) * (0.6 - 0.45 * x);
+      d[i] = lp * Math.exp(-6.9 * x); // about −60 dB at the end
     }
   }
   return buf;
+}
+
+/** Karplus–Strong string rendered once: noise in a loop with a lowpass average. f0 = pitch of the loop. */
+function makeKS(c, f, seconds, damp) {
+  const sr = c.sampleRate;
+  const n = Math.max(2, Math.round(sr / f));
+  const len = Math.floor(sr * seconds);
+  const buf = c.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0);
+  const line = new Float32Array(n);
+  for (let i = 0; i < n; i++) line[i] = Math.random() * 2 - 1;
+  let p = 0;
+  let prev = 0;
+  for (let i = 0; i < len; i++) {
+    const cur = line[p];
+    d[i] = cur;
+    line[p] = damp * 0.5 * (cur + prev);
+    prev = cur;
+    p = p + 1 === n ? 0 : p + 1;
+  }
+  return { buf, f0: sr / n };
 }
 
 function ensure() {
@@ -239,44 +443,48 @@ function ensure() {
     ctx = c;
     musicBus = ctx.createGain();
     musicBus.gain.value = volume * MUSIC_MAX;
-
-    // dry path: gentle saturation, then master
     const sh = ctx.createWaveShaper();
-    const curve = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) {
-      const x = (i / 1023) * 2 - 1;
-      curve[i] = Math.tanh(1.5 * x) / Math.tanh(1.5);
-    }
-    sh.curve = curve;
+    sh.curve = BUS_CURVE;
     sh.oversample = 'none';
-    musicBus.connect(sh).connect(masterGain);
+    musicBus.connect(sh);
+    sh.connect(masterGain);
 
-    // space: one hall for the whole music bus
+    // space: one hall for every track; its output goes through the music bus volume
+    revIn = ctx.createGain();
     const conv = ctx.createConvolver();
-    conv.buffer = makeHall(ctx, HALL_S);
-    const wet = ctx.createGain();
-    wet.gain.value = HALL_WET;
-    musicBus.connect(conv).connect(wet).connect(masterGain);
+    conv.buffer = makeIR(ctx, HALL_S);
+    const rw = ctx.createGain();
+    rw.gain.value = HALL_WET;
+    revIn.connect(conv);
+    conv.connect(rw);
+    rw.connect(musicBus);
 
-    // echo for percussion sends: low-passed feedback, no hard repeats
-    sendBus = ctx.createGain();
+    // delay: one low-passed feedback line, 375 ms
+    dlyIn = ctx.createGain();
     const dl = ctx.createDelay(1);
-    dl.delayTime.value = ECHO_S;
-    const fbLp = ctx.createBiquadFilter();
-    fbLp.type = 'lowpass';
-    fbLp.frequency.value = 2200;
+    dl.delayTime.value = 0.375;
+    const dlp = ctx.createBiquadFilter();
+    dlp.type = 'lowpass';
+    dlp.frequency.value = 3200;
     const fb = ctx.createGain();
-    fb.gain.value = ECHO_FB;
-    const echoOut = ctx.createGain();
-    echoOut.gain.value = 0.35;
-    sendBus.connect(dl);
-    dl.connect(fbLp).connect(fb).connect(dl);
-    dl.connect(echoOut).connect(musicBus);
+    fb.gain.value = 0.32;
+    const dout = ctx.createGain();
+    dout.gain.value = 0.3;
+    dlyIn.connect(dl);
+    dl.connect(dlp);
+    dlp.connect(fb);
+    fb.connect(dl);
+    dl.connect(dout);
+    dout.connect(musicBus);
+
+    KS = { bal: makeKS(ctx, 220, 1.8, 0.994), guit: makeKS(ctx, 196, 2.6, 0.997) };
     return true;
   } catch {
     ctx = null;
     musicBus = null;
-    sendBus = null;
+    revIn = null;
+    dlyIn = null;
+    KS = null;
     return false;
   }
 }
@@ -299,11 +507,12 @@ function hookGesture() {
 /** Start a track with crossfade (1–2 s). Same id while playing is a no-op unless a seed is given. */
 export function playTrack(id, opts = {}) {
   try {
-    if (!TRACKS[id] && !ALIAS[id]) return;
+    if (!CFG[id]) return;
     if (!Number.isFinite(opts.seed) && current && current.id === id) return;
     const fade = clamp(Number.isFinite(opts.fade) ? opts.fade : FADE_DEFAULT, FADE_MIN, FADE_MAX);
     const seed = Number.isFinite(opts.seed) ? opts.seed >>> 0 : (Math.random() * 0xffffffff) >>> 0;
-    wanted = { id, seed, fade };
+    const leit = Array.isArray(opts.leit) && opts.leit.length >= 4 ? opts.leit.slice(0, 4).map(Number) : null;
+    wanted = { id, seed, fade, leit };
     if (!ensure()) {
       hookGesture();
       return;
@@ -339,9 +548,16 @@ export function setMusicVolume(v) {
   }
 }
 
-/** Debug / playtest: current track id and live voice count. */
+/** Layer intensity 0..1 for dynamic tracks (battle, boss, boss-final). Applies from the next bar. */
+export function setIntensity(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || !current || current.dead) return;
+  current.intensity = clamp(n, 0, 1);
+}
+
+/** Debug / playtest: current track, live source count, intensity. */
 export function getMusicState() {
-  return { track: current ? current.id : null, voices, max: MAX_VOICES };
+  return { track: current ? current.id : null, voices: count, max: MAX_VOICES, intensity: current ? current.intensity : null };
 }
 
 // ---------- track lifecycle ----------
@@ -353,75 +569,92 @@ function startWanted() {
   const t0 = ctx.currentTime;
   const fadeS = w.fade / 1000;
   const old = current;
-  current = startAny(w.id, w.seed, t0, fadeS);
+  current = startTrack(w.id, w.seed, t0, fadeS, w.leit);
   if (old) retire(old, fadeS);
 }
 
-/** Audio file if it is decoded, else procedural. Unknown files are probed in the background. */
-function startAny(id, seed, t0, fadeS) {
-  const f = fileState.get(id);
-  if (f && typeof f === 'object') return startFile(id, f, t0, fadeS);
-  if (!f) probeFile(id);
-  return startTrack(id, seed, t0, fadeS);
-}
-
-function startTrack(id, seed, t0, fadeS) {
-  const def = TRACKS[id] || TRACKS[ALIAS[id]];
+function startTrack(id, seed, t0, fadeS, leit) {
+  const cfg = CFG[id];
   const out = ctx.createGain();
   out.gain.setValueAtTime(0, t0);
   out.gain.linearRampToValueAtTime(1, t0 + fadeS);
   out.connect(musicBus);
   const tr = {
     id,
-    kind: 'proc',
-    def,
+    cfg,
     out,
+    nodes: [out],
+    in: {},
+    pads: {},
+    perm: [],
+    sc: null,
+    lv: {},
     rnd: mulberry(seed),
-    step: 0,
-    next: t0 + 0.05,
+    bar: 0,
+    cy: -1,
+    shift: 0,
+    chord: null,
+    intensity: cfg.dyn ? 0.5 : 1,
+    leit,
+    nextT: t0 + 0.05,
     timer: 0,
     dead: false,
-    drones: [],
-    st: {},
-    pad: null,
-    sc: null, // pad sidechain gain (pumps on kicks)
-    drumIn: null, // drum bus: saturation, then out
-    leadIn: null, // lead bus: dry plus chorus, then out
-    voiceOsc: null,
-    formants: null,
   };
-  routing(tr, t0);
-  if (def.init) def.init(tr, t0 + 0.05);
+  routing(tr);
+  makePads(tr, t0 + 0.05, cfg.prog[0]);
   tr.timer = setInterval(() => pump(tr), TICK_MS);
   pump(tr);
   return tr;
 }
 
-/** Per-track buses: drum saturation and lead chorus (the chorus LFO counts as one voice). */
-function routing(tr, t0) {
-  const sat = ctx.createWaveShaper();
-  sat.curve = DRUM_CURVE;
-  sat.oversample = 'none';
-  sat.connect(tr.out);
-  tr.drumIn = sat;
+/** Per-kind inputs: drums go through saturation and a compressor; each kind has a reverb send. */
+function routing(tr) {
+  for (const k of Object.keys(REV)) {
+    let head;
+    let outN;
+    if (k === 'drum') {
+      const sat = ctx.createWaveShaper();
+      sat.curve = DRUM_CURVE;
+      sat.oversample = 'none';
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -20;
+      comp.knee.value = 6;
+      comp.ratio.value = 4;
+      comp.attack.value = 0.004;
+      comp.release.value = 0.12;
+      outN = ctx.createGain();
+      outN.gain.value = 0.9;
+      sat.connect(comp);
+      comp.connect(outN);
+      head = sat;
+      tr.nodes.push(sat, comp, outN);
+    } else {
+      head = ctx.createGain();
+      outN = head;
+      tr.nodes.push(head);
+    }
+    tr.in[k] = head;
+    outN.connect(tr.out);
+    if (REV[k] > 0) {
+      const s = ctx.createGain();
+      s.gain.value = REV[k];
+      outN.connect(s);
+      s.connect(revIn);
+      tr.nodes.push(s);
+    }
+    if (k === 'mel' || k === 'fx') {
+      const d = ctx.createGain();
+      d.gain.value = k === 'mel' ? 0.25 : 0.35;
+      outN.connect(d);
+      d.connect(dlyIn);
+      tr.nodes.push(d);
+    }
+  }
+  tr.sc = tr.in.pad; // pad input: kicks duck it
+}
 
-  const lead = ctx.createGain();
-  lead.connect(tr.out);
-  const cd = ctx.createDelay(0.05);
-  cd.delayTime.value = 0.018;
-  lead.connect(cd);
-  const cw = ctx.createGain();
-  cw.gain.value = 0.5;
-  cd.connect(cw).connect(tr.out);
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = 0.6;
-  const depth = ctx.createGain();
-  depth.gain.value = 0.003;
-  lfo.connect(depth).connect(cd.delayTime);
-  hold(tr, lfo, [depth]);
-  lfo.start(t0);
-  tr.leadIn = lead;
+function dest(tr, kind) {
+  return tr.in[kind] || tr.in.mel;
 }
 
 function retire(tr, fadeS) {
@@ -432,903 +665,645 @@ function retire(tr, fadeS) {
   g.cancelScheduledValues(t);
   g.setValueAtTime(g.value, t);
   g.linearRampToValueAtTime(0, t + fadeS);
-  tr.drones.forEach((n) => {
-    try {
-      n.stop(t + fadeS + 0.05);
-    } catch {
-      /* already stopped */
-    }
+  tr.perm.forEach(({ e, srcs }) => {
+    e.end = t + fadeS + 0.1; // prune() frees the count
+    srcs.forEach((s) => {
+      try {
+        s.stop(t + fadeS + 0.1);
+      } catch {
+        /* already stopped */
+      }
+    });
   });
   setTimeout(() => {
-    try {
-      tr.out.disconnect();
-    } catch {
-      /* ignore */
-    }
-  }, (fadeS + 0.2) * 1000);
+    tr.nodes.forEach((n) => {
+      try {
+        n.disconnect();
+      } catch {
+        /* ignore */
+      }
+    });
+  }, (fadeS + 0.5) * 1000);
 }
 
 function pump(tr) {
   if (tr.dead || !ctx) return;
   const now = ctx.currentTime;
-  if (tr.next < now) tr.next = now + 0.02; // tab was throttled: don't burst
-  while (tr.next < now + LOOKAHEAD) {
-    const dt = tr.def.gen(tr, tr.next);
-    tr.next += dt;
-    tr.step++;
+  if (tr.nextT < now) tr.nextT = now + 0.02; // tab was throttled: don't burst
+  const barLen = 16 * tr.cfg.st;
+  while (tr.nextT < now + LOOKAHEAD) {
+    scheduleBar(tr, tr.bar, tr.nextT);
+    tr.nextT += barLen;
+    tr.bar++;
   }
-}
-
-// ---------- audio file playback ----------
-
-function probeFile(id) {
-  if (!MUSIC_FILES[id]) {
-    fileState.set(id, 'none');
-    return;
-  }
-  fileState.set(id, 'loading');
-  loadFile(id, ctx).then((buf) => {
-    fileState.set(id, buf || 'missing');
-    if (buf) onFileReady(id, buf);
-  });
-}
-
-async function loadFile(id, c) {
-  try {
-    const url = MUSIC_FILES[id];
-    const head = await fetch(url, { method: 'HEAD' });
-    if (!head.ok) return null;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const buf = await c.decodeAudioData(await res.arrayBuffer());
-    return buf.duration >= 8 ? buf : null; // shorter files would loop too fast
-  } catch {
-    return null;
-  }
-}
-
-/** A file arrived while its procedural track is playing: crossfade to the file. */
-function onFileReady(id, buf) {
-  if (!ctx || !current || current.id !== id || current.kind === 'file') return;
-  const old = current;
-  const fadeS = FADE_DEFAULT / 1000;
-  current = startFile(id, buf, ctx.currentTime, fadeS);
-  retire(old, fadeS);
-}
-
-function startFile(id, buf, t0, fadeS) {
-  const out = ctx.createGain();
-  out.gain.setValueAtTime(0, t0);
-  out.gain.linearRampToValueAtTime(1, t0 + fadeS);
-  out.connect(musicBus);
-  const x = Math.min(LOOP_XFADE, buf.duration / 4);
-  const tr = {
-    id,
-    kind: 'file',
-    def: null,
-    out,
-    buf,
-    x,
-    period: buf.duration - x,
-    nextStart: t0,
-    timer: 0,
-    dead: false,
-    drones: [],
-    rnd: null,
-    step: 0,
-    next: 0,
-    st: {},
-  };
-  tr.timer = setInterval(() => filePump(tr), TICK_MS);
-  filePump(tr);
-  return tr;
-}
-
-/** Keeps passes scheduled about one second ahead. Each pass plays the whole file once. */
-function filePump(tr) {
-  if (tr.dead || !ctx) return;
-  const now = ctx.currentTime;
-  if (tr.nextStart < now) tr.nextStart = now + 0.02;
-  while (tr.nextStart < now + 1.0) {
-    playPass(tr, tr.nextStart);
-    tr.nextStart += tr.period;
-  }
-}
-
-/** One pass: fades in over x s, holds, fades out over the last x s. Overlapping passes make a seamless loop. */
-function playPass(tr, s) {
-  const D = tr.buf.duration;
-  const x = tr.x;
-  const src = ctx.createBufferSource();
-  src.buffer = tr.buf;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0, s);
-  g.gain.linearRampToValueAtTime(1, s + x);
-  g.gain.setValueAtTime(1, s + D - x);
-  g.gain.linearRampToValueAtTime(0, s + D);
-  src.connect(g).connect(tr.out);
-  tr.drones.push(src);
-  src.onended = () => {
-    tr.drones = tr.drones.filter((n) => n !== src);
-    try {
-      src.disconnect();
-      g.disconnect();
-    } catch {
-      /* ignore */
-    }
-  };
-  src.start(s);
-  src.stop(s + D + 0.05);
 }
 
 // ---------- voices ----------
 
-const room = (n = 1) => voices + n <= MAX_VOICES;
+function prune() {
+  const now = ctx.currentTime;
+  for (let i = live.length - 1; i >= 0; i--) {
+    if (live[i].end < now) {
+      count -= live[i].n;
+      live.splice(i, 1);
+    }
+  }
+}
 
-/** Count a started source; release it and its nodes when it ends. */
-function own(src, nodes = []) {
-  voices++;
-  src.onended = () => {
-    voices--;
+/** Claim n sources for a note. Steals the lowest lower-priority voice when full; null = dropped. */
+function take(prio, end, n) {
+  prune();
+  while (count + n > MAX_VOICES) {
+    let vi = -1;
+    for (let i = 0; i < live.length; i++) {
+      const v = live[i];
+      if (v.perm || v.prio >= prio) continue;
+      if (vi < 0 || v.prio < live[vi].prio || (v.prio === live[vi].prio && v.end < live[vi].end)) vi = i;
+    }
+    if (vi < 0) return null;
+    const v = live.splice(vi, 1)[0];
+    count -= v.n;
+    v.kill();
+  }
+  const e = { prio, end, n, perm: false, kill: NOOP };
+  live.push(e);
+  count += n;
+  return e;
+}
+
+/** Permanent claim (pads): never stolen, freed on retire. */
+function perm(n) {
+  prune();
+  if (count + n > MAX_VOICES) return null;
+  const e = { prio: PRIO.pad, end: Infinity, n, perm: true, kill: NOOP };
+  live.push(e);
+  count += n;
+  return e;
+}
+
+/** Start sources and wire their end: each source disconnects itself; the last one frees the nodes. */
+function arm(e, srcs, out, extra, t, stopAt) {
+  e.kill = () => {
+    const now = ctx.currentTime;
     try {
-      src.disconnect();
-      nodes.forEach((n) => n.disconnect());
+      out.gain.cancelScheduledValues(now);
+      out.gain.setTargetAtTime(0, now, 0.004);
     } catch {
       /* ignore */
     }
+    srcs.forEach((s) => {
+      try {
+        s.stop(now + 0.03);
+      } catch {
+        /* ignore */
+      }
+    });
   };
+  let left = srcs.length;
+  srcs.forEach((s) => {
+    s.onended = () => {
+      try {
+        s.disconnect();
+      } catch {
+        /* ignore */
+      }
+      left--;
+      if (left === 0) {
+        [out, ...extra].forEach((n) => {
+          try {
+            n.disconnect();
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+    };
+    s.start(t);
+    s.stop(stopAt);
+  });
 }
 
-/** Permanent source (pad, LFO, choir): counted as a voice, stopped on retire. Caller starts it. */
-function hold(tr, src, nodes = []) {
-  own(src, nodes);
-  tr.drones.push(src);
+/** Started permanent sources (pads), kept in the track for retire. */
+function startPerm(tr, e, t, srcs, nodes) {
+  srcs.forEach((s) => s.start(t));
+  tr.perm.push({ e, srcs });
+  nodes.forEach((n) => tr.nodes.push(n));
 }
 
-/** Envelope gain. Goes to dest (default: the track output), and to the echo when send is set. */
-function env(tr, t, peak, attack, dur, send = false, dest = null) {
-  const g = ctx.createGain();
+/** Gain envelope: linear attack to peak, exponential release to dur. Attack is at least 4 ms (no click). */
+function shape(g, t, peak, attack, dur) {
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(peak, t + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, attack + 0.01));
-  g.connect(dest || tr.out);
-  if (send) g.connect(sendBus);
-  return g;
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, attack + 0.02));
 }
 
-/** One-shot oscillator. o: {type | wave, f, f1?, dur, peak, attack?, cut?, cut1?, q?, send?, drum?} */
-function tone(tr, t, o) {
-  if (!room()) return;
-  const osc = ctx.createOscillator();
-  if (o.wave) osc.setPeriodicWave(o.wave);
-  else osc.type = o.type || 'sine';
-  osc.frequency.setValueAtTime(o.f, t);
-  if (o.f1) osc.frequency.exponentialRampToValueAtTime(o.f1, t + o.dur);
-  const fl = ctx.createBiquadFilter();
-  fl.type = 'lowpass';
-  fl.frequency.setValueAtTime(o.cut || 6000, t);
-  if (o.cut1) fl.frequency.exponentialRampToValueAtTime(o.cut1, t + o.dur);
-  fl.Q.value = o.q ?? 0.7;
-  const g = env(tr, t, o.peak ?? 0.1, o.attack ?? 0.005, o.dur, o.send, o.drum ? tr.drumIn : tr.out);
-  osc.connect(fl).connect(g);
-  own(osc, [fl, g]);
-  osc.start(t);
-  osc.stop(t + o.dur + 0.05);
-}
-
-/** One-shot filtered noise. o: {type, f, f1?, q?, dur, peak, attack?, send?, drum?} */
-function hiss(tr, t, o) {
-  if (!room()) return;
-  const src = ctx.createBufferSource();
-  src.buffer = getNoiseBuffer();
-  src.loop = true;
-  const fl = ctx.createBiquadFilter();
-  fl.type = o.type || 'bandpass';
-  fl.frequency.setValueAtTime(o.f, t);
-  if (o.f1) fl.frequency.exponentialRampToValueAtTime(o.f1, t + o.dur);
-  fl.Q.value = o.q ?? 1;
-  const g = env(tr, t, o.peak ?? 0.1, o.attack ?? 0.005, o.dur, o.send, o.drum ? tr.drumIn : tr.out);
-  src.connect(fl).connect(g);
-  own(src, [fl, g]);
-  src.start(t, tr.rnd() * 0.9);
-  src.stop(t + o.dur + 0.05);
-}
-
-/** Organ timbre as one PeriodicWave: partials 1, 2, 3, 4, 6, 8 with falling amplitude. */
-function organWave() {
-  if (organCtx !== ctx) {
-    const real = new Float32Array(9);
-    const imag = new Float32Array(9);
-    real[1] = 1;
-    real[2] = 0.5;
-    real[3] = 0.33;
-    real[4] = 0.25;
-    real[6] = 0.16;
-    real[8] = 0.1;
-    organ = ctx.createPeriodicWave(real, imag);
-    organCtx = ctx;
-  }
-  return organ;
-}
-
-/**
- * Permanent pad: n voices (one oscillator each, detuned by ±o.detune cents) into one lowpass,
- * with a slow LFO on the cutoff. Chords change by glide (padChord). o: {wave, n, peak, cut, lfo, depth, attack, detune, chord}
- * The pad passes a sidechain gain (tr.sc) that the kicks pump (duck).
- */
-function pad(tr, t, o) {
-  const n = o.n ?? 3;
-  if (!room(n + 1)) return;
-  const chord = o.chord;
-  const fl = ctx.createBiquadFilter();
-  fl.type = 'lowpass';
-  fl.frequency.value = o.cut ?? 1100;
-  fl.Q.value = 0.5;
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0, t);
-  gain.gain.setTargetAtTime(o.peak ?? 0.05, t, (o.attack ?? 3) / 3);
-  const sc = ctx.createGain();
-  fl.connect(gain).connect(sc).connect(tr.out);
-  tr.sc = sc;
-
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = o.lfo ?? 0.06;
-  const depth = ctx.createGain();
-  depth.gain.value = o.depth ?? 250;
-  lfo.connect(depth).connect(fl.frequency);
-  hold(tr, lfo, [depth]);
-  lfo.start(t);
-
-  const osc = [];
-  for (let i = 0; i < n; i++) {
-    const v = ctx.createOscillator();
-    if (o.wave === 'organ') v.setPeriodicWave(organWave());
-    else v.type = o.wave || 'triangle';
-    v.frequency.value = mtof(chord[i % chord.length]);
-    v.detune.value = n > 1 ? (i / (n - 1) - 0.5) * 2 * (o.detune ?? 5) : 0;
-    v.connect(fl);
-    hold(tr, v);
-    v.start(t);
-    osc.push(v);
-  }
-  tr.pad = { osc, gain, peak: o.peak ?? 0.05 };
-}
-
-/** Glide the pad (and the choir, an octave up) to a chord. */
-function padChord(tr, t, midis) {
-  if (tr.pad) tr.pad.osc.forEach((v, i) => v.frequency.setTargetAtTime(mtof(midis[i % midis.length]), t, 1.2));
-  if (tr.voiceOsc) tr.voiceOsc.frequency.setTargetAtTime(mtof(midis[0] + 12), t, 1.2);
-}
-
-/** Change the chord every 8–16 s, walking through the progression (cyberspace, tension). */
-function cycle(tr, t, prog) {
-  if (tr.st.at !== undefined && t < tr.st.at) return;
-  tr.st.i = ((tr.st.i ?? -1) + 1) % prog.length;
-  tr.st.chord = prog[tr.st.i];
-  padChord(tr, t, tr.st.chord);
-  tr.st.at = t + rr(tr, 8, 16);
-}
-
-/** Chord change on a bar boundary (songs). Same index = no-op. */
-function chordAt(tr, t, prog, idx) {
-  if (tr.st.ci === idx) return;
-  tr.st.ci = idx;
-  tr.st.chord = prog[idx];
-  padChord(tr, t, prog[idx]);
-}
-
-/** Pad to a quiet level (rest) or back to full. */
-function setRest(tr, t, rest) {
-  if (!tr.pad || !!tr.st.rest === rest) return;
-  tr.st.rest = rest;
-  tr.pad.gain.gain.setTargetAtTime(tr.pad.peak * (rest ? 0.35 : 1), t, 1.2);
-}
-
-/** Sidechain: the pad dips on a kick and comes back over rel seconds. */
+/** Sidechain: the pad input dips on a kick and comes back over rel seconds. */
 function duck(tr, t, depth = 0.4, rel = 0.14) {
-  if (!tr.sc) return;
-  const g = tr.sc.gain;
+  const g = tr.sc && tr.sc.gain;
+  if (!g) return;
   g.linearRampToValueAtTime(1 - depth, t + 0.006);
   g.linearRampToValueAtTime(1, t + rel);
 }
 
-/** Choir: one sawtooth through three bandpass formants; vowels glide with vowel(). */
-function choir(tr, t, chord, peak) {
-  if (!room(2)) return;
-  const v = ctx.createOscillator();
-  v.type = 'sawtooth';
-  v.frequency.value = mtof(chord[0] + 12);
-  const out = ctx.createGain();
-  out.gain.setValueAtTime(0, t);
-  out.gain.setTargetAtTime(peak, t, 1.5);
-  out.connect(tr.out);
-  const levels = [1, 0.6, 0.35];
-  tr.formants = VOWELS.a.map((f, k) => {
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = f;
-    bp.Q.value = 8;
-    const g = ctx.createGain();
-    g.gain.value = levels[k];
-    v.connect(bp).connect(g).connect(out);
-    return bp;
-  });
-  hold(tr, v, [out]);
-  v.start(t);
-  tr.voiceOsc = v;
+function organWave() {
+  if (ORG_CTX !== ctx) {
+    const re = new Float32Array(9);
+    const im = new Float32Array(9);
+    re[1] = 1;
+    re[2] = 0.5;
+    re[3] = 0.33;
+    re[4] = 0.25;
+    re[6] = 0.16;
+    re[8] = 0.1;
+    ORG = ctx.createPeriodicWave(re, im);
+    ORG_CTX = ctx;
+  }
+  return ORG;
 }
 
-function vowel(tr, t, which) {
-  if (!tr.formants) return;
-  tr.formants.forEach((bp, k) => bp.frequency.setTargetAtTime(VOWELS[which][k], t, 0.8));
+// ---------- permanent pads: strings, organ, choir ----------
+
+function makePads(tr, t, chord) {
+  const P = tr.cfg.pads || {};
+  if (P.str) {
+    const e = perm(7);
+    if (e) {
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0, t);
+      const fl = ctx.createBiquadFilter();
+      fl.type = 'lowpass';
+      fl.frequency.value = 1500;
+      fl.Q.value = 0.4;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = rr(tr, 0.05, 0.09);
+      const ld = ctx.createGain();
+      ld.gain.value = 320;
+      lfo.connect(ld);
+      ld.connect(fl.frequency);
+      const oscs = [];
+      for (let i = 0; i < 3; i++) {
+        for (const det of [-8, 8]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth';
+          o.detune.value = det;
+          o.frequency.value = mtof(chord[i % chord.length]);
+          o.connect(fl);
+          oscs.push(o);
+        }
+      }
+      fl.connect(out);
+      out.connect(tr.in.pad);
+      startPerm(tr, e, t, [...oscs, lfo], [out, fl, ld]);
+      tr.pads.str = { out, oscs, peak: P.str };
+    }
+  }
+  if (P.org) {
+    const e = perm(3);
+    if (e) {
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0, t);
+      const fl = ctx.createBiquadFilter();
+      fl.type = 'lowpass';
+      fl.frequency.value = 1100;
+      fl.Q.value = 0.5;
+      const oscs = [0, 1, 2].map((i) => {
+        const o = ctx.createOscillator();
+        o.setPeriodicWave(organWave());
+        o.frequency.value = mtof(chord[i % chord.length]);
+        o.connect(fl);
+        return o;
+      });
+      fl.connect(out);
+      out.connect(tr.in.pad);
+      startPerm(tr, e, t, oscs, [out, fl]);
+      tr.pads.org = { out, oscs, peak: P.org };
+    }
+  }
+  if (P.cho) {
+    const e = perm(3);
+    if (e) {
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0, t);
+      const nodes = [out];
+      const bank = VOWEL.a.map((f, k) => {
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = f;
+        bp.Q.value = 8;
+        const g = ctx.createGain();
+        g.gain.value = [1, 0.6, 0.35][k];
+        bp.connect(g);
+        g.connect(out);
+        nodes.push(bp, g);
+        return bp;
+      });
+      const oscs = [0, 2].map((i) => {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = mtof(chord[i % chord.length] + 12);
+        bank.forEach((bp) => o.connect(bp));
+        return o;
+      });
+      const nz = ctx.createBufferSource();
+      nz.buffer = getNoiseBuffer();
+      nz.loop = true;
+      const br = ctx.createGain();
+      br.gain.value = 0.1;
+      nz.connect(br);
+      bank.forEach((bp) => br.connect(bp));
+      nodes.push(br);
+      out.connect(tr.in.pad);
+      startPerm(tr, e, t, [...oscs, nz], nodes);
+      tr.pads.cho = { out, oscs, peak: P.cho, bank };
+    }
+  }
 }
 
-// ---------- sound building blocks ----------
-
-/** Dry industrial kick: short sine with a pitch drop, through the drum bus. */
-function kick(tr, t, peak = 0.5, pitch = 110) {
-  tone(tr, t, { type: 'sine', f: pitch, f1: 44, dur: 0.2, peak, attack: 0.003, cut: 500, drum: true });
+/** Glide the pads to a chord (1.2 s time constant). */
+function padChord(tr, t, chord) {
+  const p = tr.pads;
+  if (p.str) p.str.oscs.forEach((o, i) => o.frequency.setTargetAtTime(mtof(chord[(i >> 1) % chord.length]), t, 1.2));
+  if (p.org) p.org.oscs.forEach((o, i) => o.frequency.setTargetAtTime(mtof(chord[i % chord.length]), t, 1.2));
+  if (p.cho) p.cho.oscs.forEach((o, i) => o.frequency.setTargetAtTime(mtof(chord[(i * 2) % chord.length] + 12), t, 1.2));
 }
 
-/** Snare: bandpass noise snap plus a short triangle body (no bare waveform). */
-function snare(tr, t, peak = 0.1) {
-  hiss(tr, t, { type: 'bandpass', f: 1800, q: 0.9, dur: 0.16, peak, attack: 0.003, drum: true });
-  tone(tr, t, { type: 'triangle', f: 190, f1: 150, dur: 0.09, peak: peak * 0.5, attack: 0.003, cut: 1500, drum: true });
+/** Pad level 0..1 of its peak, approached over about 1 s. */
+function level(tr, t, key, v) {
+  const p = tr.pads[key];
+  if (!p || tr.lv[key] === v) return;
+  tr.lv[key] = v;
+  p.out.gain.setTargetAtTime(p.peak * v, t, 0.9);
 }
 
-/** Hi-hat from highpassed noise. */
-function hat(tr, t, peak = 0.025) {
-  hiss(tr, t, { type: 'highpass', f: 7500, q: 0.7, dur: 0.04, peak, attack: 0.003, drum: true });
+function choirVowel(tr, t, v) {
+  const p = tr.pads.cho;
+  if (p) p.bank.forEach((bp, k) => bp.frequency.setTargetAtTime(VOWEL[v][k], t, 0.3));
 }
 
-/** Metal hit: inharmonic ring plus a short bandpass-noise transient, sent to the echo. */
-function clank(tr, t, f, peak = 0.12) {
-  hiss(tr, t, { type: 'bandpass', f: f * 4, q: 5, dur: 0.09, peak, attack: 0.004, send: true, drum: true });
-  tone(tr, t, { type: 'sine', f, f1: f * 0.98, dur: 0.6, peak: peak * 0.45, attack: 0.004, send: true, drum: true });
-  tone(tr, t, { type: 'sine', f: f * 2.76, dur: 0.25, peak: peak * 0.18, attack: 0.004, send: true, drum: true });
-}
+// ---------- melodic instruments (priority: melody) ----------
 
-/** Bass note: triangle through a lowpass that closes, 80–200 Hz range by the caller. */
-function bass(tr, t, midi, dur, peak) {
-  tone(tr, t, { type: 'triangle', f: mtof(midi), dur, peak, attack: 0.006, cut: 380, cut1: 200, q: 1.5 });
-}
-
-/** Lead: two triangles 6 cents apart through a closing lowpass, into the chorus bus. */
-function lead(tr, t, midi, dur, peak = 0.07) {
-  if (!tr.leadIn || !room(2)) return;
-  const f = mtof(midi);
-  const a = ctx.createOscillator();
-  a.type = 'triangle';
-  a.frequency.setValueAtTime(f, t);
-  const b = ctx.createOscillator();
-  b.type = 'triangle';
-  b.frequency.setValueAtTime(f * 1.0035, t);
+/** Legato string: two detuned saws through a lowpass that opens on a slow bow attack. */
+function strNote(tr, t, m, dur, pk, kind = 'mel') {
+  const e = take(PRIO.mel, t + dur, 2);
+  if (!e) return;
   const fl = ctx.createBiquadFilter();
   fl.type = 'lowpass';
-  fl.frequency.setValueAtTime(3000, t);
-  fl.frequency.exponentialRampToValueAtTime(1100, t + dur);
-  fl.Q.value = 0.8;
-  const g = env(tr, t, peak, 0.012, dur, false, tr.leadIn);
-  a.connect(fl);
-  b.connect(fl);
-  fl.connect(g);
-  own(a, [fl, g]);
-  own(b);
-  a.start(t);
-  b.start(t);
-  a.stop(t + dur + 0.05);
-  b.stop(t + dur + 0.05);
-}
-
-/** Organ stab: one organ tone per chord note. */
-function organStab(tr, t, midis, dur, peak) {
-  midis.forEach((m) => tone(tr, t, { wave: organWave(), f: mtof(m), dur, peak, attack: 0.02, cut: 1600, cut1: 900, q: 0.7 }));
-}
-
-/** Noise riser: bandpass sweep up over dur seconds. */
-function riser(tr, t, dur) {
-  hiss(tr, t, { type: 'bandpass', f: 300, f1: 5000, q: 1.2, dur, peak: 0.03, attack: 0.05 });
-}
-
-/** FM bell: sine carrier, inharmonic modulator (ratio 3.5) with a decaying index, long tail. */
-function fmBell(tr, t, f, peak = 0.08) {
-  if (!room(2)) return;
-  const car = ctx.createOscillator();
-  car.type = 'sine';
-  car.frequency.value = f;
-  const mod = ctx.createOscillator();
-  mod.type = 'sine';
-  mod.frequency.value = f * 3.5;
-  const mg = ctx.createGain();
-  mg.gain.setValueAtTime(f * 3, t);
-  mg.gain.exponentialRampToValueAtTime(0.01, t + 2);
-  mod.connect(mg).connect(car.frequency);
-  const g = env(tr, t, peak, 0.004, 7);
-  car.connect(g);
-  own(car, [g]);
-  own(mod, [mg]);
-  car.start(t);
-  mod.start(t);
-  car.stop(t + 7.05);
-  mod.stop(t + 2.05);
-}
-
-/** Radio crackle: short bandpass noise, soft attack. */
-function crackle(tr, t, peak = 0.04) {
-  hiss(tr, t, { type: 'bandpass', f: rr(tr, 1200, 2600), q: 2, dur: 0.18, peak, attack: 0.02 });
-}
-
-/** Soft timer tick: sine with a 8 ms attack (no click). */
-function tick(tr, t, f, peak = 0.03) {
-  tone(tr, t, { type: 'sine', f, dur: 0.06, peak, attack: 0.008, cut: 4000 });
-}
-
-// ---------- voices for the new tracks (boss-final, romance, tragic) ----------
-
-/**
- * Vocalise voice (ooh/aah): sawtooth and breath noise through three bandpass formants, vibrato 5–6 Hz
- * (±20 cents on detune). Permanent, three voices. Returns null without room. Starts silent: voxLevel() opens it.
- */
-function voxStart(tr, t, peak, midi) {
-  if (!room(3)) return null;
-  const osc = ctx.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.value = mtof(midi);
-  const nz = ctx.createBufferSource();
-  nz.buffer = getNoiseBuffer();
-  nz.loop = true;
-  const breath = ctx.createGain();
-  breath.gain.value = 0.2;
-  nz.connect(breath);
+  fl.Q.value = 0.6;
+  fl.frequency.setValueAtTime(700, t);
+  fl.frequency.linearRampToValueAtTime(2400, t + 0.25);
+  fl.frequency.exponentialRampToValueAtTime(900, t + dur);
   const out = ctx.createGain();
-  out.gain.setValueAtTime(0, t);
-  out.connect(tr.out);
-  const bank = VOX.a.map((f, k) => {
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = f;
-    bp.Q.value = 7;
-    const g = ctx.createGain();
-    g.gain.value = [1, 0.55, 0.3][k];
-    osc.connect(bp);
-    breath.connect(bp);
-    bp.connect(g).connect(out);
-    return bp;
+  shape(out, t, pk, 0.14, dur);
+  fl.connect(out);
+  out.connect(dest(tr, kind));
+  const srcs = [-7, 7].map((det) => {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = mtof(m);
+    o.detune.value = det;
+    o.connect(fl);
+    return o;
   });
-  const vib = ctx.createGain();
-  vib.gain.value = 20;
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = rr(tr, 5, 6);
-  lfo.connect(vib).connect(osc.detune);
-  hold(tr, osc, [out, breath, ...bank]);
-  hold(tr, nz, [breath]);
-  hold(tr, lfo, [vib]);
-  osc.start(t);
-  nz.start(t);
-  lfo.start(t);
-  return { osc, bank, out, peak };
+  arm(e, srcs, out, [fl], t, t + dur + 0.1);
 }
 
-/** Portamento: glide an oscillator holder (voxStart, cello) to a MIDI pitch, time constant tc seconds. */
-function pitchTo(o, t, midi, tc = 0.08) {
-  if (o) o.osc.frequency.setTargetAtTime(mtof(midi), t, tc);
-}
-
-/** Vowel: move the three formants to VOX[which] over about 0.1 s. */
-function voxVowel(vx, t, which) {
-  if (!vx || !VOX[which]) return;
-  vx.bank.forEach((bp, k) => bp.frequency.setTargetAtTime(VOX[which][k], t, 0.1));
-}
-
-/** Voice level k (0..1 of its peak), approached over about 0.6 s: no click. */
-function voxLevel(vx, t, k) {
-  if (vx) vx.out.gain.setTargetAtTime(vx.peak * k, t, 0.6);
-}
-
-/** Cello: sawtooth through a lowpass, vibrato about 5 Hz, slow swell. Permanent, two voices. */
-function cello(tr, t, midi, peak) {
-  if (!room(2)) return null;
-  const osc = ctx.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.value = mtof(midi);
+/** Brass: saw pair through a resonant lowpass with an envelope ("брр"). */
+function brassNote(tr, t, m, dur, pk, kind = 'mel') {
+  const e = take(PRIO.mel, t + dur, 2);
+  if (!e) return;
   const fl = ctx.createBiquadFilter();
   fl.type = 'lowpass';
-  fl.frequency.value = 650;
-  fl.Q.value = 1.5;
+  fl.Q.value = 7;
+  fl.frequency.setValueAtTime(320, t);
+  fl.frequency.exponentialRampToValueAtTime(1900, t + 0.07);
+  fl.frequency.exponentialRampToValueAtTime(800, t + Math.max(dur, 0.2));
   const out = ctx.createGain();
-  out.gain.setValueAtTime(0, t);
-  out.gain.setTargetAtTime(peak, t, 0.7);
-  osc.connect(fl).connect(out).connect(tr.out);
-  const vib = ctx.createGain();
-  vib.gain.value = 14;
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = rr(tr, 4.8, 5.5);
-  lfo.connect(vib).connect(osc.detune);
-  hold(tr, osc, [fl, out]);
-  hold(tr, lfo, [vib]);
-  osc.start(t);
-  lfo.start(t);
-  return { osc, out, peak };
+  shape(out, t, pk, 0.05, dur);
+  fl.connect(out);
+  out.connect(dest(tr, kind));
+  const srcs = [0, 6].map((det) => {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = mtof(m);
+    o.detune.value = det;
+    o.connect(fl);
+    return o;
+  });
+  arm(e, srcs, out, [fl], t, t + dur + 0.1);
 }
 
-/** Soft keys (piano-like): sine carrier, ratio-2 modulator whose index dies in 0.35 s (hammer), mellow tail. */
-function softKey(tr, t, midi, dur, peak = 0.05) {
-  if (!room(2)) return;
-  const f = mtof(midi);
+/** Garmon (reed): square through a bandpass swept by a 5 Hz LFO (pulse-width feel). */
+function reedNote(tr, t, m, dur, pk, kind = 'mel') {
+  const e = take(PRIO.mel, t + dur, 2);
+  if (!e) return;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1100;
+  bp.Q.value = 2.5;
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 5.2;
+  const depth = ctx.createGain();
+  depth.gain.value = 260;
+  lfo.connect(depth);
+  depth.connect(bp.frequency);
+  const o = ctx.createOscillator();
+  o.type = 'square';
+  o.frequency.value = mtof(m);
+  o.connect(bp);
+  const out = ctx.createGain();
+  shape(out, t, pk, 0.04, dur);
+  bp.connect(out);
+  out.connect(dest(tr, kind));
+  arm(e, [o, lfo], out, [bp, depth], t, t + dur + 0.1);
+}
+
+/** Karplus–Strong pluck: precomputed string, played back at the note's pitch. which: 'bal' | 'guit'. */
+function pluckNote(tr, t, m, dur, pk, kind = 'mel', which = 'bal') {
+  const K = KS && KS[which];
+  const e = K ? take(PRIO.mel, t + dur, 1) : null;
+  if (!e) return;
+  const src = ctx.createBufferSource();
+  src.buffer = K.buf;
+  src.playbackRate.value = mtof(m) / K.f0;
+  const out = ctx.createGain();
+  shape(out, t, pk, 0.004, dur);
+  src.connect(out);
+  out.connect(dest(tr, kind));
+  arm(e, [src], out, [], t, t + dur + 0.1);
+}
+
+/** FM voice: sine carrier, modulator at ratio, modulation index decays over tau seconds. */
+function fmNote(tr, t, m, ratio, index, tau, dur, pk, kind) {
+  const e = take(PRIO.mel, t + dur, 2);
+  if (!e) return;
+  const f = mtof(m);
   const car = ctx.createOscillator();
-  car.type = 'sine';
   car.frequency.value = f;
   const mod = ctx.createOscillator();
-  mod.type = 'sine';
-  mod.frequency.value = f * 2;
+  mod.frequency.value = f * ratio;
   const mg = ctx.createGain();
-  mg.gain.setValueAtTime(f * 1.2, t);
-  mg.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
-  mod.connect(mg).connect(car.frequency);
-  const g = env(tr, t, peak, 0.004, dur);
-  car.connect(g);
-  own(car, [g, mg]);
-  own(mod, []);
-  car.start(t);
-  mod.start(t);
-  car.stop(t + dur + 0.05);
-  mod.stop(t + 0.4);
+  mg.gain.setValueAtTime(f * index, t);
+  mg.gain.exponentialRampToValueAtTime(1, t + tau);
+  mod.connect(mg);
+  mg.connect(car.frequency);
+  const out = ctx.createGain();
+  shape(out, t, pk, 0.004, dur);
+  car.connect(out);
+  out.connect(dest(tr, kind));
+  arm(e, [car, mod], out, [mg], t, t + dur + 0.1);
 }
 
-/** Final boss chant: two voices a third apart, vowels a–o–u–o every two bars, pitch steps up in between. */
-function chant(tr, t, b) {
-  const x = tr.st;
-  const sl = Math.floor(b / 2) % 4;
-  const up = sl % 2 ? 2 : 0;
-  const vw = FINAL_VOW[sl];
-  pitchTo(x.v1, t, x.chord[1] + 12 + x.shift + up, 0.1);
-  pitchTo(x.v2, t, x.chord[0] + 12 + x.shift + up, 0.1);
-  voxVowel(x.v1, t, vw);
-  voxVowel(x.v2, t, vw);
+/** FM piano / celesta: ratio 2, hammer index dies in 0.35 s. */
+function keyNote(tr, t, m, dur, pk, kind = 'mel') {
+  fmNote(tr, t, m, 2, 1.2, 0.35, dur, pk, kind);
+}
+
+/** FM bell: inharmonic ratio 3.5, long tail (at least 3.5 s). */
+function bellNote(tr, t, m, dur, pk, kind = 'fx') {
+  fmNote(tr, t, m, 3.5, 2.5, 2.2, Math.max(dur, 3.5), pk, kind);
+}
+
+// ---------- bass (priority: bass) ----------
+
+/** Bass: sine sub plus a saw through a closing lowpass, kept at 80–200 Hz by the caller. */
+function bassNote(tr, t, m, dur, pk) {
+  const e = take(PRIO.bass, t + dur, 2);
+  if (!e) return;
+  const f = mtof(m);
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = f;
+  const saw = ctx.createOscillator();
+  saw.type = 'sawtooth';
+  saw.frequency.value = f;
+  const fl = ctx.createBiquadFilter();
+  fl.type = 'lowpass';
+  fl.Q.value = 1.2;
+  fl.frequency.setValueAtTime(260, t);
+  fl.frequency.exponentialRampToValueAtTime(130, t + dur);
+  const out = ctx.createGain();
+  shape(out, t, pk, 0.006, dur);
+  saw.connect(fl);
+  fl.connect(out);
+  sub.connect(out);
+  out.connect(dest(tr, 'bass'));
+  arm(e, [sub, saw], out, [fl], t, t + dur + 0.1);
+}
+
+// ---------- drums (priority: drums) ----------
+
+/** Tone hit: sine (or type) with a pitch glide, one source. */
+function toneHit(tr, t, prio, kind, f, f1, dur, pk, type = 'sine') {
+  const e = take(prio, t + dur, 1);
+  if (!e) return;
+  const o = ctx.createOscillator();
+  o.type = type;
+  o.frequency.setValueAtTime(f, t);
+  if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const out = ctx.createGain();
+  shape(out, t, pk, 0.004, dur);
+  o.connect(out);
+  out.connect(dest(tr, kind));
+  arm(e, [o], out, [], t, t + dur + 0.05);
+}
+
+/** Noise hit through a filter, one source (shared noise buffer). */
+function noiseHit(tr, t, prio, kind, type, f, q, dur, pk) {
+  const e = take(prio, t + dur, 1);
+  if (!e) return;
+  const src = ctx.createBufferSource();
+  src.buffer = getNoiseBuffer();
+  src.loop = true;
+  const fl = ctx.createBiquadFilter();
+  fl.type = type;
+  fl.frequency.value = f;
+  fl.Q.value = q;
+  const out = ctx.createGain();
+  shape(out, t, pk, 0.003, dur);
+  src.connect(fl);
+  fl.connect(out);
+  out.connect(dest(tr, kind));
+  arm(e, [src], out, [fl], t, t + dur + 0.05);
+}
+
+/** Industrial kick: sine pitch drop, sidechains the pads. */
+function kick(tr, t, pk) {
+  toneHit(tr, t, PRIO.drum, 'drum', 130, 42, 0.22, pk);
+  duck(tr, t, 0.3, 0.15);
+}
+
+/** Taiko for bosses: long low drum with a short noise thump, sidechains the pads. */
+function taiko(tr, t, pk) {
+  toneHit(tr, t, PRIO.drum, 'drum', 96, 52, 0.9, pk);
+  noiseHit(tr, t, PRIO.drum, 'drum', 'lowpass', 500, 0.7, 0.12, pk * 0.6);
+  duck(tr, t, 0.2, 0.3);
+}
+
+function snare(tr, t, pk) {
+  noiseHit(tr, t, PRIO.drum, 'drum', 'bandpass', 1800, 0.9, 0.16, pk);
+  toneHit(tr, t, PRIO.drum, 'drum', 190, 150, 0.09, pk * 0.5, 'triangle');
+}
+
+function hat(tr, t, pk, open = false) {
+  noiseHit(tr, t, PRIO.drum, 'drum', 'highpass', 7500, 0.7, open ? 0.25 : 0.04, pk);
+}
+
+function cym(tr, t, pk) {
+  noiseHit(tr, t, PRIO.drum, 'drum', 'highpass', 5200, 0.5, 1.3, pk);
+}
+
+/** Industrial anvil: bandpass-noise transient plus two inharmonic ring tones. */
+function anvil(tr, t, pk) {
+  noiseHit(tr, t, PRIO.drum, 'drum', 'bandpass', 1400, 4, 0.16, pk);
+  toneHit(tr, t, PRIO.drum, 'drum', 180, 168, 0.5, pk * 0.5);
+  toneHit(tr, t, PRIO.drum, 'drum', 497, 480, 0.2, pk * 0.25);
+}
+
+function glitch(tr, t, pk) {
+  noiseHit(tr, t, PRIO.drum, 'drum', 'bandpass', 2000 + Math.random() * 4000, 9, 0.03, pk);
+}
+
+const hitAt = (s, p) => (s && s[p] && s[p] !== '.' ? s[p] : '');
+const vel = (c) => (c === 'X' ? 1 : 0.7);
+
+function drumStep(tr, t, p, dp, fill, dv) {
+  const k = hitAt(dp.k, p);
+  if (k) kick(tr, t, 0.42 * dv * vel(k));
+  const tm = hitAt(dp.t, p);
+  if (tm) taiko(tr, t, 0.5 * dv * vel(tm));
+  const sn = hitAt(fill && dp.f ? dp.f : dp.s, p);
+  if (sn) snare(tr, t, 0.1 * dv * vel(sn));
+  const h = hitAt(dp.h, p);
+  if (h) hat(tr, t, 0.022 * dv * vel(h), h === 'o');
+  const c = hitAt(dp.c, p);
+  if (c) cym(tr, t, 0.035 * dv * vel(c));
+  const a = hitAt(dp.a, p);
+  if (a) anvil(tr, t, 0.1 * dv * vel(a));
+  const g = hitAt(dp.g, p);
+  if (g && tr.rnd() < 0.8) glitch(tr, t, 0.035 * dv * vel(g));
 }
 
 // ---------- song engine ----------
 
-const SEC = (b) => (b < 8 ? 0 : b < 20 ? 1 : b < 28 ? 2 : b < 40 ? 3 : 4);
-const TICK_EVERY = [8, 4, 2, 2];
-const vel = (c) => (c === 'X' ? 1 : 0.7);
-const bassOf = (chord) => (chord[0] > 51 ? chord[0] - 12 : chord[0]);
-
-/** Bar index inside the cycle. On a new cycle, pick a seeded transposition for the melody. */
-function barOf(tr, s, cyc) {
-  const bar = Math.floor(s / 16);
-  const c = Math.floor(bar / cyc);
-  if (tr.st.cyc !== c) {
-    tr.st.cyc = c;
-    tr.st.shift = c === 0 ? 0 : pick(tr, [0, 0, 2, -2, 5]);
-  }
-  return bar % cyc;
-}
-
-/** Melody for this bar: the motif on the chord root, inverted in bar 3 of each 4-bar phrase. */
-function phrase(tr, b, base, motif) {
-  const inv = b % 4 === 2 ? -1 : 1;
-  tr.st.notes = motif.map((n) => [base + tr.st.shift + inv * n[0], n[1], n[2]]);
-}
-
-function melody(tr, t, pos, st, peak) {
-  const ns = tr.st.notes;
-  if (!ns) return;
-  for (const n of ns) {
-    if (n[1] === pos) lead(tr, t, n[0], n[2] * st * 0.92, peak);
-  }
-}
-
-/** Drums for one 16th: kick, snare (fill in the second half of a bar), hats (swing on odd steps), metal. */
-function drumStep(tr, t, pos, st, p, fill) {
-  const kc = p.k ? p.k[pos] : '.';
-  if (kc !== '.') {
-    kick(tr, t, (p.kv ?? 0.4) * vel(kc), p.kf ?? 95);
-    if (p.duck) duck(tr, t);
-  }
-  const sp = fill && p.fs ? p.fs : p.s;
-  const sc = sp ? sp[pos] : '.';
-  if (sc !== '.') snare(tr, t, (p.sv ?? 0.1) * vel(sc));
-  const hc = p.h ? p.h[pos] : '.';
-  if (hc !== '.' && (p.hp === undefined || chance(tr, p.hp))) {
-    hat(tr, t + (pos % 2 === 1 ? (p.sw ?? 0) * st : 0), (p.hv ?? 0.025) * vel(hc));
-  }
-  const cc = p.cl ? p.cl[pos] : '.';
-  if (cc !== '.' && chance(tr, 0.7)) clank(tr, t, rr(tr, p.cf[0], p.cf[1]), (p.clv ?? 0.08) * vel(cc));
-}
-
-/** Melody, bass, organ stabs, bells and risers for one 16th. */
-function layers(tr, t, pos, b, p, cfg) {
-  const st = cfg.st;
-  if (p.lv && tr.st.notes && (!p.once || b % 4 === 0)) melody(tr, t, pos, st, p.lv);
-  const be = p.be ?? 2;
-  if (p.bass && pos % be === 0) {
-    bass(tr, t, bassOf(tr.st.chord) + BASS_B[b % 4][pos / be], st * be * 0.9, p.bass);
-  }
-  if (p.stab && (pos === 0 || pos === 8)) organStab(tr, t, tr.st.chord.slice(0, 3), st * 6, p.stab);
-  if (p.bell && pos === 0 && b % 4 === 2) fmBell(tr, t, mtof(pick(tr, p.bellNotes)), p.bell);
-  if (p.rise && pos === 0 && b % 4 === 0) riser(tr, t, st * 32);
-}
-
-/** One 16th of a song track. Returns the step length in seconds. */
-function songStep(tr, t, cfg) {
-  const s = tr.step;
-  const pos = s % 16;
-  const b = barOf(tr, s, CYC);
-  const p = cfg.pats[SEC(b)];
-  if (pos === 0) {
-    if (b % 4 === 0) chordAt(tr, t, cfg.prog, Math.floor(b / 4) % cfg.prog.length);
-    if (cfg.motif) phrase(tr, b, tr.st.chord[0] + 12, cfg.motif);
-    if (cfg.vowel && b % 8 === 4) vowel(tr, t, chance(tr, 0.5) ? 'a' : 'o');
-    if (chance(tr, 0.04)) crackle(tr, t, 0.03);
-  }
-  setRest(tr, t, !!p.rest);
-  if (b >= (p.from ?? 0)) drumStep(tr, t, pos, cfg.st, p, b % 4 === 3);
-  layers(tr, t, pos, b, p, cfg);
-  return cfg.st;
-}
-
-// Final boss: Dm – Bb – F – C, four bars each (138 BPM). Lowest notes stay above ~110 Hz.
-const FINAL_CH = [[50, 57, 62, 65], [46, 53, 58, 62], [48, 53, 57, 60], [48, 55, 60, 64]];
-const FINAL_VOW = ['a', 'o', 'u', 'o']; // vowel per two-bar slot of the chant
-// Sections of the 32-bar cycle: 0 intro (organ, chant), 1 lift, 2 climax, 3 final hits.
-const FINAL_SEC = (b) => (b < 8 ? 0 : b < 16 ? 1 : b < 24 ? 2 : 3);
-const FINAL_P = [
-  {},
-  { k: KQ, kv: 0.36, s: S24, sv: 0.09, h: H8, hv: 0.016, bass: 0.07, duck: true },
-  { k: 'X..xX...X..xX.x.', kv: 0.5, s: S24, fs: FILL, sv: 0.1, h: H16, hv: 0.024, hp: 0.9, duck: true, bass: 0.085, cl: CL8, clv: 0.08, cf: [280, 340], rise: true, bell: 0.04, bellNotes: [74, 77, 81] },
-  { k: 'X.......X.......', kv: 0.6, s: S24, sv: 0.12, duck: true, bass: 0.075, bell: 0.05, bellNotes: [74, 77, 81] },
-];
-
-// Romance: F – Em – Dm – G, one chord per bar (70 BPM). Melody rows: [offset from chord[0] + 12, step, length].
-const ROM = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [55, 59, 62, 65]];
-const ROM_MEL = [
-  [[4, 0, 6], [2, 8, 4], [0, 12, 4]],
-  [[7, 0, 6], [3, 8, 4], [0, 12, 4]],
-  [[7, 0, 4], [10, 4, 4], [7, 8, 4], [3, 12, 4]],
-  [[4, 0, 4], [7, 4, 4], [10, 8, 4], [7, 12, 4]],
-];
-
-// Tragic: Am – F – Dm – E, one chord per bar (60 BPM). Lonely voice steps per two bars.
-const TRAG = [[57, 60, 64, 69], [53, 57, 60, 65], [50, 57, 62, 65], [52, 56, 59, 62]];
-const TRAG_VOX = [0, 2, 0, -2];
-
-// ---------- tracks ----------
-
-const TRACKS = {
-  // Rogue Trader: organ and choir pad, lead motif on triangle with chorus, FM bells. No drums.
-  menu: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'organ', n: 3, peak: 0.05, cut: 1300, lfo: 0.05, depth: 280, attack: 4, chord: DORIAN[0] });
-      choir(tr, t, DORIAN[0], 0.02);
-    },
-    gen(tr, t) {
-      return songStep(tr, t, SONG.menu);
-    },
-  },
-
-  // Quasimorph map: dark filtered pad, dry kicks on the beat, hats from noise, metal hits, walking bass.
-  world: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'triangle', n: 3, peak: 0.04, cut: 900, lfo: 0.07, depth: 200, attack: 3, chord: PHRYGIAN[0] });
-    },
-    gen(tr, t) {
-      return songStep(tr, t, SONG.world);
-    },
-  },
-
-  // Rogue Trader city: warm organ and choir, soft swung groove, rim, lead and bells. Quiet fall.
-  town: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'organ', n: 3, peak: 0.045, cut: 1100, lfo: 0.04, depth: 250, attack: 4, chord: DORIAN[0] });
-      choir(tr, t, DORIAN[0], 0.018);
-    },
-    gen(tr, t) {
-      return songStep(tr, t, SONG.town);
-    },
-  },
-
-  // Quasimorph combat: 124 BPM, kick on every beat, snare on 2 and 4, 16th hats, sidechained pad,
-  // bass and lead, organ stabs on the strong beats, snare rolls and metal in the lift and climax.
-  battle: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'triangle', n: 2, peak: 0.03, cut: 800, lfo: 0.1, depth: 160, attack: 3, chord: DORIAN[0] });
-    },
-    gen(tr, t) {
-      return songStep(tr, t, SONG.battle);
-    },
-  },
-
-  // Rogue Trader boss: 136 BPM, choir and organ over a tritone progression, driving kicks, rising
-  // riser, FM bell and organ stabs. The intro is choir only.
-  boss: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'organ', n: 3, peak: 0.055, cut: 1000, lfo: 0.08, depth: 300, attack: 2, chord: BOSS[0] });
-      choir(tr, t, BOSS[0], 0.022);
-    },
-    gen(tr, t) {
-      return songStep(tr, t, SONG.boss);
-    },
-  },
-
-  // Final boss: 138 BPM, organ pad, a two-voice chant a–o–u on formants, bells, heavy drums.
-  // Intro (organ and chant), lift (kick, snare, bass), climax (rise, hats, metal, full drums), final hits.
-  'boss-final': {
-    init(tr, t) {
-      pad(tr, t, { wave: 'organ', n: 2, peak: 0.05, cut: 1000, lfo: 0.06, depth: 260, attack: 3, chord: FINAL_CH[0] });
-      tr.st.v1 = voxStart(tr, t + 0.05, 0.03, FINAL_CH[0][1] + 12);
-      tr.st.v2 = voxStart(tr, t + 0.05, 0.025, FINAL_CH[0][0] + 12);
-    },
-    gen(tr, t) {
-      const st = S(138, 4);
-      const s = tr.step;
-      const pos = s % 16;
-      const b = barOf(tr, s, 32);
-      const sec = FINAL_SEC(b);
-      if (pos === 0) {
-        if (b % 4 === 0) chordAt(tr, t, FINAL_CH, Math.floor(b / 4) % 4);
-        if (b % 2 === 0) chant(tr, t, b);
-        if (b % 8 === 0) {
-          voxLevel(tr.st.v1, t, [0.6, 0.85, 1, 1][sec]);
-          voxLevel(tr.st.v2, t, [0.5, 0.8, 1, 1][sec]);
-        }
-      }
-      const p = FINAL_P[sec];
-      drumStep(tr, t, pos, st, p, b % 4 === 3);
-      layers(tr, t, pos, b, p, { st });
-      return st;
-    },
-  },
-
-  // Romance date: 70 BPM, warm string pad, soft keys for the melody, quiet vocalise "а-а" with vibrato,
-  // brushes on 2 and 4 (no kick).
-  romance: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'triangle', n: 3, peak: 0.04, cut: 1500, lfo: 0.15, depth: 250, attack: 4, detune: 9, chord: ROM[0] });
-      tr.st.v1 = voxStart(tr, t + 0.05, 0.022, ROM[0][1] + 12);
-      voxLevel(tr.st.v1, t + 0.05, 1);
-    },
-    gen(tr, t) {
-      const st = S(70, 4);
-      const s = tr.step;
-      const pos = s % 16;
-      const b = barOf(tr, s, 16);
-      const bi = b % 4;
-      if (pos === 0) {
-        chordAt(tr, t, ROM, bi);
-        if (b % 2 === 0) pitchTo(tr.st.v1, t, tr.st.chord[1] + 12 + tr.st.shift + (bi === 2 ? 2 : 0), 0.12);
-      }
-      for (const n of ROM_MEL[bi]) {
-        if (n[1] === pos) softKey(tr, t, tr.st.chord[0] + 12 + tr.st.shift + n[0], n[2] * st * 1.6, 0.05);
-      }
-      if (pos === 4 || pos === 12) hiss(tr, t, { type: 'bandpass', f: 4500, q: 0.9, dur: 0.14, peak: 0.01, attack: 0.02, drum: true });
-      return st;
-    },
-  },
-
-  // Farewell and death: 60 BPM, organ pad, cello melody (half-bar steps), lonely voice "о", then a second
-  // voice joins (choir). The track fades out by bar 20 and stops its sources at bar 24 (silence).
-  tragic: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'organ', n: 2, peak: 0.04, cut: 900, lfo: 0.05, depth: 150, attack: 6, detune: 6, chord: TRAG[0] });
-      tr.st.cel = cello(tr, t + 0.05, TRAG[0][0], 0.05);
-      tr.st.v1 = voxStart(tr, t + 0.05, 0.02, TRAG[0][1] + 12);
-      tr.st.v2 = voxStart(tr, t + 0.05, 0.016, TRAG[0][0] + 12);
-      voxVowel(tr.st.v1, t, 'o');
-      voxVowel(tr.st.v2, t, 'o');
-    },
-    gen(tr, t) {
-      const st = S(60, 4);
-      const s = tr.step;
-      const pos = s % 16;
-      const b = Math.floor(s / 16);
-      const x = tr.st;
-      if (b >= 24) {
-        if (!x.done) {
-          x.done = true;
-          tr.drones.forEach((n) => {
-            try {
-              n.stop(t + 0.02);
-            } catch {
-              /* already stopped */
-            }
-          });
-        }
-        return st;
-      }
-      if (pos === 0) {
-        chordAt(tr, t, TRAG, b % 4);
-        if (b % 2 === 0) {
-          const off = TRAG_VOX[Math.floor(b / 2) % 4];
-          pitchTo(x.v1, t, x.chord[1] + 12 + off, 0.15);
-          pitchTo(x.v2, t, x.chord[0] + 12 + off, 0.15);
-        }
-        if (b === 4) voxLevel(x.v1, t, 1);
-        if (b === 8) voxLevel(x.v2, t, 0.8);
-        if (b === 16) {
-          voxLevel(x.v1, t, 1);
-          voxLevel(x.v2, t, 1);
-        }
-        if (b === 20) {
-          voxLevel(x.v1, t, 0);
-          voxLevel(x.v2, t, 0);
-          if (x.cel) x.cel.out.gain.setTargetAtTime(0, t, 2);
-          if (tr.pad) tr.pad.gain.gain.setTargetAtTime(0, t, 2);
-        }
-      }
-      if (x.cel && (pos === 0 || pos === 8)) pitchTo(x.cel, t, x.chord[pos === 0 ? 0 : 2], 0.15);
-      return st;
-    },
-  },
-
-  // Digital: triangle arpeggio on a scale picked per 4 bars, glitch bursts, soft pulse. No square.
-  cyberspace: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'sine', n: 2, peak: 0.03, cut: 1800, lfo: 0.12, depth: 400, attack: 3, chord: CYBER[0] });
-    },
-    gen(tr, t) {
-      const sec = S(120, 4);
-      const s = tr.step % 64;
-      cycle(tr, t, CYBER);
-      if (s === 0) tr.st.scale = pick(tr, [[0, 3, 5, 7, 10], [0, 2, 3, 7, 8], [0, 1, 5, 7, 10]]);
-      const sc = tr.st.scale || [0, 3, 5, 7, 10];
-      if (s % 2 === 0 && chance(tr, 0.7)) {
-        const m = 72 + pick(tr, sc) + 12 * ((tr.rnd() * 2) | 0);
-        tone(tr, t, { type: 'triangle', f: mtof(m), dur: sec * 1.6, peak: 0.035, attack: 0.008, cut: 2600, cut1: 900 });
-      }
-      if (s % 16 === 15 && chance(tr, 0.4)) {
-        for (let k = 0; k < 4; k++) {
-          tone(tr, t + k * sec * 0.5, { type: 'sine', f: mtof(84 + pick(tr, sc)), dur: sec * 0.4, peak: 0.03, attack: 0.006, cut: 3500 });
-        }
-      }
-      if (s % 8 === 0) kick(tr, t, 0.22, 60);
-      if (chance(tr, 0.05)) crackle(tr, t, 0.035);
-      return sec;
-    },
-  },
-
-  // Last timer mark: fifths only (no beating). Stages 0–3 speed the clock up, add kicks, hats and metal.
-  tension: {
-    init(tr, t) {
-      pad(tr, t, { wave: 'sine', n: 2, peak: 0.035, cut: 700, lfo: 0.05, depth: 120, attack: 4, detune: 0, chord: TENSE[0] });
-    },
-    gen(tr, t) {
-      const k = Math.min(3, Math.floor(tr.step / 128));
-      const st = S(96 + 8 * k, 4);
-      const pos = tr.step % 16;
-      cycle(tr, t, TENSE);
-      if (pos === 0 || (k >= 1 && pos === 8)) kick(tr, t, 0.4 - 0.05 * k, 70);
-      if (k >= 1 && (pos === 4 || pos === 12)) kick(tr, t, 0.2, 60);
-      if (k >= 2 && pos % 2 === 0) hat(tr, t, 0.012 + 0.004 * k);
-      if (pos % TICK_EVERY[k] === 0) tick(tr, t, mtof(84 + 2 * k), 0.025);
-      if (k >= 2 && pos === 0 && chance(tr, 0.25)) clank(tr, t, rr(tr, 500, 700), 0.06);
-      return st;
-    },
-  },
+const bassRoot = (chord) => {
+  let r = chord[0];
+  while (r > 50) r -= 12;
+  while (r < 38) r += 12;
+  return r;
 };
 
-/** Track ids accepted by playTrack(). */
-export const TRACK_IDS = Object.freeze(Object.keys(TRACKS));
+function playMel(tr, t, m, dur, style, pk, pw) {
+  if (style === 'str') strNote(tr, t, m, dur, pk);
+  else if (style === 'brass') brassNote(tr, t, m, dur, pk);
+  else if (style === 'reed') reedNote(tr, t, m, dur, pk);
+  else if (style === 'pluck') pluckNote(tr, t, m, dur, pk, 'mel', pw || 'bal');
+  else if (style === 'bell') bellNote(tr, t, m, dur, pk);
+  else keyNote(tr, t, m, dur, pk);
+}
 
-// ---------- where to call (not wired yet, per brief) ----------
+/** Schedule one bar (16 sixteenths) starting at t0. Everything in it is planned now. */
+function scheduleBar(tr, b, t0) {
+  const cfg = tr.cfg;
+  const st = cfg.st;
+  const L = 16 * st;
+  const sec = cfg.map[b % cfg.cyc];
+  const cy = Math.floor(b / cfg.cyc);
+  if (tr.cy !== cy) {
+    tr.cy = cy;
+    tr.shift = cy === 0 ? 0 : pick(tr, SHIFTS);
+  }
+  const chord = cfg.prog[b % cfg.prog.length];
+  if (tr.chord !== chord) {
+    tr.chord = chord;
+    padChord(tr, t0, chord);
+  }
+  const I = tr.intensity;
+  const L2 = I >= LAYER_I[0];
+  const L3 = I >= LAYER_I[1];
+  const L4 = I >= LAYER_I[2];
+  const dv = cfg.dv ?? 1;
+  const root = bassRoot(chord);
+
+  // pads
+  level(tr, t0, 'str', (sec.str || 0) * (L3 ? 1 : 0.45));
+  level(tr, t0, 'org', sec.org || 0);
+  level(tr, t0, 'cho', L4 ? sec.cho || 0 : 0);
+  if (sec.cho && b % 2 === 0) choirVowel(tr, t0, VSEQ[(b >> 1) & 3]);
+
+  // drums (layer 1)
+  const dp = DR[sec.d];
+  if (dp) {
+    const fill = !!sec.fill && b % 4 === 3;
+    for (let p = 0; p < 16; p++) drumStep(tr, t0 + p * st, p, dp, fill, dv);
+  }
+
+  // bass (layer 2)
+  if (sec.b && L2) {
+    for (let p = 0; p < 16; p++) {
+      const iv = BI[sec.b[p]];
+      if (iv === undefined) continue;
+      bassNote(tr, t0 + p * st, root + iv, 2 * st * 0.9, 0.08 * dv);
+    }
+  }
+
+  // melody (layer 3): question and answer from the 8-bar expansion, transposed per cycle
+  const style = sec.ms || cfg.ms;
+  const pw = sec.pw || cfg.pw;
+  if (sec.m && L3) {
+    const base = chord[0] + 12 + tr.shift;
+    for (const n of cfg.mel8[b % 8]) {
+      playMel(tr, t0 + n[1] * st, base + n[0], n[2] * st * 0.92, style, cfg.mv ?? 0.07, pw);
+    }
+    if (tr.leit && b % 8 === 7) {
+      tr.leit.forEach((d, i) => keyNote(tr, t0 + i * 4 * st, chord[0] + 24 + tr.shift + d, 3 * st, 0.05 * dv, 'fx'));
+    }
+  }
+
+  // layer 3 colour: reed chord, bells
+  if (sec.rd && L3) {
+    reedNote(tr, t0, chord[0] + 12, L * 0.95, 0.04 * dv, 'fx');
+    reedNote(tr, t0, chord[1 % chord.length] + 12, L * 0.95, 0.035 * dv, 'fx');
+  }
+  if (sec.bl && L3 && b % 4 === 0) bellNote(tr, t0, chord[0] + 24, 4, 0.05 * dv, 'fx');
+
+  // layer 4: brass stabs on the beat and the offbeat of the bar
+  if (sec.br && L4) {
+    for (const p of [0, 8]) {
+      chord.slice(0, 3).forEach((m) => brassNote(tr, t0 + p * st, m + 12, 6 * st, 0.03 * dv));
+    }
+  }
+
+  // plucked arpeggio (balalaika, guitar)
+  if (sec.pl) {
+    for (let p = 0; p < 16; p += 2) {
+      pluckNote(tr, t0 + p * st, chord[(p >> 1) % chord.length] + 12, 2.5 * st, 0.05 * dv, 'fx', pw || 'guit');
+    }
+  }
+}
+
+// ---------- tracks (see CFG above) ----------
+
+export const TRACK_IDS = Object.freeze(TRACK_IDS_LIST);
+
+// ---------- where to call (per brief: calls are added by the scene owners) ----------
 //
-// Track -> where to call (playTrack in scene enter(game) or in the place where the state changes):
-//   'menu'       game/src/scenes/menu.js          menuScene enter
-//   'world'      game/src/scenes/world-map.js     createWorldMapScene enter (map and route)
-//   'town'       game/src/scenes/location.js      createLocationScene enter (node and hub)
-//   'battle'     game/src/scenes/battle.js        createBattleScene enter (regular fights; world-battle.js uses it too)
-//   'boss'       game/src/scenes/battle.js        same scene, when the encounter is a boss or finale
-//                                                 (w-cc-finale, ids with '^inc'): choose by encounter id
-//   'cyberspace' game/src/scenes/cyberspace.js    createCyberspaceScene enter
-//   'tension'    game/src/scenes/world-map.js and location.js, when exodus mark is 5 (last timer mark;
-//                                                 see game/src/world/exodus.js exodusMark)
-//   'boss-final' game/src/scenes/battle.js    finale fight (w-cc-finale) only
-//   'romance'    game/src/data/romance.js     date scene (romance.date)
-//   'tragic'     romance.js farewell, breakup, death (romance.death) and tragic epilogue
-//   stopMusic(1500): game end (cyberspace defeat, exodus-zero finale, save deletion) and the pause
-//   menu's "В главное меню" (game/src/ui/save-ui.js, onMenu). setMusicVolume(v): settings screen.
+// Track -> where to call (playTrack in scene enter(game), or where the state changes):
+//   'menu'          game/src/scenes/menu.js            menu enter (main theme)
+//   'world'         game/src/scenes/world-map.js       world map and route
+//   'town'          game/src/scenes/location.js        node and hub; { leit: [4 offsets] } for a faction region
+//   'battle'        game/src/scenes/battle.js          regular fights; then setIntensity(v) on HP or phase changes
+//   'boss'          game/src/scenes/battle.js          boss encounters (ids with '^inc'): choose by encounter id
+//   'boss-final'    game/src/scenes/battle.js          finale fight (w-cc-finale) only
+//   'cyberspace'    game/src/scenes/cyberspace.js      createCyberspaceScene enter
+//   'tension'       world-map.js, location.js          exodus mark 5 (see game/src/world/exodus.js exodusMark)
+//   'card-game'     game/src/scenes/cards.js           cards enter (cards.js line ~316 still plays 'town'/'cyberspace')
+//   'casino'        game/src/scenes/casino.js          casino enter (casino.js line ~163 still plays 'town')
+//   'base'          not wired yet (camp / base scene not located)
+//   'cult'          not wired yet (cult encounter not located)
+//   'roguelike-map' not wired yet (roguelike map scene not located)
+//   'romance'       game/src/data/romance.js           date scene (romance.date)
+//   'tragic'        romance.js farewell, breakup, death (romance.death) and tragic epilogue
+//   stopMusic(1500): game end and the pause menu's "В главное меню" (game/src/ui/save-ui.js).
+//   setMusicVolume(v): settings screen. setIntensity(v): battle and boss scenes, 0..1.
 //   Calls before the first user gesture are stored and start on that gesture by themselves.
-//   Audio files: put game/assets/music/<id>.mp3 and list the path in MUSIC_FILES (optional; all tracks are procedural).
+//   Audio files are no longer used: all tracks are procedural.

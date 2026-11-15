@@ -92,6 +92,8 @@ function syncMusic(g) {
     else if (id === 'worldmap') tr = tense ? 'tension' : 'world';
     else if (id === 'location' || id === 'roam') tr = tense ? 'tension' : 'town';
     else if (id === 'cyberspace') tr = 'cyberspace';
+    else if (id === 'base') tr = 'base';
+    else if (id === 'run-map') tr = 'roguelike-map';
     else if (id === 'battle') tr = sc.S?.b?.units?.some((u) => u.boss && u.team !== 'heroes') ? 'boss' : 'battle';
     if (tr) playTrack(tr);
   } catch (e) { console.warn('music', e); }
