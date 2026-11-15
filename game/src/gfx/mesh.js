@@ -28,9 +28,32 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
 export class MeshBuilder {
-  constructor() { this.v = []; this.i = []; this.n = 0; this.b = null; this.bone = 0; }
-  /** Skinned meshes (gfx/units3d.js): every vertex added from now on belongs to bone k. */
-  setBone(k) { if (!this.b) this.b = new Array(this.n).fill(0); this.bone = k; return this; }
+  constructor() { this.v = []; this.i = []; this.n = 0; this.b = null; this.x = null; this.bone = 0; this.bone2 = 0; this.wfn = null; this.mat = 0; }
+  /** Skinned meshes (gfx/units3d.js): every vertex added from now on belongs to bone k (b = [bone, bone2, weight] per
+   *  vertex, x = [u, v, material kind] per vertex; weight blends towards bone2). */
+  setBone(k) {
+    if (!this.b) { this.b = new Array(this.n * 3).fill(0); this.x = new Array(this.n * 3).fill(0); }
+    this.bone = k; this.bone2 = k; this.wfn = null; return this;
+  }
+  /** Two-bone skin: weight fn(p) -> 0..1 of bone b2 (joints, spring bones). */
+  setSkin(b1, b2, fn) { this.setBone(b1); this.bone2 = b2; this.wfn = fn; return this; }
+  /** Material kind of the next vertices (shader pattern: 1 cloth 2 leather 3 metal 4 rust 6 hair 9 face). */
+  setMat(m) { this.mat = m; return this; }
+  _skinPush(p, o, k) {
+    if (!this.b) return;
+    const w = o.w !== undefined ? (Array.isArray(o.w) ? o.w[k] : o.w) : this.wfn ? this.wfn(p) : 0;
+    this.b.push(this.bone, w > 0.001 ? this.bone2 : this.bone, w > 0.001 ? w : 0);
+    const uv = o.uv ? o.uv[k] : null;
+    this.x.push(uv ? uv[0] : 0, uv ? uv[1] : 0, o.mat ?? this.mat);
+  }
+  /** One shared vertex with an explicit (smooth) normal and its own ramp; returns the index. */
+  vert(p, nrm, ramp, o = {}) {
+    const [S, B, L] = ramp;
+    this.v.push(p[0], p[1], p[2], nrm[0], nrm[1], nrm[2], S[0], S[1], S[2], B[0], B[1], B[2], L[0], L[1], L[2], o.ao || 0, o.glow ? 1 : 0);
+    this._skinPush(p, o, 0);
+    return this.n++;
+  }
+  tri3(a, b, c) { this.i.push(a, b, c); return this; }
   get empty() { return this.n === 0; }
   _poly(pts, ramp, o = {}) {
     let n = norm(cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])));
@@ -43,7 +66,7 @@ export class MeshBuilder {
     const base = this.n, [S, B, L] = ramp, g = o.glow ? 1 : 0;
     pts.forEach((p, k) => {
       this.v.push(p[0], p[1], p[2], n[0], n[1], n[2], S[0], S[1], S[2], B[0], B[1], B[2], L[0], L[1], L[2], o.ao ? o.ao[k] : 0, g);
-      if (this.b) this.b.push(this.bone);
+      this._skinPush(p, o, k);
     });
     for (let k = 1; k < pts.length - 1; k++) this.i.push(base, base + k, base + k + 1);
     this.n += pts.length;
@@ -116,7 +139,10 @@ export class MeshBuilder {
       for (let j = 3; j < VERT; j++) this.v.push(mb.v[k + j]);
     }
     for (const i of mb.i) this.i.push(i + base);
-    if (this.b) for (let k = 0; k < mb.n; k++) this.b.push(mb.b ? mb.b[k] : this.bone);
+    if (this.b) for (let k = 0; k < mb.n; k++) {
+      if (mb.b) this.b.push(mb.b[k * 3], mb.b[k * 3 + 1], mb.b[k * 3 + 2]); else this.b.push(this.bone, this.bone, 0);
+      if (mb.x) this.x.push(mb.x[k * 3], mb.x[k * 3 + 1], mb.x[k * 3 + 2]); else this.x.push(0, 0, 0);
+    }
     this.n += mb.n;
     return this;
   }
@@ -141,8 +167,14 @@ export function uploadMesh(gl, mb) {
     gl.bindBuffer(gl.ARRAY_BUFFER, bb);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mb.b), gl.STATIC_DRAW);
     gl.enableVertexAttribArray(6);
-    gl.vertexAttribPointer(6, 1, gl.FLOAT, false, 4, 0);
+    gl.vertexAttribPointer(6, 3, gl.FLOAT, false, 12, 0);
     bufs.push(bb);
+    const xb = gl.createBuffer(); // uv + material kind per vertex (location 7)
+    gl.bindBuffer(gl.ARRAY_BUFFER, xb);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mb.x), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(7);
+    gl.vertexAttribPointer(7, 3, gl.FLOAT, false, 12, 0);
+    bufs.push(xb);
   }
   const ib = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);

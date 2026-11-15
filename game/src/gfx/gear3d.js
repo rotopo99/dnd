@@ -19,7 +19,43 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const unit = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
 export function loft(mb, rings, rp, o = {}) {
+  if (o.ramps || o.flat) return loftFlat(mb, rings, rp, o);
   const seg = o.seg || 8, rot = o.rot || 0, zax = o.axis === 'z'; // axis 'z': ring.y is the z position, ring.cy the height
+  const P = (r, k) => {
+    const a = (k / seg) * Math.PI * 2 + rot, u = Math.cos(a) * r.rx, v = Math.sin(a) * (r.rz ?? r.rx);
+    return zax ? [(r.x || 0) + u, (r.cy || 0) + v, r.y] : [(r.x || 0) + u, r.y, (r.z || 0) + v];
+  };
+  const C = (r) => (zax ? [r.x || 0, r.cy || 0, r.y] : [r.x || 0, r.y, r.z || 0]);
+  const n = rings.length, idx = [];
+  // smooth normals: cross(around, along), oriented away from the ring centre; degenerate rings (tips) point along the axis
+  for (let i = 0; i < n; i++) {
+    const r = rings[i], c = C(r), row = [], rr = r.ramp || rp;
+    const pi = rings[Math.max(0, i - 1)], ni = rings[Math.min(n - 1, i + 1)];
+    for (let k = 0; k < seg; k++) {
+      const p = P(r, k), ta = sub(P(r, k + 1), P(r, k - 1)), tl = sub(P(ni, k), P(pi, k));
+      let nm = cross(ta, tl), l = Math.hypot(nm[0], nm[1], nm[2]);
+      const out = sub(p, c);
+      if (l < 1e-7 || Math.hypot(ta[0], ta[1], ta[2]) < 1e-5) nm = unit(sub(c, C(i === 0 ? rings[1] : rings[i - 1])));
+      else { nm = mul(nm, 1 / l); if (nm[0] * out[0] + nm[1] * out[1] + nm[2] * out[2] < 0) nm = mul(nm, -1); }
+      row.push(mb.vert(p, nm, rr, { ao: r.ao ?? 0, glow: o.glow }));
+    }
+    idx.push(row);
+  }
+  for (let i = 0; i + 1 < n; i++) for (let k = 0; k < seg; k++) {
+    const k1 = (k + 1) % seg, a = idx[i][k], b = idx[i][k1], c = idx[i + 1][k1], d = idx[i + 1][k];
+    // winding: geometric normal must agree with the vertex normals
+    const va = mb.v, o0 = a * 17, ob = b * 17, od = d * 17;
+    const e1 = [va[ob] - va[o0], va[ob + 1] - va[o0 + 1], va[ob + 2] - va[o0 + 2]], e2 = [va[od] - va[o0], va[od + 1] - va[o0 + 1], va[od + 2] - va[o0 + 2]];
+    const g = cross(e1, e2), vn = [va[o0 + 3], va[o0 + 4], va[o0 + 5]];
+    if (g[0] * vn[0] + g[1] * vn[1] + g[2] * vn[2] >= 0) mb.tri3(a, b, c).tri3(a, c, d); else mb.tri3(a, c, b).tri3(a, d, c);
+  }
+  if (o.capTop !== false && rings[n - 1].rx > 0.004) mb._poly(Array.from({ length: seg }, (_, k) => P(rings[n - 1], k)), o.cap || rp, { inside: C(rings[n - 2] || rings[n - 1]), glow: o.glow });
+  if (o.capBot) mb._poly(Array.from({ length: seg }, (_, k) => P(rings[0], k)), o.cap || rp, { inside: C(rings[1] || rings[0]), glow: o.glow });
+  return mb;
+}
+
+export function loftFlat(mb, rings, rp, o = {}) {
+  const seg = o.seg || 8, rot = o.rot || 0, zax = o.axis === 'z';
   const P = (r, k) => {
     const a = (k / seg) * Math.PI * 2 + rot, u = Math.cos(a) * r.rx, v = Math.sin(a) * (r.rz ?? r.rx);
     return zax ? [(r.x || 0) + u, (r.cy || 0) + v, r.y] : [(r.x || 0) + u, r.y, (r.z || 0) + v];
@@ -46,7 +82,7 @@ export function limb(mb, x, z, yTop, yBot, rTop, rBot, rp, o = {}) {
     { y: yTop - L * b, rx: rTop * k, rz: rTop * k * rz, x, z, ao: 0 },
     { y: yTop, rx: rTop * 0.92, rz: rTop * 0.92 * rz, x, z, ao: 0.15 },
   ];
-  return loft(mb, rings, rp, { seg: o.seg || 7, rot: Math.PI / 7, capTop: o.capTop ?? false, capBot: o.capBot ?? false });
+  return loft(mb, rings, rp, { seg: o.seg || 7, rot: Math.PI / (o.seg || 7), capTop: o.capTop ?? false, capBot: o.capBot ?? false });
 }
 
 /** Rectangular prism from a to b, width w (sideways), thickness t. */
@@ -66,7 +102,19 @@ export function tube(mb, a, b, r0, r1, rp, o = {}) {
   const seg = o.seg || 6, d = unit(sub(b, a)), up = Math.abs(d[1]) > 0.95 ? [1, 0, 0] : [0, 1, 0];
   const s = unit(cross(d, up)), u = unit(cross(s, d)), ins = mul(add(a, b), 0.5);
   const R = (p, r, k) => { const q = (k / seg) * Math.PI * 2; return add(p, add(mul(s, Math.cos(q) * r), mul(u, Math.sin(q) * r))); };
-  for (let k = 0; k < seg; k++) mb.quad(R(a, r0, k), R(a, r0, k + 1), R(b, r1, k + 1), R(b, r1, k), rp, { inside: ins, glow: o.glow, ao: [o.ao ?? 0, o.ao ?? 0, 0, 0] });
+  const NR = (k) => { const q = (k / seg) * Math.PI * 2; return add(mul(s, Math.cos(q)), mul(u, Math.sin(q))); };
+  const slope = (r0 - r1) / (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1);
+  const A = [], B = [];
+  for (let k = 0; k < seg; k++) {
+    const nm = unit(add(NR(k), mul(d, slope)));
+    A.push(mb.vert(R(a, r0, k), nm, rp, { ao: o.ao ?? 0, glow: o.glow }));
+    B.push(mb.vert(R(b, r1, k), nm, rp, { glow: o.glow }));
+  }
+  for (let k = 0; k < seg; k++) { const k1 = (k + 1) % seg; mb.tri3(A[k], A[k1], B[k1]).tri3(A[k], B[k1], B[k]); }
+  // winding check against the outward normal (once): flip the whole side if inverted
+  const n0 = mb.i.length - seg * 6, va = mb.v, o0 = A[0] * 17, o1 = A[1] * 17, o2 = B[1] * 17;
+  const g = cross([va[o1] - va[o0], va[o1 + 1] - va[o0 + 1], va[o1 + 2] - va[o0 + 2]], [va[o2] - va[o0], va[o2 + 1] - va[o0 + 1], va[o2 + 2] - va[o0 + 2]]);
+  if (g[0] * va[o0 + 3] + g[1] * va[o0 + 4] + g[2] * va[o0 + 5] < 0) for (let k = n0; k < mb.i.length; k += 3) { const t = mb.i[k + 1]; mb.i[k + 1] = mb.i[k + 2]; mb.i[k + 2] = t; }
   if (o.caps !== false) {
     mb._poly(Array.from({ length: seg }, (_, k) => R(b, r1, k)), rp, { inside: ins, glow: o.glow });
     mb._poly(Array.from({ length: seg }, (_, k) => R(a, r0, k)), rp, { inside: ins, glow: o.glow });
