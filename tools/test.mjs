@@ -5036,5 +5036,153 @@ console.log('metric combat stage 2 (ranges, areas, LOS, cover, zone of control, 
     assert.ok(ROAM.crouch.squash === 0.2 && ROAM.crouch.rhythm === 0.6 && ROAM.attack.dur === 0.35 && ROAM.attack.reach === 1.5);
   });
 }
+
+// ---------------------------------------------------------------- level-design.md: hand-made maps, checker, embedded battles
+{
+  console.log('level design: hand-made maps');
+  const HM = await import('../game/src/world/handmade.js');
+  const HC = await import('../game/src/world/handmade-check.js');
+  const HI = await import('../game/src/data/maps/handmade/index.js');
+  const rm = await import('../game/src/world/roam.js');
+  const rb = await import('../game/src/world/roam-battle.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const { parseMap: pm, elevAt, stepCost, reachable: reach } = await import('../game/src/rules/grid.js');
+  const { ENEMIES, ENCOUNTERS, ITEMS } = await import('../game/src/data/index.js');
+  const { NPCS } = await import('../game/src/data/npcs.js');
+  const { SKILLS } = await import('../game/src/data/talents.js');
+  const { PROPS } = await import('../game/src/assets/props.js');
+  const { LEVEL_RULES } = await import('../game/src/data/world/level-design.js');
+  const REFS = { ENEMIES, ENCOUNTERS, ITEMS, NPCS, LOCATIONS: LOCS, SKILLS, PROPS };
+  const clone = (d) => JSON.parse(JSON.stringify(d));
+  const harm = HI.HANDMADE['hm-alpha-harmony'];
+  test('hand maps: 3 nodes + the Lis-9 arena pass the checker (paths, POI, heights, refs, unique notes)', () => {
+    assert.ok(HI.HANDMADE_LIST.length >= 4);
+    for (const k of ['alpha-harmony', 'raytsentr', 'dacha-babki']) assert.ok(HI.HANDMADE_BY_LOC[k], k);
+    assert.ok(HI.HANDMADE_ARENAS['boss-lis-9-tail']);
+    const res = HC.validateAll(HI.HANDMADE_LIST, REFS);
+    for (const [id, r] of Object.entries(res)) assert.deepEqual(r.errors, [], id);
+    for (const d of HI.HANDMADE_LIST.filter((x) => x.kind !== 'arena')) {
+      const r = res[d.id].stats;
+      assert.ok(r.paths.length >= 3 && r.levels.length >= 3 && r.maxGap <= LEVEL_RULES.poiGap, d.id);
+      assert.ok(r.notes >= 5 && r.secrets >= 2 && r.battles >= 1 && r.interact.length >= 4, d.id);
+    }
+    for (const n of Object.values(HI.HANDMADE_NOTES)) assert.ok(n.text.length <= LEVEL_RULES.textMax);
+  });
+  test('hand maps checker fails: no three paths, POI gap, walled spawn, unknown ids, long text, ragged rows', () => {
+    const errs = (d) => HC.validateHandmade(d, REFS).errors.join(' | ');
+    let d = clone(harm); d.paths = d.paths.slice(0, 2);
+    assert.match(errs(d), /paths: 2 < 3/);
+    d = clone(harm); d.paths = d.paths.filter((p) => p.kind !== 'vertical');
+    assert.match(errs(d), /no 'vertical' path/);
+    d = clone(harm); d.poi = []; d.objects = d.objects.filter((o) => o.type !== 'note'); d.battles.forEach((b) => { b.foes = [b.foes[0]]; });
+    assert.match(errs(d), /without a point of interest/);
+    d = clone(harm); d.ascii.objs = d.ascii.objs.map((r) => r.replace('@', '.')); d.spawn = { world: [0, 0] };
+    assert.match(errs(d), /spawn .* not walkable/);
+    d = clone(harm); d.battles[0].encounter = 'no-such-enc'; d.objects.find((o) => o.type === 'secret').loot = [{ item: 'no-such-item', n: 1 }];
+    assert.match(errs(d), /unknown ENCOUNTERS id 'no-such-enc'/); assert.match(errs(d), /unknown ITEMS id 'no-such-item'/);
+    d = clone(harm); d.objects.find((o) => o.type === 'note').text = 'х'.repeat(141);
+    assert.match(errs(d), /text 141 > 140/);
+    d = clone(harm); d.ascii.floor[3] += '#';
+    assert.match(errs(d), /floor row 3/);
+    d = clone(harm); d.objects.find((o) => o.id === 'hm-ah-lever').opens = ['nope'];
+    assert.match(errs(d), /opens unknown door nope/);
+    d = clone(harm); d.ascii.elev = d.ascii.elev.map((r) => r.replace(/[1-9]/g, '0'));
+    assert.match(errs(d), /heights: 1 walkable levels/);
+  });
+  test('hand map loads into the free node map: heights kept, cliffs block, doors / levers / notes / secrets, NPC by hand', () => {
+    const m = rm.roamMapFor('alpha-harmony');
+    assert.equal(m.hand, 'hm-alpha-harmony'); assert.deepEqual(m.size, [40, 30]);
+    const g = rm.roamGrid(m);
+    assert.ok(g.costly && g.elev);
+    assert.equal(elevAt(g, 20, 2), 2); assert.equal(elevAt(g, 34, 4), 4);
+    assert.equal(stepCost(g, 8 * 40 + 16, 6 * 40 + 16), 0, 'a 1 m cliff is not a step');
+    assert.ok(stepCost(g, 7 * 40 + 20, 6 * 40 + 20) > 0, 'the ramp is');
+    for (const t of ['note', 'secret', 'lever', 'door', 'hatch', 'stall', 'exit']) assert.ok(m.objects.some((o) => o.type === t), t);
+    const s = { flags: {}, caches: [], codex: { flags: [] } };
+    const objs = HM.liveHand(m.objects.map((o) => ({ ...o })), 'alpha-harmony', s);
+    const gate = objs.find((o) => o.id === 'hm-ah-gate');
+    assert.ok(gate.solid && !gate.opened);
+    assert.equal(rm.objectAction(gate).kind, 'door'); assert.equal(rm.objectAction(gate).lock, 'lever');
+    assert.equal(rm.objectAction(objs.find((o) => o.type === 'secret')).kind, 'cache');
+    s.flags[HM.handKey('alpha-harmony', 'hm-ah-gate')] = true;
+    s.codex.flags.push(HM.noteKey('n-ah-water'));
+    s.caches.push('hm:hm-ah-floor');
+    HM.liveHand(objs, 'alpha-harmony', s);
+    assert.ok(gate.opened && !gate.solid);
+    assert.ok(objs.find((o) => o.id === 'n-ah-water').opened);
+    assert.equal(rm.objectAction(objs.find((o) => o.id === 'hm-ah-floor')).kind, 'empty');
+    HM.applyDoors(g, m, objs);
+    assert.equal(g.tiles[3 * 40 + 13], 0, 'open gate is floor');
+    const dm = rm.roamMapFor('dacha-babki');
+    assert.deepEqual(dm.npcPos.galina, [19, 14]);
+    const pl = rm.placeNpcs(dm, rm.roamGrid(dm), ['galina']);
+    assert.deepEqual([pl[0].x, pl[0].y], [19, 14]);
+    assert.equal(dm.objects.find((o) => o.id === 'hm-dc-hatch').to, 'bunker-lisa');
+  });
+  test('hand maps connectivity: goal reachable with doors closed; the flank needs the gate, the hidden way the hatch', () => {
+    const m = HM.loadHandmade(harm);
+    const closed = HC.checkGrid(m, false), open = HC.checkGrid(m, true);
+    const [sx, sy] = m.spawn.world;
+    const r = reach(closed, sx, sy, 9999, null);
+    assert.ok(r.dist[harm.goal[1] * 40 + harm.goal[0]] >= 0);
+    const flank = harm.paths.find((p) => p.kind === 'flank'), hid = harm.paths.find((p) => p.kind === 'hidden');
+    const len = (g, p) => { const r = HC.routeOf(g, p.pts); return r.error ? Infinity : r.length; };
+    assert.ok(len(closed, flank) > len(open, flank) + 15, 'with the gate shut the flank is a long detour');
+    assert.ok(len(closed, hid) > len(open, hid) + 8, 'with the hatch shut the hidden way is a detour');
+    for (const k of ['raytsentr', 'dacha-babki']) {
+      const mm = rm.roamMapFor(k), gg = rm.roamGrid(mm);
+      const rr = reach(gg, mm.spawn.world[0], mm.spawn.world[1], 9999, null);
+      for (const o of mm.objects.filter((x) => x.type === 'exit' && !x.boat && !x.hatch)) assert.ok(o.cells.some(([x, y]) => [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => rr.dist[(y + dy) * 40 + x + dx] >= 0)), `${k} ${o.id}`);
+    }
+  });
+  test('triggers: entering the barricade fires the battle once; a won battle is not offered again', () => {
+    const m = rm.roamMapFor('alpha-harmony');
+    const s = { flags: {} };
+    assert.equal(HM.triggersAt(m, 'alpha-harmony', s, 20, 20).length, 0);
+    const hit = HM.triggersAt(m, 'alpha-harmony', s, 20, 13);
+    assert.equal(hit.length, 1);
+    assert.ok(hit[0].ops.some((o) => o.op === 'battle' && o.id === 'ah-riot'));
+    assert.ok(HM.battleOf(m, 'alpha-harmony', s, 'ah-riot'));
+    s.flags[HM.handKey('alpha-harmony', 't:tr-ah-riot')] = true;
+    assert.equal(HM.triggersAt(m, 'alpha-harmony', s, 20, 13).length, 0);
+    s.flags[HM.handKey('alpha-harmony', 'b:ah-riot')] = true;
+    assert.equal(HM.battleOf(m, 'alpha-harmony', s, 'ah-riot'), null);
+  });
+  test('embedded battle: the authored cut of the same map — heights, props, closed doors, foes on their cells', () => {
+    const m = rm.roamMapFor('alpha-harmony');
+    const s = { flags: {}, caches: [], codex: { flags: [] } };
+    const objs = HM.liveHand(rm.liveObjects(m, 'alpha-harmony', s), 'alpha-harmony', s);
+    const b = m.battles.find((x) => x.id === 'ah-riot');
+    const party = [[20, 13], [19, 14]];
+    const def = rb.roamBattleMap(m, objs, { party, foes: b.foes, id: 'alpha-harmony', region: HM.battleRegion(b) });
+    const r = def.roam.region;
+    assert.deepEqual([r.x, r.y, r.w, r.h], b.rect);
+    assert.ok(def.elev && def.elev.length === r.h && def.elev[0].length === r.w);
+    const bg = pm(def), g = rm.roamGrid(m);
+    for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) assert.equal(elevAt(bg, x, y), elevAt(g, x + r.x, y + r.y));
+    assert.deepEqual(bg.starts.E.map((p) => [p.x + r.x, p.y + r.y]), b.foes);
+    assert.deepEqual(bg.starts.P.map((p) => [p.x + r.x, p.y + r.y]), party);
+    assert.ok(bg.barrels.length >= 2, 'barrels behind the barricade explode in the battle');
+    assert.ok(def.props.every((p) => p.x >= 0 && p.y >= 0 && p.x < r.w && p.y < r.h));
+    const cult = m.battles.find((x) => x.id === 'ah-cult');
+    assert.deepEqual(rb.fitRegion(HM.battleRegion(cult), 40, 30, [[10, 16]]), { x: 1, y: 6, w: 24, h: 13 });
+    const d2 = rb.roamBattleMap(m, objs, { party: [[10, 4]], foes: [[16, 3]], id: 'x', region: { x: 5, y: 0, w: 20, h: 10 } });
+    const gr = d2.roam.region;
+    assert.equal(d2.grid[3 - gr.y][13 - gr.x], '#', 'the closed deck gate stays a wall');
+    // all starts of the cut reach each other (heights respected)
+    const rr = reach(bg, bg.starts.P[0].x, bg.starts.P[0].y, 999, null);
+    for (const p of bg.starts.E) assert.ok(rr.dist[p.y * bg.w + p.x] >= 0);
+  });
+  test('Lis-9 arena: hand-made boss arena with the tower, the boss first among E, connected', () => {
+    const d = makeWorldMap({ seed: 5, enemies: 4, enemyIds: ['lis-5-turret', 'boss-lis-9-tail', 'lis-drone'] });
+    assert.equal(d.template, 'hand:hm-arena-lis9');
+    const g = pm(d);
+    assert.deepEqual([g.starts.E[1].x, g.starts.E[1].y], [11, 6], 'the boss at its index, on the tower');
+    assert.equal(elevAt(g, 11, 6), 4);
+    assert.ok(g.starts.P.length >= 4 && g.starts.E.length >= 6);
+    const r = reach(g, g.starts.P[0].x, g.starts.P[0].y, 999, null);
+    assert.ok(r.dist[6 * g.w + 11] >= 0, 'the tower is reachable by the stairs');
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

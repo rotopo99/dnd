@@ -8,16 +8,19 @@ import { NPCS } from '../data/npcs.js';
 import { VENDORS } from './vendors.js';
 import { reachable, findPath, isPassable, DIRS8 } from '../rules/grid.js';
 import { isTransitHub } from './transit.js';
+import { HANDMADE_BY_LOC } from '../data/maps/handmade/index.js';
+import { loadHandmade, liveHand } from './handmade.js';
 
 const cache = new Map();
 
-/** Map def of a node (generated; hand-made maps — этап 3) or null — the node stays a menu. */
+/** Map def of a node: hand-made (level-design.md, data/maps/handmade) or generated; null — the node stays a menu. */
 export function roamMapFor(locId) {
   const id = resolveLocation(locId);
   if (!ROAM.enabled) return null;
   if (cache.has(id)) return cache.get(id);
   const loc = LOCATIONS[id];
-  const m = loc && !loc.alias ? generateRoam(id, loc, roamTypeOf(loc)) : null;
+  const hand = loc && HANDMADE_BY_LOC[id];
+  const m = hand ? loadHandmade(hand) : loc && !loc.alias ? generateRoam(id, loc, roamTypeOf(loc)) : null;
   cache.set(id, m);
   return m;
 }
@@ -57,7 +60,9 @@ export function placeNpcs(map, grid, ids, objects = map.objects) {
     const npc = NPCS[id];
     const rnd = seeded(hashSeed(`${map.id}:${id}`));
     let pos = null, trader = false;
-    if (isTrader(npc)) {
+    const fixed = map.npcPos?.[id]; // hand-made maps place key NPCs by hand
+    if (fixed && !used.has(key(fixed[0], fixed[1]))) pos = take(fixed[0], fixed[1]);
+    if (!pos && isTrader(npc)) {
       const st = stalls[si++];
       if (st) { pos = take(st.stand[0], st.stand[1]); trader = true; st.npc = id; }
     }
@@ -96,6 +101,7 @@ export function liveObjects(map, locId, save) {
     }
     out.push(o);
   }
+  if (map.hand) liveHand(out, locId, save); // doors / levers / notes / secrets of hand-made maps
   // fast travel: a hub's carrier post near the entry (not solid — the party steps on it)
   const tc = isTransitHub(loc) ? transitCell(map, out) : null;
   if (tc) out.push({ id: 'transit', type: 'transit', x: tc[0], y: tc[1], solid: false });
@@ -123,6 +129,11 @@ export function objectAction(o) {
     case 'bench': return { kind: 'disassemble' };
     case 'terminal': return { kind: 'terminal' };
     case 'exit': return { kind: 'exit', to: o.to || 'world' };
+    // level-design.md: hand-made interactives
+    case 'note': return { kind: 'note' };
+    case 'secret': return o.opened ? { kind: 'empty' } : { kind: 'cache', cache: o.cache };
+    case 'lever': return { kind: 'lever' };
+    case 'door': case 'hatch': return o.opened ? { kind: 'flavor' } : { kind: 'door', lock: o.lock || null };
     case 'transit': return { kind: 'transit' };
     case 'corpse': return { kind: 'corpse' };
     default: return { kind: 'flavor' };

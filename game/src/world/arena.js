@@ -8,7 +8,9 @@
 // by place kind / biome / ambush) or this procedural arena; both are painted by the tile biome (props, pools, weather).
 import { BIOMES, biomeOf, BATTLEFIELD } from '../data/combat.js';
 import { parseMap, reachable } from '../rules/grid.js';
-import { tileBiomeOf, buildField, templateFor, paintProcedural, fieldRng, BOSS_ARENAS } from './battlefields.js';
+import { tileBiomeOf, buildField, templateFor, paintProcedural, fieldRng, BOSS_ARENAS, pickWeather } from './battlefields.js';
+import { HANDMADE_ARENAS } from '../data/maps/handmade/index.js';
+import { handArenaDef } from './handmade.js';
 
 const W = 22, H = 12;
 const enemyKey = (e) => String(typeof e === 'string' ? e : e?.enemyId || e?.id || '').split('^')[0];
@@ -25,6 +27,14 @@ export function makeWorldMap(o = {}) {
 
 function makeWorldMap0({ seed = 1, enemies = 4, enemyIds = [], hazard = null, biome = null, region = null, faction = null, id = 'world',
   kind = null, ambush = false, day = 1, template = null, weather = null, tod = null, sides = 2 } = {}) {
+  // level-design.md: a hand-made boss arena (heights, authored starts) comes first
+  const hi = enemyIds.findIndex((e) => HANDMADE_ARENAS[enemyKey(e)]);
+  if (hi >= 0) {
+    const ad = HANDMADE_ARENAS[enemyKey(enemyIds[hi])];
+    const w = weather && tod ? { weather, tod } : pickWeather(ad.biome, seed, day);
+    const def = handArenaDef(ad, { id, bossIndex: hi, ...w });
+    if (connectedDef(def)) return def;
+  }
   const bi = enemyIds.findIndex((e) => BOSS_ARENAS[enemyKey(e)]);
   if (bi >= 0) {
     const boss = enemyKey(enemyIds[bi]);

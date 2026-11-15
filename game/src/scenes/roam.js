@@ -18,7 +18,11 @@ import { fieldBiome, drawFieldCell, drawFieldProps, propCells, ambBiome, stepSur
 import { skillActionsAt, npcHintSkills, hintSkillsOf, hintLines } from '../world/node-actions.js';
 import { openSkillAction, openSkillActions, drawSkillBadge, drawHintBadges } from '../ui/skill-ui.js';
 import { skillName } from '../world/checks.js';
-import { T_RUBBLE, T_EXIT, isPassable, chebyshev } from '../rules/grid.js';
+import { T_RUBBLE, T_EXIT, isPassable, chebyshev, stepCost } from '../rules/grid.js';
+import { openCheck } from '../ui/checks-ui.js';
+import { applyDoors, triggersAt, battleOf, battleRegion, handKey, noteKey } from '../world/handmade.js';
+import { codexOf } from '../world/codex.js';
+import { visit, openHidden } from '../world/state.js';
 import { rollDice } from '../rules/dice.js';
 import { activeCompanions, grant, tf, locFaction, members, pickEncounter } from '../world/state.js';
 import { npcRole, guardEnemies, addHeat, payFine, fineFor, heatOf } from '../world/crime.js';
@@ -110,6 +114,7 @@ export function createRoamScene(rawId, opts = {}) {
     const ids = roamNpcIds(locId, game.save);
     const sig = ids.join(',');
     S.objs = liveObjects(map, locId, game.save);
+    handSync(game, true);
     if (!force && sig === S.npcIds) { for (const n of S.npcs) { const st = S.objs.find((o) => o.type === 'stall' && o.stand && o.stand[0] === n.hx && o.stand[1] === n.hy); if (st && n.trader) st.npc = n.id; } marks(game); return; }
     S.npcIds = sig;
     const prev = new Map(S.npcs.map((n) => [n.id, n]));
@@ -119,6 +124,82 @@ export function createRoamScene(rawId, opts = {}) {
     });
     S.layer = null;
     marks(game);
+  }
+  /**
+   * level-design.md: state of hand-made doors / levers / notes / secrets from the save (they change in modals, so it is
+   * re-read every frame): open doors leave the walkable grid, the static layer is rebuilt when anything changed.
+   */
+  function handSync(game, fresh = false) {
+    if (!map.hand) return;
+    const sv = game.save, flags = sv.flags || {}, notes = codexOf(sv).flags;
+    let sig = '';
+    for (const o of S.objs) {
+      if (o.type === 'door' || o.type === 'hatch') { o.opened = !!flags[handKey(locId, o.id)]; o.solid = !o.opened; }
+      else if (o.type === 'lever') o.opened = !!flags[handKey(locId, o.id)];
+      else if (o.type === 'note') o.opened = notes.includes(noteKey(o.id));
+      else if (o.type === 'secret') o.opened = (sv.caches || []).includes(o.cache?.id);
+      else continue;
+      sig += o.opened ? '1' : '0';
+    }
+    if (sig === S.handSig && !fresh) return;
+    if (sig !== S.handSig) S.layer = null;
+    S.handSig = sig;
+    applyDoors(grid, map, S.objs);
+  }
+  /** Read a note: a short window + a record in the codex («Записки»). */
+  function readNote(game, o) {
+    const c = codexOf(game.save), k = noteKey(o.id);
+    if (!c.flags.includes(k)) { c.flags.push(k); game.toast(tf('roam.noteCodex', { title: o.title || t('roam.note') }), 'f'); }
+    handSync(game);
+    game.openModal({ title: o.title || t('roam.note'), lines: [{ text: o.text }], options: [{ label: t('battle.ok'), run: () => {} }] });
+  }
+  function openDoorObj(game, o, quiet = false) {
+    game.save.flags[handKey(locId, o.id)] = true;
+    handSync(game);
+    if (!quiet) { game.toast(tf('roam.doorOpen', { name: o.name || t(`roam.${o.type}`) }), 'j'); play('uiClick'); }
+  }
+  function pullLever(game, o) {
+    const sv = game.save, k = handKey(locId, o.id);
+    if (sv.flags[k]) return game.toast(t('roam.leverDone'), '4');
+    sv.flags[k] = true;
+    for (const id of o.opens || []) { const d = S.objs.find((x) => x.id === id); if (d) openDoorObj(game, d, true); }
+    handSync(game);
+    game.toast(o.text || t('roam.leverPulled'), 'j');
+  }
+  /** A door / hatch: free — opens; lever-locked — hint; skill lock — a check (once per try, as caches). */
+  function useDoor(game, o, lock) {
+    if (!lock) return openDoorObj(game, o);
+    if (lock === 'lever') return game.toast(t('roam.doorLever'), '4');
+    openCheck(game, { title: o.name || t(`roam.${o.type}`), skills: [lock.skill], dc: lock.dc, members: members(game.save, game.data), cancel: true, memoKey: `door:${locId}:${o.id}`,
+      onDone: (g, ok) => { if (ok) openDoorObj(g, o); else g.toast(t('roam.doorStuck'), 'c'); } });
+  }
+  /** Triggers of a hand-made map for the leader's new cell (host only). → true when a battle started. */
+  function checkTriggers(game) {
+    if (!map.hand || game.coop?.guest) return false;
+    const ld = S.party[0], sv = game.save;
+    for (const { trigger, ops } of triggersAt(map, locId, sv, ld.cx, ld.cy)) {
+      if (trigger.once !== false) sv.flags[handKey(locId, `t:${trigger.id}`)] = true;
+      for (const op of ops) {
+        if (op.op === 'toast') game.toast(op.text, 'c');
+        else if (op.op === 'flag') sv.flags[op.set] = true;
+        else if (op.op === 'codex' && !codexOf(sv).flags.includes(noteKey(op.id))) codexOf(sv).flags.push(noteKey(op.id));
+        else if (op.op === 'open') { const d = S.objs.find((x) => x.id === op.door); if (d) openDoorObj(game, d); }
+        else if (op.op === 'battle' && handBattle(game, op.id)) return true;
+      }
+    }
+    return false;
+  }
+  /** level-design.md: a battle built into the place — the authored cut of this map, foes on their authored cells. */
+  function handBattle(game, id) {
+    const sv = game.save, b = battleOf(map, locId, sv, id);
+    if (!b) return false;
+    writePos(game);
+    S.path = []; S.goal = null;
+    game.toast(t('roam.fight'), 'c');
+    startWorldBattle(game, { encounter: b.encounter, ...(b.enemies?.length ? { enemies: b.enemies, encounter: null } : {}), title: b.title, id: b.id,
+      roamFoes: b.foes, roamRegion: battleRegion(b), ambush: b.kind === 'ambush', noObjectives: true,
+      onWin: (g) => { g.save.flags[handKey(locId, `b:${b.id}`)] = true; self.again(g); } });
+    return true;
   }
   /**
    * skills-v3.md: up to ROAM.skillSpots open skill actions as points with a skill badge — on a free cell next to an NPC's home
@@ -188,6 +269,7 @@ export function createRoamScene(rawId, opts = {}) {
       if (S.trail.length > 24) S.trail.shift();
       ld.cx = ld.step.tx; ld.cy = ld.step.ty; ld.step = null;
       play('step', { surface: stepSurface(map, ld.cx, ld.cy), sneak: gait(game) === 'sneak', heavy: game.save?.hero?.armorType === 'heavy' });
+      if (checkTriggers(game)) return;
       if (S.goal?.attack && attackInReach(game, S.goal)) S.path = [];
       if (!S.path.length) arrived(game);
     }
@@ -201,6 +283,7 @@ export function createRoamScene(rawId, opts = {}) {
       for (const [ax, ay] of tries) {
         const nx = ld.cx + ax, ny = ld.cy + ay;
         if (!isPassable(grid, nx, ny)) continue;
+        if (grid.costly && !stepCost(grid, ld.cy * W + ld.cx, ny * W + nx)) continue; // a cliff (hand-made heights)
         if (ax && ay && !isPassable(grid, ld.cx + ax, ld.cy) && !isPassable(grid, ld.cx, ld.cy + ay)) continue;
         if (npcAt(nx, ny)) continue;
         startStep(ld, nx, ny, speed(game));
@@ -396,7 +479,12 @@ export function createRoamScene(rawId, opts = {}) {
     const sv = game.save;
     // re-read «opened» from the save every time: the live object copy is not rebuilt after a search (bug: endless loot)
     if (o.type === 'stash') o.opened = o.cache ? (sv.caches || []).includes(o.cache.id) : !!sv.flags?.[stashKey(locId, o.id)];
+    handSync(game);
     const a = objectAction(o);
+    if (a.kind === 'note') return readNote(game, o);
+    if (a.kind === 'lever') return pullLever(game, o);
+    if (a.kind === 'door') return useDoor(game, o, a.lock);
+    if (a.kind === 'exit' && a.to !== 'world' && LOCATIONS[a.to]) return descend(game, o);
     if (a.kind === 'trade') {
       const npc = NPCS[a.npc];
       const tr = L.npc.npcActions(game, npc).find((x) => x.id === 'trade');
@@ -562,6 +650,15 @@ export function createRoamScene(rawId, opts = {}) {
       return goDo(game, ent, (g) => L.npc.doNpc(g, npc, id));
     }
     if (ent) return goTo(game, ent); // trade at a stall, hack a terminal, search, use, leave — the object's own action
+  }
+  /** An exit into another node from inside the map (the hatch under the dacha → the bunker). */
+  function descend(game, o) {
+    game.openModal({ title: o.label || t('roam.descend'), lines: [{ text: tf('roam.descendText', { name: LOCATIONS[o.to].name }) }],
+      options: [{ label: t('roam.descendGo'), run: (g) => {
+        const sv = g.save;
+        writePos(g); openHidden(sv, o.to); visit(sv, o.to); sv.roam = null; saveGame(sv);
+        g.setScene(createNodeScene(o.to));
+      } }, { label: t('roam.stay'), run: () => {} }] });
   }
   function confirmLeave(game) {
     game.openModal({ title: t('roam.leaveTitle'), lines: [{ text: t('roam.leaveText') }],
@@ -777,7 +874,7 @@ export function createRoamScene(rawId, opts = {}) {
       }
       const k = foes.length;
       while (foes.length < enemies.length) foes.push(foes[foes.length % k]);
-      const def = roamBattleMap(map, S.objs, { party, foes: foes.slice(0, Math.max(1, enemies.length)), allies: allies.map(() => party[0]), id: locId, name: loc.name });
+      const def = roamBattleMap(map, S.objs, { party, foes: foes.slice(0, Math.max(1, enemies.length)), allies: allies.map(() => party[0]), id: locId, name: loc.name, region: o.roamRegion || null });
       Object.assign(def, weatherOf(game)); // the battle keeps the node's weather / time of day (as on the free map)
       return {
         map: def,
@@ -900,6 +997,7 @@ export function createRoamScene(rawId, opts = {}) {
       drawTileExtra(x2, b, ch, x, y, c);
     }
     if (biome) drawFieldProps(x2, map.props, c);
+    if (grid.costly) drawHeights(x2, c);
     for (const o of S.objs) drawObject(x2, o, o.x * c, o.y * c, c, s);
     // этап 2: restricted zones — a red tint and a dashed border
     for (const z of map.zones || []) {
@@ -915,6 +1013,21 @@ export function createRoamScene(rawId, opts = {}) {
     x2.stroke();
     S.layer = cv;
   }
+  /** level-design.md, 2D: heights — lighter per level, a dark edge on a drop, a thick one on a cliff, the level number. */
+  function drawHeights(x2, c) {
+    const lv = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : grid.elev[y * W + x]);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const e = lv(x, y), px = x * c, py = y * c;
+      if (e) { x2.fillStyle = rgba(C['8'], Math.min(0.32, 0.07 * e)); x2.fillRect(px, py, c, c); }
+      for (const [dx, dy, ex, ey, ew, eh] of [[0, 1, 0, c - 3, c, 3], [1, 0, c - 3, 0, 3, c], [0, -1, 0, 0, c, 3], [-1, 0, 0, 0, 3, c]]) {
+        const d = e - lv(x + dx, y + dy);
+        if (d <= 0 || map.grid[y + dy]?.[x + dx] === '#') continue;
+        x2.fillStyle = rgba(C['0'], d > 1 ? 0.8 : 0.4);
+        x2.fillRect(px + ex, py + ey, d > 1 ? ew : Math.max(1, ew - (ew > 3 ? 0 : 1)), d > 1 ? eh : Math.max(1, eh - (eh > 3 ? 0 : 1)));
+      }
+      if (e && (x + y) % 4 === 0 && map.grid[y][x] !== '#') { x2.fillStyle = rgba(C['5'], 0.5); x2.font = FONT; x2.fillText(String(e / 2), px + 3, py + 12); }
+    }
+  }
   function drawObject(x2, o, px, py, c, s) {
     const k = c / 16;
     const R = (col, x, y, w, h) => { x2.fillStyle = col; x2.fillRect(px + x * k, py + y * k, w * k, h * k); };
@@ -927,7 +1040,14 @@ export function createRoamScene(rawId, opts = {}) {
       case 'fire': R(C['3'], 3, 11, 10, 3); R(C.e, 5, 5, 6, 7); R(C.b, 7, 8, 2, 4); break;
       case 'well': R(C['3'], 2, 4, 12, 11); R(C['0'], 4, 6, 8, 7); R(C['8'], 1, 2, 14, 2); break;
       case 'transit': R(C['6'], 7, 3, 2, 13); R(C.b, 1, 2, 14, 5); R(C['0'], 3, 4, 10, 1); R(C['7'], 0, 14, 16, 1); R(C['7'], 2, 12, 1, 3); R(C['7'], 13, 12, 1, 3); break;
-      case 'exit': if (o.boat) { R(C['7'], 1, 6, 14, 6); R(C['6'], 3, 11, 10, 2); R(C['5'], 7, 0, 1, 7); R(C['5'], 8, 1, 4, 4); } break;
+      case 'note': if (!o.opened) { R(C['5'], 5, 9, 7, 5); R(C['3'], 6, 10, 5, 1); R(C['3'], 6, 12, 4, 1); } else R(rgba(C['5'], 0.4), 5, 9, 7, 5); break;
+      case 'secret': if (!o.opened) { R(rgba(C.n, 0.55), 4, 4, 8, 8); R(C.n, 7, 5, 2, 4); R(C.n, 7, 10, 2, 1); } break;
+      case 'lever': R(C['3'], 4, 10, 8, 5); R(C['6'], o.opened ? 9 : 5, 3, 2, 8); R(o.opened ? C.j : C.c, o.opened ? 9 : 4, 2, 3, 3); break;
+      case 'door': case 'hatch':
+        if (o.type === 'hatch') { R(o.opened ? C['0'] : C['7'], 2, 2, 12, 12); if (!o.opened) { R(C['6'], 2, 7, 12, 1); R(C['6'], 7, 2, 1, 12); } }
+        else if (o.opened) { R(C['7'], 0, 0, 3, 16); } else { R(C['7'], 1, 0, 14, 16); R(C['6'], 1, 7, 14, 2); R(C.a, 11, 8, 2, 2); }
+        break;
+      case 'exit': if (o.hatch) { R(C['3'], 2, 2, 12, 12); R(C['0'], 4, 4, 8, 8); R(C['6'], 4, 7, 8, 1); break; } if (o.boat) { R(C['7'], 1, 6, 14, 6); R(C['6'], 3, 11, 10, 2); R(C['5'], 7, 0, 1, 7); R(C['5'], 8, 1, 4, 4); } break;
       default: break;
     }
   }
@@ -982,6 +1102,7 @@ export function createRoamScene(rawId, opts = {}) {
     leader: () => S.party[0],
     update(game, dt) {
       S.time += dt;
+      handSync(game); // doors / notes / secrets change in modals (checks, cache search)
       if (L.pump(game)) return;
       const inp = game.input;
       // camera / hover
@@ -1316,13 +1437,17 @@ export function createRoamScene(rawId, opts = {}) {
   function objName(o) {
     if (o.type === 'stall') return o.npc ? `${t('roam.stall')}: ${NPCS[o.npc]?.name}` : t('roam.stall');
     if (o.type === 'stash') return o.cache ? t('roam.cache') : t('roam.stash');
-    if (o.type === 'exit') return o.boat ? t('roam.boat') : t('roam.exitWorld');
+    if (o.type === 'exit') return o.label || (o.boat ? t('roam.boat') : t('roam.exitWorld'));
+    if (o.name || o.title) return o.name || o.title;
     return t(`roam.${o.type}`);
   }
   function objLines(o) {
     if (o.type === 'stash' && o.opened) return [t('roam.stashOpened')];
     if (o.type === 'bed') return [t('roam.bedSub')];
     if (o.type === 'bench') return [t('roam.benchSub')];
+    if (o.type === 'secret' && o.check) return [`${skillName(o.check.skill)} · ${t('battle.dc')} ${o.check.dc}`];
+    if ((o.type === 'door' || o.type === 'hatch') && !o.opened && o.lock) return [o.lock === 'lever' ? t('roam.doorLever') : `${skillName(o.lock.skill)} · ${t('battle.dc')} ${o.lock.dc}`];
+    if (o.type === 'note' && o.opened) return [t('roam.noteRead')];
     return [];
   }
   return self;

@@ -39,6 +39,11 @@ export function markKind(e) {
     case 'bench': return { kind: 'craft', icon: 'obj:gear' };
     case 'terminal': return { kind: 'tech', icon: 'obj:screen' };
     case 'transit': return { kind: 'transit', icon: 'obj:post' };
+    // level-design.md: hand-made interactives
+    case 'note': return { kind: 'lore', icon: null, dim: !!o.opened };
+    case 'secret': return o.opened ? null : { kind: 'skill', icon: null };
+    case 'lever': return { kind: 'mech', icon: 'obj:gear', dim: !!o.opened };
+    case 'door': case 'hatch': return o.opened ? null : { kind: 'mech', icon: 'obj:door' };
     default: return null;
   }
 }

@@ -198,6 +198,8 @@ function buildChunk(Wd, cx0, cy0) {
   const rFloor = rampRGB([o.dk, o.base, o.lt]), rFloor2 = rampRGB([o.dk, o.dk, o.base]);
   const [ha, hb] = tileTones(biome, 'half'), [fa, fb] = tileTones(biome, 'full');
   const rHalf = ramp(ha), rHalfTop = ramp(hb), rFull = ramp(fa), rFullTop = ramp(fb);
+  // level-design.md: height steps read as retaining walls (wall tone, darker than the floor) — levels, ramps, cliffs
+  const rSide = rampRGB([o.dk, o.dk, o.dk]), rFloorHi = rampRGB([o.base, o.lt, o.lt]); // upper levels (≥ 1 m) are lighter
   const wk = tones.water || ['1', '2', '3'];
   const rWater = rampRGB([wk[0], wk[1], wk[1]]), rDeep = rampRGB([wk[0], wk[0], wk[1]]);
   const deb = tones.debris || ['3', '4', '2', '6'];
@@ -211,14 +213,14 @@ function buildChunk(Wd, cx0, cy0) {
       const a = occ(x + dx, y, f), c = occ(x, y + dz, f), d = occ(x + dx, y + dz, f);
       return Math.min(1, (a + c + (a && c ? 1 : d)) / 3);
     });
-    const fr = k === 'water' ? rWater : k === 'deep' ? rDeep : k === 'deck' ? ramp('8') : k === 'exit' ? ramp('6') : (hv % 100 < 14 ? rFloor2 : rFloor);
+    const fr = k === 'water' ? rWater : k === 'deep' ? rDeep : k === 'deck' ? ramp('8') : k === 'exit' ? ramp('6') : f >= 0.99 ? rFloorHi : (hv % 100 < 14 ? rFloor2 : rFloor);
     mb.quad([x, f, y], [x, f, y + 1], [x + 1, f, y + 1], [x + 1, f, y], fr, { ao, inside: [x + 0.5, f - 1, y + 0.5] });
     // side faces down to lower neighbours (and the map border)
     const sides = [[0, 1, [x, y + 1], [x + 1, y + 1]], [0, -1, [x + 1, y], [x, y]], [1, 0, [x + 1, y + 1], [x + 1, y]], [-1, 0, [x, y], [x, y + 1]]];
     for (const [dx, dz, a, c] of sides) {
       const nt = top(x + dx, y + dz);
       if (nt >= f - 1e-3) continue;
-      mb.quad([a[0], nt, a[1]], [c[0], nt, c[1]], [c[0], f, c[1]], [a[0], f, a[1]], k === 'water' || k === 'deep' ? rWater : rFloor, { inside: [x + 0.5, f - 0.5, y + 0.5], ao: [0.6, 0.6, 0, 0] });
+      mb.quad([a[0], nt, a[1]], [c[0], nt, c[1]], [c[0], f, c[1]], [a[0], f, a[1]], k === 'water' || k === 'deep' ? rWater : nt >= 0 ? rSide : rFloor, { inside: [x + 0.5, f - 0.5, y + 0.5], ao: [0.6, 0.6, 0, 0] });
     }
     const X0 = x, X1 = x + 1, Z0 = y, Z1 = y + 1;
     switch (k) {

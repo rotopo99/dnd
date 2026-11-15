@@ -1,0 +1,15 @@
+// Hand-made maps (docs/specs/level-design.md §7.2). Roam maps bind to a node by `loc`; arenas (`kind: 'arena'`) to a boss
+// enemy id by `boss`. Loader — world/handmade.js; checker — world/handmade-check.js (node tools/validate-maps.mjs).
+import alphaHarmony from './alpha-harmony.js';
+import raytsentr from './raytsentr.js';
+import dachaBabki from './dacha-babki.js';
+import arenaLis9 from './arena-lis9.js';
+
+export const HANDMADE_LIST = [alphaHarmony, raytsentr, dachaBabki, arenaLis9];
+export const HANDMADE = Object.fromEntries(HANDMADE_LIST.map((d) => [d.id, d]));
+/** Node id → roam map def. */
+export const HANDMADE_BY_LOC = Object.fromEntries(HANDMADE_LIST.filter((d) => d.kind !== 'arena' && d.loc).map((d) => [d.loc, d]));
+/** Boss enemy id → arena def. */
+export const HANDMADE_ARENAS = Object.fromEntries(HANDMADE_LIST.filter((d) => d.kind === 'arena' && d.boss).map((d) => [d.boss, d]));
+/** Note id → { map, title, text } (codex «Записки»). */
+export const HANDMADE_NOTES = Object.fromEntries(HANDMADE_LIST.flatMap((d) => (d.objects || []).filter((o) => o.type === 'note').map((o) => [o.id, { map: d.id, loc: d.loc, title: o.title || '', text: o.text }])));

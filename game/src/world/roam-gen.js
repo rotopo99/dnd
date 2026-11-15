@@ -198,13 +198,15 @@ function tryGen(locId, type, seed) {
   return { ok: !bad.size && !badSpots.size && reached(sx, sy), map, bad, badSpots };
 }
 
-/** Walkable grid of a roam map: battle tiles, water and solid objects block, `=` / `"` are floor. */
+/**
+ * Walkable grid of a roam map: battle tiles, water and solid objects block, `=` / `"` are floor. Rubble only slows the walk
+ * (scenes/roam.js); level-design.md: a hand-made map with `elev` keeps the heights — a step of > 1 level is a cliff
+ * (A* with stepCost), stairs / ramps go one level per cell.
+ */
 export function roamGrid(map) {
-  const grid = parseMap({ grid: map.grid });
-  grid.costly = false;
+  const grid = parseMap({ grid: map.grid, ...(map.elev ? { elev: map.elev } : {}) });
   for (let i = 0; i < grid.tiles.length; i++) if (grid.tiles[i] === T_WATER) grid.tiles[i] = T_WALL;
-  // rubble and heights only slow the walk (scenes/roam.js), A* stays plain
-  for (const o of map.objects) if (o.solid) grid.tiles[o.y * grid.w + o.x] = T_COVER;
-  grid.costly = false;
+  for (const o of map.objects || []) if (o.solid) grid.tiles[o.y * grid.w + o.x] = T_COVER;
+  grid.costly = !!map.elev; // generated maps: heights only slow the walk, A* stays plain
   return grid;
 }

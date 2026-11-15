@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Ruslania — редактор ручных карт</title>
+<!-- Level editor (docs/specs/level-design.md §7.3 B): for us, not for players. Logic — src/editor/editor.js. -->
+<style>
+  body { margin: 0; background: #14141c; color: #d8d8e0; font: 13px monospace; display: grid; grid-template-columns: 300px 1fr 360px; height: 100vh; }
+  aside { padding: 8px; overflow: auto; border-right: 1px solid #333; }
+  aside.right { border-right: 0; border-left: 1px solid #333; }
+  main { overflow: auto; position: relative; }
+  h3 { margin: 10px 0 4px; font-size: 13px; color: #f0c060; }
+  button, select, input { font: 12px monospace; background: #252532; color: #ddd; border: 1px solid #444; padding: 3px 6px; margin: 2px 1px; }
+  button.on { background: #4a4a20; border-color: #f0c060; }
+  textarea { width: 100%; box-sizing: border-box; background: #1c1c26; color: #ddd; border: 1px solid #444; font: 11px monospace; }
+  #status { white-space: pre-wrap; font-size: 11px; }
+  .err { color: #ff7a6a; } .ok { color: #8ee08e; } .warn { color: #e0c070; }
+  canvas { image-rendering: pixelated; cursor: crosshair; }
+  .pal button { min-width: 28px; }
+  small { color: #888; }
+</style>
+</head>
+<body>
+<aside>
+  <h3>Карта</h3>
+  <select id="pick"></select><button id="load">Открыть</button><br>
+  <button id="new">Новая</button> W <input id="nw" value="40" size="3"> H <input id="nh" value="30" size="3"><br>
+  <input type="file" id="file" accept=".json,.js"><br>
+  <button id="export">Скачать JSON</button><button id="copy">Копировать</button><button id="copyjs">Копировать JS</button>
+  <h3>Инструмент</h3>
+  <div id="tools"></div>
+  <h3>Палитра</h3>
+  <div id="pal" class="pal"></div>
+  <small>ЛКМ — рисовать, ПКМ — пипетка / удалить объект, колесо — масштаб. Ctrl+Z — отмена.</small>
+  <h3>Слои</h3>
+  <div id="layers"></div>
+  <h3>Путь (инструмент «путь»)</h3>
+  <select id="path"></select><button id="pathNew">+ путь</button><button id="pathClear">очистить</button>
+</aside>
+<main><canvas id="cv"></canvas></main>
+<aside class="right">
+  <h3>Выбранный объект</h3>
+  <textarea id="obj" rows="9" placeholder="клик по объекту инструментом «выбор»"></textarea>
+  <button id="objApply">Применить</button><button id="objDel">Удалить</button>
+  <h3>Проверка</h3>
+  <button id="validate">Проверить</button>
+  <div id="status"></div>
+  <h3>JSON (кроме слоёв ASCII)</h3>
+  <textarea id="json" rows="22"></textarea>
+  <button id="jsonApply">Применить JSON</button>
+</aside>
+<script type="module" src="src/editor/editor.js"></script>
+</body>
+</html>

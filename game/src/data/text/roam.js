@@ -91,4 +91,10 @@ export const ROAM_TEXT = {
   'ctx.member': 'Член партии', 'ctx.hero': 'Ваш герой',
   'roam.sel': 'Выбрано: {n}', 'roam.selAll': 'Выбраны все', 'roam.modeChain': 'Режим: цепочка', 'roam.modeFree': 'Режим: свобода',
   'roam.modeBtn': 'Свобода', 'roam.modeBtnChain': 'Цепочка', 'roam.modeTip': 'F2: цепочка — все за лидером; свобода — ходят только выбранные',
+  // level-design.md: hand-made maps — notes, secrets, levers, doors, hatches, a way down into another node
+  'roam.note': 'Записка', 'roam.noteRead': 'Прочитано (Кодекс → Записки)', 'roam.noteCodex': 'Кодекс: записка «{title}»',
+  'roam.secret': 'Что-то подозрительное', 'roam.lever': 'Рычаг', 'roam.leverPulled': 'Рычаг поддался.', 'roam.leverDone': 'Рычаг уже опущен.',
+  'roam.door': 'Дверь', 'roam.hatch': 'Люк', 'roam.doorOpen': '{name}: открыто', 'roam.doorLever': 'Заперто. Где-то рядом должен быть рычаг.',
+  'roam.doorStuck': 'Не поддаётся. Нужен кто-то умелее — или другой путь.', 'roam.sign': 'Табличка',
+  'roam.descend': 'Спуск', 'roam.descendText': 'Спуститься: {name}?', 'roam.descendGo': 'Спуститься',
 };

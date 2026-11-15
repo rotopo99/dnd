@@ -73,7 +73,7 @@ export const ROAM = {
   // pulse: brightness of weak outlines, hz ≤ 1 (off with «Снизить движение»). nearR — «только рядом» radius, tiles.
   highlight: {
     modes: ['always', 'near', 'alt'],
-    colors: { trade: 'b', quest: 'a', loot: 'h', exit: 'j', skill: 'n', rest: '4', craft: '4', tech: 'h', transit: 'f', npc: '4' },
+    colors: { trade: 'b', quest: 'a', loot: 'h', exit: 'j', skill: 'n', rest: '4', craft: '4', tech: 'h', transit: 'f', npc: '4', lore: 'f', mech: 'a' }, // lore / mech — notes, levers & doors (level-design.md)
     alpha: { weak: 0.4, strong: 0.95, dim: 0.14, npc: 0.22, iconWeak: 0.7 },
     pulse: { hz: 0.5, amp: 0.35 },
     nearR: 5,

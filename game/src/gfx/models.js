@@ -240,6 +240,29 @@ export function roamObjModel(type, variant = '') {
       mb.cyl(0.45, 0.3, 0.5, 1.5, 0.03, ramp('5'), { seg: 5 });
       mb.wedge(0.47, 0.7, 0.45, 0.85, 1.7, 0.55, ramp('5'), { ao: 0 });
       break;
+    // level-design.md: hand-made interactives
+    case 'note': // a sheet on a crate / the floor
+      if (variant !== 'open') mb.box(0.3, 0, 0.3, 0.7, 0.3, 0.7, wood2, { top: wood });
+      mb.box(0.33, variant === 'open' ? 0 : 0.3, 0.36, 0.66, (variant === 'open' ? 0 : 0.3) + 0.02, 0.62, ramp('5'), { ao: 0 });
+      break;
+    case 'secret': // a loose grate with a glint
+      mb.box(0.25, 0, 0.25, 0.75, 0.04, 0.75, steel, { ao: 0 });
+      mb.box(0.45, 0.04, 0.45, 0.55, 0.12, 0.55, rampRGB(['n', 'n', 'n']), { glow: true, ao: 0 });
+      break;
+    case 'lever':
+      mb.bevelBox(0.25, 0, 0.3, 0.75, 0.45, 0.7, 0.04, steel, { top: dark });
+      if (variant === 'open') mb.box(0.55, 0.45, 0.46, 0.62, 1.05, 0.54, ramp('j'));
+      else mb.box(0.38, 0.45, 0.46, 0.45, 1.05, 0.54, ramp('c'));
+      break;
+    case 'door':
+      if (variant === 'open') mb.box(0.0, 0, 0.0, 0.12, 1.9, 0.9, wood2);
+      else { mb.box(0.05, 0, 0.38, 0.95, 1.9, 0.62, wood, { top: wood2 }); mb.box(0.75, 0.9, 0.34, 0.85, 1.0, 0.66, ramp('a'), { ao: 0 }); }
+      break;
+    case 'hatch':
+      mb.box(0.08, 0, 0.08, 0.92, 0.06, 0.92, steel, { ao: 0 });
+      if (variant === 'open') mb.box(0.18, 0.0, 0.18, 0.82, 0.065, 0.82, dark, { ao: 0 });
+      else mb.box(0.15, 0.06, 0.45, 0.85, 0.1, 0.55, wood2, { ao: 0 });
+      break;
     default:
       mb.bevelBox(0.2, 0, 0.2, 0.8, 0.5, 0.8, 0.05, steel);
   }

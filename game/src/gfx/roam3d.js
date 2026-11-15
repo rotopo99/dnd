@@ -51,11 +51,13 @@ function objs3(objs) {
   for (const o of objs) {
     if (o.type === 'exit') {
       if (o.boat) out.push({ x: o.x, y: o.y, mb: roamObjModel('boat'), sig: 'q' });
+      else if (o.hatch) out.push({ x: o.x, y: o.y, mb: roamObjModel('hatch', 'open'), sig: 'h1' });
       else if (o.cells?.length) { const c = o.cells[0]; out.push({ x: c[0], y: c[1], mb: gateModel(o.cells), sig: `g${o.cells.length}` }); }
       continue;
     }
-    const v = o.type === 'stash' && o.opened ? 'open' : '';
-    out.push({ x: o.x, y: o.y, mb: roamObjModel(o.type, v), sig: `${o.type[0]}${v ? 1 : 0}` });
+    if (o.type === 'secret' && o.opened) continue;
+    const v = (o.type === 'stash' || o.type === 'door' || o.type === 'hatch' || o.type === 'lever' || o.type === 'note') && o.opened ? 'open' : '';
+    out.push({ x: o.x, y: o.y, mb: roamObjModel(o.hatch ? 'hatch' : o.type, o.hatch ? 'open' : v), sig: `${o.type[0]}${v ? 1 : 0}` });
   }
   return out;
 }
@@ -64,10 +66,10 @@ export function roam3d(game, R) {
   const S = R.S;
   let A = S.r3;
   if (!A) {
-    const grid = parseMap({ grid: R.map.grid });
+    const grid = parseMap({ grid: R.map.grid, ...(R.map.elev ? { elev: R.map.elev } : {}) }); // hand-made maps: heights
     A = S.r3 = {
       time: 0, follow3: true, focus3: null, lights3: null, v3: null, objSig: '', pseudo: new Map(), prev: new Map(),
-      b: { grid, gridVersion: 0, noBreak: true, units: [], traps: [], barrels: [], surfaces: null, zones: [], data: {}, objects: null,
+      b: { grid, gridVersion: 0, noBreak: true, units: [], traps: [], barrels: grid.barrels || [], surfaces: null, zones: [], data: {}, objects: null,
         map: { grid: R.map.grid, props: R.map.props || [], biome: R.map.biome, wallH: GFX.roam.wall, objs3: [], tod: 'day', weather: 'clear' } },
       dispOf: (u) => u,
       L: { area: R.area, camArea: R.camArea, cell: 32 },

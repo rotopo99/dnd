@@ -37,12 +37,15 @@ export function cutRegion(W, H, pts, size = ROAM.battle.cut, must = []) {
  */
 export function cutMapDef(map, objects, r, { id = 'roam', name = '' } = {}) {
   const solid = new Set((objects || []).filter((o) => o.solid).map((o) => `${o.x},${o.y}`));
+  // level-design.md: closed doors / hatches stay walls in the battle, open ones are floor
+  const walls = new Set((objects || []).filter((o) => (o.type === 'door' || o.type === 'hatch') && o.solid).map((o) => `${o.x},${o.y}`));
   const rows = [];
   for (let y = r.y; y < r.y + r.h; y++) {
     let s = '';
     for (let x = r.x; x < r.x + r.w; x++) {
       let ch = map.grid[y][x];
-      if (solid.has(`${x},${y}`) && ch !== 'w') ch = 'c';
+      if (walls.has(`${x},${y}`)) ch = '#';
+      else if (solid.has(`${x},${y}`) && ch !== 'w') ch = 'c';
       else if (ch === 'D') ch = '#';
       else if (ch === '"' || ch === 'P' || ch === 'E' || ch === 'A' || ch === 'F') ch = '.';
       s += ch;
@@ -50,7 +53,9 @@ export function cutMapDef(map, objects, r, { id = 'roam', name = '' } = {}) {
     rows.push(s);
   }
   const props = (map.props || []).filter((p) => p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h).map((p) => ({ ...p, x: p.x - r.x, y: p.y - r.y }));
-  return { id: `roam-${id}`, name, biome: map.biome, props, grid: rows, enemies: [], allies: [], win: 'killAll', lose: 'allDown', roam: { region: r } };
+  // hand-made maps: the same heights in the battle (one level = 0.5 m), surfaces of the cut
+  const elev = map.elev ? map.elev.slice(r.y, r.y + r.h).map((row) => row.slice(r.x, r.x + r.w)) : null;
+  return { id: `roam-${id}`, name, biome: map.biome, props, grid: rows, ...(elev ? { elev } : {}), enemies: [], allies: [], win: 'killAll', lose: 'allDown', roam: { region: r } };
 }
 
 /**
@@ -99,13 +104,25 @@ export function foeCells(grid, leader, n, exits = []) {
   return out.map(([x, y]) => [Math.max(1, Math.min(grid.w - 2, x)), Math.max(1, Math.min(grid.h - 2, y))]);
 }
 
+/** An authored cut kept inside the map, shifted so the party cells fit (size never above ROAM.battle.cut). */
+export function fitRegion(region, W, H, party = []) {
+  const w = Math.min(region.w, ROAM.battle.cut[0], W), h = Math.min(region.h, ROAM.battle.cut[1], H);
+  let { x, y } = region;
+  for (const [px, py] of party) {
+    x = Math.min(x, px - 1); x = Math.max(x, px + 2 - w);
+    y = Math.min(y, py - 1); y = Math.max(y, py + 2 - h);
+  }
+  return { x: Math.max(0, Math.min(W - w, x)), y: Math.max(0, Math.min(H - h, y)), w, h };
+}
+
 /**
  * Build the whole battle map: region around party + foes, def with explicit starts.
  * party / foes / allies — absolute cells. → def (def.roam.region for the way back).
  */
-export function roamBattleMap(map, objects, { party, foes, allies = [], id, name }) {
+export function roamBattleMap(map, objects, { party, foes, allies = [], id, name, region = null }) {
   const [W, H] = map.size;
-  const r = cutRegion(W, H, [...party, ...foes], ROAM.battle.cut, party);
+  // level-design.md: an embedded battle has its own cut (the place) — the party is pulled inside it
+  const r = region ? fitRegion(region, W, H, party) : cutRegion(W, H, [...party, ...foes], ROAM.battle.cut, party);
   const def = cutMapDef(map, objects, r, { id, name });
   const taken = new Set();
   const P = placeStarts(def, party, taken);

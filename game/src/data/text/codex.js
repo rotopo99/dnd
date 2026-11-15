@@ -3,7 +3,7 @@
 // lore — показывается при «видел». finds — дополнительные абзацы, открываются флагом `cx-*` (записки, тайники, диалоги).
 
 export const CODEX_SECTIONS = {
-  enemies: 'Бестиарий', factions: 'Фракции', places: 'Места', people: 'Персонажи', terms: 'Термины',
+  enemies: 'Бестиарий', factions: 'Фракции', places: 'Места', people: 'Персонажи', terms: 'Термины', notes: 'Записки', // notes — level-design.md (hand-made maps)
 };
 
 export const CODEX_LEVELS = {

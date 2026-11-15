@@ -16,6 +16,7 @@ import { locFaction } from '../world/state.js';
 import { VENDORS } from '../world/vendors.js';
 import { codexOf, codexLevel, enemyKey, enemyName, enemyFinds, factionFinds, KNOWN_KILLS } from '../world/codex.js';
 import { enemySubject } from '../ui/portrait-of.js';
+import { HANDMADE_NOTES } from '../data/maps/handmade/index.js';
 import { drawPortrait } from '../assets/sprites.js';
 import { abilityTip } from '../ui/tips.js';
 import { C, FONT, FONT_B, LINE, text, fit, panel } from '../ui/draw.js';
@@ -49,6 +50,16 @@ export function codexEntries(save, section) {
     for (const id of save.visited || []) if (LOCATIONS[id]) out.push({ id, open: true, label: LOCATIONS[id].name });
   } else if (section === 'people') {
     for (const id of Object.keys(save.npcs || {})) if (NPCS[id] && save.npcs[id]?.met) out.push({ id, open: true, label: NPCS[id].name });
+  } else if (section === 'notes') {
+    // level-design.md: notes / traces read on hand-made maps (save.codex.flags 'note:<id>'), grouped by place
+    const read = new Set(codexOf(save).flags);
+    let head = null;
+    for (const [id, n] of Object.entries(HANDMADE_NOTES)) {
+      if (!read.has(`note:${id}`)) continue;
+      const place = LOCATIONS[n.loc]?.name || n.map;
+      if (place !== head) { out.push({ head: place }); head = place; }
+      out.push({ id, open: true, label: n.title || id });
+    }
   } else if (section === 'terms') {
     const terms = codexOf(save).terms;
     out.push({ head: TERM_GROUPS.resource });
@@ -116,6 +127,10 @@ export function codexCard(save, section, id) {
     const finds = factionFinds(save, id);
     if (finds.length) { lines.push({ text: '' }, { text: t('codex.finds'), color: 'f', font: FONT_B }); for (const x of finds) lines.push(x.text); }
     return { title: factionName(id), lines };
+  }
+  if (section === 'notes') {
+    const n = HANDMADE_NOTES[id];
+    return { title: n?.title || id, lines: [{ text: LOCATIONS[n?.loc]?.name || '', color: '4' }, n?.text || ''] };
   }
   if (section === 'places') {
     const L = LOCATIONS[id], lore = locationLore(id);
