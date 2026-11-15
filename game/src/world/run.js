@@ -558,6 +558,9 @@ export function enterNode(run, id) {
   return node;
 }
 
+/** Elite bonus: a relic offer with NODE_TYPES.elite.relicChance (deterministic by node). */
+export const eliteRelicRoll = (run, node) => rngFor(run, `relicChance:${node.id}`)() < (NODE_TYPES.elite.relicChance ?? 0);
+
 /** Node income in credits (fight/elite/boss), ascension multiplier. */
 export function nodeCredits(run, node) {
   const r = REWARDS.credits[node.type];

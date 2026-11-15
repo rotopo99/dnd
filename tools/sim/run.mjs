@@ -97,7 +97,7 @@ export function simRun(seed, asc = ASC, party = PARTY) {
       if (!fight(node, node.enc, t)) break;
       R.nodeCredits(run, node);
       takeBest(run, R.rewardOffer(run, t));
-      if (t === 'elite' && R.rngFor(run, `relicChance:${node.id}`)() < 0.35) R.takeRelic(run, R.relicOffer(run, 1)[0]);
+      if (t === 'elite' && R.eliteRelicRoll(run, node)) R.takeRelic(run, R.relicOffer(run, 1)[0]);
       if (t === 'boss') R.takeRelic(run, R.relicOffer(run, 3)[0]);
     } else if (t === 'event') {
       const e = R.eventFor(run, node);
