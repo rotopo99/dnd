@@ -52,7 +52,7 @@ export default {
     { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
       desc: 'Баланс метрических боёв: +8 ЗДР, +1 урона.', op: { maxHp: 8, dmg: 1 } },
     { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
-      desc: 'Баланс метрических боёв: +20 ЗДР, +3 урона.', op: { maxHp: 20, dmg: 3 } },
+      desc: 'Баланс метрических боёв: +32 ЗДР, +4 урона.', op: { maxHp: 32, dmg: 4 } },
     // BAL-END
     { id: 'subdermal-armor', name: 'Подкожная броня', level: 5, path: 'mechanic',
       desc: 'Имплант под кожей: +2 КБ.', op: { kb: 2 } },

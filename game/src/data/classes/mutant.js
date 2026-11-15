@@ -54,7 +54,7 @@ export default {
     { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
       desc: 'Баланс метрических боёв: -15 ЗДР, -1 урона.', op: { maxHp: -15, dmg: -1 } },
     { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
-      desc: 'Баланс метрических боёв: -30 ЗДР, -2 урона.', op: { maxHp: -30, dmg: -2 } },
+      desc: 'Баланс метрических боёв: -45 ЗДР, -3 урона.', op: { maxHp: -45, dmg: -3 } },
     // BAL-END
     { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
       desc: 'Ступень владения «мастерство»: +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { melee: 2 } } },
