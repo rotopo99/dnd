@@ -33,7 +33,8 @@ export class MeshBuilder {
    *  vertex, x = [u, v, material kind] per vertex; weight blends towards bone2). */
   setBone(k) {
     if (!this.b) { this.b = new Array(this.n * 3).fill(0); this.x = new Array(this.n * 3).fill(0); }
-    this.bone = k; this.bone2 = k; this.wfn = null; return this;
+    const h = this.hooks && this.hooks[k]; // per-bone weight hooks (joints, bust, hem): {b2, fn}
+    this.bone = k; this.bone2 = h ? h.b2 : k; this.wfn = h ? h.fn : null; return this;
   }
   /** Two-bone skin: weight fn(p) -> 0..1 of bone b2 (joints, spring bones). */
   setSkin(b1, b2, fn) { this.setBone(b1); this.bone2 = b2; this.wfn = fn; return this; }
@@ -41,8 +42,12 @@ export class MeshBuilder {
   setMat(m) { this.mat = m; return this; }
   _skinPush(p, o, k) {
     if (!this.b) return;
-    const w = o.w !== undefined ? (Array.isArray(o.w) ? o.w[k] : o.w) : this.wfn ? this.wfn(p) : 0;
-    this.b.push(this.bone, w > 0.001 ? this.bone2 : this.bone, w > 0.001 ? w : 0);
+    if (o.bn) this.b.push(o.bn[0], o.bn[1], o.bn[2]); // explicit [bone, bone2, weight]
+    else {
+      let w = o.w !== undefined ? (Array.isArray(o.w) ? o.w[k] : o.w) : 0, b2 = this.bone2;
+      if (o.w === undefined && this.wfn) { const r = this.wfn(p); if (Array.isArray(r)) { b2 = r[0]; w = r[1]; } else w = r; }
+      this.b.push(this.bone, w > 0.001 ? b2 : this.bone, w > 0.001 ? w : 0);
+    }
     const uv = o.uv ? o.uv[k] : null;
     this.x.push(uv ? uv[0] : 0, uv ? uv[1] : 0, o.mat ?? this.mat);
   }
@@ -61,7 +66,7 @@ export class MeshBuilder {
       const c = [0, 0, 0];
       for (const p of pts) { c[0] += p[0] / pts.length; c[1] += p[1] / pts.length; c[2] += p[2] / pts.length; }
       const d = sub(c, o.inside);
-      if (n[0] * d[0] + n[1] * d[1] + n[2] * d[2] < 0) { pts = [...pts].reverse(); n = [-n[0], -n[1], -n[2]]; if (o.ao) o = { ...o, ao: [...o.ao].reverse() }; }
+      if (n[0] * d[0] + n[1] * d[1] + n[2] * d[2] < 0) { pts = [...pts].reverse(); n = [-n[0], -n[1], -n[2]]; if (o.ao) o = { ...o, ao: [...o.ao].reverse() }; if (o.uv) o = { ...o, uv: [...o.uv].reverse() }; }
     }
     const base = this.n, [S, B, L] = ramp, g = o.glow ? 1 : 0;
     pts.forEach((p, k) => {

@@ -154,7 +154,7 @@ void main() {
 // (outline px, face expression u-offset). Vertex: smooth normal, own ramp (hair gradients), 2 bones + weight, uv + kind.
 // Toon: 3 soft bands (smoothstep edge uToon.x) from the ramp, shadow hue-shifted (uShadeHue), rim light, hair
 // highlight ring, canvas atlases: faces (uFace, kind 9, per-instance expression column) and materials (uMatTex, kinds 1-5).
-export const NBONES = 22;
+export const NBONES = 23;
 export const BONE_TEX_W = NBONES * 3 + 3;
 const SKIN_VS = (depth) => `#version 300 es
 precision highp float;
