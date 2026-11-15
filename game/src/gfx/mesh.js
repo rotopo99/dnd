@@ -55,7 +55,7 @@ export class MeshBuilder {
   vert(p, nrm, ramp, o = {}) {
     const [S, B, L] = ramp;
     this.v.push(p[0], p[1], p[2], nrm[0], nrm[1], nrm[2], S[0], S[1], S[2], B[0], B[1], B[2], L[0], L[1], L[2], o.ao || 0, o.glow ? 1 : 0);
-    this._skinPush(p, o, 0);
+    this._skinPush(p, o.uv ? { ...o, uv: [o.uv] } : o, 0);
     return this.n++;
   }
   tri3(a, b, c) { this.i.push(a, b, c); return this; }
