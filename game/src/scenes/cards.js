@@ -80,7 +80,7 @@ export function createCardScene(game, o) {
           const u = M.sides[e.s].field[e.slot];
           const from = e.s === 0 ? { x: 640 - HW / 2, y: HAND_Y } : { x: 640 - HW / 2, y: -150 };
           if (u) S.anim[u.uid] = { kind: 'enter', at, dur: 0.35, from };
-          play('summon');
+          play('cardPlay');
         } else { S.banner = { text: cname(e.id), at, dur: 0.6, small: true, color: SET_COLOR[CARDS[e.id]?.set] }; play(e.type === 'spell' ? 'buff' : 'uiClick'); }
         break;
       }
@@ -90,7 +90,7 @@ export function createCardScene(game, o) {
         const to = center(refRect(e.target)), fr = center(SLOT(e.from.s, e.from.slot));
         S.anim[u ? u.uid : `x${at}`] = { kind: 'lunge', at, dur: 0.4, dx: (to.x - fr.x) * 0.6, dy: (to.y - fr.y) * 0.6 };
         log(L('cards.log.attack', { a: cname(e.id), b: e.target.hero ? who(e.target.s) : cname(e.tid) }));
-        setTimeout(() => play('hit'), 150);
+        setTimeout(() => play('cardAttack'), 150);
         break;
       }
       case 'dmg':
@@ -105,7 +105,7 @@ export function createCardScene(game, o) {
         const col = C[SET_COLOR[CARDS[e.id]?.set] || '4'];
         for (let i = 0; i < 46; i++) S.parts.push({ x: r.x + Math.random() * r.w, y: r.y + Math.random() * r.h, vx: (Math.random() - 0.5) * 160, vy: -Math.random() * 120 - 20, at: at + 0.2, life: 0.5, color: i % 3 ? col : C['5'] });
         log(L('cards.log.death', { card: cname(e.id) }), '4');
-        setTimeout(() => play('death'), 200);
+        setTimeout(() => play('cardDeath'), 200);
         break;
       }
       case 'destroy': log(L('cards.log.destroy', { card: cname(e.id) }), 'n'); break;

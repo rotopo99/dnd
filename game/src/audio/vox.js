@@ -54,7 +54,6 @@ function formant(o) {
   const sum = ctx.createGain();
   sum.gain.value = 1;
   const nodes = [env, sum];
-  let head = sum;
   if (fx.sat) {
     const sh = satNode(fx.sat);
     sum.connect(sh);
@@ -89,7 +88,6 @@ function formant(o) {
   osc.start(t);
   osc.stop(t + dur + 0.05);
   track(osc, nodes, dur + at);
-  head = null;
 
   const breath = (o.breath ?? 0) * fx.breath;
   if (breath > 0) {
