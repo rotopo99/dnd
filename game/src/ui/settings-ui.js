@@ -37,6 +37,10 @@ export function openSettings(game) {
             run: () => { const M = ROAM.highlight.modes; setGfxPref('highlight', M[(M.indexOf(p.highlight || M[0]) + 1) % M.length]); },
           },
           {
+            label: `${t('settings.cones')}: ${t(`settings.cones.${p.cones === 'always' ? 'always' : 'stealth'}`)}`, keep: true,
+            run: () => setGfxPref('cones', p.cones === 'always' ? 'stealth' : 'always'),
+          },
+          {
             label: `${t('settings.theme')}: ${themePrefs().mode === 'auto' ? t('settings.theme.auto') : t(`theme.${themePrefs().id}`)}`, keep: true,
             run: () => { // авто → steel → concrete → … → авто
               const tp = themePrefs(), i = tp.mode === 'auto' ? -1 : THEME_IDS.indexOf(tp.id);

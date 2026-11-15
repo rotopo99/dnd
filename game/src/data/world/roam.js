@@ -32,7 +32,20 @@ export const ROAM = {
     alarmTime: 15, // seconds after the alarm to leave the node or pay the fine; then the guards fight
     alarmHeat: 1, // heat of the alarm (crime.js addHeat)
     theftBehind: -2, // theft DC from behind / from the side (outside the NPC's cone)
-    sentries: { hub: 2, city: 4, village: 1, port: 1, camp: 0, ruins: 0, bunker: 0 }, // generated posts of the node's faction
+    // Posts of the node's faction — only where something is guarded (restricted zones: barracks / warehouses / labs / a
+    // city's inner ring; then a stall with a trader = «лавка с ценностями»), never just by the exits. Count = byType +
+    // factions[fac]; quiet factions (villages, scavengers, mutants…) keep at most quietMax (a watchman at a valuable place).
+    guards: {
+      byType: { city: 2, bunker: 2, hub: 1, port: 1, village: 0, ruins: 0, camp: 0 },
+      factions: { warprom: 1, aiParty: 1, tinBrotherhood: 1, cult: 1, mechanids: 1 },
+      quiet: ['neutralVillages', 'scavengers', 'agrozone', 'mutantsPlant', 'mutantsBeast', 'cringegons', 'tekhonki'],
+      quietMax: 1,
+      stallGuards: ['hub', 'port', 'city'], // node types where a trader's stall may get a watchman
+      patrol: { r: 4, points: 3, speed: 0.8 }, // route of 2–3 free cells ≤ r tiles from the guarded place; tiles per second
+      bark: { r: 3, every: 25, show: 3.5 }, // a line when the party comes within r tiles; per-post cooldown, seconds on screen
+      doze: 0.5, // share of posts that doze at night (no cone until the party is ≤ wake tiles away)
+      wake: 2,
+    },
     turn: [3, 6], // a post turns to its next facing every N s
     restrictBlocks: ['barracks', 'warehouse', 'lab'], // generated blocks that are restricted zones
   },
