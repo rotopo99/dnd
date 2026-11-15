@@ -173,3 +173,76 @@ export function propModel(id) {
   cache.set(id, mb);
   return mb;
 }
+
+// ---------------------------------------------------------------- free node map objects (3d.md stage 3, gfx/roam3d.js)
+const objCache = new Map();
+/**
+ * Model of a roam object (world/roam-gen.js MARKERS) in cell space (0..1, y up): stall, bed, stash (closed / opened),
+ * bench (workbench), terminal, fire, well, transit, boat. Gates of exits — gfx/roam3d.js (they span the exit cells).
+ */
+export function roamObjModel(type, variant = '') {
+  const key = `${type}|${variant}`;
+  let mb = objCache.get(key);
+  if (mb) return mb;
+  mb = new MeshBuilder();
+  const dark = ramp('1'), steel = ramp('3'), wood = ramp('7'), wood2 = ramp('6');
+  switch (type) {
+    case 'stall':
+      mb.box(0.04, 0, 0.3, 0.96, 0.78, 0.92, ramp('8'), { top: ramp('6') });
+      mb.box(0.04, 0.6, 0.28, 0.96, 0.66, 0.32, ramp('6'), { ao: 0 });
+      for (const x of [0.06, 0.88]) mb.box(x, 0, 0.06, x + 0.06, 1.55, 0.12, wood2);
+      mb.wedge(0, 1.5, 0.0, 1, 1.72, 0.7, ramp('c'), { ao: 0 });
+      for (const x of [0.18, 0.58]) mb.box(x, 1.505, 0.02, x + 0.2, 1.53, 0.66, ramp('5'), { ao: 0 });
+      mb.box(0.2, 0.78, 0.45, 0.4, 0.9, 0.6, ramp('a')).box(0.55, 0.78, 0.5, 0.8, 0.86, 0.75, ramp('j'));
+      break;
+    case 'bed':
+      mb.box(0.12, 0, 0.04, 0.88, 0.28, 0.96, wood2);
+      mb.box(0.15, 0.28, 0.08, 0.85, 0.38, 0.93, ramp('g'), { ao: 0.2 });
+      mb.box(0.2, 0.38, 0.1, 0.8, 0.46, 0.28, ramp('5'), { ao: 0 });
+      mb.box(0.12, 0, 0.0, 0.88, 0.62, 0.06, wood);
+      break;
+    case 'stash':
+      mb.box(0.15, 0, 0.18, 0.85, 0.45, 0.82, wood, { top: ramp('8') });
+      mb.box(0.13, 0.2, 0.16, 0.87, 0.26, 0.84, wood2, { ao: 0 });
+      if (variant === 'open') { mb.box(0.2, 0.43, 0.24, 0.8, 0.455, 0.76, dark, { ao: 0 }); mb.box(0.15, 0.45, 0.78, 0.85, 0.85, 0.86, wood, { ao: 0.2 }); }
+      else { mb.box(0.15, 0.45, 0.18, 0.85, 0.52, 0.82, ramp('8')); mb.box(0.46, 0.3, 0.83, 0.54, 0.4, 0.86, rampRGB(['a', 'a', 'a']), { glow: true, ao: 0 }); }
+      break;
+    case 'bench': // workbench
+      mb.box(0.05, 0.7, 0.15, 0.95, 0.8, 0.85, wood, { top: ramp('8') });
+      for (const [x, z] of [[0.08, 0.18], [0.84, 0.18], [0.08, 0.74], [0.84, 0.74]]) mb.box(x, 0, z, x + 0.08, 0.7, z + 0.08, wood2);
+      mb.box(0.12, 0.25, 0.2, 0.88, 0.3, 0.8, wood2, { ao: 0.2 });
+      mb.box(0.15, 0.8, 0.25, 0.45, 0.95, 0.45, ramp('4')).box(0.6, 0.8, 0.55, 0.75, 1.0, 0.7, steel);
+      break;
+    case 'terminal':
+      mb.bevelBox(0.22, 0, 0.3, 0.78, 1.3, 0.7, 0.05, ramp('2'), { top: steel });
+      for (const z of [0.29, 0.69]) mb.box(0.28, 0.75, z, 0.72, 1.15, z + 0.02, rampRGB(['i', 'i', 'i']), { glow: true, ao: 0 });
+      mb.box(0.32, 0.55, 0.24, 0.68, 0.6, 0.3, ramp('4'), { ao: 0 });
+      break;
+    case 'fire':
+      for (let k = 0; k < 7; k++) { const a = (k / 7) * Math.PI * 2; mb.bevelBox(0.5 + Math.cos(a) * 0.36 - 0.07, 0, 0.5 + Math.sin(a) * 0.36 - 0.06, 0.5 + Math.cos(a) * 0.36 + 0.07, 0.12, 0.5 + Math.sin(a) * 0.36 + 0.06, 0.03, ramp('3')); }
+      mb.add(propModel('campfire'), 0, 0, 0);
+      break;
+    case 'well':
+      mb.cyl(0.5, 0, 0.5, 0.6, 0.42, ramp('3'), { seg: 10 });
+      mb.cyl(0.5, 0.6, 0.5, 0.02, 0.33, dark, { seg: 10 });
+      for (const x of [0.1, 0.84]) mb.box(x, 0.6, 0.45, x + 0.06, 1.5, 0.55, wood2);
+      mb.wedge(0.02, 1.45, 0.25, 0.98, 1.7, 0.75, ramp('8'));
+      mb.cyl(0.1, 1.15, 0.5, 0.8, 0.04, wood, { axis: 'x', seg: 5 });
+      break;
+    case 'transit':
+      mb.cyl(0.5, 0, 0.5, 2.0, 0.05, ramp('6'), { seg: 6 });
+      mb.box(0.1, 1.55, 0.46, 0.9, 1.95, 0.54, ramp('b'), { top: ramp('a') });
+      mb.box(0.15, 0, 0.3, 0.85, 0.06, 0.7, ramp('7'), { ao: 0 });
+      break;
+    case 'boat':
+      mb.bevelBox(0.05, -0.1, 0.12, 0.95, 0.3, 0.88, 0.08, ramp('7'), { top: ramp('6') });
+      mb.box(0.12, 0.25, 0.2, 0.88, 0.3, 0.8, ramp('6'), { ao: 0 });
+      mb.cyl(0.45, 0.3, 0.5, 1.5, 0.03, ramp('5'), { seg: 5 });
+      mb.wedge(0.47, 0.7, 0.45, 0.85, 1.7, 0.55, ramp('5'), { ao: 0 });
+      break;
+    default:
+      mb.bevelBox(0.2, 0, 0.2, 0.8, 0.5, 0.8, 0.05, steel);
+  }
+  objCache.set(key, mb);
+  return mb;
+}

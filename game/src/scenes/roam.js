@@ -32,6 +32,8 @@ import { hashSeed } from '../world/roam-gen.js';
 import { pendingTurnins } from '../world/quests.js';
 import { atBase, modActive as baseModActive } from '../world/base.js';
 import { saveGame } from '../save.js';
+import { roam3d, drawRoam3d, pickRoam, roamScreen, roamCamInput, bodyTop } from '../gfx/roam3d.js';
+import { pickWeather } from '../world/battlefields.js';
 import { play } from '../audio/sfx.js';
 import { canCampAt } from './rest.js';
 import { createLocationScene } from './location.js';
@@ -565,6 +567,36 @@ export function createRoamScene(rawId, opts = {}) {
     return L.nav(game, id);
   }
 
+  // ---------------------------------------------------------------- 3D view (docs/specs/3d.md stage 3)
+  /** Node weather: night — the N toggle (as stealth), weather by the day (world/battlefields.js pickWeather); S.wxForce — tests. */
+  function weatherOf(game) {
+    const day = game.save?.day || 1;
+    if (!S.wx || S.wx.day !== day) {
+      const w = pickWeather(fieldBiome(map) || 'wasteland', hashSeed(locId), day).weather;
+      S.wx = { day, weather: w === 'storm' ? 'clear' : w };
+    }
+    const f = S.wxForce || {};
+    return { tod: f.tod || (night(game) ? 'night' : 'day'), weather: f.weather || S.wx.weather };
+  }
+  const view3 = (game) => ({
+    S, map, locId, wx: weatherOf(game), others: game.coop?.others?.(game, locId) || [],
+    area: { x: 0, y: 0, w: game.width, h: game.height }, camArea: { x: 0, y: HUD_H, w: game.width, h: game.height - HUD_H - 60 },
+  });
+  /** Hover in 3D: a body under the cursor (NPC / guard / hunter / corpse), else the picked cell. */
+  function hover3d(game, A, R, m) {
+    const pk = pickRoam(A, R, m.x, m.y);
+    S.hoverCell = pk.cell;
+    const es = entities();
+    const ref = pk.ent >= 0 ? R.bodies[pk.ent].ref : null;
+    if (ref) S.hoverEnt = es.find((e) => (ref.kind === 'npc' && e.n === ref.n) || (ref.kind === 'post' && e.p === ref.p) || (ref.kind === 'hostile' && e.h === ref.h) || (ref.kind === 'corpse' && e.c === ref.c)) || null;
+    else if (pk.cell) {
+      const { x: mx, y: my } = pk.cell;
+      S.hoverEnt = es.find((e) => e.kind === 'npc' && Math.round(e.x) === mx && Math.round(e.y) === my)
+        || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my))
+        || es.find((e) => e.kind === 'skill' && e.x === mx && e.y === my) || null;
+    }
+  }
+
   // ---------------------------------------------------------------- static layer (whole map at 32 px, scaled on draw)
   function buildLayer() {
     const c = ROAM.cell, s = c / TILE;
@@ -681,18 +713,24 @@ export function createRoamScene(rawId, opts = {}) {
       S.cam.x += (ct.x - S.cam.x) * kk; S.cam.y += (ct.y - S.cam.y) * kk;
       const m = inp.mouse;
       S.hover = hitButton(S.buttons, m);
-      const mx = Math.floor((m.x + S.cam.x) / c), my = Math.floor((m.y + S.cam.y) / c);
+      const A3 = S.r3?.v3 ? S.r3 : null;
+      let mx = Math.floor((m.x + S.cam.x) / c), my = Math.floor((m.y + S.cam.y) / c);
       S.hoverCell = mx >= 0 && my >= 0 && mx < W && my < H ? { x: mx, y: my } : null;
       S.hoverEnt = null;
-      if (S.hoverCell && !S.hover) {
+      const cam3 = A3 && !S.hover && roamCamInput(game, A3); // 3D: wheel zoom, [ ] rotate, drag pan, Home
+      if (A3) {
+        S.hoverCell = null;
+        if (!S.hover && m.x >= 0) hover3d(game, A3, S.r3R, m);
+        if (S.hoverCell) { mx = S.hoverCell.x; my = S.hoverCell.y; }
+      } else if (S.hoverCell && !S.hover) {
         // sprites are taller than a tile: the cell under the mouse or the one below it
         const es = entities();
         S.hoverEnt = es.find((e) => e.kind === 'npc' && Math.round(e.x) === mx && (Math.round(e.y) === my || Math.round(e.y) === my + 1))
           || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my))
           || es.find((e) => e.kind === 'skill' && e.x === mx && e.y === my) || null;
       }
-      if (m.wheel) { S.zoom = Math.max(0, Math.min(ROAM.zooms.length - 1, S.zoom - Math.sign(m.wheel))); S.cam = null; }
-      if (m.clicked) {
+      if (m.wheel && !A3) { S.zoom = Math.max(0, Math.min(ROAM.zooms.length - 1, S.zoom - Math.sign(m.wheel))); S.cam = null; }
+      if (m.clicked && !(cam3 && S.r3?.v3?.drag?.on)) {
         if (S.hover) { if (S.hover.disabled) return; play('uiClick'); return nav(game, S.hover.id); }
         const dbl = S.lastClick && S.time - S.lastClick < 0.3;
         S.lastClick = S.time;
@@ -724,6 +762,10 @@ export function createRoamScene(rawId, opts = {}) {
     render(game) {
       const { ctx, width: W0, height: H0 } = game;
       const sv = game.save;
+      const R3 = view3(game);
+      const A3 = roam3d(game, R3);
+      S.r3R = R3;
+      if (A3) return render3d(game, A3, R3);
       clear(ctx, W0, H0);
       if (!S.layer) buildLayer();
       const c = cell(), k = c / ROAM.cell;
@@ -803,6 +845,13 @@ export function createRoamScene(rawId, opts = {}) {
           if (mark) text(ctx, '!', px + c / 2, py - c * 0.9, C.a, FONT_B, 'center');
         }
       }
+      overlay2d(game, scr, c, (e, px, py) => py - c * 0.6 - 14);
+    },
+  };
+  /** Names, hotspots and the HUD over the world (2D and 3D). scr(x, y) -> top-left of the cell box, c — its size, plateY. */
+  function overlay2d(game, scr, c, plateY) {
+    const { ctx, width: W0, height: H0 } = game;
+    const sv = game.save, ld = S.party[0];
       // names: hovered entity + NPCs near the leader
       for (const n of S.npcs) {
         const near = chebyshev(Math.round(n.fx), Math.round(n.fy), ld.cx, ld.cy) <= 3;
@@ -852,8 +901,42 @@ export function createRoamScene(rawId, opts = {}) {
       }
       text(ctx, fit(ctx, t('roam.help'), W0 - S.buttons.length * 130 - 40, '12px monospace'), 12, H0 - 36, C['4'], '12px monospace');
       for (const b of S.buttons) button(ctx, b, S.hover === b);
-    },
-  };
+  }
+  /** 3D frame: the WebGL world (gfx/roam3d.js) + the 2D layer (skill badges, marks, names, tooltips, HUD) on top. */
+  function render3d(game, A, R) {
+    const { ctx, width: W0, height: H0 } = game;
+    ctx.clearRect(0, 0, W0, H0);
+    const ld = S.party[0];
+    const range = viewRange(night(game));
+    const cones = showCones(game) ? watchers().filter((w) => Math.hypot(w.x - ld.cx, w.y - ld.cy) <= ROAM.stealth.coneNear).map((w) => ({
+      pts: conePoly(grid, w, range), hot: S.seen && S.party.some((m) => seesCell(grid, w, m.cx, m.cy, range)) })) : [];
+    drawRoam3d(game, A, R, { path: S.path, hover: !S.hover ? S.hoverCell : null, hoverEnt: S.hoverEnt, skills: S.skills, cones, zones: (map.zones || []).filter((z) => z.restricted) });
+    const c = A.L.cell;
+    const scr = (x, y) => { const p = roamScreen(A, x, y); return [Math.round(p.x - c / 2), Math.round(p.y - c / 2)]; };
+    for (const p of S.skills || []) {
+      const [px, py] = scr(p.x, p.y);
+      if (px < -c || py < -c || px > W0 || py > H0) continue;
+      const bs = Math.round(Math.min(40, c * 0.62));
+      drawSkillBadge(ctx, p.s.skill, px + (c - bs) / 2, py + (c - bs) / 2 - c * 0.3, bs, !!p.s.best && p.s.best.kind !== 'other');
+    }
+    const heads = new Map();
+    for (const it of R.bodies || []) {
+      const p = roamScreen(A, it.d.x, it.d.y, bodyTop(it));
+      heads.set(it.ref.n || it.ref.p || it.ref.h || it.ref.o || it.ref.m, p.y);
+      if (p.x < -40 || p.y < -40 || p.x > W0 + 40 || p.y > H0 + 40) continue;
+      const r = it.ref;
+      if (r.kind === 'npc' && r.n.mark) text(ctx, '!', p.x, p.y - 22, C.a, FONT_B, 'center');
+      if (r.kind === 'hostile') text(ctx, '!', p.x, p.y - 22, C.c, FONT_B, 'center');
+      if (r.kind === 'other') {
+        const col = C[r.o.color] || C.h;
+        ctx.font = '12px monospace';
+        const tw = ctx.measureText(r.o.name).width + 8;
+        ctx.fillStyle = rgba(C['0'], 0.7); ctx.fillRect(p.x - tw / 2, p.y - 18, tw, 15);
+        text(ctx, r.o.name, p.x, p.y - 17, col, '12px monospace', 'center');
+      }
+    }
+    overlay2d(game, scr, c, (e, px, py) => (heads.get(e.n || e.p || e.h) ?? py) - 18 - (heads.has(e.n || e.p || e.h) ? 0 : c * 0.6));
+  }
   function objName(o) {
     if (o.type === 'stall') return o.npc ? `${t('roam.stall')}: ${NPCS[o.npc]?.name}` : t('roam.stall');
     if (o.type === 'stash') return o.cache ? t('roam.cache') : t('roam.stash');
