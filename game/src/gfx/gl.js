@@ -320,8 +320,13 @@ void main() {
         else c *= 0.84 + 0.32 * t.r;
         if (kind == 3) c = mix(c, vL, t.b * t2 * 0.5);
       } else if (kind == 6) {
-        float ring = (1.0 - smoothstep(0.04, 0.17, abs(n.y - 0.6))) * smoothstep(-0.25, 0.3, d);
-        c = mix(c, min(vL * 1.18, vec3(1.0)), ring * 0.75);
+        // anisotropic band: strands hang down, so the band follows the world-y of the normal (bent a little by x: it wraps the skull),
+        // a hard core + a soft halo, only on the lit side; roots darker (the ramp), outline stays dark (inverted hull)
+        float yb = n.y - 0.1 * n.x;
+        float ring = (1.0 - smoothstep(0.03, 0.12, abs(yb - 0.55))) * smoothstep(-0.2, 0.3, d);
+        float halo = (1.0 - smoothstep(0.1, 0.4, abs(yb - 0.55))) * smoothstep(-0.2, 0.3, d);
+        c = mix(c, min(vL * 1.1, vec3(1.0)), halo * 0.22);
+        c = mix(c, min(vL * 1.22 + 0.06, vec3(1.0)), ring * 0.8);
       }
       if (uShadowOn.x > 0.0 && d > uSteps.y - e) {
         float lit = 0.0;

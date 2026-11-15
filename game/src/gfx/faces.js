@@ -71,14 +71,17 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     sad: { open: 0.8, brow: 1, mouth: 'frown' }, scared: { open: 1.25, brow: 0.8, mouth: 'gasp' }, smug: { open: 0.62, brow: -0.4, mouth: 'smirk' },
     surprised: { open: 1.3, brow: 0.9, mouth: 'o' }, cringe: { open: 0.7, brow: 0.6, mouth: 'wavy' },
   }[emo] || { open: 1, brow: 0, mouth: 'flat' };
-  const ex = 15.2, ey = 27.5 + (F ? 1 : 0), ew = F ? 9.4 : 8.4, eh = (F ? 12.5 : 10.5) * (look.face?.h > 0.3 ? 1.05 : 1);
+  const ex = 15.4, ey = 27.5 + (F ? 1 : 0), ew = F ? 10.4 : 9.2, eh = (F ? 14 : 11.6) * (look.face?.h > 0.3 ? 1.05 : 1);
   const lash = hex(robot ? '0' : '0');
   // blush
   const bl = F || emo === 'happy' || emo === 'cringe' || emo === 'smug' ? (emo === 'cringe' ? 0.5 : 0.3) : 0;
   if (bl && !robot) for (const s of [-1, 1]) {
-    const gr = g.createRadialGradient(X + 32 + s * 19, Y + 38, 0, X + 32 + s * 19, Y + 38, 8);
-    gr.addColorStop(0, `rgba(224,79,168,${bl})`); gr.addColorStop(1, 'rgba(224,79,168,0)');
-    g.fillStyle = gr; g.fillRect(X + 32 + s * 19 - 9, Y + 29, 18, 18);
+    const bx = X + 32 + s * 19.5, by = Y + 39;
+    const gr = g.createRadialGradient(bx, by, 0, bx, by, 8);
+    gr.addColorStop(0, `rgba(224,79,168,${bl * 0.7})`); gr.addColorStop(1, 'rgba(224,79,168,0)');
+    g.fillStyle = gr; g.fillRect(bx - 9, by - 9, 18, 18);
+    g.strokeStyle = `rgba(214,60,110,${Math.min(0.8, bl * 1.8)})`; g.lineWidth = 0.9; g.lineCap = 'round';
+    for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(bx - 4 + k * 2.8, by + 2); g.lineTo(bx - 2.4 + k * 2.8, by - 1.6); g.stroke(); }
   }
   // eyes
   for (const s of [-1, 1]) {
@@ -124,13 +127,14 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     g.restore();
     // upper lash line (thick) + outer wing; angry / sad tilt the lid
     const tilt = E.brow < 0 ? -1 : 0, drop = E.brow > 0.5 && emo === 'sad' ? 1 : 0;
-    g.strokeStyle = lash; g.lineCap = 'round'; g.lineWidth = F ? 2.5 : 2.1;
+    g.strokeStyle = lash; g.lineCap = 'round'; g.lineWidth = F ? 3.1 : 2.5;
     g.beginPath();
     g.moveTo(cx - s * ew * 0.95, ocy - h * 0.15 + drop * 1.2);
     g.quadraticCurveTo(cx, ocy - h * 0.62 - (E.brow < 0 ? -1 : 0), cx + s * ew * 0.95, ocy - h * 0.1 + tilt * 2);
     g.stroke();
-    if (F) { g.lineWidth = 1.7; g.beginPath(); g.moveTo(cx + s * ew * 0.9, ocy - h * 0.1 + tilt * 2); g.lineTo(cx + s * (ew + 2.8), ocy - h * 0.38 + tilt * 2); g.stroke(); }
-    if (F && !M) { g.lineWidth = 0.9; g.globalAlpha = 0.6; g.beginPath(); g.moveTo(cx - ew * 0.7, ocy + h * 0.46); g.quadraticCurveTo(cx, ocy + h * 0.62, cx + ew * 0.7, ocy + h * 0.46); g.stroke(); g.globalAlpha = 1; }
+    if (F) { g.lineWidth = 1.7; g.beginPath(); g.moveTo(cx + s * ew * 0.9, ocy - h * 0.1 + tilt * 2); g.lineTo(cx + s * (ew + 3.2), ocy - h * 0.4 + tilt * 2); g.stroke();
+      g.lineWidth = 1.1; for (let k = 0; k < 2; k++) { g.beginPath(); g.moveTo(cx + s * ew * (0.55 + k * 0.28), ocy - h * (0.5 - k * 0.1)); g.lineTo(cx + s * (ew * (0.7 + k * 0.3) + 1.6), ocy - h * (0.66 - k * 0.1)); g.stroke(); } }
+    if (F && !M) { g.lineWidth = 0.7; g.globalAlpha = 0.5; g.beginPath(); g.moveTo(cx - ew * 0.7, ocy + h * 0.46); g.quadraticCurveTo(cx, ocy + h * 0.62, cx + ew * 0.7, ocy + h * 0.46); g.stroke(); g.globalAlpha = 1; }
     if (look.acc?.includes('cyberEye') && s > 0) {
       g.fillStyle = hex('h'); g.beginPath(); g.ellipse(cx, ocy, ew * 0.75, h * 0.4, 0, 0, 7); g.fill();
       g.fillStyle = '#fff'; g.beginPath(); g.ellipse(cx - 1.5, ocy - 1.5, 1.6, 1.6, 0, 0, 7); g.fill();
@@ -149,12 +153,14 @@ function drawFace(g, X, Y, look, emo, blink, o) {
       g.beginPath(); g.moveTo(cx - s * ew * 0.95, inner); g.quadraticCurveTo(cx, Math.min(inner, outer) - 1.4, cx + s * ew * 1.05, outer); g.stroke();
     }
   }
-  // nose: short stroke + soft shadow
-  g.strokeStyle = skinD; g.lineWidth = 1.3; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(X + 31.2, Y + 38.5); g.lineTo(X + 32.8, Y + 41.2); g.lineTo(X + 34.2, Y + 40.8); g.stroke();
+  // nose: a short soft shadow stroke on the side + a tiny highlight (not a dark blot)
+  g.strokeStyle = shade(hex(sk[0]), 0.1); g.globalAlpha = 0.5; g.lineWidth = 1.1; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(X + 33.4, Y + 37.2); g.quadraticCurveTo(X + 34.2, Y + 39.6, X + 33, Y + 40.6); g.stroke(); g.globalAlpha = 1;
+  g.fillStyle = shade(hex(sk[2]), 0.3); g.globalAlpha = 0.7; g.beginPath(); g.ellipse(X + 31.6, Y + 38.4, 0.9, 1.3, 0, 0, 7); g.fill(); g.globalAlpha = 1;
   // mouth
   const my = Y + 49.5, mx = X + 32, mc = hex(robot ? '0' : F ? 'c' : 'd');
-  g.strokeStyle = shade(hex(sk[0]), -0.35); g.fillStyle = mc; g.lineWidth = 1.6;
+  g.fillStyle = shade(hex(sk[0]), -0.1); g.globalAlpha = 0.28; g.beginPath(); g.ellipse(mx, my + 3.6, 4.6, 1.5, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+  g.strokeStyle = shade(hex(sk[0]), -0.35); g.fillStyle = mc; g.lineWidth = 1.1;
   switch (E.mouth) {
     case 'smile': g.beginPath(); g.moveTo(mx - 6, my - 1); g.quadraticCurveTo(mx, my + 5.5, mx + 6, my - 1); g.stroke(); g.fillStyle = hex('d'); g.beginPath(); g.moveTo(mx - 5, my - 0.4); g.quadraticCurveTo(mx, my + 5, mx + 5, my - 0.4); g.fill(); g.fillStyle = '#f4f4f6'; g.fillRect(mx - 3.4, my, 6.8, 1.4); break;
     case 'frown': g.beginPath(); g.moveTo(mx - 4.5, my + 2); g.quadraticCurveTo(mx, my - 2, mx + 4.5, my + 2); g.stroke(); break;

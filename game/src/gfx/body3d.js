@@ -100,9 +100,9 @@ export function sweep(mb, pts, widthFn, thickFn, rampAt, o = {}) {
 
 // ---------------------------------------------------------------- head
 const HEAD_KEYS = [
-  { t: 0, rx: 0.016, rz: 0.028, z: 0.071 }, { t: 0.05, rx: 0.04, rz: 0.054, z: 0.057 }, { t: 0.14, rx: 0.066, rz: 0.078, z: 0.03 },
-  { t: 0.28, rx: 0.084, rz: 0.092, z: 0.012 }, { t: 0.45, rx: 0.092, rz: 0.098, z: 0.004 }, { t: 0.62, rx: 0.094, rz: 0.1, z: 0 },
-  { t: 0.78, rx: 0.088, rz: 0.098, z: -0.004 }, { t: 0.9, rx: 0.07, rz: 0.083, z: -0.006 }, { t: 0.97, rx: 0.042, rz: 0.052, z: -0.006 }, { t: 1, rx: 0.003, rz: 0.004, z: -0.006 },
+  { t: 0, rx: 0.012, rz: 0.022, z: 0.07 }, { t: 0.04, rx: 0.03, rz: 0.046, z: 0.062 }, { t: 0.12, rx: 0.056, rz: 0.07, z: 0.036 },
+  { t: 0.26, rx: 0.08, rz: 0.09, z: 0.014 }, { t: 0.42, rx: 0.092, rz: 0.099, z: 0.004 }, { t: 0.6, rx: 0.097, rz: 0.1, z: 0 },
+  { t: 0.78, rx: 0.092, rz: 0.098, z: -0.004 }, { t: 0.9, rx: 0.072, rz: 0.084, z: -0.006 }, { t: 0.97, rx: 0.042, rz: 0.052, z: -0.006 }, { t: 1, rx: 0.003, rz: 0.004, z: -0.006 },
 ];
 export function headShape({ F = false, face = {}, y0, hh = 0.215, cx = 0 }) {
   const fw = 1 + 0.05 * (face.w || 0), fj = 1 + 0.06 * (face.j || 0), H = hh * (1 + 0.035 * (face.h || 0));
@@ -125,11 +125,11 @@ export function headShape({ F = false, face = {}, y0, hh = 0.215, cx = 0 }) {
 /** Head surface + face patch + ears + nose. skinR — ramp [S, B, L]; o: {look, F, lod, bot}. */
 export function buildHead(mb, Hd, skinR, o) {
   const Q = o.lod ? 0.65 : 1, TAU = Math.PI * 2;
-  surfGrid(mb, (u, v) => Hd.S(TAU * u, v), Math.round(22 * Q), Math.round(14 * Q), () => skinR, { closed: true, center: (p) => [Hd.cx, p[1], -0.005] });
+  surfGrid(mb, (u, v) => Hd.S(TAU * u, v), Math.round(26 * Q), Math.round(14 * Q), () => skinR, { closed: true, center: (p) => [Hd.cx, p[1], -0.005] });
   // face patch: slightly in front of the surface, uv in the atlas cell of the row (expression 0; the shader adds the column)
   const row = faceRow(o.look, { skin: o.skinTag }), { half, t0, t1 } = FACE_PATCH;
   const pat = (u, v) => { const a = Math.PI / 2 - half * (2 * u - 1), t = t1 - v * (t1 - t0); return add(Hd.S(a, t), mul(Hd.out(a, t), 0.0028)); };
-  surfGrid(mb, pat, Math.round(14 * Q), Math.round(16 * Q), () => skinR, {
+  surfGrid(mb, pat, Math.round(14 * Q), Math.round(14 * Q), () => skinR, {
     center: (p) => [Hd.cx, p[1], -0.005], mat: 9,
     uv: (u, v) => [(0.012 + 0.976 * u) / FACE_COLS, (row + 0.012 + 0.976 * v) / FACE_ROWS],
   });
@@ -137,7 +137,7 @@ export function buildHead(mb, Hd, skinR, o) {
   // nose bump (profile read) and ears
   const nt = 0.35, nr = Hd.ring(nt);
   mb.setBone(mb.bone);
-  if (!o.lod) { const nc = [Hd.cx, y0 + nt * hh + 0.004, nr.z + nr.rz * 0.96]; surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * v; return [nc[0] + Math.cos(a) * Math.sin(th) * 0.008, nc[1] - Math.cos(th) * 0.011, nc[2] + Math.sin(a) * Math.sin(th) * 0.01]; }, 6, 4, () => skinR, { closed: true, center: nc }); }
+  if (false) { const nc = [Hd.cx, y0 + nt * hh + 0.004, nr.z + nr.rz * 0.985]; surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * v; return [nc[0] + Math.cos(a) * Math.sin(th) * 0.0055, nc[1] - Math.cos(th) * 0.008, nc[2] + Math.sin(a) * Math.sin(th) * 0.006]; }, 6, 3, () => skinR, { closed: true, center: nc }); }
   const et = 0.44, er = Hd.ring(et), ex = er.rx * 0.97;
   for (const s of [-1, 1]) {
     const big = o.ears ? 2.2 : 1;
@@ -167,27 +167,32 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
   const outH = (a, t) => { const v = Hd.out(a, t); return v; };
   // cap: from the hairline up; tb(a) — hairline height by angle
   const tbf = (front, side, back) => (a) => { const f = Math.cos(a - Math.PI / 2); return f > 0 ? lerp(side, front, Math.pow(f, 1.3)) : lerp(side, back, Math.pow(-f, 0.8)); };
-  const cap = (tb, th, nu = 24) => surfGrid(mb, (u, v) => { const a = TAU * u, t0 = tb(a), t = t0 + v * (1 - t0); return add(Hd.S(a, t), mul(outH(a, t), th * (0.55 + 0.45 * Math.sin(Math.min(1, 0.25 + v) * Math.PI * 0.5)) + 0.004)); }, Math.round(nu * Q), Math.round(8 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.15 + 0.2 * v), { closed: true, center: (p) => [0, p[1], -0.005] });
+  const cap = (tb, th, nu = 24) => surfGrid(mb, (u, v) => { const a = TAU * u, t0 = tb(a), t = t0 + v * (1 - t0); return add(Hd.S(a, t), mul(outH(a, t), th * (0.6 + 0.4 * Math.sin(Math.min(1, 0.25 + v) * Math.PI * 0.5)) + 0.007 + 0.006 * Math.sin(v * Math.PI))); }, Math.round(nu * Q), Math.round(6 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.15 + 0.2 * v), { closed: true, center: (p) => [0, p[1], -0.005] });
+  // a lock: wedge with a lens section (full in the middle, a point at the tip), a soft bend, a random twist; follows the skull,
+  // then hangs (ext) with a sway along the tangent and a flick of the tip. width = full width of the root.
   const strand = (a, t0, t1, ext, width, p = {}) => {
-    const pts = [], N1 = p.n1 || 4, off0 = p.off0 ?? 0.01, off1 = p.off1 ?? 0.02;
-    for (let j = 0; j <= N1; j++) { const t = lerp(t0, t1, j / N1); pts.push(add(Hd.S(a, t), mul(outH(a, t), lerp(off0, off1, j / N1)))); }
-    const last = pts[pts.length - 1], oh = unit([Math.cos(a), 0, Math.sin(a)]), N2 = ext > 0 ? Math.max(2, Math.ceil((ext * Q) / 0.055)) : 0;
-    const bx = p.drift || [0, 0, 0];
+    const pts = [], N1 = p.n1 || 3, off0 = p.off0 ?? 0.012, off1 = p.off1 ?? 0.022;
+    const oh = unit([Math.cos(a), 0, Math.sin(a)]), tg = [-Math.sin(a), 0, Math.cos(a)], sway = p.sway ?? (R() - 0.5) * 0.07, tw = p.twist ?? (R() - 0.5) * 1.3;
+    for (let j = 0; j <= N1; j++) { const f = j / N1, t = lerp(t0, t1, f); pts.push(add(add(Hd.S(a, t), mul(outH(a, t), lerp(off0, off1, f) + (ext > 0 ? 0 : 0.014 * f * f))), mul(tg, sway * 0.5 * f))); }
+    const last = pts[pts.length - 1], N2 = ext > 0 ? Math.max(2, Math.min(4, Math.ceil((ext * Q) / 0.09))) : 0;
     for (let k = 1; k <= N2; k++) {
       const f = k / N2;
-      pts.push(add(add(last, [0, -ext * f, 0]), add(mul(oh, (p.flare ?? 0.02) * Math.sin(f * 1.6) - (p.curl || 0) * f * f), mul(bx, f))));
+      pts.push(add(add(last, [0, -ext * f, 0]), add(add(mul(oh, (p.flare ?? 0.02) * Math.sin(f * 1.6) - (p.curl || 0) * f * f + (p.flick || 0.012) * f * f * f), mul(tg, sway * (0.5 + f))), mul(p.drift || [0, 0, 0], f))));
     }
-    const wf = (s) => width * (1 - 0.82 * Math.pow(s, p.taper || 1.7)), tf = (s) => width * (p.flat ?? 0.55) * (1 - 0.6 * s);
+    const wf = (s) => width * (0.8 + 0.4 * Math.sin(Math.min(1, s * 1.5) * Math.PI * 0.5)) * (1 - 0.96 * Math.pow(s, p.taper || 1.6)), tf = (s) => width * (p.flat ?? 0.7) * (1 - 0.7 * s);
     const bn = p.bn || (p.chain ? (s) => chainBn(p.chain, s) : null);
-    sweep(mb, pts, wf, tf, (s) => lerpRamp(grad.root, grad.tip, 0.1 + 0.9 * s * (p.gradK ?? 1)), { seg: p.seg || (o.lod ? 4 : 5), bn: bn || undefined, mat: 6, side: (s, pp, T) => cross(T, oh) });
+    sweep(mb, pts, wf, tf, (s) => lerpRamp(grad.root, grad.tip, 0.05 + 0.95 * Math.pow(s, 0.9) * (p.gradK ?? 1)), { seg: p.seg || 4, bn: bn || undefined, mat: 6, side: (s, pp, T) => { const W0 = cross(T, oh), c = Math.cos(tw * s), si = Math.sin(tw * s); return add(mul(W0, c), mul(cross(T, W0), si)); } });
   };
   const chain = B ? [B.c1, B.c2, B.c3] : null;
   const sideB = (s) => (a) => (st) => [s, s, 0];
-  const frontLocks = (n, spread, tLen, side, over = 0) => { // fringe over the forehead (over > 0: the outer layer of separate clumps)
+  const frontLocks = (n, spread, tLen, side, over = 0) => { // fringe over the forehead: 7-11 locks of different length, parted, pointed
     if (over && o.lod) return;
+    n = o.lod ? Math.min(n, 5) : Math.max(n, over ? 4 : 7);
+    const part = (side || (R() < 0.5 ? -1 : 1)) * 0.12;
     for (let i = 0; i < n; i++) {
-      const f = n === 1 ? 0.5 : i / (n - 1), a = Math.PI / 2 + (f - 0.5) * spread + (side || 0) * 0.15 + (over ? 0.5 * spread / n * (R() - 0.2) : 0);
-      strand(a, 0.97 - 0.05 * Math.abs(f - 0.5), 0.74 - tLen * (0.5 + 0.5 * Math.sin(f * Math.PI)) - (over ? 0.05 + 0.04 * R() : 0) + (side ? (f - 0.5) * side * 0.12 : 0), 0, 0.034 + 0.01 * R() + over * 0.4, { off0: 0.016 + over, off1: 0.026 + over * 1.4, n1: 4, taper: 1.2, gradK: over ? 0.85 : 1 });
+      const f = n === 1 ? 0.5 : i / (n - 1), a = Math.PI / 2 + (f - 0.5) * spread + (over ? 0.5 * spread / n * (R() - 0.2) : 0);
+      const L = tLen * (0.55 + 0.45 * Math.sin(f * Math.PI)) * (0.7 + 0.6 * R()) + (over ? 0.04 * R() : 0);
+      strand(a, 0.985 - 0.05 * Math.abs(f - 0.5), 0.76 - L + (f - 0.5) * part, 0, 0.036 + 0.014 * R() + over * 0.5, { off0: 0.018 + over, off1: 0.03 + over * 1.4, n1: 3, taper: 1.15, gradK: over ? 0.85 : 1, sway: (f - 0.5) * 0.03 + (R() - 0.5) * 0.02 });
     }
   };
   // outer layer: second, thicker row of clumps between the first strands (volume, a layered cut)
@@ -202,6 +207,8 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
   switch (style) {
     case 'crop':
       cap(tbf(0.82, 0.62, 0.5), 0.011);
+      frontLocks(7, 1.5, 0.06, 0);
+      for (let i = 0; i < 9 && !o.lod; i++) { const a = -0.3 + (i / 8) * (Math.PI + 0.6) + Math.PI; strand(a, 0.84, 0.5, 0, 0.04, { off0: 0.014, off1: 0.022, taper: 1.3 }); }
       break;
     case 'spiky':
       cap(tbf(0.8, 0.58, 0.48), 0.014);
@@ -241,7 +248,7 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
     }
     case 'bun':
       cap(tbf(0.84, 0.62, 0.45), 0.014);
-      surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * v; return [Math.cos(a) * Math.sin(th) * 0.052, y0 + hh * 1.0 + 0.045 - Math.cos(th) * 0.05, -0.06 + Math.sin(a) * Math.sin(th) * 0.05]; }, Math.round(10 * Q), Math.round(7 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.3 + 0.4 * v), { closed: true, center: [0, y0 + hh * 1.0 + 0.045, -0.06] });
+      surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * (0.05 + 0.9 * v); return [Math.cos(a) * Math.sin(th) * 0.052, y0 + hh * 1.0 + 0.045 - Math.cos(th) * 0.05, -0.06 + Math.sin(a) * Math.sin(th) * 0.05]; }, Math.round(10 * Q), Math.round(7 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.3 + 0.4 * v), { closed: true, center: [0, y0 + hh * 1.0 + 0.045, -0.06] });
       frontLocks(5, 1.5, 0.12);
       for (const s of [-1, 1]) strand(Math.PI / 2 - s * 1.35, 0.78, 0.4, 0.1, 0.03, { off0: 0.014, off1: 0.024, bn: B ? (() => [s > 0 ? B.sR : B.sL, s > 0 ? B.sR : B.sL, 0]) : undefined });
       pv.c1 = [0, y0 + hh * 1.0, -0.06]; pv.c2 = pv.c1; pv.c3 = pv.c1;
@@ -275,8 +282,8 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
     }
     case 'long': {
       cap(tbf(0.86, 0.5, 0.3), 0.014);
-      for (let i = 0; i < 15; i++) { // back curtain down to the shoulder blades
-        const ang = -0.45 + (i / 14) * (Math.PI + 0.9);
+      for (let i = 0; i < 13; i++) { // back curtain down to the shoulder blades
+        const ang = -0.45 + (i / 12) * (Math.PI + 0.9);
         const back = Math.sin(ang);
         if (back > 0.55) continue;
         strand(ang + Math.PI * 0, 0.8, 0.28, 0.42 + 0.06 * R() - 0.08 * Math.abs(Math.cos(ang)), 0.052, { off0: 0.016, off1: 0.03, n1: 4, taper: 2.2, flare: 0.035, chain, seg: 5 });
@@ -287,7 +294,7 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
       }
       frontLocks(5, 1.5, 0.1);
       frontLocks(4, 1.3, 0.12, 0, 0.012);
-      layer(-0.45, Math.PI + 0.45, 10, 0.74, 0.28, 0.36, 0.056, { skip: (a) => Math.sin(a) > 0.55 });
+      layer(-0.45, Math.PI + 0.45, 8, 0.74, 0.28, 0.36, 0.056, { skip: (a) => Math.sin(a) > 0.55 });
       break;
     }
     default: { // 'short' (men: crop with a fringe; women: bob)
@@ -308,6 +315,10 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
         for (const s of [-1, 1]) strand(Math.PI / 2 - s * 1.35, 0.7, 0.4, 0, 0.034, { off0: 0.012, off1: 0.018 });
       }
     }
+  }
+  if (!o.lod && ['short', 'fringe', 'tail', 'long', 'bun', 'crop'].includes(style) && R() < 0.34) { // ahoge: a lone curved antenna on the crown
+    const b0 = add(Hd.S(Math.PI / 2 + 0.2, 0.98), mul(outH(Math.PI / 2 + 0.2, 0.98), 0.012));
+    sweep(mb, [b0, add(b0, [0.004, 0.035, 0.012]), add(b0, [0.018, 0.068, 0.028]), add(b0, [0.044, 0.082, 0.04])], (s) => 0.022 * (1 - 0.95 * s), (s) => 0.016 * (1 - 0.8 * s), (s) => lerpRamp(grad.root, grad.tip, s), { seg: 4, mat: 6, side: () => [0, 0, 1] });
   }
   mb.setMat(0);
   return pv;

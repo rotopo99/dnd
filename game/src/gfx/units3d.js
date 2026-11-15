@@ -264,6 +264,12 @@ function simpleHead(o, C, skinR) {
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const HAIR_KEYS = { black: ['0', '1', '2'], brown: ['6', '7', '8'], ginger: ['7', '8', 'e'], blond: ['8', 'a', 'b'], grey: ['2', '3', '4'], white: ['3', '4', '5'], green: ['k', 'j', 'j'], pink: ['o', 'n', 'n'], cyan: ['i', 'h', 'h'] };
 
+/** Skin ramp with a warm (reddish) shadow instead of a grey-blue one: the shadow step leans to a ruddy tone, mid/light keep the palette. */
+function warmSkin(r) {
+  const w = [0.5, 0.2, 0.15], k = 0.4, S = r[0].map((c, i) => Math.max(c, 0.16 + i * 0.02) * (1 - k) + w[i] * k);
+  return [S, r[1], r[2]];
+}
+
 function humanoidAnime(o) {
   const { mb, P, col, hero, u, lod, pf, base } = o;
   const R = GFX.races[pf.race] || {}, F = pf.f, A = pf.armor, hide = pf.hide, thin = lod || !hero;
@@ -273,7 +279,7 @@ function humanoidAnime(o) {
   else if (!(look.acc || []).some((a) => ['hood', 'helmet', 'cap'].includes(a)) && ((hero && u.classId === 'arbiter') || (!hero && pf.faction === 'warprom' && ['elite', 'miniboss', 'boss'].includes(pf.rank)))) look = { ...look, acc: [...(look.acc || []), 'cap'] }; // peaked cap: arbiters, Warprom officers
   const av = buildAvatarMesh(look), M = matsOf(av);
   const cloth = (hero && look.cloth) || col.body;
-  const rCloth = ramp(cloth), rUnder = ramp(col.legs), rDark = ramp('1'), rLeather = ramp('6'), rSkin = M.skin;
+  const rCloth = ramp(cloth), rUnder = ramp(col.legs), rDark = ramp('1'), rLeather = ramp('6'), rSkin = warmSkin(M.skin);
   const tights = F && (A === 'cloth' || A === 'light') ? ramp('1') : rUnder;
   const accK = 'a', rPipe = ramp(accK), rGold = ramp('a'); // contrast piping / buttons: gold (palette a)
   const plate = ramp(pf.faction === 'tinBrotherhood' || A === 'heavy' ? '4' : '3');
@@ -321,7 +327,7 @@ function humanoidAnime(o) {
   mb.setBone(BONE.torso).setMat(1);
   loft(mb, resample(keys, N), trunkR, { seg, rot: Math.PI / seg });
   mb.setMat(0);
-  mb.cyl(0, shY + 0.0, 0, 0.085 * hm, 0.044, rSkin, { seg: 8, ao: 0 }); // neck shaft (blended torso -> head by the hook)
+  mb.cyl(0, shY + 0.0, 0, 0.085 * hm, 0.036, rSkin, { seg: 8, ao: 0 }); // neck shaft (blended torso -> head by the hook)
   // ---- belt
   mb.setBone(BONE.pelvis);
   loft(mb, [{ y: hipY + 0.05, rx: (F ? 0.152 : 0.152) * w, rz: 0.11, ao: 0 }, { y: hipY + 0.105, rx: (F ? 0.148 : 0.152) * w, rz: 0.108 }], rDark, { seg: 12, capTop: false });
@@ -470,22 +476,26 @@ function headGear(o, C, Hd, look, grad, rCloth, plate) {
     return add(Hd.S(ang, t), mul(Hd.out(ang, t), th));
   }, lod ? 14 : 22, lod ? 5 : 7, () => ramp, { closed: true, center: (p) => [0, p[1], -0.005] });
   if (acc.includes('helmet') || heavyHelm) {
-    shell(0.3, 0.7, 0.02, plate);
+    shell(0.3, 0.7, 0.024, plate);
+    if (!lod) sweep(mb, [add(Hd.S(Math.PI / 2, 0.7), mul(Hd.out(Math.PI / 2, 0.7), 0.026)), add(Hd.S(Math.PI / 2, 0.98), mul(Hd.out(Math.PI / 2, 0.98), 0.03)), add(Hd.S(-Math.PI / 2, 0.98), mul(Hd.out(-Math.PI / 2, 0.98), 0.03)), add(Hd.S(-Math.PI / 2, 0.4), mul(Hd.out(-Math.PI / 2, 0.4), 0.026))], () => 0.022, () => 0.02, () => plate, { seg: 5, side: () => [1, 0, 0] }); // helmet comb
     if (heavyHelm) mb.box(-0.05, Hd.y0 + Hd.hh * 0.44, 0.088, 0.05, Hd.y0 + Hd.hh * 0.52, 0.112, rampRGB(['h', 'h', 'h']), { glow: true, ao: 0 }); // visor slit
     top = Hd.y0 + Hd.hh * 1.12;
   }
   if (acc.includes('hood')) {
-    shell(0.12, 0.62, 0.028, rCloth);
+    shell(0.12, 0.62, 0.032, rCloth);
+    if (!lod) { const pr = []; for (let k = 0; k <= 8; k++) { const a = 0.35 + (k / 8) * (Math.PI - 0.7); pr.push(add(Hd.S(a, 0.62), mul(Hd.out(a, 0.62), 0.036))); } sweep(mb, pr, () => 0.03, () => 0.03, () => rCloth, { seg: 5, side: () => [0, 1, 0] }); } // folded hood rim
     sweep(mb, [[0, Hd.y0 + Hd.hh * 0.3, -0.1], [0, Hd.y0 - 0.02, -0.14], [0, Hd.y0 - 0.12, -0.15]], (s) => 0.2 - 0.06 * s, () => 0.03, () => rCloth, { seg: 6, side: () => [1, 0, 0] });
     top = Math.max(top, Hd.y0 + Hd.hh * 1.12);
   }
   if (acc.includes('cap')) { // peaked cap: band with piping, wide flat crown, visor, glowing badge
-    const yb = Hd.y0 + Hd.hh * 0.8, yt = Hd.y0 + Hd.hh * 1.18, rc = pf.faction === 'warprom' ? ramp('l') : rCloth, rb = pf.faction === 'warprom' ? ramp('1') : ramp('1');
+    const yb = Hd.y0 + Hd.hh * 0.84, yt = Hd.y0 + Hd.hh * 1.2, rc = pf.faction === 'warprom' ? ramp('l') : rCloth, rb = pf.faction === 'warprom' ? ramp('1') : ramp('1');
     loft(mb, [{ y: yb - 0.01, rx: 0.1, rz: 0.108, z: -0.004, ao: 0.2 }, { y: yb + 0.035, rx: 0.103, rz: 0.11, z: -0.004 }], rb, { seg: lod ? 12 : 18, capTop: false });
     loft(mb, [{ y: yb + 0.035, rx: 0.106, rz: 0.113, z: -0.004 }, { y: yb + 0.044, rx: 0.106, rz: 0.113, z: -0.004 }], ramp('a'), { seg: lod ? 12 : 18, capTop: false, capBot: false });
-    loft(mb, [{ y: yb + 0.044, rx: 0.103, rz: 0.11, z: -0.004 }, { y: yb + 0.09, rx: 0.122, rz: 0.13, z: 0.004 }, { y: yt - 0.01, rx: 0.138, rz: 0.143, z: 0.008 }, { y: yt, rx: 0.13, rz: 0.136, z: 0.008 }], rc, { seg: lod ? 12 : 18, capTop: true });
-    mb.quad([-0.1, yb + 0.005, 0.098], [0.1, yb + 0.005, 0.098], [0.085, yb - 0.018, 0.2], [-0.085, yb - 0.018, 0.2], rb, { inside: [0, yb + 0.02, 0.0] });
-    mb.quad([-0.1, yb + 0.004, 0.098], [-0.085, yb - 0.02, 0.2], [0.085, yb - 0.02, 0.2], [0.1, yb + 0.004, 0.098], rb, { inside: [0, yb + 0.02, 1.0] });
+    loft(mb, [{ y: yb + 0.044, rx: 0.103, rz: 0.11, z: -0.004 }, { y: yb + 0.085, rx: 0.12, rz: 0.128, z: 0.004 }, { y: yt - 0.012, rx: 0.138, rz: 0.146, z: 0.01 }, { y: yt, rx: 0.136, rz: 0.144, z: 0.012 }, { y: yt + 0.007, rx: 0.112, rz: 0.12, z: 0.012 }, { y: yt + 0.0095, rx: 0.02, rz: 0.02, z: 0.012 }], rc, { seg: lod ? 12 : 20, capTop: true });
+    loft(mb, [{ y: yt - 0.014, rx: 0.14, rz: 0.148, z: 0.01 }, { y: yt - 0.004, rx: 0.14, rz: 0.148, z: 0.012 }], ramp('a'), { seg: lod ? 12 : 20, capTop: false, capBot: false }); // piping of the crown edge
+    // curved visor: a shell bent down at the middle, up a little at the sides, with an underside
+    const vis = (flip) => surfGrid(mb, (u, v) => { const ph = (u - 0.5) * 2 * 1.0, r = 0.106 + 0.075 * v; return [Math.sin(ph) * r * (1.0 - 0.3 * v), yb - 0.004 - 0.03 * Math.pow(v, 1.4) * Math.cos(ph) + 0.014 * Math.sin(ph) * Math.sin(ph) * v - (flip ? 0.006 : 0), 0.012 + Math.cos(ph) * r * 0.97]; }, lod ? 8 : 12, 3, () => rb, { center: [0, yb + (flip ? 0.2 : -0.2), -0.02], flip: false });
+    vis(false); vis(true);
     mb.cyl(0, yb + 0.025, 0.112, 0.014, 0.022, rampRGB(['a', 'b', 'a']), { axis: 'z', seg: 8, glow: true, ao: 0 });
     top = Math.max(top, yt);
   }
