@@ -151,7 +151,7 @@ export function buildHero(save, data = GAME_DATA, { race, id = 'hero' } = {}) {
   if (h.spirit) { u.maxHp = Math.max(1, Math.ceil(u.maxHp * SPIRIT.stats.hpFrac)); u.hp = Math.min(u.hp, u.maxHp); u.spirit = true; }
   restore(u, h.hp, h.mrl);
   restoreRest(u, h);
-  u.look = h.look || null; u.avatar = h.avatar || null;
+  u.look = h.look || null; u.avatar = h.avatar || null; u.hide = h.hide || null; // hide: slots not shown on the 3D model
   if (h.withdrawal) u.withdrawal = { ...h.withdrawal };
   return u;
 }
@@ -179,6 +179,7 @@ export function buildCompanion(save, p, data = GAME_DATA) {
   }
   restore(u, p.hp, p.mrl);
   restoreRest(u, p);
+  u.hide = p.hide || null;
   if (save.settings.aiCompanions) u.control = 'ai';
   return u;
 }

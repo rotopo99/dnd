@@ -28,8 +28,10 @@ export function heroLook3d(h) {
   const cloth = h?.look || av.cloth || null;
   let m = lookMemo.get(av);
   if (!m) { m = new Map(); lookMemo.set(av, m); }
-  let r = m.get(cloth);
-  if (!r) { const look = { ...av, cloth }; r = { look, key: JSON.stringify(look) }; m.set(cloth, r); }
+  const hh = h?.hide?.helm ? 1 : 0; // «show on model» off for the helmet / hood: no hat accessories
+  const mk = `${cloth}|${hh}`;
+  let r = m.get(mk);
+  if (!r) { const look = { ...av, cloth }; if (hh) look.acc = (av.acc || []).filter((a) => !['hood', 'helmet', 'bandana'].includes(a)); r = { look, key: JSON.stringify(look) }; m.set(mk, r); }
   return r;
 }
 

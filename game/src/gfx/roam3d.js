@@ -120,7 +120,7 @@ function bodies(game, A, R) {
   };
   S.party.forEach((m, i) => {
     const u = i === 0
-      ? pseudo(A, `hero|${sv.hero.race}|${sv.hero.cls}|${sv.hero.look}`, () => ({ id: 'r:hero', kind: 'hero', team: 'heroes', raceId: sv.hero.race, classId: sv.hero.cls, look: sv.hero.look, avatar: sv.hero.avatar || null, name: sv.hero.name }))
+      ? pseudo(A, `hero|${sv.hero.race}|${sv.hero.cls}|${sv.hero.look}|${JSON.stringify(sv.hero.hide || 0)}`, () => ({ id: 'r:hero', kind: 'hero', team: 'heroes', raceId: sv.hero.race, classId: sv.hero.cls, look: sv.hero.look, avatar: sv.hero.avatar || null, hide: sv.hero.hide || null, name: sv.hero.name }))
       : npcUnit(A, `r:${m.key}`, m.key, 'heroes');
     out.push({ u, d: pos(u.id, m.x, m.y), alpha: 1, teamKey: i === 0 ? GFX.team.player : GFX.team.ally, ref: { kind: 'member', m } });
   });

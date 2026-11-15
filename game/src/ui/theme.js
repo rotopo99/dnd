@@ -249,8 +249,8 @@ function drawFrame(g, w, h, th, d, big) {
     case 'bolts': case 'rivets': {
       // inner double line + rivets in the corners (and along the long edges of big panels)
       g.globalAlpha = 0.5; g.strokeStyle = PAL['0']; g.strokeRect(inset + 0.5, inset + 0.5, w - 2 * inset - 1, h - 2 * inset - 1); g.globalAlpha = 1;
-      const pts = [[6, 6], [w - 7, 6], [6, h - 7], [w - 7, h - 7]];
-      if (big) for (let x = 48; x < w - 24; x += 48) { pts.push([x, 5], [x, h - 6]); }
+      const pts = big ? [[5, 5], [w - 6, 5], [5, h - 6], [w - 6, h - 6]] : [];
+      if (big) for (let x = 48; x < w - 24; x += 48) { pts.push([x, 4], [x, h - 5]); }
       for (const [x, y] of pts) {
         g.fillStyle = PAL['0']; g.fillRect(x - 2, y - 2, 4, 4);
         g.fillStyle = th.frame === 'rivets' ? d.edge : PAL['4']; g.fillRect(x - 1, y - 1, 2, 2);
@@ -272,12 +272,12 @@ function drawFrame(g, w, h, th, d, big) {
       g.globalAlpha = 1;
       break;
     }
-    case 'bones': { // knuckle beads in the corners + a bone bar over the top edge of wide panels
+    case 'bones': { if (!big) break; // knuckle beads in the corners + a bone bar over the top edge of wide panels
       for (const [x, y] of [[5, 5], [w - 6, 5], [5, h - 6], [w - 6, h - 6]]) {
         g.fillStyle = PAL['0']; g.fillRect(x - 3, y - 3, 7, 7);
         g.fillStyle = PAL['5']; g.fillRect(x - 2, y - 2, 5, 5); g.fillStyle = PAL['p']; g.fillRect(x - 2, y + 1, 5, 2);
       }
-      if (big) {
+      {
         const bw = Math.min(64, w - 40), bx = ((w - bw) / 2) | 0;
         g.fillStyle = PAL['0']; g.fillRect(bx - 1, 0, bw + 2, 5);
         g.fillStyle = PAL['5']; g.fillRect(bx, 0, bw, 3); g.fillStyle = PAL['p']; g.fillRect(bx, 3, bw, 1);
@@ -285,7 +285,7 @@ function drawFrame(g, w, h, th, d, big) {
       }
       break;
     }
-    case 'vines': { // a vine creeping along two edges
+    case 'vines': { if (!big) break; // a vine creeping along two edges
       g.fillStyle = d.edge;
       for (let x = 10, i = 0; x < w - 10; x += 2, i++) { g.fillRect(x, 1 + ((Math.sin(i * 0.45) + 1) * 1.2 | 0), 2, 1); }
       for (let y = 10, i = 0; y < h - 10; y += 2, i++) { g.fillRect(w - 3 - ((Math.sin(i * 0.45) + 1) * 1.2 | 0), y, 1, 2); }
@@ -300,13 +300,14 @@ function drawFrame(g, w, h, th, d, big) {
       for (const [cx, cy, sx, sy] of [[1, 1, 1, 1], [w - 2, 1, -1, 1], [1, h - 2, 1, -1], [w - 2, h - 2, -1, -1]]) {
         g.fillRect(sx > 0 ? cx : cx - L, cy, L + 1, 1); g.fillRect(cx, sy > 0 ? cy : cy - L, 1, L + 1);
       }
+      if (!big) break;
       g.fillStyle = d.glow; g.globalAlpha = 0.9;
       g.fillRect(4, 3, 8, 1); g.fillRect(w - 13, h - 4, 8, 1);
       g.fillStyle = PAL['n']; g.fillRect(w - 20, 2, 5, 1); g.fillRect(8, h - 3, 5, 1);
       g.globalAlpha = 1;
       break;
     }
-    case 'cables': { // a sagging cable along the bottom edge with a plug at the left
+    case 'cables': { if (!big) break; // a sagging cable along the bottom edge with a plug at the left
       g.fillStyle = PAL['0']; for (let x = 8; x < w - 8; x++) g.fillRect(x, h - 5 + Math.round(Math.sin(x / 9) * 1.2), 1, 3);
       g.fillStyle = d.edge; for (let x = 8; x < w - 8; x++) g.fillRect(x, h - 4 + Math.round(Math.sin(x / 9) * 1.2), 1, 1);
       g.fillStyle = d.glow; for (let x = 20; x < w - 8; x += 40) g.fillRect(x, h - 4 + Math.round(Math.sin(x / 9) * 1.2), 3, 1);
@@ -331,7 +332,8 @@ function paintBox(g, w, h, th, o) {
   const grad = g.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, 'rgba(20,20,28,0)'); grad.addColorStop(1, 'rgba(20,20,28,0.28)');
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
-  if (!btn && w >= 28 && h >= 28) drawFrame(g, w, h, th, d, w >= 140 && h >= 60);
+  const big = w >= 200 && h >= 90;
+  if (!btn && w >= 28 && h >= 28) drawFrame(g, w, h, th, d, big);
   if (btn && !o.disabled) {
     // bevel: light top-left edge, dark bottom-right edge (1-2 px, away from the text)
     if (th.btn === 'bevel' || th.btn === 'plate') {
@@ -344,10 +346,10 @@ function paintBox(g, w, h, th, o) {
     if (o.hover || o.sel) { g.fillStyle = d.glow; g.fillRect(4, h - 3, w - 8, 2); } // glow bar
   }
   g.restore();
-  // ornaments in two opposite corners of big panels
-  if (!btn && w >= 72 && h >= 44) {
-    glyph(g, th.orn, 9, 9, false, d);
-    glyph(g, th.orn, w - 10, h - 10, true, d);
+  // ornaments in two opposite corners of big panels (small ones stay clean: text sits close to the edge)
+  if (!btn && big) { // top-right and bottom-left: titles, icons and text start at the left / top
+    glyph(g, th.orn, w - 14, 9, false, d);
+    glyph(g, th.orn, 13, h - 10, true, d);
   }
   shapePath(g, w, h, th, o.kind);
   g.strokeStyle = o.border === EDGE_DEFAULT || !o.border ? d.edge : o.border;

@@ -32,6 +32,7 @@ const keyOf = (S) => S?.gearKey || 'hero';
 export const attackOf = (u) => (u.weapon ? mod(u.stats[u.weapon.stat || 'str'] ?? 10) + u.prof + (TIER_BONUS[u.weaponTier] || 0) + (u.weapon.hit || 0) + (u.hitBonus || 0) : 0);
 
 /** Members whose gear can be changed: hero + active / waiting companions. [{ key, name }] */
+export const HIDE_SLOTS = ['helm', 'armor', 'pads', 'pack', 'weapon', 'cloak'];
 export function gearMembers(sv) {
   return [{ key: 'hero', name: sv.hero.name }, ...sv.party.filter((p) => p.state === 'active' || p.state === 'waiting').map((p) => ({ key: p.npc, name: NPCS[p.npc]?.name || p.npc }))];
 }
@@ -316,6 +317,9 @@ export function layoutGear(game, S, b) {
   const Z = layoutZones(game, S);
   for (const m of Z.members) b.push({ kind: 'gearMember', id: m.key, label: m.name, x: m.x, y: m.y, w: m.w, h: m.h, font: SMALL, selected: m.key === Z.key });
   const ox = S.ox, oy = S.oy;
+  // «show on the model» switches (look only, stats are not affected): holder.hide[k] = true hides the slot on the 3D model / portrait
+  const hh = holderOf(sv, Z.key) || sv.hero;
+  HIDE_SLOTS.forEach((k, i) => b.push({ kind: 'gearHide', id: k, label: t(`gear.hide.${k}`), x: ox + 24 + i * 52, y: oy + 236, w: 50, h: 22, font: SMALL, selected: !hh.hide?.[k] }));
   let x = ox + 344;
   if (canStash(sv)) { b.push({ kind: 'gearSide', id: 'stash', label: t('inv.stash'), x, y: oy + 414, w: 110, h: 28, font: SMALL, selected: S.inv.side === 'stash' }); x += 116; }
   const gn = groundOf(sv).grid.length;
@@ -340,6 +344,14 @@ export function clickGear(game, S, b, after = () => {}) {
   const sv = game.save;
   if (b.kind === 'gearMember') { S.gearKey = b.id; S.inv.sel = null; return true; }
   if (b.kind === 'equip') return true; // handled by updateGear (drag)
+  if (b.kind === 'gearHide') {
+    const h = holderOf(sv, keyOf(S)) || sv.hero;
+    h.hide = { ...(h.hide || {}), [b.id]: !h.hide?.[b.id] };
+    if (!h.hide[b.id]) delete h.hide[b.id];
+    if (!Object.keys(h.hide).length) h.hide = null;
+    saveGame(sv);
+    return true;
+  }
   if (b.kind === 'gearSide') { S.inv.side = S.inv.side === b.id ? null : b.id; return true; }
   if (b.kind === 'gearDropAll') {
     game.openModal({ title: t('inv.dropAll'), lines: [{ text: t('inv.dropAllAsk'), color: 'c' }],
@@ -448,6 +460,7 @@ export function renderGear(game, S) {
   const time = S.time || 0;
   // --- equipment slots
   text(ctx, t('gear.slots'), ox + 24, oy + 94 - 18, C['4'], SMALL);
+  hotspot(ox + 24, oy + 236, 312, 22, () => ({ title: t('gear.hide.title'), lines: [{ text: t('gear.hide.tip'), color: '5' }] }));
   const bagHasOff = contOf(sv, { c: 'bag', key }).grid.some((e) => ITEMS[e.item]?.slot === 'offhand');
   const hov = d ? pick(game, S, game.input.mouse.x, game.input.mouse.y, d) : null;
   for (const e of Z.equip) {

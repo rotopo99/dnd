@@ -1,6 +1,9 @@
 // Строки инвентаря-сетки, разгрузки, модов и второй руки (docs/specs/inventory-mods.md). Подключены в text/index.js.
 export const INVENTORY_TEXT = {
   'gear.slot.pack': 'Рюкзак',
+  'gear.hide.title': 'Показывать на модели',
+  'gear.hide.tip': 'Включено — слот виден на 3D-модели и в портрете. Выключено — скрыт (оружие тогда в кобуре). На статы не влияет.',
+  'gear.hide.helm': 'Шлем', 'gear.hide.armor': 'Броня', 'gear.hide.pads': 'Плечи', 'gear.hide.pack': 'Рюкзак', 'gear.hide.weapon': 'Оружие', 'gear.hide.cloak': 'Плащ',
   'gear.backpack': 'Рюкзак',
   'inv.pockets': 'Карманы',
   'inv.quick': 'Разгрузка', 'inv.quickSlots': 'Быстрые слоты',

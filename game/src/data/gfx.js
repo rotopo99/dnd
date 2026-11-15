@@ -72,7 +72,7 @@ export const GFX = {
   // fog — a few slow flat banks (the depth fog itself is in the shader)
   weather: {
     radius: 14, // m around the camera centre (scaled with the visible area, clamped to [8, 22])
-    rain: { n: 110, speed: 7.5, len: 11, size: 0.017, slant: 0.18, color: '4', alpha: 0.32, top: 6, sheen: 0.22, sheenColor: 'f', sheenAlpha: 0.1, sheenHz: 0.12 },
+    rain: { n: 170, speed: 7.5, len: 13, size: 0.02, slant: 0.18, color: 'f', alpha: 0.42, top: 6, sheen: 0.25, sheenColor: 'f', sheenAlpha: 0.16, sheenHz: 0.12 },
     snow: { n: 130, speed: 0.75, size: 0.035, sway: 0.35, swayHz: 0.09, color: '5', alpha: 0.55, top: 5, wind: 0.25 },
     blizzard: { n: 170, speed: 1.4, size: 0.032, sway: 0.25, swayHz: 0.12, color: '5', alpha: 0.5, top: 5, wind: 2.2 },
     fog: { n: 14, size: 1.6, speed: 0.18, color: '4', alpha: 0.08, flat: 0.22 },

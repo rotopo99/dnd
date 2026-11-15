@@ -4,6 +4,7 @@
 //   spec (full text, word-wrapped, height grows; too tall — wider; see ui/details.js specRows): { title, titleColor?, glyph?: { ch, color }, lines: [string | { text, color }], width? }
 import { C, panel, inRect, setButtonTipHook } from './draw.js';
 import { specRows, drawRows } from './details.js';
+import { chrome } from './theme.js';
 
 let spots = [];
 let forced = null;

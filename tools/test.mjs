@@ -4519,7 +4519,7 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
   const u3 = await import('../game/src/gfx/units3d.js');
   const an = await import('../game/src/gfx/anim.js');
   const { ENEMIES, PLAYABLE_RACES } = await import('../game/src/data/index.js');
-  test('gfx 3D: unit templates by type (enemies + hero races), <= 300 body triangles, 11 bones, finite poses', () => {
+  test('gfx 3D: unit templates by type (enemies + hero races), <= 2500 triangles per enemy (6000 heroes / bosses), LOD smaller, 11 bones, finite poses', () => {
     const types = {};
     const list = Object.values(ENEMIES).map((e) => ({ kind: 'enemy', enemyId: e.id, tags: e.tags || [], boss: !!e.boss, weapon: e.weapon || null }));
     for (const r of [...PLAYABLE_RACES.map((x) => x.id || x), 'cyber-spirit']) list.push({ kind: 'hero', raceId: r, classId: 'zabivnoy', name: 'T', weapon: { melee: true } });
@@ -4527,7 +4527,8 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
     for (const u of list) {
       const T = u3.unitTemplate(u, { simple: true });
       types[T.type] = (types[T.type] || 0) + 1;
-      assert.ok(T.mb.i.length / 3 <= 300, `${u.enemyId || u.raceId}: ${T.mb.i.length / 3} triangles`);
+      assert.ok(T.mb.i.length / 3 <= (u.kind === 'hero' || u.boss ? 6000 : 2500), `${u.enemyId || u.raceId}: ${T.mb.i.length / 3} triangles`);
+      assert.ok(u3.unitTemplate(u, { simple: true, lod: true }).mb.i.length <= T.mb.i.length, 'lod is not bigger');
       assert.equal(T.mb.b.length, T.mb.n);
       assert.ok(Math.max(...T.mb.b) <= 10);
       for (const [act, dead] of [[null, false], ['swing', false], ['cast', false], [null, true]]) {
@@ -4537,6 +4538,32 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
       }
     }
     for (const k of ['humanoid', 'robot', 'beast', 'drone', 'mech', 'spirit']) assert.ok(types[k] > 0, `no ${k}: ${JSON.stringify(types)}`);
+    // gear is visible on the model and the «show on model» switches change it (stats are not touched)
+    const hero = { kind: 'hero', raceId: 'human', classId: 'ranger', name: 'T', armorType: 'heavy', weapon: { type: 'rifle', range: 6 }, offhand: { kind: 'shield' } };
+    const tri = (x) => u3.unitTemplate(x).mb.i.length;
+    assert.ok(tri(hero) > tri({ ...hero, armorType: 'cloth' }), 'heavy armour has more geometry than cloth');
+    assert.ok(tri({ ...hero, hide: { pads: true } }) < tri(hero) && tri({ ...hero, hide: { helm: true, pack: true } }) <= tri(hero));
+    assert.notEqual(u3.unitTemplate({ ...hero, hide: { weapon: true } }).key, u3.unitTemplate(hero).key);
+    assert.notEqual(u3.unitTemplate({ ...hero, avatar: { v: 1, race: 'human', gender: 'f', skin: 1, face: { w: 0, j: 0, h: 0 }, hair: 'long', hairColor: 'brown', beard: 'none', eyes: 'blue', acc: [], cloth: null } }).key, u3.unitTemplate(hero).key, 'female silhouette is a separate template');
+  });
+}
+
+// UI themes (ui/theme.js): 10 themes, text contrast >= 4.5 on every surface, race / origin mapping
+{
+  const th = await import('../game/src/ui/theme.js');
+  const { RACES } = await import('../game/src/data/races.js');
+  const { ORIGINS } = await import('../game/src/data/world/origins.js');
+  test('themes: 10, contrast >= 4.5, race/origin mapping', () => {
+    assert.equal(th.THEME_IDS.length, 10);
+    for (const id of th.THEME_IDS) {
+      const c = th.themeContrast(th.THEMES[id]);
+      assert.ok(c.text >= 4.5 && c.sub >= 4.5 && c.title >= 4.5, `${id}: ${JSON.stringify(c)}`);
+    }
+    for (const r of Object.keys(RACES)) assert.ok(th.RACE_THEME[r], `race ${r} has no theme`);
+    for (const o of Object.keys(ORIGINS)) assert.ok(th.ORIGIN_THEME[o], `origin ${o} has no theme`);
+    assert.equal(th.themeIdFor({ race: 'human', origin: 'cult' }), 'cult'); // origin beats race
+    assert.equal(th.themeIdFor({ race: 'skeleton' }), 'bone');
+    assert.equal(th.themeIdFor(null), 'steel');
   });
 }
 
