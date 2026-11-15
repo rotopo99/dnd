@@ -3,7 +3,7 @@
 export const GFX = {
   storageKey: 'dnd.gfx',
   // defaults of the settings window (ui/settings-ui.js); brightness 0.8–1.2
-  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high' },
+  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always' },
   // shadow map of 1 directional light (§3): texture size by quality; «Снизить эффекты» = off
   shadow: { size: { high: 1024, low: 512 }, levels: ['high', 'low', 'off'], strength: 0.8, bias: 0.0025, pad: 1.5, dir: [-0.55, 1.5, 0.3] },
   brightness: { min: 0.8, max: 1.2, step: 0.1 },

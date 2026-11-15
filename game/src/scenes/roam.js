@@ -38,6 +38,7 @@ import { hasWebGL2 } from '../gfx/gl.js';
 import { setGfxPref } from '../gfx/settings.js';
 import { centerCamera } from '../gfx/camera.js';
 import { play } from '../audio/sfx.js';
+import { roamMarks, drawMarkFrames2d, drawMarkIcons, marks3d } from '../ui/roam-highlight.js';
 import { canCampAt } from './rest.js';
 import { createLocationScene } from './location.js';
 import {
@@ -280,6 +281,16 @@ export function createRoamScene(rawId, opts = {}) {
     ...S.hostiles.map((h) => ({ kind: 'hostile', h, x: h.fx, y: h.fy })),
     ...S.corpses.map((c) => ({ kind: 'corpse', c, x: c.x, y: c.y })),
   ];
+  /** Interactive objects highlight (ui/roam-highlight.js): outlines, icons, names in reach / hovered / Alt. */
+  const altDown = (game) => game.input.isDown('AltLeft') || game.input.isDown('AltRight');
+  const sameEnt = (a, b) => !!a && !!b && a.kind === b.kind && (a.n || a.o || a.p) === (b.n || b.o || b.p);
+  function marksNow(game) {
+    const ld = S.party[0];
+    return roamMarks(entities(), {
+      ld, alt: altDown(game), time: S.time, reach: (e) => reachOk(ld.cx, ld.cy, e), hovered: (e) => sameEnt(e, S.hoverEnt),
+      name: (e) => objName(e.o),
+    });
+  }
 
   /** NPC menu: the same buttons as the menu view (world/npc-actions.js). */
   function npcMenu(game, npc) {
@@ -799,12 +810,14 @@ export function createRoamScene(rawId, opts = {}) {
         const [px, py] = scr(S.hoverCell.x, S.hoverCell.y);
         ctx.strokeStyle = S.hoverEnt ? C.a : rgba(C['5'], 0.4); ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, c - 2, c - 2);
       }
-      // skills-v3.md: skill action points (badge, pulsing frame)
+      // interactive objects: outlines by kind (skill points included); icons — overlay2d
+      const marks = marksNow(game);
+      drawMarkFrames2d(ctx, marks, scr, c);
+      // skills-v3.md: skill action points (badge)
       for (const p of S.skills || []) {
         const [px, py] = scr(p.x, p.y);
         if (px < -c || py < -c || px > W0 || py > H0) continue;
         const bs = Math.round(c * 0.62);
-        ctx.strokeStyle = rgba(C.a, 0.5 + 0.3 * Math.sin(S.time * 4)); ctx.lineWidth = 2; ctx.strokeRect(px + 2, py + 2, c - 4, c - 4);
         drawSkillBadge(ctx, p.s.skill, px + (c - bs) / 2, py + (c - bs) / 2, bs, !!p.s.best && p.s.best.kind !== 'other');
       }
       const ld = S.party[0];
@@ -854,18 +867,20 @@ export function createRoamScene(rawId, opts = {}) {
           text(ctx, u.other.name, px + c / 2, py - c * 0.6 - 13, col, '12px monospace', 'center');
         }
         if (u.foe) { ctx.fillStyle = u.hunt ? C.c : C.a; ctx.fillRect(px + c * 0.3, py + c - 3, c * 0.4, 2); if (u.hunt) text(ctx, '!', px + c / 2, py - c * 0.9, C.c, FONT_B, 'center'); }
-        if (u.npc) {
-          const mark = u.npc.mark;
-          if (mark) text(ctx, '!', px + c / 2, py - c * 0.9, C.a, FONT_B, 'center');
-        }
       }
-      overlay2d(game, scr, c, (e, px, py) => py - c * 0.6 - 14);
+      const plate2 = (e, px, py) => py - c * 0.6 - 14;
+      overlay2d(game, scr, c, plate2, marks, (m) => {
+        if (m.e.kind === 'npc') { const [px, py] = scr(m.e.x, m.e.y); return { x: px + c / 2, y: plate2(m.e, px, py) - 2 }; }
+        const [px, py] = scr(m.x0, m.y0);
+        return { x: px + ((m.x1 - m.x0) * c) / 2, y: py + 2 };
+      });
     },
   };
   /** Names, hotspots and the HUD over the world (2D and 3D). scr(x, y) -> top-left of the cell box, c — its size, plateY. */
-  function overlay2d(game, scr, c, plateY) {
+  function overlay2d(game, scr, c, plateY, marks, iconAt) {
     const { ctx, width: W0, height: H0 } = game;
     const sv = game.save, ld = S.party[0];
+      drawMarkIcons(ctx, marks || [], iconAt, W0, H0);
       // names: hovered entity + NPCs near the leader
       for (const n of S.npcs) {
         const near = chebyshev(Math.round(n.fx), Math.round(n.fy), ld.cx, ld.cy) <= 3;
@@ -924,7 +939,8 @@ export function createRoamScene(rawId, opts = {}) {
     const range = viewRange(night(game));
     const cones = showCones(game) ? watchers().filter((w) => Math.hypot(w.x - ld.cx, w.y - ld.cy) <= ROAM.stealth.coneNear).map((w) => ({
       pts: conePoly(grid, w, range), hot: S.seen && S.party.some((m) => seesCell(grid, w, m.cx, m.cy, range)) })) : [];
-    drawRoam3d(game, A, R, { path: S.path, hover: !S.hover ? S.hoverCell : null, hoverEnt: S.hoverEnt, skills: S.skills, cones, zones: (map.zones || []).filter((z) => z.restricted) });
+    const marks = marksNow(game);
+    drawRoam3d(game, A, R, { path: S.path, hover: !S.hover ? S.hoverCell : null, hoverEnt: S.hoverEnt, marks: marks3d(marks), cones, zones: (map.zones || []).filter((z) => z.restricted) });
     const c = A.L.cell;
     const scr = (x, y) => { const p = roamScreen(A, x, y); return [Math.round(p.x - c / 2), Math.round(p.y - c / 2)]; };
     for (const p of S.skills || []) {
@@ -939,7 +955,6 @@ export function createRoamScene(rawId, opts = {}) {
       heads.set(it.ref.n || it.ref.p || it.ref.h || it.ref.o || it.ref.m, p.y);
       if (p.x < -40 || p.y < -40 || p.x > W0 + 40 || p.y > H0 + 40) continue;
       const r = it.ref;
-      if (r.kind === 'npc' && r.n.mark) text(ctx, '!', p.x, p.y - 22, C.a, FONT_B, 'center');
       if (r.kind === 'hostile') text(ctx, '!', p.x, p.y - 22, C.c, FONT_B, 'center');
       if (r.kind === 'other') {
         const col = C[r.o.color] || C.h;
@@ -949,7 +964,11 @@ export function createRoamScene(rawId, opts = {}) {
         text(ctx, r.o.name, p.x, p.y - 17, col, '12px monospace', 'center');
       }
     }
-    overlay2d(game, scr, c, (e, px, py) => (heads.has(e.n) ? heads.get(e.n) - 20 : py - c * 0.6 - 14));
+    const plate3 = (e, px, py) => (heads.has(e.n) ? heads.get(e.n) - 20 : py - c * 0.6 - 14);
+    overlay2d(game, scr, c, plate3, marks, (m) => {
+      if (m.e.kind === 'npc') { const [px, py] = scr(m.e.x, m.e.y); return { x: px + c / 2, y: plate3(m.e, px, py) - 2 }; }
+      return roamScreen(A, (m.x0 + m.x1) / 2 - 0.5, (m.y0 + m.y1) / 2 - 0.5, m.kind === 'exit' ? 1.4 : 1.1);
+    });
   }
   function objName(o) {
     if (o.type === 'stall') return o.npc ? `${t('roam.stall')}: ${NPCS[o.npc]?.name}` : t('roam.stall');

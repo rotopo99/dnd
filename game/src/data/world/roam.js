@@ -46,6 +46,18 @@ export const ROAM = {
   },
   // этап 2: a raid on entering a node (danger ≥ minDanger, not hubs): raiders come from an exit and hunt the party
   raid: { chance: 0.12, minDanger: 2, kinds: ['town', 'camp', 'dungeon'] },
+  // interactive objects highlight (outline by kind + icon over the object; ui/roam-highlight.js). Colours — palette keys
+  // (STYLE.md): trade — b, quest — a, loot — h, exit — j, skill — n, the rest — light steel. modes — settings order
+  // (gfx prefs `highlight`, default the first). alpha: weak (far), strong (in reach / hovered / Alt), dim (opened crate).
+  // pulse: brightness of weak outlines, hz ≤ 1 (off with «Снизить движение»). nearR — «только рядом» radius, tiles.
+  highlight: {
+    modes: ['always', 'near', 'alt'],
+    colors: { trade: 'b', quest: 'a', loot: 'h', exit: 'j', skill: 'n', rest: '4', craft: '4', tech: 'h', transit: 'f', npc: '4' },
+    alpha: { weak: 0.4, strong: 0.95, dim: 0.14, npc: 0.22, iconWeak: 0.7 },
+    pulse: { hz: 0.5, amp: 0.35 },
+    nearR: 5,
+    icon: 14, // px of the icon glyph (plate +4)
+  },
 };
 
 /** Map size by type, [w, h]. */

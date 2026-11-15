@@ -1,9 +1,10 @@
-// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, «Снизить эффекты», «Снизить движение», shadows, brightness.
+// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, «Снизить эффекты», «Снизить движение», shadows, brightness, objects highlight.
 // openSettings(game) — modal (ui/modal.js), values live in gfx/settings.js (localStorage).
 import { t } from '../data/text/index.js';
 import { GFX } from '../data/gfx.js';
 import { gfxPrefs, setGfxPref, gfxMode, gfxBroken } from '../gfx/settings.js';
 import { hasWebGL2 } from '../gfx/gl.js';
+import { ROAM } from '../data/world/roam.js';
 import { THEME_IDS, themePrefs, setThemePref } from './theme.js';
 
 const MODES = ['auto', '3d', '2d'];
@@ -30,6 +31,10 @@ export function openSettings(game) {
           {
             label: `${t('settings.brightness')}: ${Math.round((p.brightness || 1) * 100)}%`, keep: true,
             run: () => { let v = Math.round(((p.brightness || 1) + B.step) * 10) / 10; if (v > B.max + 1e-6) v = B.min; setGfxPref('brightness', v); },
+          },
+          {
+            label: `${t('settings.highlight')}: ${t(`settings.highlight.${p.highlight || 'always'}`)}`, keep: true,
+            run: () => { const M = ROAM.highlight.modes; setGfxPref('highlight', M[(M.indexOf(p.highlight || M[0]) + 1) % M.length]); },
           },
           {
             label: `${t('settings.theme')}: ${themePrefs().mode === 'auto' ? t('settings.theme.auto') : t(`theme.${themePrefs().id}`)}`, keep: true,

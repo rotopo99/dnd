@@ -5,7 +5,7 @@
 // (fires, lamps, the leader), weather particles. The camera follows the leader; drag pans, Home — back to the hero.
 // The roam rules never depend on this module: it only reads the scene state.
 //   roam3d(game, R)              -> adapter A (A.v3 — the 3D state) or null (2D); R = {S, map, locId, wx, area, camArea}
-//   drawRoam3d(game, A, R, o)    one frame (o: {path, hover, hoverEnt, skills, cones, zones, others})
+//   drawRoam3d(game, A, R, o)    one frame (o: {path, hover, hoverEnt, marks, cones, zones, others})
 //   pickRoam(A, R, px, py)       -> {cell: {x, y} | null, ent: index into R.bodies | -1}
 //   roamScreen(A, x, y, h)       -> {x, y} screen point of a cell centre at height h (2D layer anchors); A.ppm — px per m
 //   roamCamInput(game, A)        wheel zoom, [ ] rotate, drag pan, Home; true when used
@@ -176,9 +176,11 @@ export function drawRoam3d(game, A, R, o = {}) {
       ob.rect(zx, zy, zx + zw, zy + zh, y, [c[0], c[1], c[2], 0.08]);
       ob.frame(zx + 0.04, zy + 0.04, zx + zw - 0.04, zy + zh - 0.04, y + 0.001, 0.06, [c[0], c[1], c[2], 0.5]);
     }
-    for (const p of o.skills || []) {
-      const c = keyRGB('a'), a = 0.5 + 0.25 * Math.sin(S.time * Math.PI); // 0.5 Hz
-      ob.frame(p.x + 0.08, p.y + 0.08, p.x + 0.92, p.y + 0.92, tp(p.x, p.y) + 0.002, 0.07, [c[0], c[1], c[2], a]);
+    // interactive objects highlight (ui/roam-highlight.js marks3d): thin floor frames by kind, pulse already in m.a
+    for (const m of o.marks || []) {
+      const c = keyRGB(m.key), y = tp(m.x0, m.y0) + 0.002;
+      ob.frame(m.x0 + 0.06, m.y0 + 0.06, m.x1 - 0.06, m.y1 - 0.06, y + 0.001, m.w + 0.03, [0.08, 0.08, 0.11, Math.min(0.5, m.a * 0.6)]);
+      ob.frame(m.x0 + 0.075, m.y0 + 0.075, m.x1 - 0.075, m.y1 - 0.075, y + 0.002, m.w, [c[0], c[1], c[2], m.a]);
     }
     for (const cn of o.cones || []) {
       const c = keyRGB(cn.hot ? 'c' : 'a'), y = tp(cn.pts[0][0], cn.pts[0][1]) + 0.003;
