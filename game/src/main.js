@@ -106,12 +106,15 @@ function frame(now) {
       updateToasts(game, STEP);
       updateBarks(game, STEP); // companion barks (companions-scenes.md)
       if (game.modals.length) updateModal(game, STEP);
+      else if (game.coop?.sceneUpdate) game.coop.sceneUpdate(game, STEP); // co-op guest: input filtered by scene
       else game.scene.update(game, STEP);
+      game.coop?.tick(game, STEP); // multiplayer.md stage 3: snapshots / positions / modal mirror
     } finally {
       game.input.endFrame();
     }
   }
   game.scene.render(game);
+  game.coop?.render(game);
   if (game.modals.length) { clearTips(); renderModal(game); } // scene tooltips are stale under a modal
   renderBark(game);
   renderTips(game);

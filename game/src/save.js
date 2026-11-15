@@ -14,6 +14,7 @@ import { normalizeInventory, syncItems } from './world/inventory.js';
 import { defaultLook } from './ui/avatar3d.js';
 import { normalizeRomance } from './world/romance.js';
 import { normClashes } from './world/clashes.js';
+import { normCoop } from './world/coop.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -48,7 +49,7 @@ export function listSlots() {
     try {
       const s = JSON.parse(raw);
       if (!s?.hero || s.version !== SAVE_VERSION) return { slot, empty: false, broken: true };
-      return { slot, empty: false, name: s.hero.name, level: s.hero.level || 1, location: s.location, day: s.day || 1, savedAt: s.savedAt || 0, cyberspace: !!s.cyberspace };
+      return { slot, empty: false, name: s.hero.name, level: s.hero.level || 1, location: s.location, day: s.day || 1, savedAt: s.savedAt || 0, cyberspace: !!s.cyberspace, coop: Array.isArray(s.coop?.players) ? s.coop.players.length : 0 };
     } catch {
       return { slot, empty: false, broken: true };
     }
@@ -144,6 +145,7 @@ export function normalizeSave(s, data) {
   out.roam = rm && typeof rm.loc === 'string' && Number.isInteger(rm.x) && Number.isInteger(rm.y)
     ? { loc: rm.loc, x: rm.x, y: rm.y, party: arr(rm.party).filter((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isInteger)) } : null;
   out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
+  out.coop = normCoop(s.coop, data); // multiplayer.md stage 4: guests' heroes of a co-op party (relinked by name on join)
   out.clashes = normClashes(s.clashes); // skirmishes.md: active map markers (broken template / enemy ids dropped)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)
   const ex = obj(s.exodus);
@@ -183,9 +185,13 @@ export function loadGame(data, slot = 'auto') {
 /** Autosave (every world action calls it). */
 export function saveGame(save) { return saveToSlot(save, 'auto'); }
 
+let blocked = false;
+/** multiplayer.md: a co-op guest plays on a mirror of the host's save — nothing of it is written locally. */
+export function setSaveBlocked(on) { blocked = !!on; }
+
 /** Write a save into a slot ('auto' or 1..SLOT_COUNT). */
 export function saveToSlot(save, slot) {
-  if (!save) return false;
+  if (!save || blocked) return false;
   try {
     if (save.battlesDone) save.battlesDone = uniq(save.battlesDone);
     if (save.hero?.bag) syncItems(save); // v7: old-style edits of hero.items → backpack instances

@@ -26,6 +26,7 @@ import { SKILL_RULES as SR } from '../data/world/skill-rules.js';
 import { hasWorldFlag, worldFlagValues } from './checks.js';
 import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from './inventory.js';
 import { romanceDeed } from './romance.js';
+import { coopCount } from './coop.js';
 
 export const MAX_PARTY = 3; // legacy default: companions besides the hero (real limit — squadMax(save) − 1)
 export { levelForXp };
@@ -128,13 +129,13 @@ export function battleInventory(items) {
   return out;
 }
 
-export function buildHero(save, data = GAME_DATA, { race } = {}) {
+export function buildHero(save, data = GAME_DATA, { race, id = 'hero' } = {}) {
   const h = save.hero;
   const G = gadgetWithItems(save, data);
   const talents = safeTalents(h.talents);
   const activeCombat = safeTalents(h.activeCombat).filter((id) => talents.includes(id)).slice(0, COMBAT_TALENT_LIMIT(h.level));
   // cyberspace-v2.md §7: the body is destroyed — the hero fights as a Cyberspace spirit (SPIRIT.race, half max HP)
-  const spec = { race: race || (h.spirit ? SPIRIT.race : h.race), cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id: 'hero', anyStat: h.anyStat || undefined,
+  const spec = { race: race || (h.spirit ? SPIRIT.race : h.race), cls: h.cls, path: h.path, level: h.level, name: h.name, data: G.data, id, anyStat: h.anyStat || undefined,
     stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined,
     asi: Array.isArray(h.asi) && h.asi.length ? h.asi : undefined };
   // v7: battle items — quick slots (unit.inventory) and the rest of the bag (unit.backpack, «Порыться»)
@@ -244,7 +245,7 @@ export function squadInfo(save, data = GAME_DATA) {
 }
 export const squadMax = (save, data = GAME_DATA) => squadInfo(save, data).max;
 /** Free companion places in the squad (0 — full). */
-export const squadFree = (save, data = GAME_DATA) => Math.max(0, squadMax(save, data) - 1 - activeCompanions(save).length);
+export const squadFree = (save, data = GAME_DATA) => Math.max(0, squadMax(save, data) - 1 - activeCompanions(save).length - coopCount(save)); // multiplayer: guests' heroes take places
 
 /** N2: the hostile threshold for recruitment is lowered by SR.recruit.repPerMod per hero CHA modifier point. */
 export function canRecruit(save, npcId, data = GAME_DATA) {
@@ -842,6 +843,6 @@ export function stigmaRep(save, data = GAME_DATA) {
 export const effectiveRep = (save, f, data = GAME_DATA) => Math.max(-100, Math.min(100, (save.rep[normFaction(f)] ?? 0) + (stigmaRep(save, data)[normFaction(f)] || 0)));
 
 export const hasFlagInParty = (save, data, flag) => hasWorldFlag(members(save, data), flag);
-export const partySize = (save) => 1 + activeCompanions(save).filter((p) => p.hp !== 0).length;
+export const partySize = (save) => 1 + activeCompanions(save).filter((p) => p.hp !== 0).length + coopCount(save); // + co-op guests' heroes
 export const partyMax = MAX_PARTY; // legacy; see squadMax
 export { levelForXp as levelFor };

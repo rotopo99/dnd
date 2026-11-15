@@ -23,7 +23,7 @@ export function slotSummary(x) {
   if (x.empty) return t('save.empty');
   if (x.broken) return t('save.broken');
   const place = x.cyberspace ? t('save.cyberspace') : LOCATIONS[x.location]?.name || x.location || '—';
-  return [x.name, `${t('world.level')} ${x.level}`, place, `${t('world.day')} ${x.day}`, when(x.savedAt)].filter(Boolean).join(' · ');
+  return [x.name, `${t('world.level')} ${x.level}`, place, `${t('world.day')} ${x.day}`, x.coop ? `${t('net.coopMark')} +${x.coop}` : '', when(x.savedAt)].filter(Boolean).join(' · ');
 }
 
 export function startFromSave(game, save) {

@@ -21,4 +21,10 @@ export const NET = {
   // enemy scaling for N heroes (multiplayer.md §«Масштаб врагов»): +extraPerHero enemies per hero above the first,
   // taken cyclically from the encounter list. Final formula — balance-tester.
   extraPerHero: 1,
+  // stages 3–4: co-op world
+  slotKeep: 600, // s: a dropped player's slot and hero are kept for a rejoin (10 min)
+  posEvery: 0.1, // s: move / pos rate on the free node map (10 Hz)
+  deltaEvery: 1, // s: host checks the world for changes (delta with the guest's mirror save)
+  posSlack: 2, // cells: extra distance allowed between two moves (lag) above the run speed
+  posLerp: 12, // 1/s: interpolation of other players' figures
 };

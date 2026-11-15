@@ -134,6 +134,7 @@ export function renderModal(game) {
     if (b.tip && !(L.detail && b.detail)) hotspot(b.x, b.y, b.w, b.h, b.tip);
   }
   if (L.detail) drawDetails(ctx, m._dsc ||= createDetails(), L.detail, m._detail, m._detailIdx);
+  game.coop?.decorateModal?.(game, m, L); // multiplayer.md: co-op vote marks on the options
 }
 
 // ----------------------------------------------------------------------------- toasts

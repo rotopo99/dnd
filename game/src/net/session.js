@@ -24,7 +24,8 @@ export function createSession({ role, name, hero, makePeer = () => createPeer(),
     players: host ? [{ slot: 0, name: name || 'Host', hero: normalizeHero(hero), ready: true, connected: true, ping: 0, color: color(0) }] : [],
     settings: { turnTimer: NET.turnTimer },
     chat: [], // { slot, name, text, color, at }
-    busy: false, // host: in a battle (new guests are rejected with 'busy')
+    busy: false, // host: in a battle (new guests are rejected with 'busy'; a rejoin with the token is let in)
+    keepSlots: false, // host: in a co-op party — dropped players keep their slot (rejoinToken) for NET.slotKeep s
     peers: new Map(), // host: slot → peer
     pending: null, // host: the peer being invited (code exchange in progress); guest: the peer to the host
     on(type, fn) { (listeners[type] || (listeners[type] = [])).push(fn); return () => s.off(type, fn); },
@@ -59,7 +60,7 @@ export function createSession({ role, name, hero, makePeer = () => createPeer(),
       if (peer.slot == null) return;
       const pl = s.player(peer.slot);
       s.peers.delete(peer.slot);
-      if (pl) { pl.connected = false; pl.ready = false; emit('left', pl); }
+      if (pl) { pl.connected = false; pl.ready = false; pl.leftAt = now(); emit('left', pl); }
       pushLobby();
     };
     peer.onError = (e) => { if (s.pending === peer) { s.pending = null; setStatus(s.peers.size ? 'connected' : 'idle'); } fail(e); };
@@ -74,10 +75,11 @@ export function createSession({ role, name, hero, makePeer = () => createPeer(),
       const bad = checkHello(m, s.version);
       if (bad) { peer.send({ t: MSG.reject, ...bad }); setTimeout(() => peer.close(), 300); return; }
       // rejoin: a disconnected player with the same token takes the slot back (stage 4 stores it longer)
-      let pl = m.rejoinToken ? s.players.find((p) => !p.connected && p.token === m.rejoinToken) : null;
+      let pl = m.rejoinToken ? s.players.find((p) => !p.connected && p.token === m.rejoinToken && (!p.leftAt || now() - p.leftAt < NET.slotKeep * 1000)) : null;
       if (!pl && s.busy) { peer.send({ t: MSG.reject, reason: 'busy' }); setTimeout(() => peer.close(), 300); return; }
       if (!pl) {
-        s.players = s.players.filter((p) => p.connected); // free slots of players who left
+        // free slots of players who left (stage 4: a dropped player's slot is kept NET.slotKeep s for a rejoin)
+        s.players = s.players.filter((p) => p.connected || (s.keepSlots && now() - (p.leftAt || 0) < NET.slotKeep * 1000));
         const used = new Set(s.players.map((p) => p.slot));
         let slot = 1;
         while (used.has(slot)) slot++;
@@ -85,7 +87,7 @@ export function createSession({ role, name, hero, makePeer = () => createPeer(),
         pl = { slot, name: m.name || `P${slot + 1}`, hero: normalizeHero(m.hero), ready: false, connected: true, ping: 0, color: color(slot), token: token() };
         s.players.push(pl);
         s.players.sort((a, b) => a.slot - b.slot);
-      } else { pl.connected = true; pl.hero = normalizeHero(m.hero) || pl.hero; }
+      } else { pl.connected = true; pl.leftAt = 0; pl.rejoined = true; pl.hero = normalizeHero(m.hero) || pl.hero; }
       peer.slot = pl.slot;
       s.peers.set(pl.slot, peer);
       if (s.pending === peer) s.pending = null;

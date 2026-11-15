@@ -4389,5 +4389,130 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
   });
 }
 
+// ---------------------------------------------------------------- multiplayer.md stages 3–4: co-op party in the host's save
+{
+  const CO = await import('../game/src/world/coop.js');
+  const ST = await import('../game/src/world/state.js');
+  const SV = await import('../game/src/save.js');
+  const { worldUnits } = await import('../game/src/net/coop-battle.js');
+  const { createSession } = await import('../game/src/net/session.js');
+  const P = await import('../game/src/net/peer.js');
+  const SY = await import('../game/src/net/sync.js');
+  const { PLAY_DATA } = await import('../game/src/world/data.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const { createBattle } = await import('../game/src/rules/combat.js');
+  const hostSave = () => {
+    const s = ST.newSave({ race: 'human', cls: 'zabivnoy', path: PLAY_DATA.CLASSES.zabivnoy.paths[0].id, name: 'Хост', talents: [] });
+    s.flags['prologue-done'] = true;
+    return s;
+  };
+
+  test('coop: guests\' heroes in the host save — link by name, mirror, party size / squad places', () => {
+    const s = hostSave();
+    const free0 = ST.squadFree(s), size0 = ST.partySize(s);
+    const linked = CO.linkPlayers(s, [{ slot: 0, name: 'Хост' }, { slot: 1, name: 'Гость', hero: { race: 'human', cls: 'ranger', name: 'Гость' }, connected: true }]);
+    assert.equal(linked.length, 1);
+    const e = CO.coopEntry(s, 1);
+    assert.ok(e.hero.bag && Array.isArray(e.hero.bag.grid) && e.hero.credits >= 0, 'full save-format hero (own backpack)');
+    assert.equal(ST.partySize(s), size0 + 1);
+    assert.equal(ST.squadFree(s), Math.max(0, free0 - 1), 'the guest takes a squad place');
+    e.hero.xp = 777;
+    // relink after a reload: the same name keeps the hero (progress on the host), another slot number is fine
+    const n = SV.normalizeSave(JSON.parse(JSON.stringify(s)), PLAY_DATA);
+    assert.equal(n.coop.players.length, 1);
+    assert.equal(n.coop.players[0].slot, -1, 'away until he joins');
+    assert.equal(CO.coopCount(n), 0);
+    CO.linkPlayers(n, [{ slot: 2, name: 'Гость', hero: { race: 'mutant', cls: 'reper', name: 'Гость' }, connected: true }]);
+    assert.equal(CO.coopEntry(n, 2).hero.xp, 777);
+    assert.equal(CO.coopEntry(n, 2).hero.cls, 'ranger', 'stored hero wins over the brief');
+    // mirror: the guest sees his hero as save.hero, no companions, brief of the others
+    const m = CO.mirrorSave(n, 2);
+    assert.equal(m.hero.name, 'Гость');
+    assert.deepEqual(m.party, []);
+    assert.equal(m.coop.mirror, 2);
+    assert.equal(m.coop.host.name, 'Хост');
+    assert.deepEqual(CO.partyBrief(m).map((x) => x.slot), [0, 2]);
+    // nobody with that name — slot −1
+    CO.linkPlayers(n, [{ slot: 1, name: 'Другой', hero: { race: 'human', cls: 'ranger', name: 'Другой' }, connected: true }]);
+    assert.equal(n.coop.players.find((x) => x.name === 'Гость').slot, -1);
+    assert.equal(CO.coopEntry(n, 1).name, 'Другой');
+  });
+
+  test('coop: hero edits — gear / layout ok, new items / XP / credits rejected', () => {
+    const s = hostSave();
+    CO.linkPlayers(s, [{ slot: 1, name: 'Г', hero: { race: 'human', cls: 'ranger', name: 'Г' } }]);
+    const e = CO.coopEntry(s, 1);
+    const mk = (f) => { const h = JSON.parse(JSON.stringify(e.hero)); f(h); return { hero: h }; };
+    // take the armour off into the bag: same item counts
+    const arm = e.hero.equipment?.armor;
+    if (arm) assert.equal(CO.acceptHeroEdit(e, mk((h) => { h.equipment.armor = null; h.bag.grid.push({ item: arm, q: 'working', mods: [], n: 1, x: 0, y: 3, r: false }); })).ok, true);
+    assert.equal(CO.acceptHeroEdit(e, mk((h) => { h.xp += 100; })).why, 'progress');
+    assert.equal(CO.acceptHeroEdit(e, mk((h) => { h.credits += 5; })).why, 'progress');
+    const any = e.hero.bag.grid[0] || e.hero.bag.quick.find(Boolean);
+    assert.ok(any, 'starter bag has items');
+    assert.equal(CO.acceptHeroEdit(e, mk((h) => { h.bag.grid.push({ ...any, x: 5, y: 3 }); })).why, 'items');
+    assert.equal(CO.acceptHeroEdit(e, mk((h) => { h.talents = [...(h.talents || []), 'x-new']; })).why, 'talents');
+    assert.equal(CO.acceptHeroEdit(e, { hero: { ...e.hero, race: 'mutant' } }).why, 'person');
+  });
+
+  test('coop: loot split — credits equally (remainder to the host), d20 roll-off rerolls ties', () => {
+    assert.deepEqual(CO.splitCredits(10, 3), [4, 3, 3]);
+    assert.deepEqual(CO.splitCredits(0, 2), [0, 0]);
+    assert.deepEqual(CO.rollOff([]), { winner: null, rounds: [] });
+    assert.equal(CO.rollOff([2]).winner, 2);
+    // round 1: 17 / 17 / 3 → tie between slots 0 and 1; round 2: 5 / 12 → slot 1
+    const seq = [16 / 20, 16 / 20, 2 / 20, 4 / 20, 11 / 20];
+    let i = 0;
+    const r = CO.rollOff([0, 1, 2], () => seq[i++]);
+    assert.equal(r.winner, 1);
+    assert.equal(r.rounds.length, 2);
+    assert.deepEqual(r.rounds[0].map((x) => x[1]), [17, 17, 3]);
+  });
+
+  test('coop: world battle units from the host save are identical on every client (guest hero hero2)', () => {
+    const s = hostSave();
+    CO.linkPlayers(s, [{ slot: 1, name: 'Г', hero: { race: 'human', cls: 'ranger', name: 'Г' } }]);
+    const setup = { save: JSON.parse(JSON.stringify(s)), heroes: [{ slot: 0 }, { slot: 1 }] };
+    const g = { data: PLAY_DATA };
+    const ua = worldUnits(g, setup), ub = worldUnits(g, JSON.parse(JSON.stringify(setup)));
+    assert.deepEqual(ua.map((u) => u.id), ['hero', 'hero2']);
+    assert.equal(ua[1].name, 'Г');
+    const enemies = PLAY_DATA.ENCOUNTERS.standard1.enemies;
+    const map = makeWorldMap({ seed: 5, enemies: enemies.length, id: 'w' });
+    const A = createBattle({ map: JSON.parse(JSON.stringify(map)), heroes: ua, enemies, data: PLAY_DATA, seed: 9 });
+    const B = createBattle({ map: JSON.parse(JSON.stringify(map)), heroes: ub, enemies, data: PLAY_DATA, seed: 9 });
+    assert.equal(SY.battleHash(A), SY.battleHash(B));
+  });
+
+  test('coop: rejoin — a dropped guest keeps his slot (token) for NET.slotKeep, then the slot is freed', () => {
+    let T = 1000;
+    const hero = { race: 'human', cls: 'ranger', name: 'H' };
+    const host = createSession({ role: 'host', name: 'Host', hero, pingEvery: 0, now: () => T });
+    host.keepSlots = true;
+    const g1 = createSession({ role: 'guest', name: 'G1', hero: { ...hero, name: 'G1' }, pingEvery: 0, now: () => T });
+    let [a, b] = P.createLoopPair();
+    host.attach(a); g1.attach(b);
+    assert.equal(g1.slot, 1);
+    const token = g1.token;
+    g1.pending.close();
+    assert.equal(host.player(1).connected, false);
+    // another player joins meanwhile: slot 1 is kept, he gets 2
+    const g2 = createSession({ role: 'guest', name: 'G2', hero: { ...hero, name: 'G2' }, pingEvery: 0, now: () => T });
+    [a, b] = P.createLoopPair(); host.attach(a); g2.attach(b);
+    assert.equal(g2.slot, 2);
+    host.busy = true; // even mid-battle the rejoin is let in
+    [a, b] = P.createLoopPair(); host.attach(a); g1.attach(b);
+    assert.equal(g1.slot, 1);
+    assert.equal(g1.token, token);
+    assert.equal(host.player(1).connected, true);
+    host.busy = false;
+    g1.pending.close();
+    T += 601 * 1000;
+    const g3 = createSession({ role: 'guest', name: 'G3', hero: { ...hero, name: 'G3' }, pingEvery: 0, now: () => T });
+    [a, b] = P.createLoopPair(); host.attach(a); g3.attach(b);
+    assert.equal(g3.slot, 1, 'slot freed after 10 min');
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

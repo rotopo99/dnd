@@ -47,6 +47,8 @@ export function createDialogueScene({ title = '', lines, hero = null, portraits 
   return {
     id: 'dialogue',
     title,
+    /** multiplayer.md stage 3: what co-op guests see while the host reads (net/coop-world.js wait view). */
+    netView() { const c = lines[i]; return { title, name: c ? c.name || (c.who === 'hero' || c.who === 'narrator' ? '' : speaker(c.who)) : '', text: c?.text || '' }; },
     enter(game) {
       i = 0; shown = 0; time = 0; done = false;
       if (!lines.length) lines = [{ who: 'narrator', text: '…' }];

@@ -12,9 +12,28 @@ import { randomHero } from '../scenes/menu.js';
 import { MSG, heroValid } from './protocol.js';
 import { battleHash, snapshotBattle, restoreBattle } from './sync.js';
 import { drawChatPeek, openChatInput } from '../ui/net-chat.js';
+import { partyUnits, buildHero } from '../world/state.js';
+import { heroIdOf, coopEntry, coopView } from '../world/coop.js';
 
-/** Battle unit id of a player slot (slot 0 — 'hero', as in single player). */
-export const heroIdOf = (slot) => (slot === 0 ? 'hero' : `hero${slot + 1}`);
+export { heroIdOf };
+
+/**
+ * Stage 3: units of a world co-op battle, built the same way on every client from the host's save copy (setup.save):
+ * host hero + active companions (partyUnits) + the guests' heroes of setup.heroes (ids heroIdOf(slot)).
+ */
+export function worldUnits(game, setup) {
+  const save = setup.save;
+  const list = partyUnits(save, game.data);
+  for (const h of setup.heroes) {
+    if (h.slot === 0) continue;
+    const e = coopEntry(save, h.slot);
+    if (!e) continue;
+    const u = buildHero(coopView(save, e), game.data, { id: heroIdOf(h.slot) });
+    if (save.battleBuff?.kb) u.kb += save.battleBuff.kb;
+    list.push(u);
+  }
+  return list;
+}
 
 /**
  * Enemy scaling for N heroes (multiplayer.md «Масштаб врагов»): + NET.extraPerHero enemies per hero above the first,
@@ -37,19 +56,27 @@ export function trainingSetup(game, session, seed = (Math.random() * 1e9) | 0) {
   return { kind: 'training', seed, heroes, enemies, map, title: t('net.battleTitle'), turnTimer: session.settings.turnTimer };
 }
 
-/** Host: broadcast battleStart and enter the battle. */
-export function hostStartBattle(game, session, setup, back) {
+/** Host: broadcast battleStart and enter the battle. hooks — host world callbacks (startCoopBattle). */
+export function hostStartBattle(game, session, setup, back, hooks) {
   session.busy = true;
   session.broadcast({ t: MSG.battleStart, seed: setup.seed, setup });
-  return startCoopBattle(game, session, setup, back);
+  return startCoopBattle(game, session, setup, back, hooks);
 }
 
-/** Both sides: build the battle scene from a setup and wire it to the session. back(game) — return (lobby). */
-export function startCoopBattle(game, session, setup, back) {
+/**
+ * Both sides: build the battle scene from a setup and wire it to the session. back(game) — return (lobby / world).
+ * setup: { seed, heroes [{slot, name, color, hero?}], enemies, map, title, turnTimer, save? (world: units from the host's
+ *          save, worldUnits), hostUnits? (ids the host controls: companions), battle? (extra createBattleScene options:
+ *          allies, rivals, partyLose, objectives, ambush, enemyInit, heroInit, race, tricks, hint) }
+ * hooks (host only, stage 3): { onWin(g, S), onLose(g, S), onExit(g), onRetreatExit(g, S), opts: { onEvent, onRetreat } } —
+ *   the world results run on the host; guests just go back and wait for the host's next snap.
+ */
+export function startCoopBattle(game, session, setup, back, hooks = {}) {
   const host = session.host;
   const owners = {}; // unit id → slot
   const pinfo = {}; // slot → { name, color }
   for (const h of setup.heroes) { owners[heroIdOf(h.slot)] = h.slot; pinfo[h.slot] = { name: h.name, color: h.color }; }
+  for (const id of setup.hostUnits || []) owners[id] = 0; // companions: the host plays them
   const playerName = (slot) => session.player(slot)?.name || pinfo[slot]?.name || `P${slot + 1}`;
   const playerColor = (slot) => C[session.player(slot)?.color || pinfo[slot]?.color || NET.colors[slot]] || C.h;
   const timerMax = setup.turnTimer ?? NET.turnTimer;
@@ -116,21 +143,29 @@ export function startCoopBattle(game, session, setup, back) {
     },
   };
 
+  const H = host ? hooks : {};
+  const extra = { ...(setup.battle || {}), ...(H.opts || {}) };
+  if (extra.onRetreat) { const f = extra.onRetreat; extra.onRetreat = (g, S2) => leave(g, () => f(g, S2)); }
   scene = createBattleScene({
-    heroes: (g) => setup.heroes.map((h) => buildHeroUnit(g, h.hero, heroIdOf(h.slot))),
+    heroes: (g) => (setup.save ? worldUnits(g, setup) : setup.heroes.map((h) => buildHeroUnit(g, h.hero, heroIdOf(h.slot)))),
     map: setup.map,
     enemies: setup.enemies,
     seed: setup.seed,
     title: setup.title,
+    ...extra,
     net,
-    onWin: (g) => leave(g),
-    onLose: (g) => leave(g),
-    onExit: (g) => leave(g),
+    onWin: (g, S2) => leave(g, H.onWin && (() => H.onWin(g, S2))),
+    onLose: (g, S2) => leave(g, H.onLose && (() => H.onLose(g, S2))),
+    onExit: (g) => leave(g, H.onExit && (() => H.onExit(g))),
+    ...(setup.battle?.objectives ? { onRetreatExit: (g, S2) => leave(g, H.onRetreatExit && (() => H.onRetreatExit(g, S2))) } : {}),
   });
-  function leave(g) {
+  let left = false;
+  function leave(g, then) {
+    if (left) return;
+    left = true;
     off();
-    if (host) session.busy = false;
-    back(g);
+    if (host) { session.busy = false; session.broadcast({ t: MSG.battleEnd }); }
+    (then || back)(g);
   }
 
   // ---------------------------------------------------------------- messages
@@ -184,6 +219,15 @@ export function startCoopBattle(game, session, setup, back) {
 
   const baseUpdate = scene.update, baseRender = scene.render, baseEnter = scene.enter;
   scene.coop = st;
+  scene.coopSetup = setup;
+  /** Guest: the host ended the battle (retreat / result) — back to the world without waiting for the local end. */
+  scene.coopLeave = (g) => leave(g);
+  /** Host, stage 4: a player came back mid-battle — the same setup and the current state. */
+  scene.coopRejoin = (slot) => {
+    session.sendTo(slot, { t: MSG.battleStart, seed: setup.seed, setup, rejoin: true });
+    session.sendTo(slot, { t: MSG.fullState, turn: st.seq, state: snapshotBattle(S().b) });
+    st.lastFull[slot] = st.seq;
+  };
   scene.enter = (g) => {
     baseEnter(g);
     st.turnKey = keyOf(S().b);

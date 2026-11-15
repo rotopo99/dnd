@@ -40,6 +40,10 @@ import {
 } from '../world/roam.js';
 
 const HUD_H = 70; // px above the map for the node name
+// co-op guest: the panels he may open himself (the rest — the host's: menu, map, rest, skills, base)
+const GUEST_NAV = new Set(['party', 'rep', 'journal', 'gear', 'codex']);
+/** Stable key of a map entity (co-op interaction requests). */
+const entKey = (e) => (e.kind === 'npc' ? `npc:${e.n.id}` : e.kind === 'obj' ? `obj:${e.o.type}:${e.o.x},${e.o.y}` : e.kind === 'skill' ? `skill:${e.p.s.id}` : `${e.kind}:${Math.round(e.x)},${Math.round(e.y)}`);
 const NPC_CLASSES = ['zabivnoy', 'ranger', 'reper', 'technik', 'shaman'];
 const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
 const toastAll = (game, list) => { for (const x of list || []) game.toast(x.text, x.color); };
@@ -292,6 +296,8 @@ export function createRoamScene(rawId, opts = {}) {
     if (ent.kind === 'post') return game.toast(t('roam.guardSub'), '4');
     if (ent.kind === 'hostile') return game.toast(t('roam.hostileSub'), 'c');
     if (ent.kind === 'corpse') return game.toast(t('roam.corpseSub'), '4');
+    // multiplayer.md stage 3: a co-op guest asks the host; the result (windows) comes to everybody
+    if (game.coop?.guest) { const ld = S.party[0]; return game.coop.request(game, { kind: 'roam', ent: entKey(ent), x: ld.cx, y: ld.cy }); }
     if (ent.kind === 'skill') return openSkillAction(game, locId, ent.p.s, (g) => { syncSkills(g); L.refresh(g); });
     const o = ent.o;
     const a = objectAction(o);
@@ -550,6 +556,7 @@ export function createRoamScene(rawId, opts = {}) {
     return { x: tx, y: ty };
   }
   function nav(game, id) {
+    if (game.coop?.guest && !GUEST_NAV.has(id)) { game.toast(t('net.hostOnly'), '4'); return; } // co-op: the host leads
     writePos(game);
     if (id === 'menuView') return toMenu(game);
     if (id === 'skills') return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
@@ -635,7 +642,7 @@ export function createRoamScene(rawId, opts = {}) {
       layout(game);
       S.cam = null;
       L.enter(game); // gate, wanted, entry events, turn-ins — exactly as the menu node
-      if (game.scene === self) maybeRaid(game);
+      if (game.scene === self && !game.coop?.guest) maybeRaid(game);
     },
     resume(game) {
       L.S.inMenu = false;
@@ -651,6 +658,17 @@ export function createRoamScene(rawId, opts = {}) {
     goTo: (game, ent) => goTo(game, ent),
     raiseAlarm: (game) => raiseAlarm(game), spawnRaid: (game, enemies, name) => spawnRaid(game, enemies, name), watchers, provider,
     entities, interact: (game, ent) => interact(game, ent), npcMenu: (game, id) => npcMenu(game, NPCS[id]), grid, map,
+    // multiplayer.md stage 3 (host): a guest's interaction request — the entity by key, within reach of the guest's cell
+    remoteInteract(game, req) {
+      const e = entities().find((x) => entKey(x) === req.ent);
+      // NPCs walk their routes on every client independently — a looser reach for them
+      const ok = e && (e.kind === 'npc' ? Math.hypot(e.x - req.x, e.y - req.y) <= ROAM.coopNpcReach : reachOk(Math.round(req.x), Math.round(req.y), e));
+      if (!ok) return false;
+      interact(game, e);
+      return true;
+    },
+    validPos: (x, y) => isPassable(grid, x, y),
+    leader: () => S.party[0],
     update(game, dt) {
       S.time += dt;
       if (L.pump(game)) return;
@@ -698,8 +716,7 @@ export function createRoamScene(rawId, opts = {}) {
       updateLeader(game, dt);
       updateFollowers(dt, speed(game));
       updateNpcs(dt);
-      updateStealth(game, dt);
-      updateHostiles(game, dt);
+      if (!game.coop?.guest) { updateStealth(game, dt); updateHostiles(game, dt); } // co-op: guards and hunters live on the host
       if (game.scene !== self) return;
       S.saveT += dt;
       if (S.saveT >= ROAM.saveTick) { S.saveT = 0; writePos(game); }
@@ -763,13 +780,23 @@ export function createRoamScene(rawId, opts = {}) {
       for (const h of S.hostiles) list.push({ y: h.fy, x: h.fx, sprite: h.sprite, foe: h, hunt: true });
       for (const n of S.npcs) list.push({ y: n.fy, x: n.fx, sprite: n.sprite, npc: n });
       S.party.forEach((m, i) => list.push({ y: m.y, x: m.x, sprite: m.sprite, member: m, i }));
+      // multiplayer.md: the other players' heroes (positions from the host, interpolated)
+      for (const o of game.coop?.others?.(game, locId) || []) list.push({ y: o.y, x: o.x, sprite: o.sprite || (o.sprite = heroSpriteIds(o.hero?.race || 'human', o.hero?.cls || 'zabivnoy', o.hero?.look)), other: o, i: o.slot });
       list.sort((a, b) => a.y - b.y);
       for (const u of list) {
         const [px, py] = scr(u.x, u.y);
         if (px < -c * 2 || py < -c * 2 || px > W0 + c || py > H0 + c * 2) continue;
         ctx.fillStyle = rgba(C['0'], 0.4); ctx.fillRect(px + c * 0.2, py + c * 0.8, c * 0.6, c * 0.15);
         drawSprite(ctx, u.sprite, px, py, s, { frame: idleFrame(tms, (u.i || 0) * 0.37 + (u.npc ? u.x : 0)) });
-        if (u.member) { ctx.fillStyle = u.i === 0 ? C.h : C.j; ctx.fillRect(px + c * 0.3, py + c - 3, c * 0.4, 2); }
+        if (u.member) { ctx.fillStyle = u.i === 0 ? (game.coop ? game.coop.myColor() : C.h) : C.j; ctx.fillRect(px + c * 0.3, py + c - 3, c * 0.4, 2); }
+        if (u.other) {
+          const col = C[u.other.color] || C.h;
+          ctx.fillStyle = col; ctx.fillRect(px + c * 0.2, py + c - 3, c * 0.6, 3);
+          ctx.font = '12px monospace';
+          const tw = ctx.measureText(u.other.name).width + 8;
+          ctx.fillStyle = rgba(C['0'], 0.7); ctx.fillRect(px + c / 2 - tw / 2, py - c * 0.6 - 14, tw, 15);
+          text(ctx, u.other.name, px + c / 2, py - c * 0.6 - 13, col, '12px monospace', 'center');
+        }
         if (u.foe) { ctx.fillStyle = u.hunt ? C.c : C.a; ctx.fillRect(px + c * 0.3, py + c - 3, c * 0.4, 2); if (u.hunt) text(ctx, '!', px + c / 2, py - c * 0.9, C.c, FONT_B, 'center'); }
         if (u.npc) {
           const mark = u.npc.mark;

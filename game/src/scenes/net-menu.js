@@ -14,6 +14,9 @@ import { trainingSetup, hostStartBattle, startCoopBattle } from '../net/coop-bat
 import { menuScene, randomHero } from './menu.js';
 import { createCreateScene } from './create.js';
 import { latestSlot, loadGame } from '../save.js';
+import { createCoopWorld } from '../net/coop-world.js';
+import { startWorld } from './prologue.js';
+import { startFromSave } from '../ui/save-ui.js';
 
 const N = {
   view: 'root', // root | host | join | lobby
@@ -77,7 +80,9 @@ function newSession(game, role) {
   s.on('left', (p) => s.notice(t('net.left').replace('{name}', p.name)));
   s.on('chat', () => play('uiHover'));
   s.on('msg', (m) => {
-    if (m.t === MSG.battleStart && !s.host) { hideAll(); startCoopBattle(game, s, m.setup, backToLobby); }
+    if (s.host || game.coop) return; // stage 3: the co-op world controller handles everything once the party started
+    if (m.t === MSG.battleStart) { hideAll(); startCoopBattle(game, s, m.setup, backToLobby); }
+    else if (m.t === MSG.snap) { hideAll(); createCoopWorld(game, s, { openMenu: openCoopMenu }).feed(m); }
   });
   return s;
 }
@@ -104,6 +109,7 @@ async function guestAccept(game, code) {
   return N.answer;
 }
 function leave(game) {
+  game.coop?.stop(game);
   game.net?.close();
   game.net = null;
   N.view = 'root'; N.err = ''; N.offer = ''; N.answer = '';
@@ -117,6 +123,39 @@ function startTraining(game) {
   hideAll();
   hostStartBattle(game, s, trainingSetup(game, s), backToLobby);
   return true;
+}
+
+/**
+ * Stage 3: the host starts the co-op party — new (startWorld with the host's hero) or the latest save (its co-op
+ * guests are relinked by name). Guests follow on the first snap.
+ */
+function startCoop(game, fresh) {
+  const s = game.net;
+  if (!s?.host || !canStart(s) || game.coop) return false;
+  let save = null;
+  if (!fresh) {
+    const slot = latestSlot();
+    save = slot != null ? loadGame(game.data, slot) : null;
+    if (!save) { N.err = t('net.noSaveHero'); return false; }
+  }
+  hideAll();
+  createCoopWorld(game, s, { openMenu: openCoopMenu });
+  if (fresh) startWorld(game, { ...N.hero, talents: Array.isArray(N.hero.talents) ? N.hero.talents : [] });
+  else startFromSave(game, save);
+  return true;
+}
+/** F2 in the co-op world: the lobby (host: invite / back), a dropped guest — the join view (new code exchange). */
+function openCoopMenu(game) {
+  const s = game.net;
+  N.err = '';
+  if (game.coop && game.scene?.id !== 'net') game.coop.backScene = game.scene;
+  if (s && !s.host && s.status !== 'connected') { N.view = 'join'; N.answer = ''; if (F) { F.hostIn.value = ''; F.answerOut.value = ''; } } else N.view = 'lobby';
+  game.setScene(netScene);
+}
+function backToGame(game) {
+  if (!game.coop) return;
+  hideAll();
+  if (!game.coop.backToGame(game)) N.err = t('net.waitHostScene');
 }
 
 // ---------------------------------------------------------------- layout
@@ -152,7 +191,12 @@ function layout(game) {
   } else if (N.view === 'lobby' && s) {
     const by = B.y + B.h - 64;
     if (s.host) {
-      bt.push({ id: 'training', label: t('net.training'), sub: t('net.trainingSub'), x: x0, y: by - 8, w: 280, h: 52, selected: canStart(s), disabled: !canStart(s) });
+      if (game.coop) bt.push({ id: 'backGame', label: t('net.backGame'), x: x0, y: by - 8, w: 280, h: 52, selected: true });
+      else {
+        bt.push({ id: 'training', label: t('net.training'), sub: t('net.trainingSub'), x: x0, y: by - 8, w: 280, h: 52, selected: canStart(s), disabled: !canStart(s) });
+        bt.push({ id: 'coopNew', label: t('net.coopNew'), sub: t('net.coopNewSub'), x: x0, y: by - 72, w: 280, h: 52, selected: canStart(s), disabled: !canStart(s) });
+        bt.push({ id: 'coopLoad', label: t('net.coopLoad'), sub: t('net.coopLoadSub'), x: x0 + 292, y: by - 72, w: 250, h: 52, disabled: !canStart(s) || latestSlot() == null });
+      }
       bt.push({ id: 'invite', label: t('net.addPlayer'), x: x0 + 292, y: by, w: 220, h: 44, disabled: s.players.filter((p) => p.connected).length >= NET.maxPlayers });
       const tm = s.settings.turnTimer;
       bt.push({ id: 'timer', label: `${t('net.timer')}: ${tm ? `${tm} ${t('net.sec')}` : t('net.timerOff')}`, x: x0 + 524, y: by, w: 240, h: 44 });
@@ -160,6 +204,7 @@ function layout(game) {
     } else {
       const me = s.me();
       bt.push({ id: 'ready', label: me?.ready ? t('net.ready') : t('net.notReady'), key: 'R', x: x0, y: by, w: 220, h: 44, selected: !!me?.ready, disabled: s.status !== 'connected' });
+      if (game.coop) bt.push({ id: 'backGame', label: t('net.backGame'), x: x0 + 232, y: by, w: 240, h: 44, selected: true, disabled: s.status !== 'connected' });
     }
     bt.push({ id: 'leave', label: t('net.leave'), x: B.x + B.w - 232, y: by, w: 200, h: 44 });
   }
@@ -196,6 +241,9 @@ async function act(game, id) {
     case 'timer': s.setSettings({ turnTimer: s.settings.turnTimer ? 0 : NET.turnTimer }); break;
     case 'ready': s.setReady(!s.me()?.ready); break;
     case 'training': startTraining(game); return;
+    case 'coopNew': startCoop(game, true); return;
+    case 'coopLoad': startCoop(game, false); return;
+    case 'backGame': backToGame(game); return;
     default:
       if (id.startsWith('kick:')) s.kick(Number(id.slice(5)));
   }
@@ -241,7 +289,7 @@ function renderLobby(game, B, s) {
     panel(ctx, lx, y, lw, 56, C['1'], C['2']);
     text(ctx, `${t('net.slot')} ${i + 1}`, lx + 20, y + 18, C['3'], FONT);
   }
-  if (s.host) text(ctx, t('net.worldLater'), lx, B.y + 96 + 4 * 64 + 8, C['3'], FONT);
+  if (s.host) text(ctx, t(game.coop ? 'net.coopOn' : 'net.coopHint'), lx, B.y + 96 + 4 * 64 + 8, C['3'], FONT);
   const cr = { x: B.x + 584, y: B.y + 60, w: B.w - 616, h: B.h - 150 };
   drawChatBox(ctx, s, cr, { inputH: 44 });
   placeChatInput(game, s, { x: cr.x + 8, y: cr.y + cr.h - 42, w: cr.w - 16, h: 34 });
@@ -309,7 +357,7 @@ export const netScene = {
       if (N.view === 'root' && inp.wasPressed('KeyH') && N.hero) id = 'host';
       else if (N.view === 'root' && inp.wasPressed('KeyJ') && N.hero) id = 'join';
       else if (N.view === 'lobby' && inp.wasPressed('KeyR') && game.net && !game.net.host) id = 'ready';
-      else if (inp.wasPressed('Escape')) id = N.view === 'root' ? 'back' : N.view === 'lobby' ? null : game.net?.guests?.() && N.view === 'host' ? 'lobby' : 'cancel';
+      else if (inp.wasPressed('Escape')) id = N.view === 'root' ? 'back' : N.view === 'lobby' ? (game.coop ? 'backGame' : null) : game.net?.guests?.() && N.view === 'host' ? 'lobby' : 'cancel';
       else if (inp.wasPressed('Enter') && N.view === 'lobby') document.getElementById('net-chat')?.focus();
     }
     if (id) act(game, id);
@@ -338,6 +386,11 @@ function installHooks(game) {
     chat: (txt) => game.net?.chatSend(txt),
     ready: (on = true) => game.net?.setReady(on),
     startTraining: () => startTraining(game),
+    startCoop: (fresh = true) => startCoop(game, fresh),
+    coop: () => game.coop?.info() || null,
+    coopMenu: () => openCoopMenu(game),
+    backGame: () => backToGame(game),
+    leave: () => leave(game),
     /** Damage the local battle state (desync test): the next hash differs → fullState from the host. */
     corrupt: () => { const b = game.scene?.S?.b; const u = b?.units.find((x) => x.team === 'enemies' && !x.dead); if (u) u.hp = Math.max(1, u.hp - 1); return !!u; },
     battle: () => {

@@ -13,6 +13,8 @@ export const MSG = {
   battleStart: 'battleStart', battleEnd: 'battleEnd', cmd: 'cmd', nack: 'nack', hash: 'hash', fullState: 'fullState',
   snap: 'snap', delta: 'delta', move: 'move', pos: 'pos', vote: 'vote', lootRoll: 'lootRoll', heroSync: 'heroSync',
   ping: 'ping', pong: 'pong', chunk: 'chunk',
+  // stage 3: co-op world — guest's request to the host (roam interaction), mirrored modal + votes, guest's hero edits
+  act: 'act', modal: 'modal', heroEdit: 'heroEdit',
 };
 
 /** Required fields by type (validate()). */
@@ -31,6 +33,16 @@ const FIELDS = {
   ping: ['ts'],
   pong: ['ts'],
   chunk: ['id', 'i', 'of', 'data'],
+  snap: ['scene', 'save'],
+  delta: [],
+  move: ['x', 'y'],
+  pos: ['list'],
+  vote: ['promptId', 'optId'],
+  lootRoll: ['itemId', 'choice'],
+  heroSync: ['hero'],
+  act: ['kind'],
+  modal: ['id'],
+  heroEdit: ['hero'],
 };
 
 /** Local version triple (tests may override). */
@@ -39,7 +51,9 @@ export const versionLabel = (v) => `${v.gameVer}/s${v.saveVer}/p${v.proto}`;
 
 /** Hero fields that travel in hello (save format of the hero, multiplayer.md §1). */
 const HERO_FIELDS = ['race', 'cls', 'path', 'name', 'level', 'xp', 'anyStat', 'talents', 'stats', 'skills', 'proficiencies', 'phobia',
-  'equipment', 'look', 'avatar', 'backstory', 'flex', 'origin', 'alignment', 'gadget'];
+  'equipment', 'look', 'avatar', 'backstory', 'flex', 'origin', 'alignment', 'gadget',
+  // stage 4: the guest's copy of his co-op hero (backpack, money, level-up state) comes back on the next join
+  'bg', 'bag', 'items', 'credits', 'activeCombat', 'asi', 'pendingAsi', 'pendingTalents', 'levelNews', 'uniqueTalent', 'hp', 'mrl', 'judgeMarks', 'withdrawal'];
 
 export function normalizeHero(h) {
   if (!h || typeof h !== 'object') return null;

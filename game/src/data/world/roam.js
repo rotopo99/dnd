@@ -6,6 +6,7 @@ export const ROAM = {
   cell: 32, // px per tile on screen
   zooms: [24, 32, 40], // wheel steps
   walk: 4, run: 6, // tiles per second
+  coopNpcReach: 4, // multiplayer: a guest's NPC request is valid within this distance (NPCs move independently per client)
   slowMul: 0.6, // rubble / heights slow the step
   interact: 1.5, // interaction radius, tiles
   chainGap: 1, // party follows the leader's trail, one tile apart

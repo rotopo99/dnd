@@ -9,6 +9,9 @@ import { levelGains } from '../rules/progression.js';
 import { buildHero, buildCompanion, chooseAsi, chooseCompanionAsi, chooseMemberTalent, memberEntry, memberUnit, memberPending, talentCtx, tf } from '../world/state.js';
 import { saveGame } from '../save.js';
 
+/** Level-up windows are personal (multiplayer.md: a co-op guest picks his own; the host's are not mirrored). */
+const openP = (g, spec) => g.openModal(Object.assign(spec, { personal: true }));
+
 const statName = (k) => t(`stat.${k}`);
 const MAX_LINES = 12;
 const cut = (s, n = 140) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || '');
@@ -67,7 +70,7 @@ export function openLevelUp(game, onDone) {
     h.levelNews = all.filter((l) => !levels.includes(l));
     saveGame(sv);
     if (h.pendingTalents > 0) lines.push({ text: t('lvl.talentLine'), color: 'a' });
-    game.openModal({
+    openP(game, {
       title: tf('lvl.title', { n: levels[levels.length - 1] }), width: 980, lines,
       options: [{ label: t('lvl.ok'), run: (g) => { if (!openLevelUp(g, onDone)) onDone?.(g); } }],
       onCancel: (g) => { if (!openLevelUp(g, onDone)) onDone?.(g); },
@@ -93,7 +96,7 @@ export function openLevelUp(game, onDone) {
       if (p.pendingTalents > 0) lines.push({ text: t('comp.talentLine'), color: 'a' });
       p.levelNews = []; p.asiNotes = [];
       saveGame(sv);
-      game.openModal({ title: tf('comp.levelTitle', { name: n.name, n: lvls[lvls.length - 1] }), width: 980, lines: lines.slice(0, MAX_LINES + 4),
+      openP(game, { title: tf('comp.levelTitle', { name: n.name, n: lvls[lvls.length - 1] }), width: 980, lines: lines.slice(0, MAX_LINES + 4),
         options: [{ label: t('lvl.ok'), run: next }], onCancel: next });
       return true;
     }
@@ -132,14 +135,14 @@ export function openAsi(game, level, onDone, onCancel = onDone, opts = {}) {
   const back = (g) => openAsi(g, level, onDone, onCancel, opts);
   // the same talent window for the hero and companions (panel of details, requirements by the member's own build)
   const talentOpt = { label: t('lvl.talent'), run: (g) => openTalentPick(g, (g2, id) => apply(g2, { talent: id }), back, { key: p ? p.npc : 'hero' }) };
-  game.openModal({
+  openP(game, {
     title: p ? tf('comp.asiTitle', { name: NPCS[p.npc].name, n: level }) : tf('lvl.asiTitle', { n: level }), width: 820,
     lines: [{ text: t('lvl.asiText'), color: '4' }],
     options: [
-      { label: t('lvl.plus2'), run: (g) => g.openModal({ title: t('lvl.plus2'), options: STATS.map((k) => statOpt(k, 2, (g2) => apply(g2, { stats: { [k]: 2 } }))), onCancel: back }) },
-      { label: t('lvl.plus11'), run: (g) => g.openModal({
+      { label: t('lvl.plus2'), run: (g) => openP(g, { title: t('lvl.plus2'), options: STATS.map((k) => statOpt(k, 2, (g2) => apply(g2, { stats: { [k]: 2 } }))), onCancel: back }) },
+      { label: t('lvl.plus11'), run: (g) => openP(g, {
         title: t('lvl.plus11First'), onCancel: back,
-        options: STATS.map((k) => statOpt(k, 1, (g2) => g2.openModal({
+        options: STATS.map((k) => statOpt(k, 1, (g2) => openP(g2, {
           title: t('lvl.plus11Second'), onCancel: back,
           options: STATS.filter((k2) => k2 !== k).map((k2) => statOpt(k2, 1, (g3) => apply(g3, { stats: { [k]: 1, [k2]: 1 } }))),
         }))),
@@ -169,7 +172,7 @@ export function openTalentPick(game, onPick, onCancel, { key = 'hero', onDone } 
   if (!u) return onCancel?.(game);
   const pool = talentPool(sv, u, key);
   const name = key === 'hero' ? null : NPCS[key]?.name || key;
-  game.openModal({
+  openP(game, {
     title: name ? tf('comp.talentTitle', { name }) : t('talent.pending'), width: 980,
     lines: [{ text: t('talent.pickLevel'), color: 'a' }],
     options: pool.map((x) => ({ label: `${x.name}${isCombatTalent(x) ? ` · ${t('talent.combat')}` : ''}`, sub: x.desc, detail: talentTip(x.id), run: (g) => {
@@ -200,5 +203,5 @@ export function openSheet(game, u, name, xp = null) {
     return { label: `${a.upgrades ? '▲ ' : a.level === u.level ? '★ ' : ''}${a.name} (${tags})`, sub: a.desc || '', keep: true, tip: abilityTip(a) };
   });
   options.push({ label: t('lvl.ok') });
-  game.openModal({ title: tf('lvl.sheetTitle', { name }), width: 1100, lines, options });
+  openP(game, { title: tf('lvl.sheetTitle', { name }), width: 1100, lines, options });
 }

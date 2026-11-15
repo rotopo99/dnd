@@ -35,6 +35,7 @@ import { passDays } from '../world/exodus.js';
 import { locFaction } from '../world/state.js';
 import { battleCard, CARDS } from '../world/cards.js';
 import { roamBattleFor } from '../world/roam-battle.js';
+import { coopLinked, coopView, heroIdOf } from '../world/coop.js';
 
 const FINALE_ENCOUNTER = R.finale.encounter;
 const FINALE_MIN_PARTY = R.finale.minParty; // heroes + finaleMods allies (balance rule)
@@ -87,6 +88,7 @@ export function objectiveSpec(save, o, enemies, rng = Math.random) {
  *                          onWin(game), onLose?(game) })
  */
 export function startWorldBattle(game, o) {
+  if (game.coop?.guest) return; // multiplayer.md: a co-op guest's world is a mirror — battles start on the host only
   const save = game.save;
   const data = game.data;
   const setup = o.encounter ? encounterSetup(save, o.encounter) : { enemies: o.enemies, allies: [] };
@@ -117,7 +119,7 @@ export function startWorldBattle(game, o) {
   const fixed = mapId && MAPS[mapId];
   // free-roam.md §2.1: in a free node map the battle is cut out of the node grid (not for fixed encounter / given maps)
   const roamCut = !rivals && !o.map && !(o.encounter && encounterMap(o.encounter)) ? roamBattleFor(game, setup.enemies, allies, o) : null;
-  const scene = createBattleScene({
+  const bopts = {
     heroes: () => partyUnits(save, data),
     enemies: setup.enemies,
     allies, rivals, partyLose: !!rivals,
@@ -147,7 +149,9 @@ export function startWorldBattle(game, o) {
       const card = battleCard(g.save, o.faction || enemyDef(won[0]?.enemyId)?.faction || locFaction(g.save.location), won.some((u) => u.boss));
       if (card) notes.push({ text: `🂠 ${tf('cards.lootCard', { name: CARDS[card].name })}`, color: 'a' });
       loot.notes = notes;
-      openLoot(g, loot, () => afterBattle(g, S, o));
+      // multiplayer.md «Лут»: in a co-op party — split (take / pass, d20 roll-off, credits equally) on the host
+      if (g.coop?.host) g.coop.loot(g, loot, () => afterBattle(g, S, o), openLoot);
+      else openLoot(g, loot, () => afterBattle(g, S, o));
     },
     onLose: (g, S) => { writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
     onExit: (g) => (o.onLose || defaultLose)(g),
@@ -161,8 +165,10 @@ export function startWorldBattle(game, o) {
       g.visit = null;
       import('./world-map.js').then((m) => g.setScene(m.createWorldMapScene()));
     } : null,
-  });
-  game.setScene(scene);
+  };
+  // multiplayer.md stage 3: the co-op host runs the same battle through net/coop-battle (guests play their heroes)
+  if (game.coop?.host) { game.coop.battle(game, bopts); return; }
+  game.setScene(createBattleScene(bopts));
 }
 
 /**
@@ -172,6 +178,7 @@ export function startWorldBattle(game, o) {
  * o — as startWorldBattle + danger.
  */
 export function startSkirmish(game, o) {
+  if (game.coop?.guest) return;
   const save = game.save;
   const P = SKILL_RULES.parley;
   const enemies = o.encounter ? encounterSetup(save, o.encounter).enemies : o.enemies || [];
@@ -357,6 +364,25 @@ function companionEvent(S, e, save) {
   else if (e.type === 'stabilize' && e.actor === 'hero' && isComp(e.target)) (S.revived = S.revived || new Set()).add(e.target.slice(2));
 }
 
+/**
+ * multiplayer.md stage 3: the guests' heroes of a co-op battle — HP / MRL, spent items (their own bags), XP of a win
+ * (each hero gets the full battle XP, like the host's). A dead guest hero is not sent to Cyberspace: he stands up with 1 HP.
+ */
+function coopWriteBack(save, b, after, won, xp, data) {
+  const out = [];
+  for (const e of coopLinked(save)) {
+    const u = b.byId[heroIdOf(e.slot)];
+    if (!u) continue;
+    const v = coopView(save, e);
+    const r = after(u);
+    e.hero.hp = u.dead ? 1 : r.hp; e.hero.mrl = u.dead ? 1 : r.mrl;
+    consumeBattle(v, 'hero', usedItems(u));
+    keepQuickLayout(v, 'hero', u.inventory);
+    if (won && xp > 0) for (const x of gainXp(v, xp, data)) if (x.color === 'a') out.push({ text: `${e.name}: ${x.text}`, color: 'a' });
+  }
+  return out;
+}
+
 /** Copy results into the save. Returns toasts. */
 function writeBack(game, S, won, o, { retreat = false } = {}) {
   const save = game.save;
@@ -396,6 +422,7 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
     consumeBattle(save, p.npc, usedItems(u));
     keepQuickLayout(save, p.npc, u.inventory);
   }
+  out.push(...coopWriteBack(save, b, after, won && !retreat, Math.round(battleXp(b, game.data) * (o.xpMul ?? 1)), game.data));
   out.push(...restAfterBattle(save, b.byId, won && !retreat, game.data)); // rest: ENR / «за отдых» persist, breather after a win
   // Cyberspace is decided right here (synchronously): a reload before the next scene still sends the hero there
   if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
