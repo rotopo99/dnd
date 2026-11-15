@@ -130,7 +130,7 @@ function bodies(game, A, R) {
   }
   for (const p of S.posts) {
     const u = enemyUnit(A, `p:${p.id}`, p.enemy);
-    out.push({ u, d: pos(u.id, p.x, p.y), alpha: 1, face: yawOf(p.face || 0), teamKey: RG.guard, cull: true, ref: { kind: 'post', p } });
+    out.push({ u, d: pos(u.id, p.fx ?? p.x, p.fy ?? p.y), alpha: 1, face: yawOf(p.face || 0), teamKey: RG.guard, cull: true, ref: { kind: 'post', p } });
   }
   for (const h of S.hostiles) {
     const u = enemyUnit(A, `h:${h.id}`, h.enemy);

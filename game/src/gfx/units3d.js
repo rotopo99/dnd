@@ -275,7 +275,7 @@ function humanoidAnime(o) {
   const tights = F && (A === 'cloth' || A === 'light') ? ramp('1') : rUnder;
   const plate = ramp(pf.faction === 'tinBrotherhood' || A === 'heavy' ? '4' : '3');
   const shY = (F ? 1.105 : 1.13) * hm, hipY = (F ? 0.71 : 0.7) * hm, neckY = shY + 0.05 * hm, kn = hipY * 0.52;
-  const sx = (F ? 0.176 : 0.212) * w, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.075 * lm * (F ? 1.04 : 1);
+  const sx = (F ? 0.176 : 0.212) * w, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.088 * lm * (F ? 1.04 : 1);
   const ey = shY - 0.25 * hm, wy = shY - 0.5 * hm;
   const C = { w, h: hm, t, sx, lx, hipY, shY, neckY, kn, ey, wy, tl, rCloth, rUnder, rDark, rLeather, rSkin, plate, R, F, A, bot: false, bone: false, cloth };
   P(BONE.pelvis, 0, hipY, 0); P(BONE.torso, 0, hipY + 0.04, 0); P(BONE.head, 0, neckY, 0);
@@ -331,14 +331,14 @@ function humanoidAnime(o) {
       { y: 0.06, rx: tl * 0.5, rz: tl * 0.5, x, ao: 0.3 }, { y: 0.2, rx: tl * 0.66, rz: tl * 0.7, x, z: -0.004 }, { y: kn - 0.02, rx: tl * 0.58, rz: tl * 0.6, x, z: 0.004 },
       { y: kn + 0.04, rx: tl * 0.66, rz: tl * 0.66, x, z: 0.004 }, { y: hipY * 0.75, rx: tl * 0.95, rz: tl * 0.95, x: x * 0.97 }, { y: hipY - 0.02, rx: tl * 1.02 * (F ? 1.06 : 1), rz: tl * 1.0, x: x * 0.93 },
     ];
-    loft(mb, resample(lk, lod ? 8 : 13), tights, { seg: lod ? 7 : 11, rot: Math.PI / 11 });
+    loft(mb, resample(lk, lod ? 7 : thin ? 9 : 13), tights, { seg: lod ? 7 : thin ? 8 : 11, rot: Math.PI / 11 });
     mb.setMat(0);
     mb.setBone(s > 0 ? BONE.shL : BONE.shR);
     // boot: toe -> ankle -> shaft
     loft(mb, resample([
       { y: 0.0, rx: tl * 0.62 * big, rz: 0.12 * big, x, z: 0.05, ao: 0.4 }, { y: 0.045, rx: tl * 0.66 * big, rz: 0.108 * big, x, z: 0.046 }, { y: 0.1, rx: tl * 0.58, rz: 0.062, x, z: 0.02 },
       { y: 0.19, rx: tl * 0.64, rz: tl * 0.66, x, z: 0 }, { y: 0.26, rx: tl * 0.74, rz: tl * 0.76, x, z: 0.002 },
-    ], lod ? 6 : 9), rDark, { seg: lod ? 7 : 10, capTop: false, capBot: true });
+    ], lod ? 5 : thin ? 6 : 9), rDark, { seg: lod ? 6 : thin ? 8 : 10, capTop: false, capBot: true });
     if (!lod) mb.box(x - tl * 0.6, 0.0, -0.045, x + tl * 0.6, 0.02, 0.0, ramp('0'), { ao: 0 }); // heel
     if (A === 'medium' || A === 'heavy') { mb.bevelBox(x - tl * 0.9, 0.12, tl * 0.35, x + tl * 0.9, kn + 0.02, tl * 0.95, 0.02, plate, { ao: 0 }); }
     mb.setBone(s > 0 ? BONE.thL : BONE.thR);
@@ -354,7 +354,7 @@ function humanoidAnime(o) {
     loft(mb, resample([
       { y: cuffY, rx: r * 0.7, rz: r * 0.7, x, ao: 0.2 }, { y: ey - 0.07, rx: r * 0.78, rz: r * 0.8, x }, { y: ey, rx: r * 0.72, rz: r * 0.74, x, z: 0.004 },
       { y: ey + 0.08, rx: r * 0.8, rz: r * 0.82, x }, { y: shY - 0.06, rx: r * 0.92, rz: r * 0.92, x, z: 0 }, { y: shY + 0.015, rx: r * 0.9, rz: r * 0.86, x: x * 0.97 },
-    ], lod ? 7 : 11), sleeve, { seg: lod ? 7 : 10, capTop: true, rot: Math.PI / 10 });
+    ], lod ? 6 : thin ? 8 : 11), sleeve, { seg: lod ? 6 : thin ? 8 : 10, capTop: true, rot: Math.PI / 10 });
     mb.setMat(0);
     if (bareArm) {
       mb.setBone(fa);
@@ -408,17 +408,17 @@ function humanoidAnime(o) {
 
 /** Clothes on top of the trunk by the armour type: coat (cloth: hem swings on the skirt bone), shorts / skirt, light, plates. */
 function dressAnime(o, C) {
-  const { mb, lod, pf } = o, { w, hipY, shY, rCloth, rDark, F, A } = C;
+  const { mb, lod, pf } = o, { w, hipY, shY, rCloth, rDark, F, A } = C, thin = lod || !o.hero;
   if (A === 'cloth') {
     const long = F ? 0.26 : 0.4, ramps = rCloth;
     mb.setBone(BONE.torso).setMat(1);
     // upper part of the coat (shoulders -> hip), then the skirt part under the pelvis bone (hem blends to the skirt bone)
     const up = F ? [{ y: shY - 0.02, rx: 0.14 * w, rz: 0.097 }, { y: shY - 0.15, rx: 0.145 * w, rz: 0.108 }, { y: hipY + 0.2, rx: 0.113 * w, rz: 0.088 }, { y: hipY + 0.07, rx: 0.158 * w, rz: 0.115 }, { y: hipY, rx: 0.178 * w, rz: 0.13 }]
       : [{ y: shY - 0.02, rx: 0.205 * w, rz: 0.11 }, { y: shY - 0.16, rx: 0.2 * w, rz: 0.12 }, { y: hipY + 0.2, rx: 0.142 * w, rz: 0.108 }, { y: hipY + 0.05, rx: 0.16 * w, rz: 0.115 }, { y: hipY, rx: 0.17 * w, rz: 0.125 }];
-    loft(mb, resample(up, lod ? 7 : 11), ramps, { seg: lod ? 9 : 14, capTop: false, capBot: false, rot: Math.PI / 14, ao: 0 });
+    loft(mb, resample(up, lod ? 6 : thin ? 8 : 11), ramps, { seg: lod ? 8 : thin ? 10 : 14, capTop: false, capBot: false, rot: Math.PI / 14, ao: 0 });
     mb.setBone(BONE.pelvis);
     const lo = [{ y: hipY - long, rx: (F ? 0.27 : 0.235) * w, rz: F ? 0.22 : 0.17, ao: 0.4 }, { y: hipY - long * 0.55, rx: (F ? 0.235 : 0.2) * w, rz: F ? 0.19 : 0.15 }, { y: hipY - 0.1, rx: (F ? 0.205 : 0.185) * w, rz: F ? 0.16 : 0.14 }, { y: hipY, rx: (F ? 0.178 : 0.17) * w, rz: F ? 0.13 : 0.125 }];
-    loft(mb, resample(lo, lod ? 6 : 9), ramps, { seg: lod ? 9 : 14, capTop: false, rot: Math.PI / 14 });
+    loft(mb, resample(lo, lod ? 5 : thin ? 6 : 9), ramps, { seg: lod ? 8 : thin ? 10 : 14, capTop: false, rot: Math.PI / 14 });
     mb.setMat(0);
     mb.setBone(BONE.torso);
     if (!lod) { loft(mb, [{ y: shY - 0.035, rx: 0.115 * w, rz: 0.088 }, { y: shY + 0.03, rx: 0.098 * w, rz: 0.08 }], rDark, { seg: 12, capTop: false }); } // collar
@@ -443,7 +443,6 @@ function headGear(o, C, Hd, look, grad, rCloth, plate) {
   }, lod ? 14 : 22, lod ? 5 : 7, () => ramp, { closed: true, center: (p) => [0, p[1], -0.005] });
   if (acc.includes('helmet') || heavyHelm) {
     shell(0.3, 0.7, 0.02, plate);
-    mb.box(-0.012, Hd.y0 + Hd.hh * 0.6, 0.083, 0.012, Hd.y0 + Hd.hh * 1.0, 0.11, ramp('5'), { ao: 0 }); // brow ridge
     if (heavyHelm) mb.box(-0.05, Hd.y0 + Hd.hh * 0.44, 0.088, 0.05, Hd.y0 + Hd.hh * 0.52, 0.112, rampRGB(['h', 'h', 'h']), { glow: true, ao: 0 }); // visor slit
     top = Hd.y0 + Hd.hh * 1.12;
   }

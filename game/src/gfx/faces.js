@@ -71,7 +71,7 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     sad: { open: 0.8, brow: 1, mouth: 'frown' }, scared: { open: 1.25, brow: 0.8, mouth: 'gasp' }, smug: { open: 0.62, brow: -0.4, mouth: 'smirk' },
     surprised: { open: 1.3, brow: 0.9, mouth: 'o' }, cringe: { open: 0.7, brow: 0.6, mouth: 'wavy' },
   }[emo] || { open: 1, brow: 0, mouth: 'flat' };
-  const ex = 14.5, ey = 28 + (F ? 1 : 0), ew = F ? 8.2 : 7.4, eh = (F ? 10 : 8.8) * (look.face?.h > 0.3 ? 1.05 : 1);
+  const ex = 15.2, ey = 27.5 + (F ? 1 : 0), ew = F ? 9.4 : 8.4, eh = (F ? 12.5 : 10.5) * (look.face?.h > 0.3 ? 1.05 : 1);
   const lash = hex(robot ? '0' : '0');
   // blush
   const bl = F || emo === 'happy' || emo === 'cringe' || emo === 'smug' ? (emo === 'cringe' ? 0.5 : 0.3) : 0;

@@ -55,8 +55,8 @@ export function surfGrid(mb, S, nu, nv, rampAt, o = {}) {
       const pu = sub(S(u + du, v), S(u - du, v)), pv = sub(S(u, Math.min(1, v + dv)), S(u, Math.max(0, v - dv)));
       let n = cross(pu, pv);
       const c = typeof ctr === 'function' ? ctr(p, u, v) : ctr;
-      if (len(n) < 1e-9) n = sub(p, c); else n = unit(n);
-      if (dot(n, sub(p, c)) < 0) n = mul(n, -1);
+      if (len(pu) < 1e-7 || len(n) < 1e-9) n = [0, v > 0.5 ? 1 : -1, 0]; else n = unit(n);
+      if (!(len(pu) < 1e-7) && dot(n, sub(p, c)) < 0) n = mul(n, -1);
       if (o.flip) n = mul(n, -1);
       row.push(mb.vert(p, n, rampAt(u, v), { ao: o.ao ? o.ao(u, v) : 0, bn: o.bn ? o.bn(u, v, p) : undefined, uv: o.uv ? o.uv(u, v) : undefined, mat: o.mat, glow: o.glow }));
     }
@@ -137,7 +137,7 @@ export function buildHead(mb, Hd, skinR, o) {
   // nose bump (profile read) and ears
   const nt = 0.35, nr = Hd.ring(nt);
   mb.setBone(mb.bone);
-  surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * v; return [Hd.cx + Math.cos(a) * Math.sin(th) * 0.011, y0 + nt * hh + 0.004 - Math.cos(th) * 0.014, nr.z + nr.rz * 0.97 + Math.sin(a) * Math.sin(th) * 0.011]; }, 6, 4, () => skinR, { closed: true, center: [Hd.cx, y0 + nt * hh, nr.z + nr.rz * 0.9] });
+  if (!o.lod) { const nc = [Hd.cx, y0 + nt * hh + 0.004, nr.z + nr.rz * 0.96]; surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * v; return [nc[0] + Math.cos(a) * Math.sin(th) * 0.008, nc[1] - Math.cos(th) * 0.011, nc[2] + Math.sin(a) * Math.sin(th) * 0.01]; }, 6, 4, () => skinR, { closed: true, center: nc }); }
   const et = 0.44, er = Hd.ring(et), ex = er.rx * 0.97;
   for (const s of [-1, 1]) {
     const big = o.ears ? 2.2 : 1;

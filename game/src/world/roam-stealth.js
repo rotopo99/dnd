@@ -90,3 +90,33 @@ export function seesParty(grid, foe, party, range = ROAM.battle.seeRange) {
 
 /** Is cell (x, y) inside a restricted zone of the map? → the zone or null. */
 export const zoneAt = (map, x, y) => (map.zones || []).find((z) => z.restricted && x >= z.rect[0] && y >= z.rect[1] && x < z.rect[0] + z.rect[2] && y < z.rect[1] + z.rect[3]) || null;
+
+// ---------------------------------------------------------------- guard posts (ROAM.stealth.guards)
+/** How many posts a node keeps: by map type + the faction's bonus; quiet factions — at most quietMax. */
+export function guardCount(type, fac) {
+  const G = S().guards;
+  const n = (G.byType[type] || 0) + (G.factions[fac] || 0);
+  return G.quiet.includes(fac) ? Math.min(n, G.quietMax) : n;
+}
+/**
+ * Places worth guarding, in order: restricted zones (centre), then stalls with a trader (types G.stallGuards).
+ * → [{x, y, zone?, stall?}]. Exits are never guarded by a standing post.
+ */
+export function guardPlaces(map, objs) {
+  const G = S().guards, out = [];
+  for (const z of map.zones || []) if (z.restricted) out.push({ x: z.rect[0] + (z.rect[2] >> 1), y: z.rect[1] + (z.rect[3] >> 1), zone: z });
+  if (G.stallGuards.includes(map.type)) for (const o of objs) if (o.type === 'stall' && o.npc) out.push({ x: o.x, y: o.y, stall: o });
+  return out;
+}
+/** Patrol route: up to n cells ≤ r from (cx, cy) where free(x, y), spread around (deterministic by seed); the post's cell first. */
+export function patrolRoute(free, x0, y0, cx, cy, r, n, seed = 0) {
+  const pts = [[x0, y0]];
+  for (let k = 0; k < 8 && pts.length < n; k++) {
+    const a = ((seed % 8) + k * 3) * (Math.PI / 4);
+    for (let d = r; d >= 2; d--) {
+      const x = Math.round(cx + Math.cos(a) * d), y = Math.round(cy + Math.sin(a) * d);
+      if (free(x, y) && !pts.some((p) => Math.abs(p[0] - x) + Math.abs(p[1] - y) < 3)) { pts.push([x, y]); break; }
+    }
+  }
+  return pts;
+}

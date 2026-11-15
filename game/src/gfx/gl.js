@@ -271,7 +271,7 @@ void main() {
       c = mix(c, shade, clamp(vAX.x * uAo, 0.0, 1.0));
       if (kind == 9) {
         vec4 tc = texture(uFace, vUV.xy);
-        c = tc.rgb * clamp(c / (vB + 0.03), 0.0, 1.5);
+        c = tc.rgb * mix(vec3(1.0), clamp(c / (vB + 0.03), 0.0, 1.5), 0.65);
       } else if (kind >= 1 && kind <= 5) {
         vec3 an = abs(vBN);
         vec2 pu = an.y > an.x && an.y > an.z ? vBP.xz : (an.x > an.z ? vBP.zy : vBP.xy);

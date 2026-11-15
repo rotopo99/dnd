@@ -27,7 +27,7 @@ import { startWorldBattle, encounterSetup } from './world-battle.js';
 import { encounterName } from '../world/data.js';
 import { baseOpen, BASE_LOC } from '../world/base.js';
 import { setRoamProvider, roamBattleMap, aftermath } from '../world/roam-battle.js';
-import { seesCell, conePoly, viewRange, noticeStep, behindOf, seesParty, zoneAt, faceOf } from '../world/roam-stealth.js';
+import { seesCell, conePoly, viewRange, noticeStep, behindOf, seesParty, zoneAt, faceOf, guardCount, guardPlaces, patrolRoute } from '../world/roam-stealth.js';
 import { hashSeed } from '../world/roam-gen.js';
 import { pendingTurnins } from '../world/quests.js';
 import { atBase, modActive as baseModActive } from '../world/base.js';
@@ -35,7 +35,7 @@ import { saveGame } from '../save.js';
 import { roam3d, drawRoam3d, pickRoam, roamScreen, roamCamInput, bodyTop } from '../gfx/roam3d.js';
 import { pickWeather } from '../world/battlefields.js';
 import { hasWebGL2 } from '../gfx/gl.js';
-import { setGfxPref } from '../gfx/settings.js';
+import { setGfxPref, gfxPrefs } from '../gfx/settings.js';
 import { centerCamera } from '../gfx/camera.js';
 import { play } from '../audio/sfx.js';
 import { roamMarks, drawMarkFrames2d, drawMarkIcons, marks3d } from '../ui/roam-highlight.js';
@@ -367,39 +367,80 @@ export function createRoamScene(rawId, opts = {}) {
   // ---------------------------------------------------------------- этап 2: guards, stealth, alarm, battles on the map
   const night = (game) => !!game.mapNight;
   const permit = (game) => !!fac && (game.save.rep?.[fac] ?? 0) >= ROAM.stealth.permitRep; // no faction — local militia, no permits
-  /** Posts of the node's guards (ROAM.stealth.sentries by map type): by the exits and in restricted zones, turning. */
+  /**
+   * Posts of the node's guards (ROAM.stealth.guards): only where something is guarded — restricted zones, then a trader's
+   * stall; count by map type + faction (guardCount). Each post has a faction rank + nickname, patrols a short route around
+   * the place, says a line when the party comes close, dozes at night (part of them).
+   */
   function makePosts(game) {
-    const n = ROAM.stealth.sentries[map.type] || 0; // no faction — the node's militia (crime.js fallback guards)
+    const G = ROAM.stealth.guards;
     S.posts = [];
+    const places = guardPlaces(map, S.objs);
+    const n = Math.min(places.length, guardCount(map.type, fac)); // no faction — the node's militia (crime.js fallback guards)
     if (!n) return;
     const enemy = guardEnemies(game.save, fac).enemies[0] || 'scavenger';
     const busy = new Set([...S.objs.flatMap((o) => (o.cells || [[o.x, o.y]]).map(([x, y]) => `${x},${y}`)), ...S.npcs.map((n2) => `${n2.hx},${n2.hy}`)]);
-    const free = (x, y) => isPassable(grid, x, y) && grid.tiles[y * W + x] !== T_EXIT && !busy.has(`${x},${y}`);
+    const free = (x, y) => x > 0 && y > 0 && x < W - 1 && y < H - 1 && isPassable(grid, x, y) && grid.tiles[y * W + x] !== T_EXIT && !busy.has(`${x},${y}`);
     const near = (cx, cy, r0, r1) => {
       for (let r = r0; r <= r1; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) === r && free(cx + dx, cy + dy)) return [cx + dx, cy + dy];
       }
       return null;
     };
-    const cand = [];
-    const exits = S.objs.filter((o) => o.type === 'exit' && !o.boat);
-    const zones = (map.zones || []).filter((z) => z.restricted);
-    for (let i = 0; i < Math.max(exits.length, zones.length); i++) {
-      if (zones[i]) { const z = zones[i]; const c = near(z.rect[0] + (z.rect[2] >> 1), z.rect[1] + (z.rect[3] >> 1), 0, 4); if (c) cand.push({ c, toward: null }); }
-      if (exits[i]) { const e = exits[i]; const c = near(e.x, e.y, 3, 5); if (c) cand.push({ c, toward: [W >> 1, H >> 1] }); }
-    }
-    cand.slice(0, n).forEach(({ c, toward }, i) => {
+    const names = t('roam.guardNames').split('|');
+    const rk = `roam.rank.${fac}`;
+    const rank = t(rk) !== rk ? t(rk) : t('roam.rank.default');
+    places.slice(0, n).forEach((pl, i) => {
       const id = `post${i + 1}`;
       if (S.gone.includes(id)) return;
+      const c = near(pl.x, pl.y, pl.stall ? 1 : 0, 4);
+      if (!c) return;
       busy.add(`${c[0]},${c[1]}`);
-      const base = toward ? Math.atan2(toward[1] - c[1], toward[0] - c[0]) : (i % 4) * (Math.PI / 2);
+      const seed = hashSeed(`${locId}:${id}`);
+      const route = patrolRoute(free, c[0], c[1], pl.x, pl.y, G.patrol.r, G.patrol.points, seed);
+      const base = (i % 4) * (Math.PI / 2);
       const faces = [base, base + Math.PI / 2, base, base - Math.PI / 2];
-      S.posts.push({ id, x: c[0], y: c[1], hx: c[0], hy: c[1], face: base, faces, fi: 0, turnT: ROAM.stealth.turn[0] + i, enemy, sprite: enemySpriteIds(enemy) });
+      S.posts.push({
+        id, x: c[0], y: c[1], fx: c[0], fy: c[1], hx: c[0], hy: c[1], face: base, faces, fi: 0, turnT: ROAM.stealth.turn[0] + i, enemy, sprite: enemySpriteIds(enemy),
+        name: `${rank} ${names[seed % names.length]}`, route, ri: 0, path: null, doze: ((seed >> 3) % 100) / 100 < G.doze, barkT: 0, say: null,
+      });
     });
+  }
+  /** Patrol (walk the route, look around at each point), dozing at night, a line when the party comes close. */
+  function updatePosts(game, dt) {
+    const st = ROAM.stealth, G = st.guards, ld = S.party[0], nt = night(game);
+    for (const p of S.posts) {
+      if (p.say) { p.say.t -= dt; if (p.say.t <= 0) p.say = null; }
+      p.barkT -= dt;
+      const dist = Math.hypot(p.fx - ld.x, p.fy - ld.y);
+      p.dozing = nt && p.doze && dist > G.wake;
+      if (p.barkT <= 0 && dist <= G.bark.r && !S.alarm) {
+        const lines = t('roam.guardBarks').split('|');
+        p.say = { text: p.doze && nt ? t('roam.guardBarkNight') : lines[(hashSeed(p.id) + Math.floor(S.time)) % lines.length], t: G.bark.show };
+        p.barkT = G.bark.every;
+      }
+      if (p.dozing) continue;
+      if (p.path && p.path.length) {
+        const q = p.path[0], ddx = q.x - p.fx, ddy = q.y - p.fy, d = Math.hypot(ddx, ddy), s = G.patrol.speed * dt;
+        if (d > 0.01) p.face = faceOf(ddx, ddy);
+        if (d <= s) { p.fx = q.x; p.fy = q.y; p.path.shift(); } else { p.fx += (ddx / d) * s; p.fy += (ddy / d) * s; }
+        p.x = Math.round(p.fx); p.y = Math.round(p.fy);
+        continue;
+      }
+      p.turnT -= dt;
+      if (p.turnT > 0) continue;
+      p.fi = (p.fi + 1) % p.faces.length;
+      p.turnT = st.turn[0] + ((p.fi * 3 + p.x) % (st.turn[1] - st.turn[0] + 1));
+      if (p.fi % 2 === 0 && p.route?.length > 1) { // every other turn — walk to the next point of the route
+        p.ri = (p.ri + 1) % p.route.length;
+        const [tx, ty] = p.route[p.ri];
+        p.path = roamPath(grid, p.x, p.y, tx, ty) || [];
+      } else p.face = p.faces[p.fi];
+    }
   }
   /** Who watches: posts + guard NPCs (crime.js role guard) of a faction. → [{ x, y, face, ref }] */
   function watchers() {
-    const out = S.posts.map((p) => ({ x: p.x, y: p.y, face: p.face, ref: p }));
+    const out = S.posts.filter((p) => !p.dozing).map((p) => ({ x: p.x, y: p.y, face: p.face, ref: p }));
     for (const n of S.npcs) if (npcRole(NPCS[n.id]) === 'guard') out.push({ x: Math.round(n.fx), y: Math.round(n.fy), face: n.face || 0, ref: n });
     return out;
   }
@@ -409,13 +450,12 @@ export function createRoamScene(rawId, opts = {}) {
     S.inZone = !!zoneAt(map, ld.cx, ld.cy) && !permit(game);
     return S.inZone || (fac && heatOf(game.save, fac) >= ROAM.stealth.wantedHeat);
   }
-  const showCones = (game) => game.input.isDown('AltLeft') || game.input.isDown('AltRight') || S.alarm || S.perceive;
+  /** Cones are drawn: «always» setting, sneaking (C), Alt, the alarm, or Perception in the party while hovering a watcher. */
+  const showCones = (game) => gfxPrefs().cones === 'always' || S.sneak || game.input.isDown('AltLeft') || game.input.isDown('AltRight') || !!S.alarm
+    || (S.perceive && (S.hoverEnt?.kind === 'post' || (S.hoverEnt?.kind === 'npc' && npcRole(NPCS[S.hoverEnt.n.id]) === 'guard')));
   function updateStealth(game, dt) {
     const st = ROAM.stealth;
-    for (const p of S.posts) {
-      p.turnT -= dt;
-      if (p.turnT <= 0) { p.fi = (p.fi + 1) % p.faces.length; p.face = p.faces[p.fi]; p.turnT = st.turn[0] + ((p.fi * 3 + p.x) % (st.turn[1] - st.turn[0] + 1)); }
-    }
+    updatePosts(game, dt);
     if (S.alarm) return updateAlarm(game, dt);
     const sus = suspect(game);
     const ld = S.party[0], range = viewRange(night(game));
@@ -845,7 +885,7 @@ export function createRoamScene(rawId, opts = {}) {
       // units sorted by y (only those on screen)
       const s = c / TILE, tms = S.time * 1000;
       const list = [];
-      for (const p of S.posts) list.push({ y: p.y, x: p.x, sprite: p.sprite, foe: p });
+      for (const p of S.posts) list.push({ y: p.fy ?? p.y, x: p.fx ?? p.x, sprite: p.sprite, foe: p });
       for (const h of S.hostiles) list.push({ y: h.fy, x: h.fx, sprite: h.sprite, foe: h, hunt: true });
       for (const n of S.npcs) list.push({ y: n.fy, x: n.fx, sprite: n.sprite, npc: n });
       S.party.forEach((m, i) => list.push({ y: m.y, x: m.x, sprite: m.sprite, member: m, i }));
@@ -893,6 +933,19 @@ export function createRoamScene(rawId, opts = {}) {
         ctx.fillStyle = rgba(C['0'], 0.7); ctx.fillRect(px + c / 2 - tw / 2, ny, tw, 15);
         text(ctx, nm, px + c / 2, ny + 1, hov ? C.a : C['5'], '12px monospace', 'center');
       }
+      // guards: a line on approach (speech plate), «z» while dozing
+      for (const p of S.posts) {
+        if (!p.say && !p.dozing) continue;
+        const [px, py] = scr(p.fx ?? p.x, p.fy ?? p.y);
+        if (px < -c * 4 || py < -c * 2 || px > W0 + c * 4 || py > H0 + c) continue;
+        const ny = plateY({ n: p }, px, py);
+        if (p.dozing && !p.say) { text(ctx, 'z', px + c * 0.75 + (gfxPrefs().reduceMotion ? 0 : Math.sin(S.time) * 2), ny - 2, C['4'], FONT_B, 'center'); continue; }
+        ctx.font = '12px monospace';
+        const tw = Math.min(320, ctx.measureText(p.say.text).width + 10);
+        ctx.fillStyle = rgba(C['0'], 0.82); ctx.fillRect(px + c / 2 - tw / 2, ny - 4, tw, 16);
+        ctx.strokeStyle = rgba(C.a, 0.6); ctx.lineWidth = 1; ctx.strokeRect(px + c / 2 - tw / 2 + 0.5, ny - 3.5, tw - 1, 15);
+        text(ctx, fit(ctx, p.say.text, tw - 8, '12px monospace'), px + c / 2, ny - 2, C['5'], '12px monospace', 'center');
+      }
       if (S.hoverEnt) {
         const e = S.hoverEnt;
         const [px, py] = scr(e.x, e.y);
@@ -902,7 +955,7 @@ export function createRoamScene(rawId, opts = {}) {
         } else if (e.kind === 'skill') {
           const x = e.p.s;
           hotspot(px, py, c, c, { title: x.label, lines: [tf('nsa.mapHint', { skill: skillName(x.skill) }), { text: `${t('battle.dc')} ${x.dc}${x.best ? ` · ${x.best.member.name} ${Math.round(x.best.chance * 100)}%` : ''}`, color: 'a' }] });
-        } else if (e.kind === 'post') hotspot(px, py - c, c, c * 2, { title: t('roam.guard'), lines: [ENEMIES[e.p.enemy]?.name || '', t('roam.guardSub')] });
+        } else if (e.kind === 'post') hotspot(px, py - c, c, c * 2, { title: e.p.name || t('roam.guard'), lines: [`${t('roam.guard')} · ${ENEMIES[e.p.enemy]?.name || ''}`, t(e.p.dozing ? 'roam.guardDoze' : 'roam.guardSub')] });
         else if (e.kind === 'hostile') hotspot(px, py - c, c, c * 2, { title: t('roam.hostile'), lines: [ENEMIES[String(e.h.enemy?.enemy || e.h.enemy).split('^')[0]]?.name || '', { text: t('roam.hostileSub'), color: 'c' }] });
         else if (e.kind === 'corpse') hotspot(px, py, c, c, { title: t('roam.corpse'), lines: [ENEMIES[String(e.c.enemy?.enemy || e.c.enemy).split('^')[0]]?.name || '', t('roam.corpseSub')] });
         else hotspot(px, py, c, c, { title: objName(e.o), lines: objLines(e.o) });

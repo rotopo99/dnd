@@ -66,7 +66,7 @@ export function renderSheet(cells, o = {}) {
     const emo = c.emo || 'neutral';
     row.set([1, 1, 1, 0, 0.44, 0.63, 0.95, 1, 1.5, T.anime ? faceCol(emo, !!c.blink) / FACE_COLS : 0, 0, 0], NBONES * 12);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONE_TEX_W, 1, gl.RGBA, gl.FLOAT, row);
-    const zoom = c.zoom || 1, top = T.top * T.scale, hh = (ch / cw) * 0.5, H = (top + 0.25) / zoom / 1.0;
+    const zoom = c.zoom || 1, top = T.top * T.scale, hh = (ch / cw) * 0.5, H = (top + 0.12) / zoom;
     const hw = H * 0.5 * (cw / ch), hhh = H * 0.5, ctr = [0, (c.focus ?? top * 0.5), 0];
     // ortho view-projection (column-major): x = dot(p - c, r) / hw, y = dot(p - c, up) / hhh, z = dot(p - c, f) / 20
     const VP = new Float32Array([r[0] / hw, up[0] / hhh, f[0] / 20, 0, r[1] / hw, up[1] / hhh, f[1] / 20, 0, r[2] / hw, up[2] / hhh, f[2] / 20, 0,

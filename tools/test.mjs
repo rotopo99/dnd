@@ -3602,6 +3602,22 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
   });
 }
 
+// ---------------------------------------------------------------- free-roam: guard posts only where something is guarded
+{
+  const rs = await import('../game/src/world/roam-stealth.js');
+  const { ROAM } = await import('../game/src/data/world/roam.js');
+  test('roam guards: quiet factions ≤ quietMax, ruins/camps/villages none, posts only at zones / trader stalls, patrol cells free', () => {
+    const G = ROAM.stealth.guards;
+    for (const f of G.quiet) for (const ty of Object.keys(G.byType)) assert.ok(rs.guardCount(ty, f) <= G.quietMax, `${ty}/${f}`);
+    for (const ty of ['ruins', 'camp', 'village']) assert.equal(rs.guardCount(ty, 'pirates'), 0, ty);
+    const map = { type: 'hub', zones: [{ rect: [2, 2, 4, 4], restricted: true }, { rect: [9, 9, 2, 2] }] };
+    const pl = rs.guardPlaces(map, [{ type: 'stall', x: 8, y: 1, npc: 'x' }, { type: 'stall', x: 3, y: 9 }, { type: 'exit', x: 0, y: 5 }]);
+    assert.deepEqual(pl.map((p) => [p.x, p.y]), [[4, 4], [8, 1]]);
+    const r = rs.patrolRoute((x, y) => x >= 0 && y >= 0 && x < 12 && y < 12, 5, 5, 5, 5, 4, 3, 7);
+    assert.ok(r.length >= 2 && r.length <= 3 && r.every(([x, y]) => x >= 0 && y >= 0 && x < 12 && y < 12));
+  });
+}
+
 // ---------------------------------------------------------------- free-roam.md этап 1: node maps
 {
   const rg = await import('../game/src/world/roam-gen.js');
