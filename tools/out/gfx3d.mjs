@@ -92,11 +92,17 @@ for (const [bi, biome] of biomes.entries()) {
   if (bi === 0) { await page.evaluate(() => { window.__game.scene.S.v3.cam.zoomIdx = 1; }); await wait(300); await settle(); }
   if (bi === 0) {
     // click on a reachable cell -> the hero walks there
-    const tgt = await page.evaluate(() => {
+    // a reachable floor cell no unit body covers on screen (a body under the cursor is a unit pick by design)
+    const tgt = await page.evaluate(async () => {
+      const m = await import('/game/src/gfx/scene3d.js');
       const S = window.__game.scene.S, b = S.b, h = b.byId[S.heroId];
       const list = (S.reach?.list || []).filter((i) => S.reach.dist[i] > 1);
-      const i = list[Math.floor(list.length / 2)];
-      return i == null ? null : { x: i % b.grid.w, y: (i / b.grid.w) | 0, hx: h.x, hy: h.y };
+      const mid = Math.floor(list.length / 2), order = list.map((i, k) => [i, Math.abs(k - mid)]).sort((p, q) => p[1] - q[1]).map((p) => p[0]);
+      for (const i of order) {
+        const x = i % b.grid.w, y = (i / b.grid.w) | 0, c = m.cellScreen(S, x, y), k = m.pickBattle(S, c.x + S.L.cell / 2, c.y + S.L.cell / 2);
+        if (k && !k.unit && k.x === x && k.y === y) return { x, y, hx: h.x, hy: h.y };
+      }
+      return null;
     });
     ok(!!tgt, `reachable cell ${tgt ? `${tgt.x},${tgt.y}` : '-'}`);
     if (tgt) {
@@ -118,14 +124,24 @@ for (const [bi, biome] of biomes.entries()) {
     ok(Math.abs(yaw1 - yaw0 - 90) < 0.01, `rotate ] : yaw ${yaw0} -> ${yaw1}`);
     await shot('gfx3d-rotated');
     const btn = await page.evaluate(async () => { const m = await import('/game/src/gfx/scene3d.js'); const S = window.__game.scene.S; return m.camButtons(S, window.__game).find((b) => b.id === 'rotL'); });
+    // a turn banner eats the next click by design: dismiss it first
+    for (let i = 0; i < 20 && (await page.evaluate(() => !!window.__game.scene.S.banner)); i++) { await key('Enter'); await wait(150); }
+    const pre = await page.evaluate(() => { const S = window.__game.scene.S; return { banner: !!S.banner, modal: !!window.__game.modals?.length, msg: S.message?.text || null, res: !!S.result }; });
     await page.mouse.click(btn.x + btn.w / 2, btn.y + btn.h / 2); await wait(100); await settle();
+    if (Math.abs((await page.evaluate(() => window.__game.scene.S.v3.cam.yaw)) - yaw0) >= 0.01) console.log('    before the click:', JSON.stringify(pre));
     const yaw2 = await page.evaluate(() => window.__game.scene.S.v3.cam.yaw);
     ok(Math.abs(yaw2 - yaw0) < 0.01, `rotate button ⟲ : yaw ${yaw2}`);
     // picking still lands on the right cell after a turn
     await key('BracketLeft'); await wait(100); await settle();
     const hc = await page.evaluate(() => { const S = window.__game.scene.S, h = S.b.byId[S.heroId]; return { x: h.x, y: h.y }; });
-    const pp = await cellPt(hc.x, hc.y);
-    await page.mouse.move(pp.x, pp.y + 6); await wait(200);
+    // the hero's body (chest height): a unit pick
+    const pp = await page.evaluate(async () => {
+      const { project } = await import('/game/src/gfx/camera.js');
+      const S = window.__game.scene.S, h = S.b.byId[S.heroId], d = S.dispOf(h), V = S.v3;
+      const p = project(V.cam, d.x + 0.5, (V.hgt[h.id] ?? 0) + 0.9, d.y + 0.5);
+      return { x: p.x, y: p.y };
+    });
+    await page.mouse.move(pp.x, pp.y); await wait(200);
     const hov2 = await page.evaluate(() => window.__game.scene.S.hover.cell);
     const who = await page.evaluate(() => { const S = window.__game.scene.S; return { turn: S.b.turn?.unitId, pt: S.playerTurn, units: S.b.units.filter((u) => !u.dead).map((u) => `${u.id}@${u.x},${u.y}`).join(' ') }; });
     ok(hov2 && hov2.x === hc.x && hov2.y === hc.y, `pick after rotation ${JSON.stringify(hov2)} = ${hc.x},${hc.y} ${JSON.stringify(who)}`);

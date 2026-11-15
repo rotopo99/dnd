@@ -56,7 +56,7 @@ const goal = await page.evaluate(async () => {
     if (!V?.world) return true;
     const X = px / 1.5, Z = py / 1.5, i = Math.floor(Z) * V.world.w + Math.floor(X), p = project(V.cam, X, V.world.floor[i] || 0, Z);
     const k = pickBattle(S, p.x, p.y);
-    return !!k && k.fx != null && Math.hypot(k.fx * 1.5 - px, k.fz * 1.5 - py) < 0.1;
+    return !!k && !k.unit && k.fx != null && Math.hypot(k.fx * 1.5 - px, k.fz * 1.5 - py) < 0.1;
   };
   const have = M.budgetM(b);
   for (const r of [5, 4, 6, 3, 2]) for (let a = 0; a < 16; a++) {

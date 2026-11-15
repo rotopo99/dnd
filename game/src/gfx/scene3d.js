@@ -7,7 +7,7 @@
 //   createGfx(canvas, game)           -> game.gfx { ok(), resize(w, h, cw, ch), endFrame(), use() }
 //   battle3d(game, S)                 -> S.v3 (state) when 3D is on, else null (drops S.v3)
 //   drawBattle3d(game, S, {hl, units}) render one frame (hl — captured 2D highlights, units — draw list)
-//   pickBattle(S, px, py)             -> {x, y} | null      (hover cell through the camera ray)
+//   pickBattle(S, px, py)             -> {x, y, fx?, fz?, unit?} | null (unit body first, else the cell under the ray)
 //   cellScreen(S, x, y, h)            -> top-left of the «virtual cell» centred on the projected cell centre
 //   unitScreen(S, u, d)               -> anchor above the unit's head (x — virtual cell left, y — top)
 //   cameraInput3d(game, S)            [ / ] — rotate, wheel over the map — zoom, buttons; true when input was used
@@ -384,7 +384,8 @@ export function pickBattle(S, px, py) {
   const V = S.v3;
   if (!V?.world) return null;
   const b = S.b, cam = V.cam;
-  // units first: a click on the body selects its cell
+  // a unit body under the cursor wins (click on a unit = its cell / target), else the floor / obstacle top (a point);
+  // the floor hit always comes along as fx / fz (metric hover point); `unit` — id of the picked body
   let best = null, bd = Infinity;
   for (const u of b.units) {
     if (u.dead || u.removed) continue;
@@ -393,9 +394,11 @@ export function pickBattle(S, px, py) {
     const T = unitTemplate(u, { simple: !!gfxPrefs().reduceFx });
     const a = project(cam, d.x + 0.5, h, d.y + 0.5), c = project(cam, d.x + 0.5, h + T.top * T.scale, d.y + 0.5);
     const rw = cam.ppmFit * cam.zoom * 0.3;
-    if (px > a.x - rw && px < a.x + rw && py < a.y && py > c.y && a.d < bd) { bd = a.d; best = { x: u.x, y: u.y }; }
+    if (px > a.x - rw && px < a.x + rw && py < a.y && py > c.y && a.d < bd) { bd = a.d; best = { x: u.x, y: u.y, unit: u.id }; }
   }
-  return best || pickCell(cam, px, py, b.grid.w, b.grid.h, topAt(V));
+  const fl = pickCell(cam, px, py, b.grid.w, b.grid.h, topAt(V));
+  if (!best) return fl;
+  return fl ? { ...best, fx: fl.fx, fz: fl.fz } : best;
 }
 
 export function cellScreen(S, x, y, h = 0) {

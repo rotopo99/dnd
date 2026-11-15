@@ -90,9 +90,9 @@ export const RULES = { metric: 2 };
 export const METRIC = { cell: 1.5, nav: 0.5, r: { small: 0.3, normal: 0.4, large: 0.7 }, burn: 0.25, stepM: 0.8, sample: 0.1, snap: 2,
   // stage 2: range N cells = N x cell m edge to edge (melee 1 -> 1.5 m); circle R cells -> R x cell x areaK m; cone
   // coneDeg wide; line lineW m wide; zone of control zoc m edge to edge; half cover counts within coverNear m of the
-  // target; LOS rays from the centre and +-rayK x r sideways; AI candidate points: coverGap m from a cover edge,
+  // target on the line of fire or hugged (edge within hug m, within hugDeg of the attack direction); LOS rays from the centre and +-rayK x r sideways; AI candidate points: coverGap m from a cover edge,
   // ring directions around targets.
-  areaK: 1.1, coneDeg: 90, lineW: 1, zoc: 1.5, coverNear: 1.5, rayK: 0.9, coverGap: 0.8, ringDirs: 12 };
+  areaK: 1.1, coneDeg: 90, lineW: 1, zoc: 1.5, coverNear: 1.5, hug: 0.4, hugDeg: 50, rayK: 0.9, coverGap: 0.8, ringDirs: 12 };
 
 // §7 arenas by biome: ranges [min, max] of objects; elev — hills (3×3 h1) / platforms (2×2 h2 + h1 ring)
 export const BIOMES = {

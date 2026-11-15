@@ -5,7 +5,8 @@
 // old comparisons «d <= range», «d <= 1» (melee: 1.5 m) keep working.
 // LOS: walls / full cover cells block (exact cell traversal of the segment, the cells of both ends excluded); three
 // parallel rays (centres and +-rayK x r sideways): 0 free — no LOS, 1 free — partial (half cover), 2-3 — clear.
-// Cover: the best cover cell crossed by a ray within coverNear m of the target's edge (rubble 1, half 2, full 3);
+// Cover: the best cover cell crossed by a ray within coverNear m of the target's edge, or hugged by the target (edge
+// within hug m, cell centre within hugDeg of the attack direction) — rubble 1, half 2, full 3;
 // an attacker standing higher ignores everything below full (combat-rework §3.1).
 //   geoOn(b) · ptOf(t) · gapM(A, T) · distU(b, a, t) · traceCells(g, ax, ay, bx, by, visit) · raysFree(b, A, T)
 //   losU(b, a, t) · coverM(b, A, T, melee) · areaRadiusM(size) · inAreaM(b, shape, size, O, C, T) · lineEndM
@@ -118,6 +119,17 @@ export function coverM(b, A, T, melee) {
       if (c > lvl && rectDist(T.px, T.py, x, y) <= near + EPS) lvl = c;
       return lvl === 3;
     });
+  }
+  // «вплотную к цели»: cover the target hugs on the attacker's side (within hugDeg of the attack line) counts too
+  if (lvl < 3) {
+    const L = Math.hypot(A.px - T.px, A.py - T.py), ux = (A.px - T.px) / L, uy = (A.py - T.py) / L, cosMax = Math.cos((METRIC.hugDeg * Math.PI) / 180);
+    for (let y = tc[1] - 1; y <= tc[1] + 1; y++) for (let x = tc[0] - 1; x <= tc[0] + 1; x++) {
+      if ((x === tc[0] && y === tc[1]) || x < 0 || y < 0 || x >= g.w || y >= g.h) continue;
+      const c = tileCover(g.tiles[y * g.w + x]);
+      if (c <= lvl || rectDist(T.px, T.py, x, y) > T.r + METRIC.hug + EPS) continue;
+      const vx = (x + 0.5) * CELL_M - T.px, vy = (y + 0.5) * CELL_M - T.py, vl = Math.hypot(vx, vy) || 1;
+      if ((vx * ux + vy * uy) / vl >= cosMax) lvl = c;
+    }
   }
   if (lvl && lvl < 3 && g.elev && elevAt(g, ac[0], ac[1]) > elevAt(g, tc[0], tc[1])) lvl = 0;
   return lvl;
