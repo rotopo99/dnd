@@ -14,7 +14,7 @@ import { hotspot } from '../ui/tooltip.js';
 import { TILE, drawSprite, heroSpriteIds, tileSpriteIds, idleFrame, enemySpriteIds } from '../assets/sprites.js';
 import { ENEMIES } from '../data/index.js';
 import { drawTileExtra } from '../ui/battle-terrain.js';
-import { fieldBiome, drawFieldCell, drawFieldProps, propCells } from '../ui/field-view.js';
+import { fieldBiome, drawFieldCell, drawFieldProps, propCells, ambBiome, stepSurface } from '../ui/field-view.js';
 import { skillActionsAt, npcHintSkills, hintSkillsOf, hintLines } from '../world/node-actions.js';
 import { openSkillAction, openSkillActions, drawSkillBadge, drawHintBadges } from '../ui/skill-ui.js';
 import { skillName } from '../world/checks.js';
@@ -37,7 +37,7 @@ import { pickWeather } from '../world/battlefields.js';
 import { hasWebGL2 } from '../gfx/gl.js';
 import { setGfxPref, gfxPrefs } from '../gfx/settings.js';
 import { centerCamera } from '../gfx/camera.js';
-import { play } from '../audio/sfx.js';
+import { play, setBiome } from '../audio/sfx.js';
 import { roamMarks, drawMarkFrames2d, drawMarkIcons, marks3d } from '../ui/roam-highlight.js';
 import { canCampAt } from './rest.js';
 import { createLocationScene } from './location.js';
@@ -175,6 +175,7 @@ export function createRoamScene(rawId, opts = {}) {
       S.trail.push([ld.cx, ld.cy]);
       if (S.trail.length > 24) S.trail.shift();
       ld.cx = ld.step.tx; ld.cy = ld.step.ty; ld.step = null;
+      play('step', { surface: stepSurface(map, ld.cx, ld.cy), sneak: gait(game) === 'sneak', heavy: game.save?.hero?.armorType === 'heavy' });
       if (!S.path.length) arrived(game);
     }
     // WASD / arrows: one cell at a time while held (cancels a click path)
@@ -737,6 +738,7 @@ export function createRoamScene(rawId, opts = {}) {
       setRoamProvider(provider);
       layout(game);
       S.cam = null;
+      setBiome(ambBiome(map), { night: map.tod === 'night', weather: map.weather });
       L.enter(game); // gate, wanted, entry events, turn-ins — exactly as the menu node
       if (game.scene === self && !game.coop?.guest) maybeRaid(game);
     },
@@ -746,6 +748,7 @@ export function createRoamScene(rawId, opts = {}) {
       syncNpcs(game);
       buildParty(game);
       layout(game);
+      setBiome(ambBiome(map), { night: map.tod === 'night', weather: map.weather });
       L.resume(game);
     },
     resize(game) { layout(game); },

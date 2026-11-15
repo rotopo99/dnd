@@ -13,6 +13,20 @@ const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${
 const hash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177); h ^= h >>> 13; return (Math.imul(h, 1103515245) >>> 0); };
 
 /** Tile biome of a map def (new id or legacy BIOMES id) or null (old look). */
+// sounds of a field biome (audio/ambience.js setBiome ids, audio/sfx-foley.js step surfaces)
+const AMB = { 'ruins-city': 'ruins', 'bunker-interior': 'bunker', 'mutant-forest': 'mutantForest' };
+const STEP = { wasteland: 'concrete', swamp: 'mud', snow: 'snow', 'ruins-city': 'concrete', 'bunker-interior': 'metal', factory: 'metal', port: 'wood', 'mutant-forest': 'grass', cyberspace: 'metal' };
+/** Ambience biome of a map def (unknown -> wasteland). */
+export const ambBiome = (def) => { const b = fieldBiome(def) || 'wasteland'; return AMB[b] || b; };
+/** Footstep surface at a cell: water / grass / deck by the map char, else by biome. */
+export function stepSurface(def, x, y) {
+  const ch = def?.grid?.[y]?.[x];
+  if (ch === 'w' || ch === '~' || ch === 'W') return 'water';
+  if (ch === '"') return 'grass';
+  if (ch === '=') return 'wood';
+  return STEP[fieldBiome(def) || 'wasteland'] || 'concrete';
+}
+
 export function fieldBiome(def) {
   const b = def?.biome;
   if (!b) return null;
