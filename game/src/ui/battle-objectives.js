@@ -5,6 +5,8 @@ import { cellScreen } from '../gfx/scene3d.js';
 import { t } from '../data/text/index.js';
 import { C, FONT, FONT_B, text, fit, panel } from './draw.js';
 import { hotspot } from './tooltip.js';
+import { hlPulse } from './roam-highlight.js';
+import { ROAM } from '../data/world/roam.js';
 
 const rgba = (hex, a) => {
   const n = parseInt(hex.slice(1), 16);
@@ -48,13 +50,16 @@ export function drawObjectiveMarkers(ctx, S) {
   if (!O) return;
   const c = L.cell, k = c / 16;
   const px = (x) => L.mapX + x * c, py = (y) => L.mapY + y * c;
-  const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
+  const pulse = 0.5 + (hlPulse(S.time) - 1) / (2 * ROAM.highlight.pulse.amp); // 0..1, ≤ 1 Hz, flat with «Снизить движение»
+  const HC = ROAM.highlight.colors;
   const g = O.goal;
   const active = g && g.state === 'active';
   if (S.hl3) { // 3d.md: cell markers become floor quads of the 3D layer, props / target — icons by projection
     for (const e of O.exits) S.hl3.push({ x: e.x, y: e.y, fill: rgba(O.exitLock ? C.c : C.j, 0.22 + 0.12 * pulse), stroke: O.exitLock ? C.c : C.j });
     if (active && g.id === 'hold') for (const z of g.zone) S.hl3.push({ x: z.x, y: z.y, fill: rgba(C.a, 0.16 + 0.08 * pulse), stroke: C.a });
     if (active && g.id === 'nofire') for (const q of g.cargo) S.hl3.push({ x: q.x, y: q.y, stroke: C.e });
+    // interactive props: closed chests (loot), terminals not hacked yet (tech) — a thin pulsing frame
+    for (const p of O.props) if ((p.kind === 'chest' && !p.open) || (p.kind === 'terminal' && !p.hacked)) S.hl3.push({ x: p.x, y: p.y, stroke: rgba(C[HC[p.kind === 'chest' ? 'loot' : 'tech']], 0.45 + 0.35 * pulse) });
   }
   // exits
   if (!S.hl3) for (const e of O.exits) {
@@ -91,7 +96,9 @@ export function drawObjectiveMarkers(ctx, S) {
         ctx.fillStyle = C['0']; ctx.fillRect(x + 4 * k, y + 10 * k, 8 * k, 2 * k);
         ctx.fillStyle = C.h; ctx.fillRect(x + 4 * k, y + 10 * k, (8 * k * g.progress) / g.need, 2 * k);
       }
+      if (!p.hacked && !active) { ctx.strokeStyle = rgba(C[HC.tech], 0.35 + 0.3 * pulse); ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, c - 3, c - 3); }
     } else if (p.kind === 'chest') {
+      if (!p.open && !S.hl3) { ctx.strokeStyle = rgba(C[HC.loot], 0.35 + 0.3 * pulse); ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, c - 3, c - 3); }
       ctx.fillStyle = C['7']; ctx.fillRect(x + 2 * k, y + (p.open ? 7 : 5) * k, 12 * k, (p.open ? 7 : 9) * k);
       ctx.fillStyle = p.open ? C['6'] : C['8']; ctx.fillRect(x + 2 * k, y + (p.open ? 3 : 5) * k, 12 * k, 3 * k);
       if (!p.open) { ctx.fillStyle = C.b; ctx.fillRect(x + 7 * k, y + 8 * k, 2 * k, 3 * k); }

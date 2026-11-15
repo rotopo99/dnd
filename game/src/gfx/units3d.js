@@ -19,12 +19,18 @@ import { buildAvatarMesh, defaultLook, rngOf } from '../ui/avatar3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
 import { isMeleeWeapon } from '../rules/combat.js';
 import { MeshBuilder, rampRGB } from './mesh.js';
+import { NBONES } from './gl.js';
+import { resample, surfGrid, sweep, headShape, buildHead, buildHair, hairGrad } from './body3d.js';
 import { ramp } from './models.js';
 import { loft, limb, beam, tube, weapon, weaponKind, offhand } from './gear3d.js';
 
-export const BONE = { pelvis: 0, torso: 1, head: 2, uaL: 3, faL: 4, uaR: 5, faR: 6, thL: 7, shL: 8, thR: 9, shR: 10 };
-export const PARENT = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
+// 0..10 body; 11..13 back-hair / ponytail chain, 14..15 cape chain, 16..17 bust, 18..19 side locks, 20..21 butt, 22 skirt hem
+// (11..22 are spring bones, gfx/anim.js: they follow the unit's motion with a lag)
+export const BONE = { pelvis: 0, torso: 1, head: 2, uaL: 3, faL: 4, uaR: 5, faR: 6, thL: 7, shL: 8, thR: 9, shR: 10, hair1: 11, hair2: 12, hair3: 13, cloak1: 14, cloak2: 15, bustL: 16, bustR: 17, sideL: 18, sideR: 19, buttL: 20, buttR: 21, skirt: 22 };
+export const PARENT = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9, 2, 11, 12, 1, 14, 1, 1, 2, 2, 0, 0, 0];
 const glowR = (k) => rampRGB([k, k, k]);
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
 
 const dominant = (rows, y0 = 0, y1 = 99, skip = '') => {
   const n = {};
@@ -111,17 +117,21 @@ export function unitTemplate(u, { simple = false, lod = false } = {}) {
     if ('nop'.includes(col.skin)) col.skin = '9';
   }
   const mb = new MeshBuilder().setBone(0);
-  const pv = new Float32Array(33);
+  const pv = new Float32Array(NBONES * 3);
   const P = (b, x, y, z) => { pv[b * 3] = x; pv[b * 3 + 1] = y; pv[b * 3 + 2] = z; };
   const o = { hero, u, col, wk, melee, simple: simple || lod, lod, mb, P, base, pf, tags: u.tags || [] };
-  let top = 1.2, hover = false;
+  let top = 1.2, hover = false, anime = false;
   if (type === 'beast') top = beast(o);
   else if (type === 'drone') { hover = GFX.hover.some((k) => base.includes(k)); top = drone(o, hover); }
   else if (type === 'mech') top = mech(o);
   else if (type === 'spirit') top = spirit(o);
-  else top = humanoid(o, type === 'robot');
-  const scale = GFX.unit.scale * (u.boss ? GFX.unit.bossScale : 1);
-  T = { key, type, mb, pivots: pv, top, scale, hover, ranged: !!wk && !melee };
+  else {
+    const R = GFX.races[pf.race] || {};
+    anime = type === 'humanoid' && !simple && !R.robot && !R.bone;
+    top = anime ? humanoidAnime(o) : humanoid(o, type === 'robot');
+  }
+  const scale = (anime ? GFX.unit.scaleAnime : GFX.unit.scale) * (u.boss ? GFX.unit.bossScale : 1);
+  T = { key, type, mb, pivots: pv, top, scale, hover, ranged: !!wk && !melee, anime, fem: pf.f, hero, idle: hero ? u.classId || 'x' : pf.faction || 'x', look: o.lookUsed || null };
   tplCache.set(key, T);
   return T;
 }
@@ -246,6 +256,219 @@ function simpleHead(o, C, skinR) {
     for (const s of [-1, 1]) mb.box(s * hr * 0.38 - 0.02, hy + hr * 1.05, hr * 0.86, s * hr * 0.38 + 0.02, hy + hr * 1.2, hr * 1.0, ramp('0'), { ao: 0 });
   }
   return hy + hr * 2;
+}
+
+
+// ---------------------------------------------------------------- anime humanoid (heroes, companions, people)
+const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const HAIR_KEYS = { black: ['0', '1', '2'], brown: ['6', '7', '8'], ginger: ['7', '8', 'e'], blond: ['8', 'a', 'b'], grey: ['2', '3', '4'], white: ['3', '4', '5'], green: ['k', 'j', 'j'], pink: ['o', 'n', 'n'], cyan: ['i', 'h', 'h'] };
+
+function humanoidAnime(o) {
+  const { mb, P, col, hero, u, lod, pf, base } = o;
+  const R = GFX.races[pf.race] || {}, F = pf.f, A = pf.armor, hide = pf.hide, thin = lod || !hero;
+  const w = (R.w || 1) * (F ? 0.93 : 1) * (A === 'heavy' ? 1.05 : 1), lm = (R.limb || 1) * (F ? 0.88 : 1), hm = R.h || 1;
+  let look = hero ? heroLook3d(u).look : enemyLook(base, pf);
+  if (hide.helm) look = { ...look, acc: (look.acc || []).filter((a) => !['hood', 'helmet', 'bandana'].includes(a)) };
+  const av = buildAvatarMesh(look), M = matsOf(av);
+  const cloth = (hero && look.cloth) || col.body;
+  const rCloth = ramp(cloth), rUnder = ramp(col.legs), rDark = ramp('1'), rLeather = ramp('6'), rSkin = M.skin;
+  const tights = F && (A === 'cloth' || A === 'light') ? ramp('1') : rUnder;
+  const plate = ramp(pf.faction === 'tinBrotherhood' || A === 'heavy' ? '4' : '3');
+  const shY = (F ? 1.105 : 1.13) * hm, hipY = (F ? 0.71 : 0.7) * hm, neckY = shY + 0.05 * hm, kn = hipY * 0.52;
+  const sx = (F ? 0.176 : 0.212) * w, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.075 * lm * (F ? 1.04 : 1);
+  const ey = shY - 0.25 * hm, wy = shY - 0.5 * hm;
+  const C = { w, h: hm, t, sx, lx, hipY, shY, neckY, kn, ey, wy, tl, rCloth, rUnder, rDark, rLeather, rSkin, plate, R, F, A, bot: false, bone: false, cloth };
+  P(BONE.pelvis, 0, hipY, 0); P(BONE.torso, 0, hipY + 0.04, 0); P(BONE.head, 0, neckY, 0);
+  P(BONE.uaL, sx, shY, 0); P(BONE.faL, sx, ey, 0); P(BONE.uaR, -sx, shY, 0); P(BONE.faR, -sx, ey, 0);
+  P(BONE.thL, lx, hipY, 0); P(BONE.shL, lx, kn, 0); P(BONE.thR, -lx, hipY, 0); P(BONE.shR, -lx, kn, 0);
+  P(BONE.cloak1, 0, shY - 0.02, -0.12); P(BONE.cloak2, 0, hipY, -0.17);
+  P(BONE.bustL, 0.055 * w, shY - 0.05, 0.03); P(BONE.bustR, -0.055 * w, shY - 0.05, 0.03);
+  P(BONE.buttL, 0.07 * w, hipY + 0.02, -0.06); P(BONE.buttR, -0.07 * w, hipY + 0.02, -0.06); P(BONE.skirt, 0, hipY, 0);
+  // weight hooks: waist, neck, bust, knee / elbow, hem, butt (every vertex built under these bones gets its blend)
+  mb.hooks = {
+    [BONE.torso]: { b2: BONE.pelvis, fn: (p) => {
+      const y = p[1];
+      if (y > shY - 0.01) return [BONE.head, sstep(shY + 0.015, shY + 0.065, y)];
+      if (F && p[2] > 0.0) { const s = p[0] > 0 ? 1 : -1, d = Math.hypot(p[0] - s * 0.052 * w, y - (shY - 0.06), p[2] - 0.06) * 1.0; const k = 1 - sstep(0.035, 0.1, d); if (k > 0.01) return [s > 0 ? BONE.bustL : BONE.bustR, k * 0.92]; }
+      return [BONE.pelvis, sstep(hipY + 0.17, hipY - 0.01, y)];
+    } },
+    [BONE.pelvis]: { b2: BONE.skirt, fn: (p) => {
+      const y = p[1];
+      if (y < hipY - 0.025) return [BONE.skirt, sstep(hipY - 0.02, hipY - 0.33, y) * (F ? 1 : 0.7)];
+      if (F && p[2] < -0.03 && y > hipY - 0.1 && y < hipY + 0.13) { const k = 0.8 * Math.sin(Math.PI * sstep(hipY - 0.1, hipY + 0.13, y)); return [p[0] > 0 ? BONE.buttL : BONE.buttR, k * sstep(0.0, 0.1, -p[2])]; }
+      return 0;
+    } },
+    [BONE.thL]: { b2: BONE.shL, fn: (p) => sstep(kn + 0.07, kn - 0.07, p[1]) },
+    [BONE.thR]: { b2: BONE.shR, fn: (p) => sstep(kn + 0.07, kn - 0.07, p[1]) },
+    [BONE.uaL]: { b2: BONE.faL, fn: (p) => sstep(ey + 0.05, ey - 0.05, p[1]) },
+    [BONE.uaR]: { b2: BONE.faR, fn: (p) => sstep(ey + 0.05, ey - 0.05, p[1]) },
+  };
+  const seg = lod ? 8 : thin ? 11 : 14, N = lod ? 9 : thin ? 12 : 16;
+  // ---- trunk (waist -> chest -> neck), one smooth loft
+  const f = (k) => hipY + k * (shY - hipY);
+  const keys = F ? [
+    { y: f(-0.16), rx: 0.138, rz: 0.098, z: -0.004, ao: 0.3 }, { y: f(0.0), rx: 0.168, rz: 0.118, z: -0.012 }, { y: f(0.22), rx: 0.15, rz: 0.106, z: -0.006 }, { y: f(0.45), rx: 0.104, rz: 0.078 },
+    { y: f(0.62), rx: 0.114, rz: 0.084 }, { y: f(0.76), rx: 0.133, rz: 0.1, z: 0.006 }, { y: f(0.9), rx: 0.139, rz: 0.094 }, { y: f(1.0), rx: 0.128, rz: 0.086 }, { y: f(1.07), rx: 0.07, rz: 0.062 }, { y: f(1.14), rx: 0.044, rz: 0.044 },
+  ] : [
+    { y: f(-0.16), rx: 0.136, rz: 0.096, ao: 0.3 }, { y: f(0.0), rx: 0.148, rz: 0.104 }, { y: f(0.22), rx: 0.142, rz: 0.102 }, { y: f(0.45), rx: 0.13, rz: 0.098 },
+    { y: f(0.62), rx: 0.15, rz: 0.108 }, { y: f(0.78), rx: 0.186, rz: 0.118, z: 0.004 }, { y: f(0.92), rx: 0.2, rz: 0.114 }, { y: f(1.0), rx: 0.196, rz: 0.104 }, { y: f(1.07), rx: 0.105, rz: 0.075 }, { y: f(1.14), rx: 0.054, rz: 0.054 },
+  ];
+  for (const k of keys) { k.rx *= w; }
+  const trunkR = A === 'cloth' || A === 'light' ? rCloth : (A === 'mech' ? ramp('2') : rDark);
+  mb.setBone(BONE.torso).setMat(1);
+  loft(mb, resample(keys, N), trunkR, { seg, rot: Math.PI / seg });
+  mb.setMat(0);
+  mb.cyl(0, shY + 0.0, 0, 0.085 * hm, 0.044, rSkin, { seg: 8, ao: 0 }); // neck shaft (blended torso -> head by the hook)
+  // ---- belt
+  mb.setBone(BONE.pelvis);
+  loft(mb, [{ y: hipY + 0.05, rx: (F ? 0.152 : 0.152) * w, rz: 0.11, ao: 0 }, { y: hipY + 0.105, rx: (F ? 0.148 : 0.152) * w, rz: 0.108 }], rDark, { seg: 12, capTop: false });
+  mb.box(-0.026, hipY + 0.058, 0.104, 0.026, hipY + 0.098, 0.122, ramp('a'), { ao: 0 });
+  // ---- legs: one smooth loft hip -> ankle per side (knee bend by weights), boots on the shin bone
+  for (const s of [1, -1]) {
+    const x = s * lx, big = pf.race === 'cringegon' ? 1.2 : 1;
+    mb.setBone(s > 0 ? BONE.thL : BONE.thR).setMat(F && A === 'cloth' ? 5 : 1);
+    const lk = [
+      { y: 0.06, rx: tl * 0.5, rz: tl * 0.5, x, ao: 0.3 }, { y: 0.2, rx: tl * 0.66, rz: tl * 0.7, x, z: -0.004 }, { y: kn - 0.02, rx: tl * 0.58, rz: tl * 0.6, x, z: 0.004 },
+      { y: kn + 0.04, rx: tl * 0.66, rz: tl * 0.66, x, z: 0.004 }, { y: hipY * 0.75, rx: tl * 0.95, rz: tl * 0.95, x: x * 0.97 }, { y: hipY - 0.02, rx: tl * 1.02 * (F ? 1.06 : 1), rz: tl * 1.0, x: x * 0.93 },
+    ];
+    loft(mb, resample(lk, lod ? 8 : 13), tights, { seg: lod ? 7 : 11, rot: Math.PI / 11 });
+    mb.setMat(0);
+    mb.setBone(s > 0 ? BONE.shL : BONE.shR);
+    // boot: toe -> ankle -> shaft
+    loft(mb, resample([
+      { y: 0.0, rx: tl * 0.62 * big, rz: 0.12 * big, x, z: 0.05, ao: 0.4 }, { y: 0.045, rx: tl * 0.66 * big, rz: 0.108 * big, x, z: 0.046 }, { y: 0.1, rx: tl * 0.58, rz: 0.062, x, z: 0.02 },
+      { y: 0.19, rx: tl * 0.64, rz: tl * 0.66, x, z: 0 }, { y: 0.26, rx: tl * 0.74, rz: tl * 0.76, x, z: 0.002 },
+    ], lod ? 6 : 9), rDark, { seg: lod ? 7 : 10, capTop: false, capBot: true });
+    if (!lod) mb.box(x - tl * 0.6, 0.0, -0.045, x + tl * 0.6, 0.02, 0.0, ramp('0'), { ao: 0 }); // heel
+    if (A === 'medium' || A === 'heavy') { mb.bevelBox(x - tl * 0.9, 0.12, tl * 0.35, x + tl * 0.9, kn + 0.02, tl * 0.95, 0.02, plate, { ao: 0 }); }
+    mb.setBone(s > 0 ? BONE.thL : BONE.thR);
+    if (A === 'medium' || A === 'heavy') mb.bevelBox(x - tl * 1.15, hipY - 0.24, -tl * 1.2, x + tl * 1.15, hipY - 0.02, tl * 1.2, 0.025, plate, { ao: 0 });
+  }
+  // ---- arms: sleeve loft (shoulder -> cuff), bare forearm, hand with fingers
+  const bareArm = (A === 'cloth' || A === 'light') && (F || A === 'light') || false;
+  for (const s of [1, -1]) {
+    const x = s * sx, ua = s > 0 ? BONE.uaL : BONE.uaR, fa = s > 0 ? BONE.faL : BONE.faR, ts = s > 0 && R.w >= 1.2 ? 1.3 : 1, r = t * ts;
+    const sleeve = pf.race === 'cringegon' ? ramp(s > 0 ? 'n' : 'i') : rCloth;
+    mb.setBone(ua).setMat(1);
+    const cuffY = bareArm ? ey - 0.02 : wy + 0.05;
+    loft(mb, resample([
+      { y: cuffY, rx: r * 0.7, rz: r * 0.7, x, ao: 0.2 }, { y: ey - 0.07, rx: r * 0.78, rz: r * 0.8, x }, { y: ey, rx: r * 0.72, rz: r * 0.74, x, z: 0.004 },
+      { y: ey + 0.08, rx: r * 0.8, rz: r * 0.82, x }, { y: shY - 0.06, rx: r * 0.92, rz: r * 0.92, x, z: 0 }, { y: shY + 0.015, rx: r * 0.9, rz: r * 0.86, x: x * 0.97 },
+    ], lod ? 7 : 11), sleeve, { seg: lod ? 7 : 10, capTop: true, rot: Math.PI / 10 });
+    mb.setMat(0);
+    if (bareArm) {
+      mb.setBone(fa);
+      loft(mb, resample([{ y: wy - 0.005, rx: r * 0.5, rz: r * 0.5, x, ao: 0.1 }, { y: ey - 0.07, rx: r * 0.62, rz: r * 0.64, x, z: 0.004 }, { y: ey - 0.01, rx: r * 0.68, rz: r * 0.7, x }], lod ? 5 : 7), rSkin, { seg: lod ? 6 : 8, capTop: false });
+    }
+    mb.setBone(fa);
+    const cuff = bareArm ? sleeve : ramp('1');
+    if (!lod) loft(mb, [{ y: wy + 0.045, rx: r * 0.64, rz: r * 0.64, x, ao: 0 }, { y: wy + 0.07, rx: r * 0.7, rz: r * 0.7, x }], A === 'medium' || A === 'heavy' ? plate : rDark, { seg: 8, capTop: false });
+    // hand: palm + 4 fingers + thumb (stylised, a little bigger than real)
+    const hr = r * (F ? 0.62 : 0.7), gl = A === 'medium' || A === 'heavy' || (A === 'light' && !F) ? rDark : rSkin;
+    loft(mb, [{ y: wy - 0.115, rx: hr * 0.8, rz: hr * 0.5, x, z: 0.006, ao: 0.2 }, { y: wy - 0.06, rx: hr * 1.08, rz: hr * 0.62, x, z: 0.004 }, { y: wy - 0.005, rx: hr * 0.78, rz: hr * 0.58, x }], gl, { seg: 8, capBot: true });
+    if (!thin) {
+      for (let k = 0; k < 4; k++) { const fx = x + (k - 1.5) * hr * 0.52; tube(mb, [fx, wy - 0.108, 0.008], [fx, wy - 0.158 + (k === 3 ? 0.02 : 0), 0.026], hr * 0.2, hr * 0.15, gl, { seg: 5, caps: true }); }
+      tube(mb, [x + s * hr * 0.95, wy - 0.045, 0.012], [x + s * hr * 1.35, wy - 0.108, 0.03], hr * 0.22, hr * 0.17, gl, { seg: 5 });
+    }
+    if (A === 'medium' || A === 'heavy') { mb.setBone(fa); limb(mb, x, 0, ey - 0.03, wy + 0.04, t * 0.95, t * 0.8, plate, { seg: 8, k: 1.05 }); }
+  }
+  // ---- head, face, hair
+  mb.setBone(BONE.head);
+  const y0 = neckY + 0.015 * hm, Hd = headShape({ F, face: look.face || {}, y0, hh: 0.215 * (R.h ? Math.min(1.1, R.h) : 1) });
+  const hat = (look.acc || []).includes('hood') || (look.acc || []).includes('helmet') ? 'full' : null;
+  buildHead(mb, Hd, rSkin, { look, lod: thin, F, ears: !!R.ears, skinTag: pf.race });
+  const hk = HAIR_KEYS[look.hairColor] || HAIR_KEYS.brown, grad = hairGrad(rampRGB(look.hairColor ? (M.hair ? hk : hk) : hk));
+  const bones = { c1: BONE.hair1, c2: BONE.hair2, c3: BONE.hair3, sL: BONE.sideL, sR: BONE.sideR };
+  let style = look.hair === 'bald' && F ? 'bald' : look.hair;
+  const pvH = buildHair(mb, Hd, hat ? 'bald' : style, grad, { F, lod: thin, seed: pf.seed, bones, hat });
+  P(BONE.hair1, ...pvH.c1); P(BONE.hair2, ...pvH.c2); P(BONE.hair3, ...pvH.c3); P(BONE.sideL, ...pvH.sL); P(BONE.sideR, ...pvH.sR);
+  const hc = Hd.y0 + Hd.hh * 0.5;
+  if (R.horns) for (const s of [-1, 1]) mb.cyl(s * 0.075, Hd.y0 + Hd.hh * 0.85, 0, 0.18, 0.03, ramp('5'), { seg: 6, r1: 0, ao: 0 });
+  if (R.antenna) { tube(mb, [0.1, hc + 0.1, -0.03], [0.1, hc + 0.34, -0.03], 0.012, 0.012, ramp('3'), { seg: 4 }); mb.box(0.085, hc + 0.34, -0.045, 0.115, hc + 0.375, -0.015, glowR('h'), { glow: true, ao: 0 }); }
+  let top = Hd.y0 + Hd.hh * (style === 'afro' ? 1.4 : style === 'mohawk' || style === 'spiky' ? 1.55 : 1.08);
+  top = Math.max(top, headGear(o, C, Hd, look, grad, rCloth, plate));
+  // ---- bust (female): two soft domes on the bust bones over the trunk (the hook blends the trunk skin onto them)
+  if (F && !lod) for (const s of [1, -1]) {
+    mb.setBone(s > 0 ? BONE.bustL : BONE.bustR);
+    const b = s * 0.052 * w;
+    loft(mb, [{ y: shY - 0.106, rx: 0.036, rz: 0.03, x: b, z: 0.054, ao: 0.3 }, { y: shY - 0.075, rx: 0.049, rz: 0.044, x: b, z: 0.063 }, { y: shY - 0.045, rx: 0.046, rz: 0.043, x: b, z: 0.06 }, { y: shY - 0.015, rx: 0.026, rz: 0.026, x: b, z: 0.05 }], A === 'medium' || A === 'heavy' ? plate : trunkR, { seg: 10, capTop: true });
+  }
+  dressAnime(o, C);
+  raceBody(o, C);
+  factionBody(o, C);
+  kit(o, C);
+  // hand items
+  mb.setBone(BONE.faR);
+  if (o.wk && !hide.weapon) weapon(mb, -sx, wy - 0.05, o.wk, u.weapon?.twoHanded ? 1.15 : 1);
+  if (pf.off && !hide.pack) offhand(mb.setBone(BONE.faL), pf.off, sx, wy, ey);
+  if (o.wk && hide.weapon) { mb.setBone(BONE.pelvis); beam(mb, [-0.19 * w, hipY - 0.04, -0.06], [-0.2 * w, hipY - 0.2, 0.04], 0.05, 0.06, ramp('2')); }
+  mb.hooks = null;
+  return top;
+}
+
+/** Clothes on top of the trunk by the armour type: coat (cloth: hem swings on the skirt bone), shorts / skirt, light, plates. */
+function dressAnime(o, C) {
+  const { mb, lod, pf } = o, { w, hipY, shY, rCloth, rDark, F, A } = C;
+  if (A === 'cloth') {
+    const long = F ? 0.26 : 0.4, ramps = rCloth;
+    mb.setBone(BONE.torso).setMat(1);
+    // upper part of the coat (shoulders -> hip), then the skirt part under the pelvis bone (hem blends to the skirt bone)
+    const up = F ? [{ y: shY - 0.02, rx: 0.14 * w, rz: 0.097 }, { y: shY - 0.15, rx: 0.145 * w, rz: 0.108 }, { y: hipY + 0.2, rx: 0.113 * w, rz: 0.088 }, { y: hipY + 0.07, rx: 0.158 * w, rz: 0.115 }, { y: hipY, rx: 0.178 * w, rz: 0.13 }]
+      : [{ y: shY - 0.02, rx: 0.205 * w, rz: 0.11 }, { y: shY - 0.16, rx: 0.2 * w, rz: 0.12 }, { y: hipY + 0.2, rx: 0.142 * w, rz: 0.108 }, { y: hipY + 0.05, rx: 0.16 * w, rz: 0.115 }, { y: hipY, rx: 0.17 * w, rz: 0.125 }];
+    loft(mb, resample(up, lod ? 7 : 11), ramps, { seg: lod ? 9 : 14, capTop: false, capBot: false, rot: Math.PI / 14, ao: 0 });
+    mb.setBone(BONE.pelvis);
+    const lo = [{ y: hipY - long, rx: (F ? 0.27 : 0.235) * w, rz: F ? 0.22 : 0.17, ao: 0.4 }, { y: hipY - long * 0.55, rx: (F ? 0.235 : 0.2) * w, rz: F ? 0.19 : 0.15 }, { y: hipY - 0.1, rx: (F ? 0.205 : 0.185) * w, rz: F ? 0.16 : 0.14 }, { y: hipY, rx: (F ? 0.178 : 0.17) * w, rz: F ? 0.13 : 0.125 }];
+    loft(mb, resample(lo, lod ? 6 : 9), ramps, { seg: lod ? 9 : 14, capTop: false, rot: Math.PI / 14 });
+    mb.setMat(0);
+    mb.setBone(BONE.torso);
+    if (!lod) { loft(mb, [{ y: shY - 0.035, rx: 0.115 * w, rz: 0.088 }, { y: shY + 0.03, rx: 0.098 * w, rz: 0.08 }], rDark, { seg: 12, capTop: false }); } // collar
+    return;
+  }
+  if (F && (A === 'light')) { // short shorts over the leggings
+    mb.setBone(BONE.pelvis).setMat(1);
+    loft(mb, resample([{ y: hipY - 0.12, rx: 0.184 * w, rz: 0.13, ao: 0.3 }, { y: hipY - 0.04, rx: 0.19 * w, rz: 0.135 }, { y: hipY + 0.06, rx: 0.165 * w, rz: 0.117 }], 6), C.rUnder, { seg: 14, capTop: false });
+    mb.setMat(0);
+  }
+  dress(o, C);
+}
+
+/** Hoods, helmets, bandanas, goggles, respirators on the head bone (acc of the look); heavy armour gets a helm. Returns top. */
+function headGear(o, C, Hd, look, grad, rCloth, plate) {
+  const { mb, lod, pf } = o, acc = look.acc || [], TAU = Math.PI * 2, hide = pf.hide;
+  const heavyHelm = pf.armor === 'heavy' && !hide.helm && o.hero;
+  let top = 0;
+  const shell = (back, front, th, ramp) => surfGrid(mb, (u, v) => {
+    const ang = TAU * u, f = Math.sin(ang), tb = f > 0 ? back + (front - back) * f : back, t = tb + v * (1 - tb);
+    return add(Hd.S(ang, t), mul(Hd.out(ang, t), th));
+  }, lod ? 14 : 22, lod ? 5 : 7, () => ramp, { closed: true, center: (p) => [0, p[1], -0.005] });
+  if (acc.includes('helmet') || heavyHelm) {
+    shell(0.3, 0.7, 0.02, plate);
+    mb.box(-0.012, Hd.y0 + Hd.hh * 0.6, 0.083, 0.012, Hd.y0 + Hd.hh * 1.0, 0.11, ramp('5'), { ao: 0 }); // brow ridge
+    if (heavyHelm) mb.box(-0.05, Hd.y0 + Hd.hh * 0.44, 0.088, 0.05, Hd.y0 + Hd.hh * 0.52, 0.112, rampRGB(['h', 'h', 'h']), { glow: true, ao: 0 }); // visor slit
+    top = Hd.y0 + Hd.hh * 1.12;
+  }
+  if (acc.includes('hood')) {
+    shell(0.12, 0.62, 0.028, rCloth);
+    sweep(mb, [[0, Hd.y0 + Hd.hh * 0.3, -0.1], [0, Hd.y0 - 0.02, -0.14], [0, Hd.y0 - 0.12, -0.15]], (s) => 0.2 - 0.06 * s, () => 0.03, () => rCloth, { seg: 6, side: () => [1, 0, 0] });
+    top = Math.max(top, Hd.y0 + Hd.hh * 1.12);
+  }
+  if (acc.includes('bandana')) {
+    const r = rampRGB(['d', 'c', 'e']);
+    surfGrid(mb, (u, v) => { const a = TAU * u, t = 0.74 + v * 0.1; return add(Hd.S(a, t), mul(Hd.out(a, t), 0.014)); }, lod ? 12 : 20, 2, () => r, { closed: true, center: (p) => [0, p[1], -0.005] });
+    sweep(mb, [[0.0, Hd.y0 + Hd.hh * 0.8, -0.1], [0.03, Hd.y0 + Hd.hh * 0.72, -0.15], [0.05, Hd.y0 + Hd.hh * 0.6, -0.17]], (s) => 0.04 * (1 - s * 0.6), () => 0.012, () => r, { seg: 4, side: () => [1, 0, 0] });
+  }
+  if (acc.includes('goggles') && !lod) {
+    const g = rampRGB(['0', '1', '2']);
+    surfGrid(mb, (u, v) => { const a = TAU * u, t = 0.5 + v * 0.1; return add(Hd.S(a, t), mul(Hd.out(a, t), 0.012)); }, 20, 2, () => g, { closed: true, center: (p) => [0, p[1], -0.005] });
+    for (const s of [-1, 1]) mb.cyl(s * 0.04, Hd.y0 + Hd.hh * 0.5, 0.082, 0.018, 0.027, rampRGB(['h', 'h', 'h']), { axis: 'z', seg: 8, glow: true, ao: 0 });
+  }
+  if (acc.includes('respirator') || acc.includes('gasmask')) {
+    const g = rampRGB(['1', '2', '3']);
+    surfGrid(mb, (u, v) => { const a = Math.PI / 2 - 1.15 * (2 * u - 1), t = 0.02 + v * 0.3; return add(Hd.S(a, t), mul(Hd.out(a, t), 0.02)); }, lod ? 8 : 12, 5, () => g, { center: (p) => [0, p[1], -0.005] });
+    mb.cyl(0, Hd.y0 + Hd.hh * 0.12, 0.1, 0.045, 0.026, rampRGB(['0', '1', '2']), { axis: 'z', seg: 8, ao: 0 });
+    if (acc.includes('gasmask')) for (const s of [-1, 1]) mb.cyl(s * 0.04, Hd.y0 + Hd.hh * 0.4, 0.09, 0.022, 0.03, rampRGB(['h', 'i', 'h']), { axis: 'z', seg: 8, glow: true, ao: 0 });
+  }
+  return top;
 }
 
 // ---------------------------------------------------------------- armour by type (torso, shoulders, hips, pouches)
