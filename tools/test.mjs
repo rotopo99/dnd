@@ -4535,22 +4535,24 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
   const u3 = await import('../game/src/gfx/units3d.js');
   const an = await import('../game/src/gfx/anim.js');
   const { ENEMIES, PLAYABLE_RACES } = await import('../game/src/data/index.js');
-  test('gfx 3D: unit templates by type (enemies + hero races), <= 2500 triangles per enemy (6000 heroes / bosses), LOD smaller, 11 bones, finite poses', () => {
+  test('gfx 3D: unit templates by type (enemies + hero races), <= 2500 triangles per enemy (6000 heroes / bosses), LOD smaller, 23 bones, finite poses, anime budget 8000 heroes / 4000 enemies', () => {
     const types = {};
     const list = Object.values(ENEMIES).map((e) => ({ kind: 'enemy', enemyId: e.id, tags: e.tags || [], boss: !!e.boss, weapon: e.weapon || null }));
     for (const r of [...PLAYABLE_RACES.map((x) => x.id || x), 'cyber-spirit']) list.push({ kind: 'hero', raceId: r, classId: 'zabivnoy', name: 'T', weapon: { melee: true } });
-    const out = new Float32Array(144);
+    const out = new Float32Array(12 * 23);
     for (const u of list) {
       const T = u3.unitTemplate(u, { simple: true });
       types[T.type] = (types[T.type] || 0) + 1;
       assert.ok(T.mb.i.length / 3 <= (u.kind === 'hero' || u.boss ? 6000 : 2500), `${u.enemyId || u.raceId}: ${T.mb.i.length / 3} triangles`);
       assert.ok(u3.unitTemplate(u, { simple: true, lod: true }).mb.i.length <= T.mb.i.length, 'lod is not bigger');
-      assert.equal(T.mb.b.length, T.mb.n);
-      assert.ok(Math.max(...T.mb.b) <= 10);
+      assert.equal(T.mb.b.length, T.mb.n * 3);
+      assert.ok(Math.max(...T.mb.b.filter((_, i) => i % 3 < 2)) <= 22);
+      const A = u3.unitTemplate(u);
+      assert.ok(A.mb.i.length / 3 <= (u.kind === 'hero' ? 8000 : u.boss ? 8000 : 4500), `anime ${u.enemyId || u.raceId}: ${A.mb.i.length / 3} triangles`);
       for (const [act, dead] of [[null, false], ['swing', false], ['cast', false], [null, true]]) {
         const st = { act, t0: 0, dur: 0.6, hitT0: 0.1, deathT0: 0, downT0: -9, walk: 0.4, seed: 0.3, aim: null };
         an.poseBones(T, st, { dead, down: false }, 0.3, { x: 1, y: 0, z: 1, yaw: 0.5 }, out, 0, { walking: !dead, reduceMotion: false });
-        assert.ok(out.slice(0, 132).every(Number.isFinite));
+        assert.ok(out.slice(0, 276).every(Number.isFinite));
       }
     }
     for (const k of ['humanoid', 'robot', 'beast', 'drone', 'mech', 'spirit']) assert.ok(types[k] > 0, `no ${k}: ${JSON.stringify(types)}`);
