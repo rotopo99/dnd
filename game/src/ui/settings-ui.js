@@ -66,6 +66,9 @@ export function openSettings(game) {
             label: `${t('settings.cones')}: ${t(`settings.cones.${p.cones === 'always' ? 'always' : 'stealth'}`)}`, keep: true,
             run: () => setGfxPref('cones', p.cones === 'always' ? 'stealth' : 'always'),
           },
+          { label: `${t('settings.walls')}: ${t(`settings.walls.${p.walls || 'cut'}`)}`, keep: true, run: () => { const L = ['cut', 'fade', 'off']; setGfxPref('walls', L[(L.indexOf(p.walls || 'cut') + 1) % 3]); } },
+          { label: `${t('settings.xray')}: ${t(`settings.xray.${p.xray === 'toggle' ? 'toggle' : 'hold'}`)}`, keep: true, run: () => setGfxPref('xray', p.xray === 'toggle' ? 'hold' : 'toggle') },
+          { label: `${t('settings.metric')}: ${t(`settings.metric.${p.metric === 'off' ? 'off' : 'on'}`)}`, keep: true, run: () => setGfxPref('metric', p.metric === 'off' ? 'on' : 'off') },
           {
             label: `${t('settings.theme')}: ${themePrefs().mode === 'auto' ? t('settings.theme.auto') : t(`theme.${themePrefs().id}`)}`, keep: true,
             run: () => { // авто → steel → concrete → … → авто

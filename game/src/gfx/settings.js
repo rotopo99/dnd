@@ -3,6 +3,7 @@
 // automation — navigator.webdriver — new ones pass ?gfx=3d).
 import { GFX } from '../data/gfx.js';
 import { hasWebGL2, softwareGL } from './gl.js';
+import { RULES } from '../data/combat.js';
 
 let prefs = null;
 export function gfxPrefs() {
@@ -16,6 +17,9 @@ export function setGfxPref(k, v) {
   if (k === 'mode') session = null; // an explicit choice beats ?gfx= for the rest of the session
   try { globalThis.localStorage?.setItem(GFX.storageKey, JSON.stringify(prefs)); } catch { /* private mode */ }
 }
+
+/** metric-combat.md: stage of metric rules for new battles (settings «Бой: по клеткам» -> 0). */
+export const combatMetric = () => (gfxPrefs().metric === 'off' ? 0 : RULES.metric);
 
 let session;
 const urlMode = () => {

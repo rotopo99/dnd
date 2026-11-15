@@ -13,6 +13,7 @@ import { CYBER_TEXT } from './cyber.js';
 import { CARDS_TEXT } from './cards.js';
 import { NET_TEXT } from './net.js';
 import { GFX_TEXT } from './gfx.js';
+import { RUN_TEXT } from './run.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -812,5 +813,6 @@ Object.assign(ru, CYBER_TEXT); // cyberspace-v2.md + expeditions.md
 Object.assign(ru, CARDS_TEXT); // cards-casino.md
 Object.assign(ru, NET_TEXT); // multiplayer.md
 Object.assign(ru, GFX_TEXT); // 3d.md
+Object.assign(ru, RUN_TEXT); // roguelike.md
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

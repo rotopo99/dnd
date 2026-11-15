@@ -80,6 +80,14 @@ export const COMBAT = {
 // §5 pace of enemy turns (battle.js)
 export const PACE = { aiStep: 0.30, turnGap: 0.15, moveStep: 0.08, walk: 12, fastMul: 2, skipMul: 30, storageKey: 'dnd.fastEnemies' };
 
+// metric-combat.md: stage of the move to metres (0 — classic cells; 1 — positions / movement / path in metres, ranges,
+// LOS and AI still by the nearest cell). The settings toggle «Бой: по метрам / по клеткам» picks 0 for one player.
+export const RULES = { metric: 1 };
+// 1 cell = 1.5 m (speed 6 -> 9 m). Nav grid 0.5 m (3x3 per cell), unit circles r (boss — large), the rest of a budget
+// under `burn` m is lost, footstep sound every `stepM` m, segments are traced every `sample` m, a click within `snap`
+// nav cells of a wall snaps to the nearest free point.
+export const METRIC = { cell: 1.5, nav: 0.5, r: { small: 0.3, normal: 0.4, large: 0.7 }, burn: 0.25, stepM: 0.8, sample: 0.1, snap: 2 };
+
 // §7 arenas by biome: ranges [min, max] of objects; elev — hills (3×3 h1) / platforms (2×2 h2 + h1 ring)
 export const BIOMES = {
   wasteland: { crate: [5, 7], concrete: [1, 2], barrel: [0, 1], hills: [0, 1], puddles: [0, 1] },

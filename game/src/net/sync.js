@@ -17,7 +17,7 @@ export function canonBattle(b) {
   const parts = [b.round, b.turnIndex, b.winner || '', b.rng.getState(), t ? `${t.unitId},${t.move},${t.actions},${t.bonus}` : '-'];
   for (const u of b.units) {
     const st = (u.statuses || []).map((s) => `${s.id}:${s.turns ?? ''}`).join('.');
-    parts.push(`${u.id},${u.x},${u.y},${u.hp},${u.mrl},${u.enr ?? u.energy ?? ''},${+!!u.dead}${+!!u.down}${+!!u.removed},${u.shield?.value || 0},${st}`);
+    parts.push(`${u.id},${u.x},${u.y},${u.px ?? ''},${u.py ?? ''},${u.hp},${u.mrl},${u.enr ?? u.energy ?? ''},${+!!u.dead}${+!!u.down}${+!!u.removed},${u.shield?.value || 0},${st}`);
   }
   parts.push(`${b.zones?.length || 0},${b.traps?.length || 0},${b.drops?.length || 0},${b.surfaces?.size ?? ''}`);
   return parts.join('|');
@@ -26,7 +26,7 @@ export function canonBattle(b) {
 export const battleHash = (b) => fnv32(canonBattle(b));
 
 // Keys that are not state (functions, shared game data, caches) — kept from the local battle on restore.
-const SKIP = new Set(['data', 'rng', 'onEvent', 'byId', 'statusCache', 'reachCache', 'log']);
+const SKIP = new Set(['data', 'rng', 'onEvent', 'byId', 'statusCache', 'reachCache', 'navCache', 'log']);
 
 /**
  * Graph → JSON-safe value. Keeps shared references and cycles ({$r}), Map / Set, typed arrays, ±Infinity / NaN.
@@ -88,5 +88,6 @@ export function restoreBattle(b, json) {
   b.rng.setState(rng);
   b.statusCache = {};
   b.reachCache = null;
+  b.navCache = null;
   return b;
 }

@@ -76,6 +76,8 @@
 //     corrosion — the bigger penalty).
 
 import { createRng } from './rng.js';
+import { CELL_M, cm, posM, cellCenterM, navPath, pathCellsM, subPolyline, pullCells, budgetM } from './metric.js';
+import { METRIC } from '../data/combat.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
 import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './character.js';
 import { UNARMED } from './equipment.js';
@@ -446,19 +448,22 @@ function addUnit(b, u, pos) {
   if (!free) throw new Error(`No free tile for ${u.id}`);
   if (b.byId[u.id]) u.id = `${u.id}_${b.units.length + 1}`;
   u.x = free.x; u.y = free.y;
+  if (b.metric) { const c = cellCenterM(u.x, u.y); u.px = c.px; u.py = c.py; } // metric-combat.md: metres
   b.occ[free.y * b.grid.w + free.x] = b.units.length + 1;
   b.units.push(u);
   b.byId[u.id] = u;
   b.occVersion++;
 }
 
-function setPos(b, u, x, y) {
+/** pm — exact point in metres (metric moves); without it a metric battle puts the unit on the cell centre. */
+function setPos(b, u, x, y, pm) {
   const w = b.grid.w;
   const marker = b.occ[u.y * w + u.x] || b.units.indexOf(u) + 1;
   b.occ[u.y * w + u.x] = 0;
   u.x = x; u.y = y;
   b.occ[y * w + x] = marker;
   b.occVersion++;
+  if (b.metric) { const c = pm || cellCenterM(x, y); u.px = c.px; u.py = c.py; }
 }
 
 function clearPos(b, u) {
@@ -488,7 +493,7 @@ export const unitAt = (b, x, y) => {
  * The list defines the side ('heroes' / 'enemies'). Units are cloned: callers' objects are not mutated.
  * Start points 'P' / 'E' / 'A' are taken row by row, left to right.
  */
-export function createBattle({ map, heroes = [], enemies, allies, rivals = null, partyLose = false, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null } = {}) {
+export function createBattle({ map, heroes = [], enemies, allies, rivals = null, partyLose = false, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null, metric = 0 } = {}) {
   const D = normalizeData(data);
   const enemyList = enemies || (map && map.enemies) || [];
   const mapDef = map || makeArena({ heroes: heroes.length, enemies: enemyList.length });
@@ -500,6 +505,7 @@ export function createBattle({ map, heroes = [], enemies, allies, rivals = null,
     summonCount: 0, reactionDepth: 0, statusCache: {}, autoReactions, reachCache: null,
     traps: [], trapCount: 0, drops: [], zones: [], zoneCount: 0,
     partyLose: !!partyLose, // skirmishes.md: every party member down — defeat, even with NPC allies / rivals standing
+    metric: metric ? +metric : 0, // metric-combat.md stage (0 — cells): positions / movement in metres (rules/metric.js)
   };
   initSurfaces(b);
   // skirmishes.md: an element may be { enemy: id, hpPct?, mrlPct? } (survivors of a fight we waited out)
@@ -1514,10 +1520,16 @@ function walk(b, u, path, noProvoke) {
   let seg = [];
   let steps = 0;
   const from = { x: u.x, y: u.y };
+  let fromM = b.metric ? posM(u) : null;
   const flush = () => {
-    if (seg.length) emit(b, { type: 'move', actor: u.id, from: { ...from }, path: seg, to: { x: u.x, y: u.y } });
+    if (seg.length) {
+      const e = { type: 'move', actor: u.id, from: { ...from }, path: seg, to: { x: u.x, y: u.y } };
+      if (fromM) { e.pts = pullCells(b, u, fromM, seg); e.len = cm(polyLenM(e.pts)); }
+      emit(b, e);
+    }
     seg = [];
     from.x = u.x; from.y = u.y;
+    if (fromM) fromM = posM(u);
   };
   const sx = u.x, sy = u.y;
   for (const step of path) {
@@ -1546,6 +1558,70 @@ function walk(b, u, path, noProvoke) {
   flush();
   return pathCost(b.grid, sx, sy, path, steps); // movement spent (rubble / steps up cost more)
 }
+
+const polyLenM = (pts) => { let l = 0; for (let k = 1; k < pts.length; k++) l += Math.hypot(pts[k].px - pts[k - 1].px, pts[k].py - pts[k - 1].py); return l; };
+
+/** Remaining budget under METRIC.burn metres is lost (metric-combat.md); cell budget kept on whole centimetres. */
+function burnMove(b, t) {
+  if (!b.metric) return;
+  t.move = Math.round(t.move * CELL_M * 100) / (CELL_M * 100);
+  if (t.move * CELL_M < METRIC.burn - 1e-9) t.move = 0;
+}
+
+/**
+ * Metric walk (stage 1) along navPath points: the cells crossed keep the old rules (opportunity attacks on leaving
+ * an adjacent cell, hazards, traps, drops); a cell held by another unit is passed through without entering it.
+ * Returns the cost spent in metres (part of the path when the walk stopped).
+ */
+function walkM(b, u, np, noProvoke) {
+  const pts = np.pts, cells = pathCellsM(b, pts);
+  let s0 = 0, sAt = 0, stopped = false;
+  const from = { x: u.x, y: u.y };
+  let seg = [];
+  const flush = () => {
+    if (sAt > s0 + 1e-6) {
+      const sp = subPolyline(pts, s0, sAt);
+      emit(b, { type: 'move', actor: u.id, from: { ...from }, path: seg.length ? seg : [{ x: u.x, y: u.y }], to: { x: u.x, y: u.y }, pts: sp, len: cm(polyLenM(sp)) });
+    }
+    seg = [];
+    s0 = sAt;
+    from.x = u.x; from.y = u.y;
+  };
+  for (const step of cells) {
+    if (!isStanding(u) || b.winner) { stopped = true; break; }
+    const holder = unitAt(b, step.x, step.y);
+    if (holder && holder !== u) continue; // brushing past a corner of an occupied cell
+    if (!noProvoke && !b.reactionDepth) {
+      let provokers = null;
+      for (const r of b.units) {
+        if (!isStanding(r) || r.team === u.team || r.reactionUsed) continue;
+        if (chebyshev(r.x, r.y, u.x, u.y) !== 1 || chebyshev(r.x, r.y, step.x, step.y) <= 1) continue;
+        (provokers || (provokers = [])).push(r);
+      }
+      if (provokers) {
+        sAt = Math.max(s0, step.s - 0.05);
+        const pm = subPolyline(pts, 0, sAt).pop() || posM(u);
+        setPos(b, u, u.x, u.y, inCell(pm, u) ? pm : null);
+        flush();
+        for (const r of provokers) { if (isStanding(u)) opportunity(b, r, u); }
+        if (!isStanding(u) || b.winner) { stopped = true; break; }
+      }
+    }
+    setPos(b, u, step.x, step.y, { px: step.px, py: step.py });
+    sAt = step.s;
+    seg.push({ x: step.x, y: step.y });
+    if (b.surfaces.size ? cellAt(b, u.x, u.y) : tileAt(b.grid, u.x, u.y) === T_HAZARD) { flush(); hazardEnter(b, u); }
+    if (b.traps.length && trapAt(b, u.x, u.y, u)) { flush(); trapCheck(b, u); }
+    if (b.drops.length) pickUpCheck(b, u);
+  }
+  if (!stopped && isStanding(u) && !b.winner && u.x === np.to.x && u.y === np.to.y) {
+    setPos(b, u, u.x, u.y, { px: np.to.px, py: np.to.py });
+    sAt = np.len;
+  }
+  flush();
+  return np.len > 0 ? cm(np.cost * Math.min(1, sAt / np.len)) : 0;
+}
+const inCell = (pm, u) => Math.floor(pm.px / CELL_M) === u.x && Math.floor(pm.py / CELL_M) === u.y;
 
 function opportunity(b, r, mover) {
   if (r.reactionUsed || !isStanding(r) || skipsTurn(b, r)) return;
@@ -2607,6 +2683,19 @@ export function perform(b, action) {
   const t = b.turn;
   switch (action.type) {
     case 'move': {
+      if (b.metric && action.to && action.to.px != null) { // metric-combat.md stage 1: a point in metres
+        const np = navPath(b, u, action.to.px, action.to.py, { snap: 0 });
+        if (!np) return fail(b, start, 'unreachable');
+        if (np.cost > budgetM(b) + 1e-6) return fail(b, start, 'unreachable');
+        if (!approachOk(b, u, np.to.x, np.to.y)) return fail(b, start, 'fear');
+        if (np.len <= 0) return fail(b, start, 'unreachable');
+        const spent = walkM(b, u, np, t.disengaged);
+        t.move = Math.max(0, t.move - spent / CELL_M);
+        burnMove(b, t);
+        if (spent > 0) t.moved = true;
+        checkVictory(b);
+        break;
+      }
       if (!action.to || !inBounds(b.grid, action.to.x, action.to.y)) return fail(b, start, 'noTarget');
       const reach = getReachable(b, uid);
       const idx = action.to.y * b.grid.w + action.to.x;
@@ -2614,6 +2703,7 @@ export function perform(b, action) {
       if (!approachOk(b, u, action.to.x, action.to.y)) return fail(b, start, 'fear');
       const steps = walk(b, u, movePath(b, u, action.to), t.disengaged);
       t.move = Math.max(0, t.move - steps);
+      burnMove(b, t);
       if (steps > 0) t.moved = true;
       checkVictory(b);
       break;

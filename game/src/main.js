@@ -1,6 +1,6 @@
 import { createInput } from './input.js';
 import { menuScene } from './scenes/menu.js';
-import { unlockAudioOnFirstGesture } from './audio/sfx.js';
+import { unlockAudioOnFirstGesture, play } from './audio/sfx.js';
 import { playTrack } from './audio/music.js';
 import { romanceInterrupt } from './scenes/romance-scene.js';
 import { exodusMark } from './world/exodus.js';
@@ -48,8 +48,8 @@ const game = {
     scene.resume?.(this);
     syncMusic(this);
   },
-  openModal(spec) { this.modals.push(spec); },
-  closeModal() { this.modals.pop(); },
+  openModal(spec) { this.modals.push(spec); play('open'); },
+  closeModal() { if (this.modals.pop()) play('close'); },
   /** Toast: identical ones are merged («×N»), at most 3 are kept (oldest dropped). */
   toast(text, color = 'h') {
     const same = this.toasts.find((x) => x.text === text);

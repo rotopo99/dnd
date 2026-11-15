@@ -3,7 +3,7 @@
 export const GFX = {
   storageKey: 'dnd.gfx',
   // defaults of the settings window (ui/settings-ui.js); brightness 0.8–1.2
-  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always', physics: 'normal' },
+  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always', physics: 'normal', walls: 'cut', xray: 'hold', metric: 'on' },
   // shadow map of 1 directional light (§3): texture size by quality; «Снизить эффекты» = off
   shadow: { size: { high: 1024, low: 512 }, levels: ['high', 'low', 'off'], strength: 0.8, bias: 0.0025, pad: 1.5, dir: [-0.55, 1.5, 0.3] },
   brightness: { min: 0.8, max: 1.2, step: 0.1 },
@@ -11,6 +11,10 @@ export const GFX = {
   lostTimeout: 2, // s without `webglcontextrestored` -> 2D
   idleFps: 15, // render on demand: nothing moves -> redraw at 15 fps
   chunk: 8, // static world chunks 8x8 cells
+  // metric-combat.md «Обзор»: walls on the camera side of the focus (within ±cutDeg of camera->focus) sink to cutH over
+  // fade s; obstacles in front of the active unit / cursor / target are dithered to seeAlpha within seeR m (screen);
+  // X-ray: every obstacle at xrayAlpha. Path line: dash / gap m, width m; budget ring width m.
+  view: { cutH: 0.6, cutDeg: 70, fade: 0.2, seeAlpha: 0.25, seeR: 0.95, xrayAlpha: 0.2, dash: 0.22, gap: 0.14, lineW: 0.07, ringW: 0.05 },
   hlAlpha: 1.7, // 2D highlight fills are made for flat tiles: x alpha on the shaded 3D floor
 
   geo: {

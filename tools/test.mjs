@@ -4585,5 +4585,196 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
   });
 }
 
+console.log('metric movement (metric-combat.md stage 1)');
+{
+  const M = await import('../game/src/rules/metric.js');
+  const { METRIC } = await import('../game/src/data/combat.js');
+  const OPEN = { id: 'mo', grid: ['##########', '#P.......#', '#........#', '#........#', '#.......E#', '##########'], win: 'killAll' };
+  const mk = (map = OPEN, metric = 1) => {
+    const b = createBattle({ map, heroes: [hero()], enemies: ['thug'], data: DATA, seed: 7, autoReactions: false, metric });
+    const H = b.units.find((u) => u.team === 'heroes');
+    forceTurn(b, H);
+    return { b, H };
+  };
+  test('metric: cell adapter (cellOf / posM / dispPos)', () => {
+    assert.deepEqual(M.cellOf(2.99, 1.5), { x: 1, y: 1 });
+    assert.deepEqual(M.cellCenterM(3, 2), { px: 5.25, py: 3.75 });
+    const u = { x: 2, y: 1, px: 3.1, py: 2.9 };
+    assert.deepEqual(M.posM(u), { px: 3.1, py: 2.9 });
+    u.x = 5; // old cell code moved the unit: px is stale -> cell centre
+    assert.deepEqual(M.posM(u), { px: 8.25, py: 2.25 });
+    assert.deepEqual(M.dispPos({ x: 1, y: 1 }), { x: 1, y: 1 });
+  });
+  test('metric: units get px/py, budget = speed x 1.5 m', () => {
+    const { b, H } = mk();
+    assert.deepEqual([H.px, H.py], [2.25, 2.25]);
+    assert.equal(M.budgetM(b), 6 * METRIC.cell);
+  });
+  test('metric: straight move of 6.0 m leaves 3.0 m of 9.0, unit ends at the point', () => {
+    const { b, H } = mk();
+    const r = perform(b, { type: 'move', to: { px: 8.25, py: 2.25 } });
+    assert.ok(r.ok, r.error);
+    assert.deepEqual([H.px, H.py, H.x, H.y], [8.25, 2.25, 5, 1]);
+    assert.ok(Math.abs(M.budgetM(b) - 3) < 0.011, `left ${M.budgetM(b)}`);
+    const mv = events(b, 'move').pop();
+    assert.ok(mv.pts && mv.pts.length >= 2 && Math.abs(mv.len - 6) < 0.02);
+  });
+  test('metric: over-budget point is refused, budget unchanged', () => {
+    const { b } = mk();
+    assert.equal(perform(b, { type: 'move', to: { px: 12.2, py: 6.3 } }).ok, false);
+    assert.equal(M.budgetM(b), 9);
+  });
+  test('metric: path round a wall is string-pulled (no staircase) and costs its length', () => {
+    const WALL = { id: 'mw', grid: ['#########', '#P..#...#', '#...#...#', '#.......#', '#......E#', '#########'], win: 'killAll' };
+    const { b, H } = mk(WALL);
+    const np = M.navPath(b, H, 8.25, 2.25);
+    assert.ok(np, 'path exists');
+    assert.ok(np.pts.length <= 5, `pulled to few corners: ${np.pts.length}`);
+    assert.ok(np.len > 6 + 0.1 && np.len < 9.6, `len ${np.len}`);
+    assert.ok(Math.abs(np.cost - np.len) < 0.05); // open floor: cost = length
+    for (const p of np.pts) assert.ok(!(p.px >= 6 && p.px < 7.5 && p.py < 4.5), 'path through the wall');
+  });
+  test('metric: diagonals are euclidean (dearer than Chebyshev), rubble doubles', () => {
+    const { b, H } = mk();
+    const np = M.navPath(b, H, 2.25 + 3, 2.25 + 3);
+    assert.ok(Math.abs(np.len - 3 * Math.SQRT2) < 0.02);
+    const RUB = { id: 'mr', grid: ['#######', '#P,,,.#', '#....E#', '#######'], win: 'killAll' };
+    const R = mk(RUB);
+    const nr = M.navPath(R.b, R.H, 2.25 + 4.5, 2.25);
+    assert.ok(nr.cost > nr.len + 1, `rubble cost ${nr.cost} len ${nr.len}`);
+  });
+  test('metric: end point in an occupied cell / inside a unit is refused', () => {
+    const { b, H } = mk();
+    const E = b.units.find((u) => u.team === 'enemies');
+    assert.equal(M.navPath(b, H, E.px + 0.3, E.py, { snap: 0 }), null);
+  });
+  test('metric: burn — leftover under 0.25 m is lost', () => {
+    const { b } = mk();
+    perform(b, { type: 'move', to: { px: 2.25 + 8.8, py: 2.25 } });
+    assert.equal(b.turn.move, 0);
+  });
+  test('metric: cell move (AI / old command) still works, gets a smoothed pts path', () => {
+    const { b, H } = mk();
+    const r = perform(b, { type: 'move', to: { x: 4, y: 3 } });
+    assert.ok(r.ok);
+    assert.deepEqual([H.x, H.y, H.px, H.py], [4, 3, 6.75, 5.25]);
+    const mv = events(b, 'move').pop();
+    assert.ok(mv.pts.length <= 3, `smoothed: ${mv.pts.length}`);
+  });
+  test('metric 0: classic battles unchanged (no px, cell budget)', () => {
+    const { b, H } = mk(OPEN, 0);
+    assert.equal(H.px, undefined);
+    assert.equal(perform(b, { type: 'move', to: { px: 8.25, py: 2.25 } }).ok, false);
+    assert.ok(perform(b, { type: 'move', to: { x: 4, y: 1 } }).ok);
+    assert.equal(b.turn.move, 3);
+  });
+  test('metric: AI plays a whole metric battle without errors', () => {
+    const b = createBattle({ map: makeArena({ heroes: 2, enemies: 3 }), heroes: [hero(), hero()], enemies: ['thug', 'thug', 'thug'], data: DATA, seed: 5, metric: 1 });
+    for (let i = 0; i < 400 && !b.winner && b.turn; i++) {
+      const u = b.byId[b.turn.unitId];
+      const a = chooseAction(b, u.id);
+      if (!a || a.type === 'endTurn' || !perform(b, a).ok) endTurn(b);
+      for (const x of b.units) if (!x.dead && !x.removed && x.px != null) assert.deepEqual(M.cellOf(M.posM(x).px, M.posM(x).py), { x: x.x, y: x.y });
+    }
+    assert.ok(b.winner, 'battle ends');
+  });
+}
+
+
+// ---------------------------------------------------------------- roguelike «Забег» (docs/specs/roguelike.md)
+{
+  const R = await import('../game/src/world/run.js');
+  const M = await import('../game/src/world/meta.js');
+  const RL = await import('../game/src/data/roguelike.js');
+  const { TALENTS, talentAllowed } = await import('../game/src/data/talents.js');
+  const party = [{ tpl: 't-zabivnoy' }, { tpl: 't-ranger' }, { tpl: 't-ecolog' }];
+  test('run: act graphs are valid for many seeds (links, no crossing, shop+elite on every path, rest before boss)', () => {
+    for (let s = 0; s < 40; s++) for (let a = 0; a < RL.ACTS.length; a++) {
+      const g = R.genGraph(`T${s}`, a, s % 11);
+      assert.deepEqual(R.graphProblems(g), [], `seed T${s} act ${a}`);
+      assert.equal(g.layers.length, RL.ACTS[a].layers);
+      assert.ok(g.layers[0].every((n) => n.type === 'fight'));
+      assert.equal(g.layers.at(-1)[0].type, 'boss');
+    }
+  });
+  test('run: same seed + same choices = same graph, battle setup, rewards and shop', () => {
+    const play = () => {
+      const run = R.newRun({ seed: 'DET123', party });
+      const n0 = R.enterNode(run, R.available(run)[0].id);
+      const fs = R.fightSetup(run, n0);
+      const offer = R.rewardOffer(run, 'fight');
+      R.takeReward(run, offer, offer.cards[0]);
+      const shopNode = run.graph.layers.flat().find((n) => n.type === 'shop');
+      return JSON.stringify({ g: run.graph, e: fs.enemies, seed: fs.seed, map: fs.map.grid, o: offer.cards, shop: R.shopStock(run, shopNode) });
+    };
+    assert.equal(play(), play());
+    assert.notEqual(JSON.stringify(R.genGraph('DET123', 0)), JSON.stringify(R.genGraph('DET124', 0)));
+  });
+  test('run: party level by layer, reward offer of 3, reroll once, talents pass talentAllowed', () => {
+    const run = R.newRun({ seed: 'RW1', party });
+    assert.equal(R.levelAt(0, 0), 3); assert.equal(R.levelAt(0, 7), 5); assert.equal(R.levelAt(2, 8), 13);
+    const o = R.rewardOffer(run, 'fight');
+    assert.equal(o.cards.length, 3);
+    const o2 = R.rerollReward(run, o);
+    assert.ok(o2 && o2.roll === 1);
+    assert.equal(R.rerollReward(run, o2), null, 'one reroll per run');
+    const T = R.rewardOffer(run, 'fight', { only: 'talent' });
+    const m = run.party.find((x) => x.id === T.hero);
+    for (const c of T.cards) { assert.equal(c.kind, 'talent'); assert.ok(talentAllowed(TALENTS[c.id], R.talentCtxOf(run, m)), c.id); }
+    R.takeReward(run, T, T.cards[0]);
+    assert.ok(m.talents.includes(T.cards[0].id));
+    assert.ok(R.buildMember(run, m).talents.includes(T.cards[0].id));
+  });
+  test('run: a hero down after a won fight — saved or dead for good; dead gear goes to the bag; all dead = loss', () => {
+    const run = R.newRun({ seed: 'DTH', party });
+    const node = R.enterNode(run, R.available(run)[0].id);
+    const units = R.partyUnits(run);
+    units[0].dead = true; units[0].hp = 0;
+    const w = run.party[0].weapon;
+    const res = R.applyFight(run, node, units, true);
+    assert.deepEqual(res.deaths, [run.party[0].name]);
+    assert.ok(run.party[0].dead && run.bag[w] >= 1);
+    assert.equal(R.partyUnits(run).length, 2, 'the dead hero is not in the next battle');
+    const u2 = R.partyUnits(run);
+    u2[0].down = true; u2[0].hp = 0;
+    const r2 = R.applyFight(run, node, u2, true);
+    assert.equal(r2.rescues.length, 1);
+    assert.equal(run.party[1].dead, !r2.rescues[0].ok);
+    R.applyFight(run, node, R.partyUnits(run), false);
+    assert.equal(run.status, 'loss');
+    assert.ok(R.runMemory(run).deaths >= 2 * RL.META.deathBonusPerHero);
+  });
+  test('run: meta memory is saved, spent on a template that becomes available', () => {
+    const mem = {}; const st = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => { mem[k] = String(v); } };
+    M.setMetaStorage(st);
+    const meta = M.loadMeta();
+    assert.ok(!M.templatesFor(meta).find((x) => x.id === 't-reper').open);
+    const run = R.newRun({ seed: 'MET', party });
+    run.memory = 50; R.endRun(run, 'loss');
+    const rec = M.recordRun(meta, run);
+    assert.equal(rec.gained, 50);
+    const again = M.loadMeta();
+    assert.equal(again.memory, 50); assert.equal(again.runs, 1);
+    assert.ok(M.buyUnlock(again, 'u-reper'));
+    assert.ok(M.templatesFor(M.loadMeta()).find((x) => x.id === 't-reper').open);
+    assert.equal(M.loadMeta().memory, 20);
+    const win = R.newRun({ seed: 'WIN', party }); R.endRun(win, 'win');
+    assert.equal(M.recordRun(again, win).ascUnlocked, 1, 'win on A0 opens A1');
+    M.setMetaStorage(null);
+  });
+  test('run: ascension changes numbers (foe HP, shop prices, reward choices, rerolls)', () => {
+    const a0 = R.newRun({ seed: 'ASC', party }), a10 = R.newRun({ seed: 'ASC', asc: 10, party });
+    const node = { id: 'x', type: 'fight', enc: RL.ACTS[0].fight[0] };
+    const hp = (run) => R.nodeEnemies(run, node).reduce((s, e) => s + (typeof e === 'string' ? GAME_DATA.ENEMIES[e].hp : e.hp), 0);
+    assert.ok(hp(a10) > hp(a0));
+    const shop = a0.graph.layers.flat().find((n) => n.type === 'shop');
+    a10.graph = a0.graph;
+    assert.ok(R.shopStock(a10, shop)[0].price > R.shopStock(a0, shop)[0].price);
+    assert.equal(R.rewardOffer(a10, 'fight').cards.length, 2);
+    assert.equal(a10.rerolls, 0);
+    assert.equal(R.ascFx(6).eliteExtraFoe, 1);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -178,6 +178,27 @@ export function formatEvent(S, e) {
 }
 
 /** Sound for an event (no-op when audio is locked). */
+// sound routing (audio/sfx-foley.js): weapon type -> swing, armour type -> hit material, unit -> voice
+const SWING = {
+  sabre: 'sword', polearm: 'sword2h', fist: 'club', knife: 'knife', sword: 'sword', axe: 'axe', hammer: 'hammer', katana: 'sword',
+  bastard: 'sword2h', twoHanded: 'sword2h', pistol: 'pistol', smg: 'smg', rifle: 'rifle', auto: 'auto', mg: 'auto', launcher: 'shotgun',
+  crossbow: 'bow', bow: 'bow', throw: 'thrown', bolter: 'shotgun', plasma: 'energy', laser: 'energy', melta: 'energy', energy: 'energy',
+  proxy: 'energy', cyberblade: 'sword', cringe: 'club',
+};
+const ARMOR_MAT = { cloth: 'cloth', light: 'leather', medium: 'leather', heavy: 'metal', mech: 'metal' };
+function swingOf(u) {
+  const w = u && u.weapon;
+  if (!w) return undefined;
+  return SWING[w.type || w.wtype] || (w.group === 'ranged' || (w.range || 1) > 1 ? 'pistol' : 'club');
+}
+const armorOf = (u) => (u ? ARMOR_MAT[u.armorType] || 'cloth' : undefined);
+function voxOf(u) {
+  if (!u) return undefined;
+  let h = 0;
+  for (const ch of String(u.id)) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return { gender: u.look?.gender || (Math.abs(h) % 10 < 4 ? 'f' : 'm'), race: u.raceId || 'human' };
+}
+
 export function eventSound(S, e) {
   const b = S.b;
   switch (e.type) {
@@ -190,7 +211,10 @@ export function eventSound(S, e) {
     }
     case 'attack': if (!e.hit) play('miss'); break;
     case 'damage':
-      if (e.amount > 0) play(e.crit ? 'crit' : 'hit', { dmgType: e.dmgType });
+      if (e.amount > 0) {
+        const T = b.byId[e.target], A = e.actor ? b.byId[e.actor] : null;
+        play(e.crit ? 'crit' : 'hit', { dmgType: e.dmgType, weapon: e.resource === 'hp' ? swingOf(A) : undefined, armor: e.resource === 'hp' ? armorOf(T) : undefined, vox: T && T.hp > 0 ? voxOf(T) : undefined });
+      }
       else if (e.absorbed) play('shieldBlock');
       break;
     case 'heal': play('heal'); break;
@@ -204,7 +228,9 @@ export function eventSound(S, e) {
     case 'nadlom': play('cringe'); break;
     case 'breakdown': play('breakdown'); break;
     case 'down': play('knockout'); break;
-    case 'death': play('death'); break;
+    case 'death': { const T = b.byId[e.target]; play('death', { weight: T && (T.boss || T.armorType === 'mech') ? 'heavy' : 'light', vox: voxOf(T) }); break; }
+    case 'objectLoot': play('loot', { rarity: 'common' }); break;
+    case 'chestOpen': if (e.success) play('loot', { rarity: 'rare' }); break;
     case 'broken': play('debuff'); break;
     case 'summon': play('summon'); break;
     case 'overcast': play('overcast'); break;

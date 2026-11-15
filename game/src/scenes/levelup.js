@@ -8,6 +8,7 @@ import { STATS, ASI_STAT_MAX } from '../rules/character.js';
 import { levelGains } from '../rules/progression.js';
 import { buildHero, buildCompanion, chooseAsi, chooseCompanionAsi, chooseMemberTalent, memberEntry, memberUnit, memberPending, talentCtx, tf } from '../world/state.js';
 import { saveGame } from '../save.js';
+import { play } from '../audio/sfx.js';
 
 /** Level-up windows are personal (multiplayer.md: a co-op guest picks his own; the host's are not mirrored). */
 const openP = (g, spec) => g.openModal(Object.assign(spec, { personal: true }));
@@ -55,6 +56,7 @@ export function openLevelUp(game, onDone) {
   const h = sv.hero;
   const news = h.levelNews || [];
   if (news.length) {
+    play('levelUp');
     // a big jump is split into several windows of at most MAX_LINES lines (the modal does not scroll)
     const all = [...news].sort((a, b) => a - b);
     const cls = game.data.CLASSES[h.cls];

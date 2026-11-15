@@ -58,7 +58,10 @@ function layout(game) {
     buttons.push({ id: 'load', label: t('save.load'), key: 'L', x, y: yy, w, h }); yy += h + gap;
   }
   buttons.push({ id: 'new', label: t('menu.newGame'), x, y: yy, w, h }); yy += h + gap;
-  buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: yy, w, h: 56 }); yy += 56 + gap;
+  // roguelike.md: «Забег» shares the row with «Быстрый бой» (the column stays above the controls hint)
+  const hw = Math.floor((w - gap) / 2);
+  buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), key: 'Q', x, y: yy, w: hw, h: 56 });
+  buttons.push({ id: 'run', label: t('menu.run'), sub: t('menu.runHint'), key: 'R', x: x + hw + gap, y: yy, w: w - hw - gap, h: 56 }); yy += 56 + gap;
   buttons.push({ id: 'net', label: t('menu.net'), sub: t('menu.netHint'), key: 'M', x, y: yy, w, h: 56 });
   buttons.push({ id: 'settings', label: t('menu.settings'), key: 'O', x: W - 216, y: 16, w: 200, h: 40 }); // 3d.md: graphics
 }
@@ -89,12 +92,14 @@ export const menuScene = {
     if (game.input.wasPressed('KeyM')) act = 'net';
     if (game.input.wasPressed('KeyL') && hasSave()) act = 'load';
     if (game.input.wasPressed('KeyO')) act = 'settings';
+    if (game.input.wasPressed('KeyR')) act = 'run';
     if (!act) return;
     play('uiClick');
     if (act === 'continue') return continueGame(game);
     if (act === 'load') return openLoadMenu(game);
     if (act === 'net') return openNetMenu(game);
     if (act === 'settings') return openSettings(game);
+    if (act === 'run') return import('./run-start.js').then((m) => game.setScene(m.createRunStartScene()));
     if (act === 'new') game.setScene(createCreateScene());
     else startQuickBattle(game);
   },
