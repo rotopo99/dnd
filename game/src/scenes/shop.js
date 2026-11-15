@@ -112,7 +112,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
             // v7: an instance of the shelf quality → hero's backpack, then companions; no room — no sale
             const left = receive(sv, makeInst(id, r.q), 1).left; // inventory.js: the single item path (keeps hero.items in step)
             if (left) { g.toast(t('inv.noRoom'), 'c'); return; }
-            sv.hero.credits -= price; play('buff');
+            sv.hero.credits -= price; play('coin');
             if (faction && sv.flags[favorKey(faction)]) delete sv.flags[favorKey(faction)]; // the skirmish favour is one purchase
             saveGame(sv);
           } };
@@ -152,7 +152,7 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
               }
               return false;
             });
-            if (sold) { sv.hero.credits += price; play('uiClick'); saveGame(sv); }
+            if (sold) { sv.hero.credits += price; play('coin', { sell: true }); saveGame(sv); }
           } };
       });
       const info = [`${t('world.credits')}: ${sv.hero.credits}`];

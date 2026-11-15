@@ -247,7 +247,7 @@ export const FOLEY_SURFACES = Object.freeze(Object.keys(SURFACE));
 export const FOLEY_WEAPONS = Object.freeze(Object.keys(WEAPON));
 
 /*
- * Подключение (вызывать через play() из sfx.js; ничего не меняется в местах вызова, кроме перечисленных):
+ * Подключение: НЕ подключено (кандидаты; вызывать через play() из sfx.js). Старый play('step') работает без опций.
  *  - step: game/src/scenes/roam.js (шаг героя по свободной карте: surface = биом узла, sneak = режим «красться», heavy = тяжёлая броня).
  *    Старый play('step') без опций тоже работает (бетон).
  *  - swing: game/src/scenes/battle.js и battle-log.js eventSound (атака: weapon из предмета `weaponType`).

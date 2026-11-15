@@ -9,7 +9,7 @@
 // weather: 'rain' | 'snow' (wind gusts) | null.
 // Calling setBiome with the same arguments again does nothing. Silent before initCore().
 
-import { getAudioContext, getBus, noiseBed, tone, noise, rand, pick, withBus, isReady } from './core.js';
+import { getAudioContext, getBus, noiseBed, tone, noise, rand, withBus, isReady } from './core.js';
 
 const FADE = 3; // crossfade seconds
 
@@ -238,11 +238,10 @@ export function stopAmbience(fade = 1.5) {
 export const AMBIENCE_BIOMES = Object.freeze(Object.keys(BIOMES));
 
 /*
- * Подключение (одна строка на место; логика выбора биома — в месте вызова):
- *  - game/src/scenes/roam.js (вход на свободную карту и смена узла): setBiome(node.biome, { night: isNight(time), weather: save.weather })
- *  - game/src/scenes/battle.js (старт боя на поле): setBiome(S.map.biome, { night: S.map.tod === 'night', weather: S.map.weather })
- *  - game/src/scenes/world-map.js (карта мира, нейтральный фон): setBiome('wasteland')
- *  - game/src/scenes/cyberspace.js (вход в киберпространство): setBiome('cyberspace'); выход — stopAmbience(1)
- *  - game/src/scenes/menu.js или main.js при уходе в меню: stopAmbience(2)
- * Пока не подключено: сейчас в проекте нет вызовов, звук ambience не слышен.
+ * Подключение: НЕ подключено (нужна логика выбора биома/ночи/погоды в сценах). Кандидаты:
+ *  - game/src/scenes/roam.js (свободная карта, смена узла): setBiome(biome, { night, weather })
+ *  - game/src/scenes/battle.js (старт боя): setBiome(S.map.biome, { night: S.map.tod === 'night', weather: S.map.weather })
+ *  - game/src/scenes/cyberspace.js (вход/выход из киберпространства): setBiome('cyberspace') / stopAmbience(1)
+ *  - game/src/scenes/menu.js (уход в главное меню): stopAmbience(2)
+ * Для биомов поля боя (map.biome, 9 id) нужна таблица соответствия с BIOMES — сейчас неизвестные id идут в wasteland.
  */

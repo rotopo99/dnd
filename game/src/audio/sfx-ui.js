@@ -132,7 +132,8 @@ export const UI = Object.freeze({
 });
 
 /*
- * Подключение (через play() в sfx.js; места вызова, которые уже есть, не менять):
+ * Подключено: scenes/cards.js (cardPlay / cardAttack / cardDeath), scenes/shop.js (coin, coin sell), scenes/base.js (error).
+ * Остальное ниже — кандидаты, не подключено:
  *  - uiClick / uiHover: уже вызываются во всех сценах (menu.js, roam.js, world-map.js, panels.js, ...).
  *  - open / close: game/src/ui/modal.js (openModal / closeModal) — одна строка при открытии/закрытии окна.
  *  - tab: game/src/scenes/panels.js select() (переключение вкладки; сейчас там uiClick).

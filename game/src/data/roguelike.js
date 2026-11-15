@@ -148,7 +148,7 @@ export const BALANCE = {
   perFight: { fight: { lossPerHero: 0.04 }, elite: { lossPerHero: 0.12 }, boss: { lossPerHero: 0.25 } },
   actClearRate: { act1: 0.75, act2: 0.5, act3: 0.3 },       // share of runs reaching the end of act on A0
   runMinutes: [35, 55],
-  soloModifier: 0.0, partySizeFoes: { 1: -2, 2: -1, 3: 0, 4: 1 },  // foes count shift vs encounter definition (min 2)
+  soloModifier: 0.0, partySizeFoes: { 1: -3, 2: -2, 3: -2, 4: 0 },  // foes count shift vs encounter definition (min 2)
 };
 
 // Meta-progression between runs. «Память киберспейса»: a dead hero becomes a spirit; the run's memory carries experience over.

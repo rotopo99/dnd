@@ -94,7 +94,7 @@ export function createBaseScene(back = null) {
 
   function click(game, b) {
     const sv = game.save;
-    if (b.disabled) { if (b.reason && b.reason !== 'none') game.toast(b.reason, 'c'); play('miss'); return; }
+    if (b.disabled) { if (b.reason && b.reason !== 'none') game.toast(b.reason, 'c'); play('error'); return; }
     play('uiClick');
     if (b.kind === 'build') {
       const r = startBuild(sv, b.id);

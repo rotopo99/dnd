@@ -162,10 +162,9 @@ export function choir(freqs, opts = {}) {
 export const VOX_KINDS = Object.freeze(Object.keys(KINDS));
 
 /*
- * Подключение (sfx.js уже вызывает vox через play):
- *  - sfx.js SOUNDS.hit / crit: при opts.grunt → say('grunt', opts.vox) — вызывающий: scenes/battle.js (удар по герою/врагу), battle-log.js eventSound.
- *  - sfx.js SOUNDS.death: say('scream', opts.vox) — battle-log.js eventSound (смерть юнита, опции пола/расы из unit).
- *  - ui/dialogue (game/src/scenes/dialogue.js): say('hm', {gender}) при реплике с emo 'neutral' — раз на фразу, 1 строка.
- *  - scenes/battle.js: say('battleCry', ...) в начале боя (startBattle), если враги — одного типа.
- *  - sfx-ui.js levelUp: choir(...) — уже вызывается оттуда.
+ * Подключение: через sfx.js.
+ *  - play('hit', { ..., vox: { gender, race } }) → grunt; play('death', { vox }) → scream (опция передаётся, пока никто не передаёт).
+ *  - play('vox', { kind: 'hm' | 'laugh' | 'sigh' | 'battleCry', gender, race }) — точки вызова не подключены
+ *    (кандидаты: scenes/dialogue.js реплика без эмоции, старт боя в scenes/battle.js).
+ *  - choir() вызывается из sfx-ui.js (levelUp).
  */
