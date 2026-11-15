@@ -572,7 +572,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   for (const it of units) {
     const u = it.u, d = it.d;
     if (it.cull && offScreen(d)) continue;
-    const T = unitTemplate(u, { simple, lod: cam.zoomIdx === 0 });
+    const T = unitTemplate(u, { simple, lod: cam.zoomIdx === 0 || units.length > 10 });
     const m = X.mesh(`tpl:${T.key}`, () => T.mb);
     if (!m) continue;
     // facing: the target of the current action, else movement direction, else towards the other side

@@ -2,7 +2,7 @@
 // run credits, permadeath, ascensions. Pure logic, no DOM (tools/test.mjs and tools/sim/run.mjs import it).
 // Determinism: every random draw comes from rngFor(run, part) = createRng(`${seed}:${act}:${part}`), so the same seed and
 // the same choices give the same graph, battles, rewards and shops.
-import { RUN, ACTS, GRAPH, NODE_TYPES, TEMPLATES, START_KIT, REWARDS, RELICS, EVENT_POOL, EVENT_RULES, ASCENSIONS, BALANCE, META } from '../data/roguelike.js';
+import { RUN, ACTS, GRAPH, NODE_TYPES, TEMPLATES, START_KIT, REWARDS, RELICS, EVENT_POOL, EVENT_RULES, ASCENSIONS, BALANCE, META, ENC_SCALE } from '../data/roguelike.js';
 import { GAME_DATA, ITEMS } from '../data/index.js';
 import { ENEMIES_V3, scaleV3 } from '../data/enemies-v3.js';
 import { TALENTS, talentAllowed } from '../data/talents.js';
@@ -358,7 +358,8 @@ export function nodeEnemies(run, node, encId = node.enc) {
   const boss = node.type === 'boss';
   const A = ACTS[run.act];
   // power multiplier (scaleV3): boss — bossScale × ascension; elite — act eliteScale × NODE_TYPES.elite.danger; fight — fightScale
-  const p = boss ? A.bossScale * fx.bossScale : node.type === 'elite' ? (A.eliteScale ?? 1) * (NODE_TYPES.elite.danger ?? 1) : (A.fightScale ?? 1);
+  const p = (boss ? A.bossScale * fx.bossScale : node.type === 'elite' ? (A.eliteScale ?? 1) * (NODE_TYPES.elite.danger ?? 1) : (A.fightScale ?? 1))
+    * (ENC_SCALE[encId] ?? 1);
   return list.map((id) => {
     let nid = id;
     if (p !== 1 && enemyDef(id)) nid = scaleV3(id, Math.round(p * 100) / 100);
