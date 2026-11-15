@@ -22,7 +22,7 @@ export const RUN = {
 
 // Party level by layer inside an act: lvl[0] at layer 0 → lvl[1] at the boss layer, linear, rounded down.
 export const ACTS = [
-  { id: 'act1', name: 'Окраины', layers: 8, lvl: [3, 5], tier: 2, bossScale: 1.0, eliteScale: 0.8, fightScale: 1.0,
+  { id: 'act1', name: 'Окраины', layers: 8, lvl: [3, 5], tier: 2, bossScale: 1.0, eliteScale: 0.7, fightScale: 1.0,
     biomes: ['wasteland', 'ruins-city', 'swamp', 'port', 'factory'],
     fight: ['v3-pir-raid', 'v3-wp-corridor', 'v3-mech-plague', 'v3-scv-skeleton-hunt', 'v3-cult-plague', 'v3-mutz-hunt',
       'v3-band-foxes', 'v3-band-panthers', 'v3-fauna-mine', 'v3-lis-bunker', 'v3-wolf-pack', 'v3-ai-lox', 'v3-tin-arena',
