@@ -4,7 +4,7 @@ export function createInput(target, canvas) {
   const down = new Set();
   const pressed = new Set();
   const typed = [];
-  const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false, down: false, released: false, wheel: 0 };
+  const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false, down: false, released: false, wheel: 0, middle: false, right: false };
   const pending = [];
   const hoverPos = { x: -1, y: -1, inside: false };
   const applyClick = (c) => {
@@ -35,6 +35,7 @@ export function createInput(target, canvas) {
     });
     canvas.addEventListener('pointerdown', (e) => {
       pos(e);
+      if (e.button !== 0 && e.button !== 2) return; // middle — camera drag only, never a click
       const c = { x: hoverPos.x, y: hoverPos.y, right: e.button === 2 };
       // fast double clicks within one logic step are queued, one click per step
       if (mouse.clicked || mouse.rightClicked || pending.length) pending.push(c);
@@ -42,8 +43,14 @@ export function createInput(target, canvas) {
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     // held button (drag / pan) and wheel (zoom): read by scenes that need them, cleared per step
-    canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) mouse.down = true; });
-    window.addEventListener('pointerup', (e) => { if (e.button === 0 && mouse.down) { mouse.down = false; mouse.released = true; } });
+    canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) mouse.down = true; if (e.button === 1) mouse.middle = true; if (e.button === 2) mouse.right = true; });
+    canvas.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // middle drag pans the 3D camera, no autoscroll
+    window.addEventListener('pointerup', (e) => {
+      if (e.button === 0 && mouse.down) { mouse.down = false; mouse.released = true; }
+      if (e.button === 1) mouse.middle = false;
+      if (e.button === 2) mouse.right = false;
+    });
+    window.addEventListener('blur', () => { mouse.middle = false; mouse.right = false; });
     canvas.addEventListener('wheel', (e) => { mouse.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
   }
   return {

@@ -3,7 +3,10 @@
 //   createCamera()                         -> cam
 //   fitCamera(cam, area, w, h, maxH)       screen area {x,y,w,h} + map size -> base pixels per metre + zoom levels
 //                                          (0 — whole map, 1 default — floor = GFX.camera.widthFill of the width, 2 — closer)
-//   rotateCamera(cam, dir), zoomCamera(cam, d), updateCamera(cam, dt, {focus:{x,z}, instant})
+//   rotateCamera(cam, dir), zoomCamera(cam, d), updateCamera(cam, dt, {focus:{x,z}, follow, instant})
+//                                          follow — centre on focus (roam: the leader), else lean to it when zoomed in
+//   panCamera(cam, dx, dy)                 drag / keys: move the view by screen pixels (offset cam.px/pz, kept on the map)
+//   centerCamera(cam, x, z)                pan so that (x, z) is in the centre («к активному юниту»)
 //   viewProj(cam, W, H)                    -> Float32Array(16) (column-major, for gl)
 //   project(cam, x, y, z)                  -> {x, y, d} screen px + depth
 //   rayAt(cam, px, py)                     -> {o:[3], d:[3]} picking ray;  basis(cam) -> {r, u, f}
@@ -18,7 +21,7 @@ export function createCamera() {
   return {
     step: 0, yaw: C.yaw, yawFrom: C.yaw, yawTo: C.yaw, tw: 1, pitch: C.pitch,
     zoomIdx: C.zoomDefault, zoom: 1, zooms: [1, 1.3, 1.3 * C.closer], zoomSet: false, ppmFit: 30, area: { x: 0, y: 0, w: 1, h: 1 },
-    cx: 0, cz: 0, cy: 0, mapW: 1, mapH: 1, moving: false,
+    cx: 0, cz: 0, cy: 0, mapW: 1, mapH: 1, moving: false, px: 0, pz: 0, bx: 0, bz: 0,
   };
 }
 
@@ -64,7 +67,7 @@ export function zoomCamera(cam, d) {
 }
 
 /** Advance tweens. focus — the point the camera leans to when zoomed in (active unit). Returns true while moving. */
-export function updateCamera(cam, dt, { focus = null, instant = false } = {}) {
+export function updateCamera(cam, dt, { focus = null, follow = false, instant = false } = {}) {
   const C = GFX.camera;
   let moving = false;
   if (cam.tw < 1) {
@@ -76,12 +79,36 @@ export function updateCamera(cam, dt, { focus = null, instant = false } = {}) {
   const k = instant ? 1 : 1 - Math.exp(-dt * 12);
   if (Math.abs(cam.zoom - zt) > 1e-3) { cam.zoom += (zt - cam.zoom) * k; moving = true; } else cam.zoom = zt;
   const mx = cam.mapW / 2, mz = cam.mapH / 2;
-  const lean = Math.max(0, Math.min(1, (1 - 1 / cam.zoom) * 1.5));
-  const tx = focus ? mx + (focus.x - mx) * lean : mx, tz = focus ? mz + (focus.z - mz) * lean : mz;
+  const lean = follow ? 1 : Math.max(0, Math.min(1, (1 - 1 / cam.zoom) * 1.5));
+  const bx = focus ? mx + (focus.x - mx) * lean : mx, bz = focus ? mz + (focus.z - mz) * lean : mz;
+  cam.bx = bx; cam.bz = bz;
+  clampPan(cam);
+  // the pan offset keeps every corner reachable: the target may go anywhere on the map box
+  const tx = bx + cam.px, tz = bz + cam.pz;
   const kc = instant ? 1 : 1 - Math.exp(-dt * C.follow);
   if (Math.abs(cam.cx - tx) + Math.abs(cam.cz - tz) > 1e-3) { cam.cx += (tx - cam.cx) * kc; cam.cz += (tz - cam.cz) * kc; moving = true; }
   cam.moving = moving;
   return moving;
+}
+
+function clampPan(cam) {
+  cam.px = Math.max(-cam.bx, Math.min(cam.mapW - cam.bx, cam.px));
+  cam.pz = Math.max(-cam.bz, Math.min(cam.mapH - cam.bz, cam.pz));
+}
+/** Move the view by (dx, dy) screen pixels: the ground under the cursor follows the drag. */
+export function panCamera(cam, dx, dy) {
+  const { r, u, f } = basis(cam), s = ppm(cam);
+  const fl = Math.hypot(f[0], f[2]) || 1, fh = [f[0] / fl, 0, f[2] / fl];
+  const k = dot(fh, u) || 1;
+  const ox = cam.px, oz = cam.pz;
+  cam.px += -r[0] * dx / s + fh[0] * dy / (s * k);
+  cam.pz += -r[2] * dx / s + fh[2] * dy / (s * k);
+  clampPan(cam);
+  cam.cx += cam.px - ox; cam.cz += cam.pz - oz; // a drag moves the view at once (no follow lag)
+}
+export function centerCamera(cam, x, z) {
+  cam.px = x - cam.bx; cam.pz = z - cam.bz;
+  clampPan(cam);
 }
 
 const ppm = (cam) => cam.ppmFit * cam.zoom;

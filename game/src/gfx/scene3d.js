@@ -23,11 +23,11 @@ import { fieldBiome, propCells } from '../ui/field-view.js';
 import { visionOf, lightSources } from '../world/battlefields.js';
 import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, BONE_TEX_W } from './gl.js';
 import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, uploadInstanced, resetInstanced, keyRGB, rampRGB, cssRGBA } from './mesh.js';
-import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis } from './camera.js';
+import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis, panCamera, centerCamera } from './camera.js';
 import { ramp, propModel, propTop } from './models.js';
 import { unitTemplate } from './units3d.js';
 import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
-import { buildFx, particleMesh } from './fx3d.js';
+import { buildFx, particleMesh, weatherFx } from './fx3d.js';
 import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken } from './settings.js';
 
 const G = GFX.geo;
@@ -100,6 +100,7 @@ function kindOf(b, rows, under, x, y) {
   if (tile === T_COVER) return ch === 'm' ? 'shelf' : ch === 'G' ? 'gen' : 'half';
   if (tile === T_FULL) return ch === 'C' ? 'block' : 'full';
   if (ch === '=') return 'deck';
+  if (ch === '"') return 'field'; // roam: field / tall grass
   return 'floor';
 }
 const OBST = { wall: G.wall, full: G.full, block: G.full, half: G.half, shelf: G.half + 0.2, gen: G.half + 0.1 };
@@ -123,15 +124,15 @@ function worldOf(b) {
   const g = b.grid, rows = b.map.grid || [];
   const biome = fieldBiome(b.map) || 'wasteland';
   const under = propCells(b.map.props, g.w);
-  const n = g.w * g.h;
+  const n = g.w * g.h, wallH = b.map.wallH || G.wall;
   const kind = new Array(n), floor = new Float32Array(n), obst = new Float32Array(n);
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
     const i = y * g.w + x, k = kindOf(b, rows, under, x, y);
     kind[i] = k;
     floor[i] = k === 'water' ? G.water : k === 'deep' ? G.water * 2 : elevAt(g, x, y) * G.elev;
-    obst[i] = OBST[k] || 0;
+    obst[i] = k === 'wall' ? wallH : OBST[k] || 0;
   }
-  const alive = (p) => !p.destructible || !p.blocks || !!b.objects?.get(p.y * g.w + p.x);
+  const alive = (p) => b.noBreak || !p.destructible || !p.blocks || !!b.objects?.get(p.y * g.w + p.x);
   const props = (b.map.props || []).filter((p) => PROPS[p.id]);
   for (const p of props) {
     if (!alive(p) || !(p.blocks || p.cover)) continue;
@@ -150,7 +151,9 @@ function worldOf(b) {
     if (x <= 1 && run(x, y, -1, 0, x)) m |= 8;
     edge[y * g.w + x] = m;
   }
-  return { biome, kind, floor, obst, props, alive, edge, w: g.w, h: g.h };
+  // extra static models baked into the chunks (roam: stalls, beds, stashes, gates ...): {x, y, mb, sig}
+  const objs = b.map.objs3 || [];
+  return { biome, kind, floor, obst, props, alive, edge, objs, wallH, w: g.w, h: g.h };
 }
 
 /** Wall cell: block with a bevel (trees in swamp / forest); low — the cut-away version (near map border). */
@@ -162,7 +165,7 @@ function wallMesh(mb, Wd, x, y, low) {
     if (low) { mb.cyl(x + 0.5, f, y + 0.5, 0.2, 0.4, ramp(wa), { seg: 7, r1: 0.25, rot: hv % 7 }); return; }
     mb.cyl(x + 0.5, f + 0.5, y + 0.5, 0.9, 0.48, ramp(wa), { seg: 7, r1: 0.22, rot: hv % 7 });
     mb.cyl(x + 0.5, f + 1.25, y + 0.5, 0.65, 0.34, ramp(wb), { seg: 7, r1: 0, rot: hv % 5 });
-  } else mb.bevelBox(x, f, y, x + 1, f + (low ? G.cut : G.wall), y + 1, low ? 0.04 : G.bevel, ramp(wa), { top: ramp(wb) });
+  } else mb.bevelBox(x, f, y, x + 1, f + (low ? G.cut : Wd.wallH || G.wall), y + 1, low ? 0.04 : G.bevel, ramp(wa), { top: ramp(wb) });
 }
 
 /** Border walls grouped by side mask: { mask, full, low } builders. */
@@ -228,6 +231,12 @@ function buildChunk(Wd, cx0, cy0) {
         break;
       case 'gen': mb.add(propModel('generator'), x, f, y); break;
       case 'fence': mb.add(propModel('fence'), x, f, y); break;
+      case 'field': // roam: low grass wedges
+        for (let r = 0; r < 3; r++) {
+          const hh = hash(x * 5 + r, y * 11 + r), px = x + 0.18 + (hh % 64) / 100, pz = y + 0.18 + ((hh >>> 8) % 64) / 100;
+          mb.wedge(px - 0.07, f, pz - 0.03, px + 0.07, f + 0.16 + ((hh >>> 16) % 10) / 100, pz + 0.03, ramp(r % 2 ? 'l' : 'k'), { ao: 0 });
+        }
+        break;
       case 'rubble': {
         const n = G.rubble[0] + (hv % (G.rubble[1] - G.rubble[0] + 1));
         for (let r = 0; r < n; r++) {
@@ -250,6 +259,10 @@ function buildChunk(Wd, cx0, cy0) {
     if (p.x < cx0 || p.y < cy0 || p.x >= cx0 + GFX.chunk || p.y >= cy0 + GFX.chunk || !Wd.alive(p)) continue;
     mb.add(propModel(p.id), p.x, floor[p.y * w + p.x] || 0, p.y);
   }
+  for (const o of Wd.objs) {
+    if (o.x < cx0 || o.y < cy0 || o.x >= cx0 + GFX.chunk || o.y >= cy0 + GFX.chunk) continue;
+    mb.add(o.mb, o.x, floor[o.y * w + o.x] || 0, o.y);
+  }
   return mb;
 }
 
@@ -261,6 +274,7 @@ function chunkSig(Wd, cx0, cy0) {
     s += Wd.kind[i][0] + Wd.kind[i][1] + (Wd.floor[i] * 4 | 0) + (Wd.obst[i] * 10 | 0);
   }
   for (const p of Wd.props) if (p.x >= cx0 && p.y >= cy0 && p.x < cx0 + GFX.chunk && p.y < cy0 + GFX.chunk) s += Wd.alive(p) ? 'P' : 'p';
+  for (const o of Wd.objs) if (o.x >= cx0 && o.y >= cy0 && o.x < cx0 + GFX.chunk && o.y < cy0 + GFX.chunk) s += o.sig;
   return s;
 }
 
@@ -281,7 +295,7 @@ export function battle3d(game, S) {
     V.edges = buildEdges(V.world).map((e) => ({ mask: e.mask, full: uploadMesh(gl, e.full), low: uploadMesh(gl, e.low) }));
   }
   const L = S.L;
-  if (L) fitCamera(V.cam, { x: L.area.x, y: L.area.y + 30, w: L.area.w, h: L.area.h - 54 }, b.grid.w, b.grid.h, G.wall + 0.5);
+  if (L) fitCamera(V.cam, L.camArea || { x: L.area.x, y: L.area.y + 30, w: L.area.w, h: L.area.h - 54 }, b.grid.w, b.grid.h, G.wall + 0.5);
   return V;
 }
 function dropBattle3d(game, S) {
@@ -336,8 +350,33 @@ export function camButtons(S, game) {
   if (!L || !hasWebGL2() || game?.gfx?.failed) return [];
   const y = 7, x1 = L.area.x + L.area.w - 120; // top bar, left of «Раунд N»
   const out = [{ id: 'gfx', label: S.v3 ? '2D' : '3D', tip: t('gfx.toggleTip'), x: x1 - 44, y, w: 44, h: 26 }];
-  if (S.v3) out.push({ id: 'rotR', label: '⟳', tip: t('gfx.rotTip'), x: x1 - 44 - 4 - 30, y, w: 30, h: 26 }, { id: 'rotL', label: '⟲', tip: t('gfx.rotTip'), x: x1 - 44 - 8 - 60, y, w: 30, h: 26 });
+  if (S.v3) {
+    out.push({ id: 'rotR', label: '⟳', tip: t('gfx.rotTip'), x: x1 - 44 - 4 - 30, y, w: 30, h: 26 }, { id: 'rotL', label: '⟲', tip: t('gfx.rotTip'), x: x1 - 44 - 8 - 60, y, w: 30, h: 26 });
+    out.push({ id: 'focus', label: '◎', tip: t('gfx.focusTip'), x: x1 - 44 - 12 - 90, y, w: 30, h: 26 });
+  }
   return out;
+}
+/**
+ * Camera pan (3d.md stage 3): middle / right button drag, arrows (WASD belong to the battle's abilities / the roam walk).
+ * Right drag starts after GFX.camera.dragMin px so a right click stays a click. Returns true while panning.
+ */
+export function panInput3d(game, V, { keys = true } = {}) {
+  const inp = game.input, m = game.input.mouse, cam = V.cam, C = GFX.camera;
+  let used = false;
+  const held = m.middle || m.right;
+  if (held && m.x >= 0) {
+    if (!V.drag) V.drag = { x: m.x, y: m.y, on: m.middle };
+    const dx = m.x - V.drag.x, dy = m.y - V.drag.y;
+    if (!V.drag.on && Math.hypot(dx, dy) >= C.dragMin) V.drag.on = true;
+    if (V.drag.on && (dx || dy)) { panCamera(cam, dx, dy); V.drag.x = m.x; V.drag.y = m.y; used = true; }
+    if (V.drag.on) used = true;
+  } else V.drag = null;
+  if (keys) {
+    const kx = (inp.isDown('ArrowRight') ? 1 : 0) - (inp.isDown('ArrowLeft') ? 1 : 0);
+    const ky = (inp.isDown('ArrowDown') ? 1 : 0) - (inp.isDown('ArrowUp') ? 1 : 0);
+    if (kx || ky) { const st = C.panSpeed / 60; panCamera(cam, -kx * st, -ky * st); used = true; }
+  }
+  return used;
 }
 const inR = (r, m) => m.x >= r.x && m.y >= r.y && m.x < r.x + r.w && m.y < r.y + r.h;
 export function cameraInput3d(game, S) {
@@ -347,6 +386,7 @@ export function cameraInput3d(game, S) {
   let act = m.clicked && S.camHover ? S.camHover.id : null;
   if (inp.wasPressed('BracketLeft')) act = 'rotL';
   if (inp.wasPressed('BracketRight')) act = 'rotR';
+  if (inp.wasPressed('Home')) act = 'focus';
   if (act === 'gfx') {
     setGfxPref('mode', S.v3 ? '2d' : '3d');
     S.dirty = true;
@@ -356,8 +396,10 @@ export function cameraInput3d(game, S) {
   if (!V) return !!act;
   if (act === 'rotL') rotateCamera(V.cam, -1);
   if (act === 'rotR') rotateCamera(V.cam, 1);
+  if (act === 'focus' && V.focusPt) centerCamera(V.cam, V.focusPt.x, V.focusPt.z);
   const L = S.L;
   let used = !!act;
+  if (panInput3d(game, V)) used = true;
   if (m.wheel && inR(L.area, m) && !inR(L.log, m)) { zoomCamera(V.cam, -m.wheel); used = true; }
   return used;
 }
@@ -445,7 +487,7 @@ function lightVP(Ld, Wd) {
 /** Shadow quality: off with «Снизить эффекты» or the setting. */
 const shadowSize = (prefs) => (prefs.reduceFx || prefs.shadows === 'off' ? 0 : GFX.shadow.size[prefs.shadows] || GFX.shadow.size.high);
 
-export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) {
+export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay = null } = {}) {
   const X = game.gfx, gl = X.gl, V = S.v3;
   if (!gl || !V?.world || X.lost) return;
   X.use();
@@ -454,7 +496,8 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   V.lastT = S.time;
   // camera: lean to the active unit when zoomed in
   const cu = cur ? S.dispOf(cur) : null;
-  updateCamera(cam, dt, { focus: cu ? { x: cu.x + 0.5, z: cu.y + 0.5 } : null, instant: prefs.reduceMotion });
+  V.focusPt = cu ? { x: cu.x + 0.5, z: cu.y + 0.5 } : S.focus3 || null;
+  updateCamera(cam, dt, { focus: V.focusPt, follow: !!S.follow3, instant: prefs.reduceMotion });
   // unit heights (smooth steps on elevation)
   for (const it of units) {
     const d = it.d, i = Math.max(0, Math.min(Wd.w * Wd.h - 1, Math.round(d.y) * Wd.w + Math.round(d.x)));
@@ -467,6 +510,8 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   PARTS.length = 0;
   const fl = (x, y) => (Wd.floor[y * Wd.w + x] ?? 0) + G.overlay;
   const fxActive = buildFx(S, V, now, prefs, ob, PARTS);
+  const wxActive = weatherFx(V, b.map, now, prefs, ob, PARTS);
+  overlay?.(ob, fl);
   for (const tr of b.traps || []) if (tr.team === 'heroes') ob.frame(tr.x + 0.2, tr.y + 0.2, tr.x + 0.8, tr.y + 0.8, fl(tr.x, tr.y), 0.06, [...keyRGB('a'), 0.9]);
   for (const h of hl) {
     if (h.x < 0 || h.y < 0 || h.x >= Wd.w || h.y >= Wd.h) continue;
@@ -478,7 +523,8 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   const pulse = 0.75 + 0.25 * Math.sin(S.time * Math.PI); // 0.5 Hz breathing (no flicker)
   for (const it of units) {
     if (it.u.dead || it.u.removed) continue;
-    const d = it.d, c = keyRGB(GFX.team[TEAM(it.u)]), y = (V.hgt[it.u.id] ?? 0) + G.overlay + 0.004;
+    if (it.noRing) continue;
+    const d = it.d, c = keyRGB(it.teamKey || GFX.team[TEAM(it.u)]), y = (V.hgt[it.u.id] ?? 0) + G.overlay + 0.004;
     const [r0, r1] = GFX.unit.ring;
     ob.ring(d.x + 0.5, d.y + 0.5, y, r0, r1, [c[0], c[1], c[2], it.u === cur ? 0.95 * pulse : 0.7]);
     if (it.u === cur) ob.ring(d.x + 0.5, d.y + 0.5, y, r1 + 0.04, r1 + 0.08, [c[0], c[1], c[2], 0.5 * pulse]);
@@ -486,26 +532,44 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   // render on demand: unchanged frame -> keep the last image (15 fps idle refresh: breathing, slow surface motion);
   // actions, hits, falls, projectiles, walking and camera tweens — every frame
   const walking = units.some((it) => it.d.path?.length);
-  const busy = fxActive || walking || animActive(V, now) || cam.moving;
+  const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving;
   const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}`;
   if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / GFX.idleFps) return;
   V.lastSig = sig; V.lastDraw = S.time;
 
-  // chunks
+  // chunks: signatures only when the world changed (gridVersion / objects); a changed chunk is rebuilt alone
   const CH = GFX.chunk;
-  for (let cy = 0; cy < Wd.h; cy += CH) for (let cx = 0; cx < Wd.w; cx += CH) {
-    const key = `${cx},${cy}`, s = chunkSig(Wd, cx, cy), c = V.chunks.get(key);
-    if (c && c.sig === s) continue;
-    if (c) freeMesh(gl, c.mesh);
-    V.chunks.set(key, { sig: s, mesh: uploadMesh(gl, buildChunk(Wd, cx, cy)) });
+  if (V.chunkGv !== V.gv) {
+    V.chunkGv = V.gv;
+    for (let cy = 0; cy < Wd.h; cy += CH) for (let cx = 0; cx < Wd.w; cx += CH) {
+      const key = `${cx},${cy}`, s = chunkSig(Wd, cx, cy), c = V.chunks.get(key);
+      if (c && c.sig === s) continue;
+      if (c) freeMesh(gl, c.mesh);
+      let top = 0;
+      for (let y = cy; y < Math.min(Wd.h, cy + CH); y++) for (let x = cx; x < Math.min(Wd.w, cx + CH); x++) { const i = y * Wd.w + x; top = Math.max(top, Wd.floor[i] + Wd.obst[i]); }
+      V.chunks.set(key, { sig: s, mesh: uploadMesh(gl, buildChunk(Wd, cx, cy)), box: [cx, cy, Math.min(Wd.w, cx + CH), Math.min(Wd.h, cy + CH), top + 2.5] });
+    }
   }
+  // frustum culling (orthographic: the projected chunk box against the map area)
+  const A0 = cam.area, inView = (bx) => {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const X of [bx[0], bx[2]]) for (const Z of [bx[1], bx[3]]) for (const Y of [G.base, bx[4]]) {
+      const p = project(cam, X, Y, Z);
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+    }
+    return x1 >= A0.x && x0 <= A0.x + A0.w && y1 >= S.L.area.y && y0 <= S.L.area.y + S.L.area.h;
+  };
+  const shown = [];
+  for (const c of V.chunks.values()) if (c.mesh && inView(c.box)) shown.push(c);
 
   // ---- units: templates (cached meshes) + per-instance bones / colours in the bone texture
   const simple = !!prefs.reduceFx;
   const heroes = b.units.filter((u) => u.team === 'heroes' && !u.dead), foes = b.units.filter((u) => u.team !== 'heroes' && !u.dead);
   const inst = [];
+  const offScreen = (d) => { const p = project(cam, d.x + 0.5, 0, d.y + 0.5); return p.x < A0.x - 120 || p.x > A0.x + A0.w + 120 || p.y < S.L.area.y - 60 || p.y > S.L.area.y + S.L.area.h + 220; };
   for (const it of units) {
     const u = it.u, d = it.d;
+    if (it.cull && offScreen(d)) continue;
     const T = unitTemplate(u, { simple });
     const m = X.mesh(`tpl:${T.key}`, () => T.mb);
     if (!m) continue;
@@ -515,6 +579,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     const aim = aimOf(V, u.id, now);
     if (Math.abs(d.x - fz.x) + Math.abs(d.y - fz.y) > 0.01) { a = Math.atan2(d.x - fz.x, d.y - fz.y); fz.x = d.x; fz.y = d.y; }
     if (aim) a = Math.atan2(aim.x - (d.x + 0.5), aim.z - (d.y + 0.5));
+    else if (it.face != null) a = a == null || prefs.reduceMotion ? it.face : a + angDelta(a, it.face) * Math.min(1, dt * 10);
     else if (a == null || !d.path?.length) {
       const other = u.team === 'heroes' ? foes : heroes;
       if (other.length && !(d.path?.length) && !(u.dead || u.removed)) {
@@ -530,7 +595,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     // dying units: stay opaque while they fall, then fade
     const alpha = dead ? Math.min(1, it.alpha * 2.2) : it.alpha;
     const flash = Math.min(0.6, (d.flash || 0) * 3);
-    const team = keyRGB(it.tint || GFX.team[TEAM(u)]);
+    const team = keyRGB(it.tint || it.teamKey || GFX.team[TEAM(u)]);
     inst.push({ it, T, m, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.growTarget : GFX.unit.grow });
   }
   // rows: grouped by template, opaque first (x-ray / body / outline draw the opaque run, the translucent run after)
@@ -628,7 +693,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   const tod = b.map.tod, NT = GFX.light.night;
   const amount = vis.dark ? NT.amount : tod === 'dusk' ? NT.dusk : 0;
   const ovl = WEATHER.tod[tod]?.overlay?.[0] || '0', nc = keyRGB(ovl);
-  const ls = amount && vis.dark ? lightSources(b).slice(0, 8) : [];
+  const ls = amount && vis.dark ? (S.lights3 || lightSources(b)).slice(0, GFX.light.night.max) : [];
   const larr = new Float32Array(24);
   ls.forEach(([x, y, rr], k) => { larr[k * 3] = x + 0.5; larr[k * 3 + 1] = y + 0.5; larr[k * 3 + 2] = (rr + 0.5) * NT.radiusMul; });
   const common = (P) => {
@@ -664,7 +729,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   gl.uniform4f(U.uTint, 0, 0, 0, 0);
   gl.uniform4f(U.uFlat, 0, 0, 0, 0);
   gl.uniform1f(U.uAlpha, 1);
-  for (const c of V.chunks.values()) if (c.mesh) { gl.bindVertexArray(c.mesh.vao); gl.drawElements(gl.TRIANGLES, c.mesh.count, gl.UNSIGNED_INT, 0); }
+  for (const c of shown) { gl.bindVertexArray(c.mesh.vao); gl.drawElements(gl.TRIANGLES, c.mesh.count, gl.UNSIGNED_INT, 0); }
   const near = nearMask(cam);
   for (const e of V.edges || []) {
     const m = e.mask & near ? e.low : e.full;
@@ -750,7 +815,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   gl.disable(gl.BLEND);
   gl.disable(gl.SCISSOR_TEST);
   gl.bindVertexArray(null);
-  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy };
+  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy, chunks: shown.length, chunksAll: V.chunks.size, lights: ls.length, weather: wxActive };
 }
 const angDelta = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 function hashArr(a) { let h = 0; for (let i = 0; i < a.length; i += 7) h = (Math.imul(h, 31) + (a[i] * 1000 | 0) + (a[i + 2] * 977 | 0) + (a[i + 6] * 100 | 0)) | 0; return h; }

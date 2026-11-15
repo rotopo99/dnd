@@ -202,3 +202,67 @@ function transient(ob, P, e, k, parts) {
     default:
   }
 }
+
+/**
+ * Weather of the map def (3d.md stage 3): rain — slanted thin streaks + a slow wet sheen on floor cells; snow / blizzard —
+ * drifting flakes; fog — a few flat slow banks. Particles live in a box around the camera centre (deterministic by index
+ * and time, no per-frame state). «Снизить эффекты» — none at all (the depth fog stays in the shader); «Снизить движение» —
+ * frozen. Returns true while particles move.
+ */
+export function weatherFx(V, def, now, prefs, ob, P) {
+  const kind = def?.weather;
+  const C = GFX.weather[kind];
+  if (!C || prefs.reduceFx) return false;
+  const cam = V.cam, Wd = V.world, tt = prefs.reduceMotion ? 0 : now;
+  const vis = cam.area.w / (cam.ppmFit * cam.zoom);
+  const R = Math.max(8, Math.min(22, Math.max(GFX.weather.radius, vis * 0.6)));
+  const cx = cam.cx, cz = cam.cz;
+  const fl = (x, z) => { const xi = Math.max(0, Math.min(Wd.w - 1, x | 0)), zi = Math.max(0, Math.min(Wd.h - 1, z | 0)); return Wd.floor[zi * Wd.w + xi] ?? 0; };
+  // world-anchored cells of a 2R box (positions stay put when the camera moves)
+  const wrap = (v, c) => c - R + ((((v - (c - R)) % (2 * R)) + 2 * R) % (2 * R));
+  if (kind === 'rain') {
+    const col = rgb(C.color);
+    for (let i = 0; i < C.n; i++) {
+      const hx = hash(i, 7, 1), hz = hash(i, 11, 2), hp = hash(i, 3, 3);
+      const fall = C.top * frac(hp + (tt * C.speed * (0.85 + 0.3 * hash(i, 5, 4))) / C.top);
+      const y = C.top - fall;
+      const x = wrap(hx * 2 * R + y * C.slant, cx), z = wrap(hz * 2 * R, cz);
+      if (x < 0 || z < 0 || x > Wd.w || z > Wd.h) continue;
+      part(P, x, y + fl(x, z), z, C.size, col, C.alpha, 1, C.len, 1, 0);
+    }
+    // wet sheen: thin light strips on some floor cells near the camera, breathing slowly (0.12 Hz)
+    const sc = rgb(C.sheenColor), r = Math.ceil(R * 0.8);
+    for (let y = Math.max(0, (cz - r) | 0); y < Math.min(Wd.h, cz + r); y++) for (let x = Math.max(0, (cx - r) | 0); x < Math.min(Wd.w, cx + r); x++) {
+      const k = Wd.kind[y * Wd.w + x];
+      if (k !== 'floor' && k !== 'deck' && k !== 'exit' && k !== 'rubble') continue;
+      const h = hash(x, y, 9);
+      if (h > C.sheen) continue;
+      const a = C.sheenAlpha * (0.6 + 0.4 * Math.sin(TW * (C.sheenHz * tt + h * 4)));
+      const f = fl(x, y) + GFX.geo.overlay * 0.5, ox = 0.15 + hash(x, y, 4) * 0.4, oz = 0.2 + hash(x, y, 5) * 0.5;
+      ob.rect(x + ox, y + oz, x + ox + 0.45, y + oz + 0.08, f, [sc[0], sc[1], sc[2], a]);
+    }
+    return !prefs.reduceMotion;
+  }
+  if (kind === 'snow' || kind === 'blizzard') {
+    const col = rgb(C.color);
+    for (let i = 0; i < C.n; i++) {
+      const hx = hash(i, 13, 1), hz = hash(i, 17, 2), hp = hash(i, 19, 3);
+      const fall = C.top * frac(hp + (tt * C.speed * (0.8 + 0.4 * hash(i, 23, 4))) / C.top);
+      const y = C.top - fall, sw = Math.sin(TW * (C.swayHz * tt + hp)) * C.sway;
+      const x = wrap(hx * 2 * R + tt * C.wind + sw, cx), z = wrap(hz * 2 * R + sw * 0.5, cz);
+      if (x < 0 || z < 0 || x > Wd.w || z > Wd.h) continue;
+      part(P, x, y + fl(x, z), z, C.size, col, C.alpha, kind === 'blizzard' ? 2.2 : 1, 1, 1, 0);
+    }
+    return !prefs.reduceMotion;
+  }
+  if (kind === 'fog') {
+    const col = rgb(C.color);
+    for (let i = 0; i < C.n; i++) {
+      const x = wrap(hash(i, 29, 1) * 2 * R + tt * C.speed * (i % 2 ? 1 : -0.6), cx), z = wrap(hash(i, 31, 2) * 2 * R, cz);
+      if (x < -2 || z < -2 || x > Wd.w + 2 || z > Wd.h + 2) continue;
+      part(P, x, fl(x, z) + 0.35, z, C.size, col, C.alpha, 1.6, C.flat, 1, hash(i, 37, 3) * TW);
+    }
+    return !prefs.reduceMotion;
+  }
+  return false;
+}

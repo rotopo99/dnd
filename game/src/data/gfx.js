@@ -23,12 +23,14 @@ export const GFX = {
     // (corners may leave the screen: the camera leans to the active unit); 2 — level 1 x `closer`
     widthFill: 0.85, closer: 1.4,
     zoomDefault: 1, follow: 6, // 1/s, camera centre lerp
+    // stage 3: pan — drag with the middle / right button (right: after dragMin px, a right click stays a click), arrows px/s
+    dragMin: 6, panSpeed: 720,
   },
   light: {
     // direction in camera space: left, up, towards the camera -> top faces get the base tone, left faces light, right shadow
     dir: [-0.75, 0.55, 0.35], steps: [0.62, 0.22], ao: 0.55,
     fog: { near: 2, far: 22, max: 0.32, visMul: 0.06 },
-    night: { amount: 0.55, dusk: 0.25, radiusMul: 1 },
+    night: { amount: 0.55, dusk: 0.25, radiusMul: 1, max: 8 }, // max — point lights per frame (shader limit 8)
   },
   unit: { scale: 1.2, r: 0.26, body: 0.95, head: 0.26, ring: [0.36, 0.46], hull: 1.07, xray: 0.3, headScale: 0.24, lerpH: 10, bossScale: 1.3, grow: 0.022, growTarget: 0.035 },
   // enemy silhouettes (gfx/units3d.js): first rule that matches the enemy id (regexp) or tag wins; else humanoid
@@ -64,6 +66,23 @@ export const GFX = {
     flameHz: 0.8, bubbleT: 1.6, puffT: 6.5, shineT: 3.2, arcHz: 0.6, emberT: 1.7, maxParticles: 900,
     flash: 0.2, spark: 0.35, ring: 0.6, puff: 0.9, boltLen: 0.35,
     color: { bolt: 'b', flash: 'b', spark: 'a', cast: 'n', heal: 'j', throw: '5', debris: '3' },
+  },
+  // stage 3: weather particles (gfx/fx3d.js weatherFx) around the camera centre; «Снизить эффекты» — none.
+  // Low frequency, thin and translucent: rain — slanted streaks + a slow wet sheen on the floor; snow / blizzard — flakes;
+  // fog — a few slow flat banks (the depth fog itself is in the shader)
+  weather: {
+    radius: 14, // m around the camera centre (scaled with the visible area, clamped to [8, 22])
+    rain: { n: 110, speed: 7.5, len: 11, size: 0.017, slant: 0.18, color: '4', alpha: 0.32, top: 6, sheen: 0.22, sheenColor: 'f', sheenAlpha: 0.1, sheenHz: 0.12 },
+    snow: { n: 130, speed: 0.75, size: 0.035, sway: 0.35, swayHz: 0.09, color: '5', alpha: 0.55, top: 5, wind: 0.25 },
+    blizzard: { n: 170, speed: 1.4, size: 0.032, sway: 0.25, swayHz: 0.12, color: '5', alpha: 0.5, top: 5, wind: 2.2 },
+    fog: { n: 14, size: 1.6, speed: 0.18, color: '4', alpha: 0.08, flat: 0.22 },
+  },
+  // stage 3: free node map in 3D (gfx/roam3d.js): lower walls (rooms stay readable), camera area, NPC / object tones
+  roam: {
+    wall: 1.25, zoomDefault: 2, // whole map at 0; 1 — floor fills the width; 2 — closer (follows the leader)
+    npc: 'b', guard: 'a', hunter: 'c', other: 'h', // ring / outline palette keys
+    lightR: { fire: 3.5, lamp: 3, party: 2.5 }, // night point lights (cells)
+    cone: { fill: 0.16, hot: 0.26, edge: 0.45 },
   },
   // palette ramps [shadow, base, light] for materials without a biome ramp
   ramps: {

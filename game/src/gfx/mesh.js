@@ -4,7 +4,7 @@
 //   new MeshBuilder()              .quad(p0..p3, ramp, {ao:[4], glow, inside}) .tri .box .bevelBox .cyl .wedge
 //   uploadMesh(gl, mb)             -> { vao, count, bufs } (null when empty; + bone attribute 6 after mb.setBone);  freeMesh
 //   uploadInstanced(gl, mesh, slot, data) -> per-instance attributes (particles: loc 2..4, 12 floats) on a dynamic buffer
-//   new OverlayBuilder()           .quad(p0..p3, rgba) .rect(x0, z0, x1, z1, y, rgba) .frame(...)
+//   new OverlayBuilder()           .quad(p0..p3, rgba) .rect(x0, z0, x1, z1, y, rgba) .frame(...) .ring .poly(pts, y, rgba) .line
 //   uploadOverlay(gl, ob, slot)    -> reuses one dynamic buffer per slot
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
 import { VERT } from './gl.js';
@@ -180,6 +180,16 @@ export class OverlayBuilder {
       this.quad(P(a0, r0), P(a0, r1), P(a1, r1), P(a1, r0), c);
     }
     return this;
+  }
+  /** Horizontal polygon [[x, z], ...] at height y (fan from the first point — convex / star-shaped from it, e.g. view cones). */
+  poly(pts, y, c) {
+    for (let k = 1; k + 1 < pts.length; k++) for (const p of [pts[0], pts[k], pts[k + 1]]) this.v.push(p[0], y, p[1], c[0], c[1], c[2], c[3]);
+    return this;
+  }
+  /** Horizontal line segment of width w. */
+  line(x0, z0, x1, z1, y, w, c) {
+    const l = Math.hypot(x1 - x0, z1 - z0) || 1, nx = (-(z1 - z0) / l) * w / 2, nz = ((x1 - x0) / l) * w / 2;
+    return this.quad([x0 - nx, y, z0 - nz], [x1 - nx, y, z1 - nz], [x1 + nx, y, z1 + nz], [x0 + nx, y, z0 + nz], c);
   }
   get count() { return this.v.length / 7; }
 }
