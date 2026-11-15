@@ -15,6 +15,7 @@ export const RUN = {
   eliteRewardChoices: 3,                      // elite: choices are rare+; plus a relic offer
   bossHeal: 1,                                // full heal after act boss
   killMemory: 0,                              // memory points: see META
+  shopPriceMul: 0.25,                         // run shops: world price × this (run credits are scarce: 15–25 per fight)
 };
 
 // Party level by layer inside an act: lvl[0] at layer 0 → lvl[1] at the boss layer, linear, rounded down.

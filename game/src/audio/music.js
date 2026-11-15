@@ -30,6 +30,7 @@
 // Where to call: see the comment at the end of this file.
 
 import { initAudio, getAudioContext, getNoiseBuffer, masterGain } from './sfx.js';
+import { getBusVolume, setBusVolume } from './core.js';
 
 const MAX_VOICES = 16;
 const MUSIC_MAX = 0.36; // music under SFX: about −13 dB at default volume (0.6 × 0.36 ≈ 0.22)
@@ -182,7 +183,7 @@ const DRUM_CURVE = (() => {
 let ctx = null;
 let musicBus = null;
 let sendBus = null; // percussion send into the echo
-let volume = 0.6;
+let volume = getBusVolume('music'); // saved in localStorage via core.js (default 0.6)
 let voices = 0;
 let current = null; // running track
 let wanted = null; // requested but not yet started (no context yet)
@@ -330,6 +331,7 @@ export function setMusicVolume(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return;
   volume = clamp(n, 0, 1);
+  setBusVolume('music', volume); // persist the level (core.js mix)
   try {
     if (ctx && musicBus) musicBus.gain.setTargetAtTime(volume * MUSIC_MAX, ctx.currentTime, 0.05);
   } catch {

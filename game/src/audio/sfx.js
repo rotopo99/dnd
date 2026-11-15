@@ -1,74 +1,45 @@
-// sfx.js — all game sounds synthesized with WebAudio (no audio files).
+// sfx.js — facade for all game sounds (synthesized with WebAudio, no audio files).
 //
 // Usage:
-//   import { initAudio, unlockAudioOnFirstGesture, play, setVolume } from './audio/sfx.js';
+//   import { initAudio, unlockAudioOnFirstGesture, play, setVolume, setBusVolume } from './audio/sfx.js';
 //   unlockAudioOnFirstGesture();          // or call initAudio() inside any user-gesture handler
-//   play('hit', { dmgType: 'fire' });
+//   play('hit', { dmgType: 'fire', weapon: 'sword', armor: 'metal' });
+//
+// Modules:
+//   core.js        — AudioContext, mixer buses (sfx/ui/voice/amb), limiter, synth primitives
+//   sfx-foley.js   — footsteps by surface, weapon swings, armour, falls, surfaces, abilities
+//   sfx-ui.js      — clicks, windows, coins, loot, level-up, quests, errors, card game
+//   vox.js         — wordless vocalisations (formants; gender/race)
+//   ambience.js    — biome/night/weather layers (setBiome) — separate API, not via play()
 //
 // Safety: if AudioContext is unavailable (Node, headless) or not yet created,
 // every function is a silent no-op and never throws.
 //
-// Loudness: voices -> compressor -> masterGain (<= 0.5 ~ -6 dBFS).
+// Loudness: voices -> bus -> compressor -> masterGain -> limiter (<= -6 dBFS).
 
-// -6 dBFS ceiling = 0.5; 0.45 leaves headroom for the compressor's built-in makeup gain.
-const MAX_MASTER = 0.45;
+import { initCore, isReady, getAudioContext, getNoiseBuffer, getVoiceCount, setMasterVolume, getMasterVolume, setBusVolume, getBusVolume, tone, noise, steps, rand, vary, NOTE } from './core.js';
+import { FOLEY, FOLEY_SURFACES, FOLEY_WEAPONS } from './sfx-foley.js';
+import { UI } from './sfx-ui.js';
+import { say, VOX_KINDS } from './vox.js';
+
+export { masterGain } from './core.js';
+export { setBusVolume, getBusVolume } from './core.js';
+export { setBiome, stopAmbience, AMBIENCE_BIOMES } from './ambience.js';
+
 const MIN_REPEAT_MS = 30; // same sound retriggered faster than this is dropped
+const MAX_VOICES = 56; // mirrors core.js; above it only CRITICAL sounds play
+const CRITICAL = new Set(['death', 'defeat', 'victory', 'levelUp', 'questDone']);
 
-let ctx = null;
-export let masterGain = null;
-let bus = null; // voices connect here (pre-compressor)
-let noiseBuf = null;
-let volume = 1;
 const lastPlayed = new Map();
 
-function getCtor() {
-  try {
-    return globalThis.AudioContext || globalThis.webkitAudioContext || null;
-  } catch {
-    return null;
-  }
-}
+const audioNow = () => {
+  const c = getAudioContext();
+  return c ? c.currentTime : 0;
+};
 
 /** Create (or resume) the AudioContext. Call from a user gesture. Returns true if audio is ready. */
 export function initAudio() {
-  try {
-    if (ctx) {
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-      return true;
-    }
-    const Ctor = getCtor();
-    if (!Ctor) return false;
-    ctx = new Ctor({ latencyHint: 'interactive' });
-
-    masterGain = ctx.createGain();
-    masterGain.gain.value = MAX_MASTER * volume;
-
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -12;
-    comp.knee.value = 0;
-    comp.ratio.value = 12;
-    comp.attack.value = 0.002;
-    comp.release.value = 0.1;
-
-    bus = ctx.createGain();
-    bus.gain.value = 1;
-    bus.connect(comp);
-    comp.connect(masterGain);
-    masterGain.connect(ctx.destination);
-
-    const len = Math.floor(ctx.sampleRate * 1);
-    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    return true;
-  } catch {
-    ctx = null;
-    masterGain = null;
-    bus = null;
-    return false;
-  }
+  return initCore();
 }
 
 /** Attach one-shot listeners that call initAudio() on the first pointer/key/touch action. */
@@ -87,161 +58,15 @@ export function unlockAudioOnFirstGesture(target = globalThis) {
 
 /** Master volume 0..1 (mapped to 0..-6 dBFS ceiling). */
 export function setVolume(v) {
-  const n = Number(v);
-  volume = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : volume;
-  try {
-    if (ctx && masterGain) masterGain.gain.setTargetAtTime(MAX_MASTER * volume, ctx.currentTime, 0.01);
-  } catch {
-    /* no-op */
-  }
+  setMasterVolume(v);
 }
 
 export function getVolume() {
-  return volume;
+  return getMasterVolume();
 }
 
 /** Shared AudioContext (null until initAudio). Used by music.js. */
-export function getAudioContext() {
-  return ctx;
-}
-
-/** Shared 1 s white-noise buffer (null until initAudio). Used by music.js. */
-export function getNoiseBuffer() {
-  return noiseBuf;
-}
-
-// ---------- helpers ----------
-
-const rand = (a, b) => a + Math.random() * (b - a);
-/** Randomize frequency by +-cents. */
-const vary = (f, cents = 40) => f * Math.pow(2, rand(-cents, cents) / 1200);
-const NOTE = (semisFromA4) => 440 * Math.pow(2, semisFromA4 / 12);
-
-function envGain(t, peak, attack, dur, dest) {
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(peak, t + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, attack + 0.005));
-  g.connect(dest || bus);
-  return g;
-}
-
-function cleanup(src, nodes) {
-  src.onended = () => {
-    try {
-      src.disconnect();
-      nodes.forEach((n) => n.disconnect());
-    } catch {
-      /* ignore */
-    }
-  };
-}
-
-// Saturation (soft clip) for dry mechanical timbres. Shared curve, no oversampling (cheap, low latency).
-let SAT = null;
-function satNode() {
-  if (!SAT) {
-    SAT = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) {
-      const x = (i / 1023) * 2 - 1;
-      SAT[i] = Math.tanh(3 * x) / Math.tanh(3);
-    }
-  }
-  const ws = ctx.createWaveShaper();
-  ws.curve = SAT;
-  ws.oversample = 'none';
-  return ws;
-}
-
-/**
- * Oscillator voice.
- * o: { type, f, f1, glide:'exp'|'lin', at (delay s), dur, peak, attack, filter:{type,f,f1,q}, vib:{rate,depth}, detune }
- */
-function tone(o) {
-  const t = ctx.currentTime + (o.at || 0);
-  const dur = o.dur || 0.1;
-  const osc = ctx.createOscillator();
-  osc.type = o.type || 'sine';
-  osc.frequency.setValueAtTime(o.f, t);
-  if (o.f1) {
-    if (o.glide === 'lin') osc.frequency.linearRampToValueAtTime(o.f1, t + dur);
-    else osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f1), t + dur);
-  }
-  if (o.detune) osc.detune.value = o.detune;
-  const nodes = [];
-  const g = envGain(t, o.peak ?? 0.2, o.attack ?? 0.003, dur, o.dest);
-  nodes.push(g);
-  let head = g;
-  if (o.filter) {
-    const fl = ctx.createBiquadFilter();
-    fl.type = o.filter.type || 'lowpass';
-    fl.frequency.setValueAtTime(o.filter.f, t);
-    if (o.filter.f1) fl.frequency.exponentialRampToValueAtTime(o.filter.f1, t + dur);
-    fl.Q.value = o.filter.q ?? 1;
-    fl.connect(g);
-    head = fl;
-    nodes.push(fl);
-  }
-  if (o.vib) {
-    const lfo = ctx.createOscillator();
-    const lg = ctx.createGain();
-    lfo.frequency.value = o.vib.rate;
-    lg.gain.value = o.vib.depth;
-    lfo.connect(lg).connect(osc.frequency);
-    lfo.start(t);
-    lfo.stop(t + dur + 0.05);
-    cleanup(lfo, [lg]);
-  }
-  osc.connect(head);
-  osc.start(t);
-  osc.stop(t + dur + 0.05);
-  cleanup(osc, nodes);
-  return osc;
-}
-
-/** Filtered noise burst. o: { at, dur, peak, attack, type, f, f1, q, offset } */
-function noise(o) {
-  const t = ctx.currentTime + (o.at || 0);
-  const dur = o.dur || 0.1;
-  const src = ctx.createBufferSource();
-  src.buffer = noiseBuf;
-  src.loop = true;
-  const fl = ctx.createBiquadFilter();
-  fl.type = o.type || 'bandpass';
-  fl.frequency.setValueAtTime(o.f || 1000, t);
-  if (o.f1) fl.frequency.exponentialRampToValueAtTime(o.f1, t + dur);
-  fl.Q.value = o.q ?? 1;
-  const g = envGain(t, o.peak ?? 0.2, o.attack ?? 0.002, dur, o.dest);
-  const extra = [];
-  let head = fl;
-  if (o.sat) {
-    const sh = satNode();
-    extra.push(sh);
-    fl.connect(sh);
-    head = sh;
-  }
-  src.connect(fl);
-  head.connect(g);
-  src.start(t, o.offset ?? Math.random() * 0.9);
-  src.stop(t + dur + 0.05);
-  cleanup(src, [fl, g, ...extra]);
-  return src;
-}
-
-/** Stepped-pitch square (chiptune/digital). */
-function steps(freqs, stepDur, o = {}) {
-  freqs.forEach((f, i) =>
-    tone({
-      type: o.type || 'square',
-      f,
-      at: (o.at || 0) + i * stepDur,
-      dur: stepDur * (o.overlap || 1.2),
-      peak: o.peak ?? 0.08,
-      attack: 0.002,
-      filter: o.filter,
-    })
-  );
-}
+export { getAudioContext, getNoiseBuffer };
 
 // ---------- hit timbres by dmgType ----------
 
@@ -269,7 +94,7 @@ const HIT = {
     tone({ type: 'sine', f: vary(90), f1: 50, dur: 0.15, peak: 0.2 });
   },
   electric() {
-    const t = ctx.currentTime;
+    const t = audioNow();
     const osc = tone({ type: 'sawtooth', f: vary(110), dur: 0.22, peak: 0.14, filter: { type: 'highpass', f: 400 } });
     for (let i = 1; i < 8; i++) osc.frequency.setValueAtTime(rand(60, 900), t + i * 0.025);
     noise({ type: 'highpass', f: 5000, dur: 0.03, peak: 0.25 });
@@ -284,7 +109,8 @@ const HIT = {
   },
   proxy() {
     // warbling FM + static: unstable network interference
-    const t = ctx.currentTime;
+    const ctx = getAudioContext();
+    const t = audioNow();
     const carrier = tone({ type: 'sine', f: vary(320), f1: 160, dur: 0.24, peak: 0.2 });
     const mod = ctx.createOscillator();
     const mg = ctx.createGain();
@@ -294,7 +120,6 @@ const HIT = {
     mod.connect(mg).connect(carrier.frequency);
     mod.start(t);
     mod.stop(t + 0.3);
-    cleanup(mod, [mg]);
     noise({ type: 'bandpass', f: vary(2200), q: 6, dur: 0.2, peak: 0.18 });
   },
   cyber() {
@@ -313,19 +138,13 @@ const HIT = {
   },
 };
 
-// ---------- sound table ----------
+// ---------- sound table (legacy names kept; new ones come from modules) ----------
 
 const SOUNDS = {
-  uiClick() {
-    tone({ type: 'square', f: vary(1800, 30), f1: 1100, dur: 0.03, peak: 0.08, filter: { type: 'lowpass', f: 4000 } });
-    noise({ type: 'highpass', f: 5000, dur: 0.012, peak: 0.08 });
-  },
-  uiHover() {
-    tone({ type: 'sine', f: vary(2400, 30), dur: 0.025, peak: 0.04 });
-  },
-  step() {
-    noise({ type: 'lowpass', f: vary(350, 150), f1: 150, dur: 0.07, peak: 0.25 });
-    tone({ type: 'sine', f: vary(110, 80), f1: 70, dur: 0.06, peak: 0.15 });
+  ...UI,
+  ...Object.fromEntries(Object.entries(FOLEY).filter(([k]) => k !== 'step')),
+  step(opts = {}) {
+    FOLEY.step(opts);
   },
   turnStart() {
     tone({ type: 'triangle', f: NOTE(3), dur: 0.09, peak: 0.2 }); // C5
@@ -338,13 +157,20 @@ const SOUNDS = {
     tone({ type: 'sawtooth', f: NOTE(-18), at: 0.1, dur: 0.22, peak: 0.14, filter: f }); // Eb3 (tritone)
     tone({ type: 'sine', f: NOTE(-30), at: 0.1, dur: 0.25, peak: 0.15 });
   },
+  // opts: { dmgType, weapon?: swing type, armor?: 'cloth'|'leather'|'metal'|'fur', vox?: {gender, race} (grunt) }
   hit(opts = {}) {
+    if (opts.weapon) FOLEY.swing({ weapon: opts.weapon });
+    if (opts.armor) FOLEY.armorHit({ mat: opts.armor });
     (HIT[opts.dmgType] || HIT.blunt)();
+    if (opts.vox) say('grunt', opts.vox);
   },
   crit(opts = {}) {
+    if (opts.weapon) FOLEY.swing({ weapon: opts.weapon });
+    if (opts.armor) FOLEY.armorHit({ mat: opts.armor });
     (HIT[opts.dmgType] || HIT.blunt)();
     tone({ type: 'sine', f: 120, f1: 35, dur: 0.2, peak: 0.35 }); // heavy mechanical thump
     noise({ type: 'lowpass', f: 900, f1: 150, q: 0.7, dur: 0.14, peak: 0.25, attack: 0.001, sat: true });
+    tone({ type: 'sine', f: vary(1300, 30), at: 0.02, dur: 0.35, peak: 0.05 }); // ring
   },
   miss() {
     noise({ type: 'bandpass', f: vary(900), f1: vary(2200), q: 4, dur: 0.07, peak: 0.22, attack: 0.002, sat: true });
@@ -371,16 +197,16 @@ const SOUNDS = {
     tone({ type: 'sawtooth', f: f * 1.06, f1: f * 0.47, dur: 0.28, peak: 0.08, filter: fl }); // minor 2nd rub
   },
   cringe() {
-    // "bvamp": a flubbed trombone-ish blat with wah filter, like a joke that died
+    // кринж: искажённый вой + скретч (ability), плюс «bwamp» духовой блеск
     const f = vary(200, 60);
-    const t = ctx.currentTime;
+    const t = audioNow();
     const o1 = tone({ type: 'sawtooth', f, dur: 0.42, peak: 0.22, attack: 0.008, filter: { type: 'lowpass', f: 300, q: 6 } });
     o1.frequency.linearRampToValueAtTime(f * 1.08, t + 0.08);
     o1.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.42);
     const o2 = tone({ type: 'square', f: f * 0.5, dur: 0.4, peak: 0.08, filter: { type: 'lowpass', f: 500 }, detune: 25 });
     o2.frequency.exponentialRampToValueAtTime(f * 0.27, t + 0.4);
-    // wah: separate bandpass sweep on noise-free voice for "bw-" onset
     tone({ type: 'sawtooth', f: f * 2, f1: f * 1.1, dur: 0.12, peak: 0.07, filter: { type: 'bandpass', f: 400, f1: 1400, q: 4 } });
+    FOLEY.ability({ kind: 'cringe' });
   },
   breakdown() {
     // Срыв: descending sad-trombone + glitchy breakup
@@ -396,10 +222,13 @@ const SOUNDS = {
     HIT.blunt();
     tone({ type: 'triangle', f: vary(700, 30), f1: 110, at: 0.05, dur: 0.45, peak: 0.16 });
   },
-  death() {
+  // opts: { weight?: 'light'|'heavy' (падение тела), vox?: {gender, race} (вскрик)}
+  death(opts = {}) {
     noise({ type: 'lowpass', f: 900, f1: 80, dur: 0.9, peak: 0.3, attack: 0.005 });
     tone({ type: 'sawtooth', f: vary(220, 40), f1: 38, dur: 1.0, peak: 0.18, filter: { type: 'lowpass', f: 1500, f1: 120 } });
     tone({ type: 'sine', f: 80, f1: 30, dur: 0.6, peak: 0.3 });
+    if (opts.weight) FOLEY.bodyFall({ weight: opts.weight });
+    if (opts.vox) say('scream', opts.vox);
   },
   summon() {
     noise({ type: 'bandpass', f: 300, f1: 5000, q: 3, dur: 0.55, peak: 0.16, attack: 0.01 });
@@ -433,22 +262,32 @@ const SOUNDS = {
       tone({ type: 'sawtooth', f: NOTE(s), at: i * 0.3, dur: last ? 1.2 : 0.32, peak: 0.13, attack: 0.008, filter: fl, vib: last ? { rate: 5, depth: 2 } : undefined });
     });
   },
+  // Голос без слов: play('vox', { kind: 'sigh'|'grunt'|'scream'|'laugh'|'hm'|'battleCry', gender, race })
+  vox(opts = {}) {
+    say(opts.kind, opts);
+  },
 };
 
 /** Names accepted by play(). */
 export const SOUND_NAMES = Object.freeze(Object.keys(SOUNDS));
 export const DMG_TYPES = Object.freeze(Object.keys(HIT));
+export const WEAPON_TYPES = FOLEY_WEAPONS;
+export const SURFACE_TYPES = FOLEY_SURFACES;
+export const VOX_TYPES = VOX_KINDS;
 
 /**
  * Single entry point. play('hit', { dmgType: 'fire' }).
- * Silent no-op if audio is not initialized/unavailable or name is unknown.
+ * Silent no-op if audio is not initialized/unavailable, name is unknown, or the voice limit is reached.
  */
 export function play(name, opts = {}) {
   try {
-    if (!ctx || !bus || volume <= 0) return;
+    if (!isReady()) return;
+    if (getVoiceCount() >= MAX_VOICES && !CRITICAL.has(name)) return; // voice limit: drop non-critical
+    if (getMasterVolume() <= 0) return;
     const fn = SOUNDS[name];
     if (!fn) return;
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const c = getAudioContext();
+    if (c.state === 'suspended') c.resume().catch(() => {});
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const key = name === 'hit' || name === 'crit' ? `${name}:${opts && opts.dmgType}` : name;
     if (now - (lastPlayed.get(key) || -1e9) < MIN_REPEAT_MS) return;

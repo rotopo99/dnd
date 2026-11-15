@@ -340,9 +340,9 @@ function humanoidAnime(o) {
       { y: 0.19, rx: tl * 0.64, rz: tl * 0.66, x, z: 0 }, { y: 0.26, rx: tl * 0.74, rz: tl * 0.76, x, z: 0.002 },
     ], lod ? 5 : thin ? 6 : 9), rDark, { seg: lod ? 6 : thin ? 8 : 10, capTop: false, capBot: true });
     if (!lod) mb.box(x - tl * 0.6, 0.0, -0.045, x + tl * 0.6, 0.02, 0.0, ramp('0'), { ao: 0 }); // heel
-    if (A === 'medium' || A === 'heavy') { mb.bevelBox(x - tl * 0.9, 0.12, tl * 0.35, x + tl * 0.9, kn + 0.02, tl * 0.95, 0.02, plate, { ao: 0 }); }
+    if (A === 'medium' || A === 'heavy') loft(mb, [{ y: 0.12, rx: tl * 0.74, rz: tl * 0.78, x, z: 0.004, ao: 0.2 }, { y: kn - 0.04, rx: tl * 0.82, rz: tl * 0.86, x, z: 0.008 }, { y: kn + 0.03, rx: tl * 0.9, rz: tl * 0.92, x, z: 0.008 }], plate, { seg: lod ? 7 : 10, capTop: false });
     mb.setBone(s > 0 ? BONE.thL : BONE.thR);
-    if (A === 'medium' || A === 'heavy') mb.bevelBox(x - tl * 1.15, hipY - 0.24, -tl * 1.2, x + tl * 1.15, hipY - 0.02, tl * 1.2, 0.025, plate, { ao: 0 });
+    if (A === 'medium' || A === 'heavy') loft(mb, [{ y: hipY - 0.23, rx: tl * 1.05, rz: tl * 1.1, x, ao: 0.3 }, { y: hipY - 0.1, rx: tl * 1.12, rz: tl * 1.15, x }, { y: hipY + 0.0, rx: tl * 1.08, rz: tl * 1.1, x: x * 0.95 }], plate, { seg: lod ? 7 : 10, capTop: false });
   }
   // ---- arms: sleeve loft (shoulder -> cuff), bare forearm, hand with fingers
   const bareArm = (A === 'cloth' || A === 'light') && (F || A === 'light') || false;
@@ -420,7 +420,9 @@ function dressAnime(o, C) {
     const lo = [{ y: hipY - long, rx: (F ? 0.27 : 0.235) * w, rz: F ? 0.22 : 0.17, ao: 0.4 }, { y: hipY - long * 0.55, rx: (F ? 0.235 : 0.2) * w, rz: F ? 0.19 : 0.15 }, { y: hipY - 0.1, rx: (F ? 0.205 : 0.185) * w, rz: F ? 0.16 : 0.14 }, { y: hipY, rx: (F ? 0.178 : 0.17) * w, rz: F ? 0.13 : 0.125 }];
     loft(mb, resample(lo, lod ? 5 : thin ? 6 : 9), ramps, { seg: lod ? 8 : thin ? 10 : 14, capTop: false, rot: Math.PI / 14 });
     mb.setMat(0);
+    if (!lod) loft(mb, [{ y: hipY - long + 0.03, rx: (F ? 0.272 : 0.238) * w, rz: F ? 0.222 : 0.172, ao: 0.2 }, { y: hipY - long + 0.0, rx: (F ? 0.272 : 0.238) * w, rz: F ? 0.222 : 0.172 }], C.rLeather, { seg: thin ? 10 : 14, capTop: false, capBot: false, rot: Math.PI / 14 }); // hem trim
     mb.setBone(BONE.torso);
+    if (!lod) mb.bevelBox(-0.018, hipY + 0.1, F ? 0.106 : 0.114, 0.018, shY - 0.05, F ? 0.118 : 0.126, 0.005, C.rLeather, { ao: 0 }); // front placket
     if (!lod) { loft(mb, [{ y: shY - 0.035, rx: 0.115 * w, rz: 0.088 }, { y: shY + 0.03, rx: 0.098 * w, rz: 0.08 }], rDark, { seg: 12, capTop: false }); } // collar
     return;
   }

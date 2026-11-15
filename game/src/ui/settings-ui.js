@@ -6,9 +6,34 @@ import { gfxPrefs, setGfxPref, gfxMode, gfxBroken } from '../gfx/settings.js';
 import { hasWebGL2 } from '../gfx/gl.js';
 import { ROAM } from '../data/world/roam.js';
 import { THEME_IDS, themePrefs, setThemePref } from './theme.js';
+import { setVolume, getVolume, setBusVolume, getBusVolume } from '../audio/sfx.js';
+import { setMusicVolume } from '../audio/music.js';
 
 const MODES = ['auto', '3d', '2d'];
 const onOff = (v) => t(v ? 'settings.on' : 'settings.off');
+
+// Громкость: шаг 25% по кругу. Подписи — пока строками (нет ключей в data/text).
+const VOLUME_ROWS = [
+  ['master', 'Общая громкость'],
+  ['music', 'Музыка'],
+  ['sfx', 'Звуки'],
+  ['ui', 'Интерфейс'],
+  ['voice', 'Голоса'],
+  ['amb', 'Окружение'],
+];
+const VOLUME_LEVELS = [0, 0.25, 0.5, 0.75, 1];
+function nextVolume(v) {
+  const i = VOLUME_LEVELS.findIndex((l) => Math.abs(l - v) < 0.13);
+  return VOLUME_LEVELS[(i + 1) % VOLUME_LEVELS.length];
+}
+function volumeOf(key) {
+  return key === 'master' ? getVolume() : getBusVolume(key);
+}
+function setVolumeOf(key, v) {
+  if (key === 'master') setVolume(v);
+  else if (key === 'music') setMusicVolume(v);
+  else setBusVolume(key, v);
+}
 
 export function openSettings(game) {
   game.openModal({
@@ -23,6 +48,7 @@ export function openSettings(game) {
         options: [
           { label: `${t('settings.mode')}: ${modeLabel}`, keep: true, disabled: !can3d, run: () => setGfxPref('mode', MODES[(MODES.indexOf(p.mode) + 1) % MODES.length]) },
           { label: `${t('settings.reduceFx')}: ${onOff(p.reduceFx)}`, keep: true, run: () => setGfxPref('reduceFx', !p.reduceFx) },
+          { label: `${t('settings.physics')}: ${t(`settings.physics.${p.physics || 'normal'}`)}`, keep: true, run: () => { const L = ['off', 'low', 'normal']; setGfxPref('physics', L[(L.indexOf(p.physics || 'normal') + 1) % 3]); } },
           { label: `${t('settings.reduceMotion')}: ${onOff(p.reduceMotion)}`, keep: true, run: () => setGfxPref('reduceMotion', !p.reduceMotion) },
           {
             label: `${t('settings.shadows')}: ${t(`settings.shadows.${p.shadows || 'high'}`)}${p.reduceFx ? ` (${t('settings.shadowsFx')})` : ''}`, keep: true,
@@ -47,6 +73,10 @@ export function openSettings(game) {
               if (i + 1 >= THEME_IDS.length) setThemePref('auto'); else setThemePref('manual', THEME_IDS[i + 1]);
             },
           },
+          ...VOLUME_ROWS.map(([key, name]) => {
+            const v = volumeOf(key);
+            return { label: `${name}: ${Math.round(v * 100)}%`, keep: true, run: () => setVolumeOf(key, nextVolume(v)) };
+          }),
           { label: t('settings.close') },
         ],
       };
