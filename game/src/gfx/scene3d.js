@@ -21,11 +21,12 @@ import { PROPS } from '../assets/props.js';
 import { liveChar } from '../ui/battle-terrain.js';
 import { fieldBiome, propCells } from '../ui/field-view.js';
 import { visionOf, lightSources } from '../world/battlefields.js';
-import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, BONE_TEX_W } from './gl.js';
+import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, BONE_TEX_W, NBONES } from './gl.js';
 import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, uploadInstanced, resetInstanced, keyRGB, rampRGB, cssRGBA } from './mesh.js';
 import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis, panCamera, centerCamera } from './camera.js';
 import { ramp, propModel, propTop } from './models.js';
 import { unitTemplate } from './units3d.js';
+import { gpuAtlas, faceCol, FACE_COLS } from './faces.js';
 import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
 import { buildFx, particleMesh, weatherFx } from './fx3d.js';
 import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken } from './settings.js';
@@ -416,6 +417,7 @@ function modelMat(x, y, z, yaw, lie = 0, s = 1) {
     x, y, z, 1,
   ]);
 }
+const physicsK = (prefs) => (prefs.physics === 'off' ? 0 : prefs.physics === 'low' ? 0.5 : 1);
 const TEAM = (u) => (u.team === 'heroes' ? (u.kind === 'hero' ? 'player' : 'ally') : u.team === 'enemies' ? 'enemy' : 'rival');
 const ob = new OverlayBuilder();
 const PARTS = [];
@@ -596,7 +598,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     const alpha = dead ? Math.min(1, it.alpha * 2.2) : it.alpha;
     const flash = Math.min(0.6, (d.flash || 0) * 3);
     const team = keyRGB(it.tint || it.teamKey || GFX.team[TEAM(u)]);
-    inst.push({ it, T, m, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.growTarget : GFX.unit.grow });
+    inst.push({ it, T, m, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.outlineTargetPx : GFX.unit.outlinePx });
   }
   // rows: grouped by template, opaque first (x-ray / body / outline draw the opaque run, the translucent run after)
   inst.sort((p, q) => (p.T.key < q.T.key ? -1 : p.T.key > q.T.key ? 1 : (p.trans ? 1 : 0) - (q.trans ? 1 : 0)));
@@ -609,8 +611,10 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     if (!g || g.key !== p.T.key) { g = { key: p.T.key, m: p.m, first: row, nOp: 0, nTr: 0 }; groups.push(g); }
     if (p.trans) g.nTr++; else g.nOp++;
     const d = p.it.d, o = row * rowF;
-    poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, boneData, o, { walking: p.walking, reduceMotion: prefs.reduceMotion });
-    boneData.set([wc[0], wc[1], wc[2], p.flash, p.team[0], p.team[1], p.team[2], p.alpha, p.grow, 0, 0, 0], o + 132);
+    poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, boneData, o, { walking: p.walking, reduceMotion: prefs.reduceMotion, physics: physicsK(prefs) });
+    const emo = d.emoT > 0 && d.emo ? d.emo : 'neutral', seed = p.st.seed;
+    const blink = p.dead || d.down || ((now * 0.37 + seed * 7.3) % 1) < 0.045;
+    boneData.set([wc[0], wc[1], wc[2], p.flash, p.team[0], p.team[1], p.team[2], p.alpha, p.grow, p.T.anime ? faceCol(emo, blink) / FACE_COLS : 0, 0, 0], o + NBONES * 12);
   });
   const BT = boneTex(X, Math.max(1, inst.length));
   if (inst.length) {
@@ -717,11 +721,23 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.uniform1i(U.uNumLights, ls.length);
     gl.uniform1f(U.uBright, prefs.brightness || 1);
     gl.uniform1f(U.uMaxPix, GFX.maxPixel);
+    if (U.uToon) { // anime toon: soft band edge, rim strength, shadow hue amount, outline darkness
+      const T2 = GFX.toon, sh = keyRGB(T2.shadeHue), rm = keyRGB(T2.rim), rs = keyRGB(T2.rust);
+      gl.uniform4f(U.uToon, T2.soft, prefs.reduceFx ? T2.rim2 * 0.5 : T2.rimK, T2.hue, T2.outline);
+      gl.uniform3f(U.uShadeHue, sh[0], sh[1], sh[2]); gl.uniform3f(U.uRimCol, rm[0], rm[1], rm[2]); gl.uniform3f(U.uRustCol, rs[0], rs[1], rs[2]);
+      gl.uniform3f(U.uView, f[0], f[1], f[2]);
+      gl.uniform1f(U.uPxM, 1 / (cam.ppmFit * cam.zoom));
+      gl.uniform1i(U.uFace, 2); gl.uniform1i(U.uMatTex, 3);
+    }
     gl.uniform1i(U.uShadow, 1);
     gl.uniform3f(U.uShadowOn, shSize ? GFX.shadow.strength : 0, 1 / (shSize || 1), GFX.shadow.bias);
   };
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, SH.tex);
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, gpuAtlas(gl, X, 'face'));
+  gl.activeTexture(gl.TEXTURE3);
+  gl.bindTexture(gl.TEXTURE_2D, gpuAtlas(gl, X, 'mat'));
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, BT.tex);
 
@@ -772,13 +788,11 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   for (const g of groups) drawGroup(K, g, 0, g.nOp);
   // outline hull: front faces culled, grown along normals (per instance: targets thicker), team colour x 0.8
   gl.cullFace(gl.FRONT);
-  gl.uniform1i(KU.uMode, 1);
+  gl.uniform1i(KU.uMode, 2);
   gl.uniform1f(KU.uFlatMul, 0.8);
   gl.uniform1f(KU.uXAlpha, 1);
-  gl.uniform1f(KU.uGrow, 0.0001);
   for (const g of groups) drawGroup(K, g, 0, g.nOp);
   gl.cullFace(gl.BACK);
-  gl.uniform1f(KU.uGrow, 0);
   // fading / downed / own invisible units
   gl.uniform1i(KU.uMode, 0);
   gl.enable(gl.BLEND);

@@ -96,7 +96,7 @@ export function drawObjectiveMarkers(ctx, S) {
         ctx.fillStyle = C['0']; ctx.fillRect(x + 4 * k, y + 10 * k, 8 * k, 2 * k);
         ctx.fillStyle = C.h; ctx.fillRect(x + 4 * k, y + 10 * k, (8 * k * g.progress) / g.need, 2 * k);
       }
-      if (!p.hacked && !active) { ctx.strokeStyle = rgba(C[HC.tech], 0.35 + 0.3 * pulse); ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, c - 3, c - 3); }
+      if (!p.hacked && !S.hl3) { ctx.strokeStyle = rgba(C[HC.tech], 0.35 + 0.3 * pulse); ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, c - 3, c - 3); }
     } else if (p.kind === 'chest') {
       if (!p.open && !S.hl3) { ctx.strokeStyle = rgba(C[HC.loot], 0.35 + 0.3 * pulse); ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, c - 3, c - 3); }
       ctx.fillStyle = C['7']; ctx.fillRect(x + 2 * k, y + (p.open ? 7 : 5) * k, 12 * k, (p.open ? 7 : 9) * k);
