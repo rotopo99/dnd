@@ -18,6 +18,8 @@ import { drawObjectiveMarkers, drawObjectivePanel } from './battle-objectives.js
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
 import { battle3d, drawBattle3d, cellScreen, unitScreen, camButtons } from '../gfx/scene3d.js';
+import { drawMovePath2d, movePathOverlay3d, drawMovePill } from './move-path.js';
+import { budgetM } from '../rules/metric.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -211,15 +213,17 @@ export function renderBattle(game, S) {
   drawObjects(ctx, S);
   drawObjectiveMarkers(ctx, S); // combat rework §6: exits, zone, cargo, props, target
   const preview = drawHighlights(ctx, S);
+  if (!V) drawMovePath2d(ctx, S); // metric-combat.md: budget ring + path line (3D: overlay hook below)
   drawUnits(ctx, S, preview, tms);
   drawIntents(ctx, S);
   if (!V) {
     drawSurfaces(ctx, S, tms, 'gas');
     drawWeather(ctx, S, tms); // battlefields.md §4: time of day / weather, night light holes
-  } else drawBattle3d(game, S, { hl: S.hl3, units: S.units3, cur: b.turn ? b.byId[b.turn.unitId] : null });
+  } else drawBattle3d(game, S, { hl: S.hl3, units: S.units3, cur: b.turn ? b.byId[b.turn.unitId] : null, overlay: b.metric ? (ob, fl) => movePathOverlay3d(S, ob, fl) : null });
+  drawMovePill(ctx, S);
   {
     const hc = S.hover.cell;
-    const inReach = !!(hc && S.playerTurn && !S.sel && S.reach && S.reach.dist[hc.y * b.grid.w + hc.x] > 0);
+    const inReach = b.metric ? S.hoverPath?.ok === 'move' : !!(hc && S.playerTurn && !S.sel && S.reach && S.reach.dist[hc.y * b.grid.w + hc.x] > 0);
     surfaceHover(S, b.byId[S.heroId], inReach);
   }
   drawPopups(ctx, S);
@@ -771,7 +775,7 @@ function drawPanel(ctx, S, preview) {
   if (S.playerTurn) {
     const tr = b.turn;
     const pip = (on) => (on ? '●' : '○');
-    text(ctx, `${t('battle.moveLeft')} ${tr.move}`, x + w, y, C.h, FONT_B, 'right');
+    text(ctx, `${t('battle.moveLeft')} ${b.metric ? `${budgetM(b).toFixed(1)} ${t('battle.metres')}` : tr.move}`, x + w, y, C.h, FONT_B, 'right');
     y += LINE;
     text(ctx, `${t('battle.action')} ${pip(tr.actions > 0)}   ${t('battle.bonus')} ${pip(tr.bonus > 0)}`, x, y, C['5']);
   } else y += LINE;

@@ -4,7 +4,7 @@ import { t } from '../data/text/index.js';
 import { isAllowed } from '../rules/character.js';
 import { PLAYABLE_RACES, CLASS_ORDER } from '../data/index.js';
 import { drawSprite, heroSpriteIds, enemySpriteIds, idleFrame } from '../assets/sprites.js';
-import { play } from '../audio/sfx.js';
+import { play, stopAmbience } from '../audio/sfx.js';
 import { C, FONT, FONT_XL, text, button, hitButton, clear } from '../ui/draw.js';
 import { createCreateScene } from './create.js';
 import { createBattleScene } from './battle.js';
@@ -70,6 +70,7 @@ export const menuScene = {
   id: 'menu',
   enter(game) {
     time = 0;
+    stopAmbience(2);
     layout(game);
     if (!parade.length) {
       for (const r of PLAYABLE_RACES) {

@@ -6,6 +6,7 @@ import { t } from '../data/text/index.js';
 import { NET } from '../data/net.js';
 import { C, FONT_B, text } from '../ui/draw.js';
 import { createBattleScene, buildHeroUnit } from '../scenes/battle.js';
+import { combatMetric } from '../gfx/settings.js';
 import { currentUnit } from '../rules/combat.js';
 import { makeWorldMap } from '../world/arena.js';
 import { randomHero } from '../scenes/menu.js';
@@ -59,6 +60,7 @@ export function trainingSetup(game, session, seed = (Math.random() * 1e9) | 0) {
 /** Host: broadcast battleStart and enter the battle. hooks — host world callbacks (startCoopBattle). */
 export function hostStartBattle(game, session, setup, back, hooks) {
   session.busy = true;
+  setup.battle = { ...(setup.battle || {}), metric: setup.battle?.metric ?? combatMetric() }; // host's rules for everyone
   session.broadcast({ t: MSG.battleStart, seed: setup.seed, setup });
   return startCoopBattle(game, session, setup, back, hooks);
 }

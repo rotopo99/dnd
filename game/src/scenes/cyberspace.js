@@ -8,7 +8,7 @@ import { t } from '../data/text/index.js';
 import { TALENTS } from '../data/talents.js';
 import { NPCS } from '../data/npcs.js';
 import { CS_ZONES, CS_EVENTS, CS_RULES, CS_ITEMS, HACK_EFFECTS } from '../data/world/cyberspace.js';
-import { play } from '../audio/sfx.js';
+import { play, setBiome } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, FONT_XL, LINE, text, textBlock, panel, button, hitButton, clear, bar, fit } from '../ui/draw.js';
 import { drawHeroAvatar } from '../ui/hero-avatar.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
@@ -462,7 +462,7 @@ export function createCyberspaceScene() {
   self = {
     id: 'cyberspace',
     get S() { return { buttons, zone, mode: last?.save?.cyberspace?.mode }; },
-    enter(game) { time = 0; last = game; layout(game); },
+    enter(game) { time = 0; last = game; layout(game); setBiome('cyberspace'); },
     resume(game) { layout(game); },
     resize(game) { layout(game); },
     update(game, dt) {

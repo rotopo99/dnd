@@ -5,7 +5,7 @@
 import { baseOpen, BASE_LOC, modFx as baseFx } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
-import { play } from '../audio/sfx.js';
+import { play, stopAmbience } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, fit, wrap, panel, button, hitButton, clear, flowButtons, buttonWidth } from '../ui/draw.js';
 import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, MAP_SPACE, MAP_NODES, FARE, TIER_NAMES, encounterName, resolveLocation, locationLore } from '../world/data.js';
 import { checkInfo, checkChance, rollCheck } from '../world/checks.js';
@@ -733,6 +733,7 @@ export function createWorldMapScene() {
     S,
     enter(game) {
       game.visit = null; bindLog(game); layout(game); mapImage();
+      stopAmbience(2); // the world map has music only (ambience — battles, free map, cyberspace)
       // test hooks (playwright scenarios): travel by id, node screen position
       S.travelTo = (id) => startTravel(game, id);
       S.pos = (id) => nodePos(id);

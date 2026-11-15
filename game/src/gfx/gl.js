@@ -82,10 +82,12 @@ flat out vec3 vShade;
 flat out float vLitFace;
 out vec3 vWorld;
 out vec3 vShadow;
+${depth ? '' : 'out vec3 vNw;'}
 void main() {
   vec3 n = normalize(mat3(uModel) * aNrm);
   vec4 wp = uModel * vec4(aPos + aNrm * uGrow, 1.0);
   vWorld = wp.xyz;
+${depth ? '' : '  vNw = n;'}
   gl_Position = uVP * wp;
 ${depth ? '' : `  vec4 sp = uShadowVP * wp;
   vShadow = sp.xyz * 0.5 + 0.5;
@@ -103,6 +105,15 @@ flat in vec3 vShade;
 flat in float vLitFace;
 in vec3 vWorld;
 in vec3 vShadow;
+in vec3 vNw;
+// metric-combat.md «Обзор»: floor height per cell (R32F), cut-away (focus xz, camera dir xz | fade k, cut height, cos,
+// x-ray keep share), see-through holes (gl_FragCoord xy, radius px, window depth) around the active unit / cursor
+uniform highp sampler2D uFloorT;
+uniform vec4 uCut;
+uniform vec4 uCutK;
+uniform vec4 uSee[4];
+uniform int uNumSee;
+uniform float uSeeKeep;
 uniform vec4 uTint;
 uniform vec4 uFlat;
 uniform float uAlpha;
@@ -119,6 +130,25 @@ uniform sampler2DShadow uShadow;
 uniform vec3 uShadowOn; // strength, texel size, bias
 out vec4 outColor;
 void main() {
+  if (uCutK.x > 0.0 || uCutK.w > 0.0 || uNumSee > 0) {
+    ivec2 ts = textureSize(uFloorT, 0);
+    ivec2 tc = clamp(ivec2(floor(vWorld.xz - vNw.xz * 0.02)), ivec2(0), ts - 1);
+    float hh = vWorld.y - texelFetch(uFloorT, tc, 0).r;
+    if (hh > 0.04) {
+      float dith = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      if (uCutK.x > 0.0 && hh > mix(6.0, uCutK.y, uCutK.x)) {
+        vec2 v = vWorld.xz - uCut.xy;
+        float l = length(v);
+        if (l > 0.35 && dot(v, uCut.zw) > uCutK.z * l) discard;
+      }
+      if (uCutK.w > 0.0 && dith > uCutK.w) discard;
+      for (int i = 0; i < 4; i++) {
+        if (i >= uNumSee) break;
+        vec4 sp = uSee[i];
+        if (gl_FragCoord.z < sp.w && distance(gl_FragCoord.xy, sp.xy) < sp.z && dith > uSeeKeep) discard;
+      }
+    }
+  }
   vec3 c = uFlat.a > 0.0 ? uFlat.rgb : mix(vCol, uTint.rgb, uTint.a);
   if (uShadowOn.x > 0.0 && vLitFace > 0.5 && uFlat.a <= 0.0) {
     float lit = 0.0;

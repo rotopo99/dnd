@@ -20,7 +20,11 @@ import {
 } from '../rules/combat.js';
 import { chebyshev, lineOfSight, walkLine, T_WALL } from '../rules/grid.js';
 import { chooseAction } from '../rules/ai.js';
-import { play } from '../audio/sfx.js';
+import { play, setBiome } from '../audio/sfx.js';
+import { combatMetric, gfxPrefs } from '../gfx/settings.js';
+import { CELL_M, dispPos, navPath, budgetM, posM } from '../rules/metric.js';
+import { METRIC } from '../data/combat.js';
+import { ambBiome, stepSurface } from '../ui/field-view.js';
 import { formatEvent, eventSound, teamColor } from '../ui/battle-log.js';
 import { createScroll, updateScroll } from '../ui/scroll.js';
 import { ITEMS } from '../data/index.js';
@@ -167,8 +171,12 @@ export function createBattleScene(opts) {
       rivals, partyLose: !!opts.partyLose, // skirmishes.md: the third side (team 'rivals'), lose when the party is down
       onEvent: (e) => S.queue.push(e),
       objectives: opts.objectives || null, // combat rework §6: optional objective, chests, exits
+      metric: opts.metric ?? combatMetric(), // metric-combat.md stage 1 (settings «Бой: по клеткам» -> 0)
     });
     const b = S.b;
+    setBiome(ambBiome(b.map), { night: b.map.tod === 'night', weather: b.map.weather });
+    S.hoverPath = null; // metric: {pts, len, cost, ok: 'move'|'dash'|'no', to}
+    S.xray = false; // «Обзор»: X held / toggled
     S.heroId = net?.myId || heroes[0].id; // the player-controlled unit whose turn it is (party: switches every turn)
     S.pending = false; // co-op guest: an intent is on its way to the host
     S.mainId = heroes[0].id;
@@ -214,7 +222,8 @@ export function createBattleScene(opts) {
   }
 
   function addDisp(u, i = Object.keys(S.disp).length) {
-    S.disp[u.id] = { x: u.x, y: u.y, path: [], flash: 0, fade: 0, gone: false, phase: (i * 0.37) % 1, hp: u.hp, mrl: u.mrl, down: u.down, drift: 0 };
+    const p0 = dispPos(u);
+    S.disp[u.id] = { x: p0.x, y: p0.y, path: [], walk: 0, flash: 0, fade: 0, gone: false, phase: (i * 0.37) % 1, hp: u.hp, mrl: u.mrl, down: u.down, drift: 0 };
     return S.disp[u.id];
   }
   const dispOf = (u) => S.disp[u.id] || addDisp(u);
@@ -243,7 +252,7 @@ export function createBattleScene(opts) {
     S.endStatuses = [];
     S.smashTiles = new Set();
     if (S.playerTurn) {
-      if (b.turn.move > 0) S.reach = getReachable(b, S.heroId);
+      if (b.turn.move > 0 && !b.metric) S.reach = getReachable(b, S.heroId);
       for (const act of getLegalActions(b, S.heroId, { noMoves: true })) {
         if (act.target && isHiddenFoe(b.byId[act.target])) continue;
         if (act.type === 'endStatus') { S.endStatuses.push(act.status); continue; }
@@ -740,7 +749,31 @@ export function createBattleScene(opts) {
     if (occ) { doAction({ type: 'attack', target: occ.id }); return; }
     const prop = (S.interacts || []).find((it) => it.x === cx && it.y === cy && !it.why);
     if (prop) { doAction({ type: 'interact', tile: { x: cx, y: cy } }); return; }
+    if (b.metric) { metricClick(); return; }
     if (S.reach && S.reach.dist[idx] > 0) doAction({ type: 'move', to: { x: cx, y: cy } });
+  }
+
+  // ---------------------------------------------------------------- metric movement (metric-combat.md stage 1)
+  /** Hover line: path to the point under the cursor, its length / cost and the budget colour. Cached per point. */
+  function updateHoverPath() {
+    const b = S.b, pt = S.hover.pt, hero = b.byId[S.heroId];
+    const cell = S.hover.cell;
+    const onUnit = cell && b.units.some((u) => !u.dead && !u.removed && u.x === cell.x && u.y === cell.y && !isHiddenFoe(u));
+    if (!b.metric || !pt || !S.playerTurn || S.sel || S.queue.length || busy() || !hero || onUnit || S.hover.button) { S.hoverPath = null; return; }
+    const key = `${Math.round(pt.px * 20)},${Math.round(pt.py * 20)},${b.occVersion},${b.turn.move},${b.gridVersion || 0},${b.turn.actions}`;
+    if (S.hoverPath && S.hoverPath.key === key) return;
+    const np = navPath(b, hero, pt.px, pt.py);
+    const have = budgetM(b), dash = b.turn.actions > 0 ? combat.getSpeed(b, hero) * CELL_M : 0;
+    if (!np) { const s = posM(hero); S.hoverPath = { key, pts: [s, { px: pt.px, py: pt.py }], len: Math.hypot(pt.px - s.px, pt.py - s.py), cost: null, ok: 'no', to: null, have }; return; }
+    const ok = np.len <= 0 ? 'no' : np.cost <= have + 1e-6 ? 'move' : np.cost <= have + dash + 1e-6 ? 'dash' : 'no';
+    S.hoverPath = { key, ...np, ok, have };
+  }
+  function metricClick() {
+    const hp = S.hoverPath;
+    if (!hp) return;
+    if (hp.ok === 'move') doAction({ type: 'move', to: { px: hp.to.px, py: hp.to.py } });
+    else if (hp.ok === 'dash') say(t('battle.needDash'));
+    else play('error');
   }
 
   // ---------------------------------------------------------------- event replay
@@ -753,7 +786,7 @@ export function createBattleScene(opts) {
   /** After a full state restore (co-op desync): display follows the new state. */
   S.resync = () => {
     S.queue.length = 0;
-    for (const u of S.b.units) { const d = dispOf(u); d.path.length = 0; d.x = u.x; d.y = u.y; d.hp = u.hp; d.mrl = u.mrl; d.down = u.down; d.gone = !!(u.dead && u.kind !== 'hero'); }
+    for (const u of S.b.units) { const d = dispOf(u); d.path.length = 0; const p = dispPos(u); d.x = p.x; d.y = p.y; d.hp = u.hp; d.mrl = u.mrl; d.down = u.down; d.gone = !!(u.dead && u.kind !== 'hero'); }
     S.sel = null; S.pending = false; S.dirty = true;
   };
 
@@ -816,7 +849,9 @@ export function createBattleScene(opts) {
     switch (e.type) {
       case 'move': {
         const d = dispOf(A);
-        d.path.push(...e.path);
+        if (e.pts) for (const p of e.pts.slice(1)) d.path.push({ x: p.px / CELL_M - 0.5, y: p.py / CELL_M - 0.5, m: 1 });
+        else d.path.push(...e.path);
+        d.walker = A;
         break;
       }
       case 'push': case 'teleport': {
@@ -908,7 +943,7 @@ export function createBattleScene(opts) {
       const d = dispOf(u);
       if (d.path.length) continue;
       d.hp = u.hp; d.mrl = u.mrl; d.down = u.down;
-      if (!u.dead && !u.removed) { d.x = u.x; d.y = u.y; }
+      if (!u.dead && !u.removed) { const p = dispPos(u); d.x = p.x; d.y = p.y; }
     }
   }
 
@@ -923,7 +958,10 @@ export function createBattleScene(opts) {
       const dx = p.x - d.x, dy = p.y - d.y;
       const dist = Math.hypot(dx, dy);
       const stepLen = WALK_SPEED * dt;
-      if (dist <= stepLen) { d.x = p.x; d.y = p.y; d.path.shift(); play('step'); }
+      // footsteps by surface: every METRIC.stepM metres on metric paths, else once per cell
+      const moved = Math.min(dist, stepLen);
+      if (p.m) { d.walk += moved * CELL_M; if (d.walk >= METRIC.stepM) { d.walk -= METRIC.stepM; footstep(d); } }
+      if (dist <= stepLen) { d.x = p.x; d.y = p.y; d.path.shift(); if (!p.m) footstep(d); if (!d.path.length) d.walk = 0; }
       else { d.x += (dx / dist) * stepLen; d.y += (dy / dist) * stepLen; }
     }
     for (const p of S.actPops) p.t += dt;
@@ -933,6 +971,11 @@ export function createBattleScene(opts) {
     for (const x of S.bubbles) x.t += dt;
     compact(S.bubbles, (x) => x.t < 3.2);
     if (S.message && (S.message.t -= dt) <= 0) S.message = null;
+  }
+
+  function footstep(d) {
+    const u = d.walker;
+    play('step', { surface: stepSurface(S.b.map, Math.round(d.x), Math.round(d.y)), heavy: !!u && (u.armorType === 'heavy' || u.armorType === 'mech' || u.boss) });
   }
 
   // ---------------------------------------------------------------- AI pacing
@@ -966,6 +1009,9 @@ export function createBattleScene(opts) {
     const m = inp.mouse;
     S.hover.button = null;
     S.hover.cell = null;
+    S.hover.pt = null;
+    // «Обзор»: X-ray — hold X (or toggle in the settings)
+    if (gfxPrefs().xray === 'toggle') { if (inp.wasPressed('KeyX')) S.xray = !S.xray; } else S.xray = inp.isDown('KeyX');
     if (S.result) {
       const btn = hitButton(S.resultButtons, m);
       S.hover.button = btn;
@@ -980,12 +1026,19 @@ export function createBattleScene(opts) {
     const L = S.L;
     // 3d.md: camera buttons / [ ] / wheel; a click on a camera button is not a map click
     if (cameraInput3d(game, S) && m.clicked) return;
-    if (S.v3) { if (inRect(L.area, m.x, m.y) && !S.camHover) S.hover.cell = pickBattle(S, m.x, m.y); }
-    else if (inRect(L.map, m.x, m.y)) {
-      const cx = Math.floor((m.x - L.mapX) / L.cell), cy = Math.floor((m.y - L.mapY) / L.cell);
-      if (cx >= 0 && cy >= 0 && cx < S.b.grid.w && cy < S.b.grid.h) S.hover.cell = { x: cx, y: cy };
+    if (S.v3) {
+      if (inRect(L.area, m.x, m.y) && !S.camHover) {
+        const pk = pickBattle(S, m.x, m.y);
+        S.hover.cell = pk ? { x: pk.x, y: pk.y } : null;
+        if (pk && pk.fx != null) S.hover.pt = { px: pk.fx * CELL_M, py: pk.fz * CELL_M };
+      }
+    } else if (inRect(L.map, m.x, m.y)) {
+      const fx = (m.x - L.mapX) / L.cell, fy = (m.y - L.mapY) / L.cell;
+      const cx = Math.floor(fx), cy = Math.floor(fy);
+      if (cx >= 0 && cy >= 0 && cx < S.b.grid.w && cy < S.b.grid.h) { S.hover.cell = { x: cx, y: cy }; S.hover.pt = { px: fx * CELL_M, py: fy * CELL_M }; }
     }
     S.hover.button = hitButton(S.buttons, m) || hitButton(S.quickBtns || [], m);
+    updateHoverPath();
     // battle log: wheel + slider, sticks to the newest line while scrolled to the end
     const logUsed = updateScroll(S.logScroll, L.log, S.log.length * LINE + 8, m, { step: LINE * 3, follow: true });
     if (logUsed) return;

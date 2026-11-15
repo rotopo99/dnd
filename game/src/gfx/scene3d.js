@@ -292,6 +292,7 @@ export function battle3d(game, S) {
   if (V.gv !== gv) {
     V.world = worldOf(b); V.gv = gv;
     const gl = game.gfx.gl;
+    V.floorTex = floorTexture(gl, V.world, V.floorTex);
     for (const e of V.edges || []) { freeMesh(gl, e.full); freeMesh(gl, e.low); }
     V.edges = buildEdges(V.world).map((e) => ({ mask: e.mask, full: uploadMesh(gl, e.full), low: uploadMesh(gl, e.low) }));
   }
@@ -304,8 +305,48 @@ function dropBattle3d(game, S) {
   if (gl && S.v3.gen === game.gfx.gen) {
     for (const c of S.v3.chunks.values()) freeMesh(gl, c.mesh);
     for (const e of S.v3.edges || []) { freeMesh(gl, e.full); freeMesh(gl, e.low); }
+    if (S.v3.floorTex) gl.deleteTexture(S.v3.floorTex);
   }
   S.v3 = null;
+}
+
+/** Floor height per cell (R32F, texelFetch in the world shader: cut-away / see-through measure height above floor). */
+function floorTexture(gl, Wd, old) {
+  const tex = old || gl.createTexture();
+  gl.activeTexture(gl.TEXTURE4);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, Wd.w, Wd.h, 0, gl.RED, gl.FLOAT, Wd.floor);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE0);
+  return tex;
+}
+
+/**
+ * metric-combat.md «Обзор»: cut-away fade (walls on the camera side of the focus sink to GFX.view.cutH), see-through
+ * points (active unit, hovered unit / cursor point) and the X-ray flag. Advances V.cutK; returns the shader state.
+ */
+function viewState(S, V, cam, prefs, dt) {
+  const VW = GFX.view, mode = prefs.walls || 'cut';
+  const want = mode === 'cut' && V.focusPt ? 1 : 0;
+  const k0 = V.cutK ?? 0;
+  V.cutK = prefs.reduceFx || prefs.reduceMotion ? want : k0 + Math.sign(want - k0) * Math.min(Math.abs(want - k0), dt / VW.fade);
+  const pts = [];
+  if (mode !== 'off') {
+    const b = S.b, Wd = V.world, flr = (x, z) => Wd.floor[Math.max(0, Math.min(Wd.h - 1, Math.floor(z))) * Wd.w + Math.max(0, Math.min(Wd.w - 1, Math.floor(x)))] || 0;
+    const cur = b.turn ? b.byId[b.turn.unitId] : null;
+    const add = (u) => { if (u && !u.dead && !u.removed && !u.fogHidden) { const d = S.dispOf(u); pts.push([d.x + 0.5, (V.hgt[u.id] ?? 0) + 0.7, d.y + 0.5]); } };
+    if (V.focusPt && !cur) pts.push([V.focusPt.x, flr(V.focusPt.x, V.focusPt.z) + 0.7, V.focusPt.z]);
+    add(cur);
+    const hc = S.hover?.cell;
+    const hu = hc ? b.units.find((u) => !u.dead && !u.removed && u.x === hc.x && u.y === hc.y) : null;
+    if (hu && hu !== cur) add(hu);
+    else if (S.hover?.pt) { const x = S.hover.pt.px / 1.5, z = S.hover.pt.py / 1.5; pts.push([x, flr(x, z) + 0.3, z]); }
+  }
+  return { k: V.cutK, xray: !!S.xray, pts: pts.slice(0, 4), moving: V.cutK !== want };
 }
 
 // picking: covers / props are surfaces (smash targets); walls are see-through for the cursor (cells behind them stay clickable)
@@ -534,8 +575,9 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   // render on demand: unchanged frame -> keep the last image (15 fps idle refresh: breathing, slow surface motion);
   // actions, hits, falls, projectiles, walking and camera tweens — every frame
   const walking = units.some((it) => it.d.path?.length);
-  const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving;
-  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}`;
+  const view = viewState(S, V, cam, prefs, dt);
+  const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving || view.moving;
+  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
   if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / GFX.idleFps) return;
   V.lastSig = sig; V.lastDraw = S.time;
 
@@ -747,6 +789,26 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   gl.uniform4f(U.uTint, 0, 0, 0, 0);
   gl.uniform4f(U.uFlat, 0, 0, 0, 0);
   gl.uniform1f(U.uAlpha, 1);
+  // «Обзор»: cut-away / see-through / X-ray uniforms (world program only; units keep their x-ray silhouettes)
+  {
+    const VW = GFX.view, dl = Math.hypot(f[0], f[2]) || 1, ppmPx = cam.ppmFit * cam.zoom;
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, V.floorTex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(U.uFloorT, 4);
+    const fp = V.focusPt || { x: 0, z: 0 };
+    gl.uniform4f(U.uCut, fp.x, fp.z, -f[0] / dl, -f[2] / dl);
+    gl.uniform4f(U.uCutK, V.focusPt ? view.k : 0, VW.cutH, Math.cos((VW.cutDeg * Math.PI) / 180), view.xray ? VW.xrayAlpha : 0);
+    const see = new Float32Array(16);
+    view.pts.forEach(([x, y, z], i) => {
+      const cw = VP[3] * x + VP[7] * y + VP[11] * z + VP[15];
+      const nx = (VP[0] * x + VP[4] * y + VP[8] * z + VP[12]) / cw, ny = (VP[1] * x + VP[5] * y + VP[9] * z + VP[13]) / cw, nz = (VP[2] * x + VP[6] * y + VP[10] * z + VP[14]) / cw;
+      see.set([(nx * 0.5 + 0.5) * W, (ny * 0.5 + 0.5) * H, VW.seeR * ppmPx, nz * 0.5 + 0.5], i * 4);
+    });
+    if (U.uSee) gl.uniform4fv(U.uSee, see);
+    gl.uniform1i(U.uNumSee, view.pts.length);
+    gl.uniform1f(U.uSeeKeep, VW.seeAlpha);
+  }
   for (const c of shown) { gl.bindVertexArray(c.mesh.vao); gl.drawElements(gl.TRIANGLES, c.mesh.count, gl.UNSIGNED_INT, 0); }
   const near = nearMask(cam);
   for (const e of V.edges || []) {

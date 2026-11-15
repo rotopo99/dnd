@@ -141,7 +141,8 @@ export function rayAt(cam, px, py) {
   return { o: [T[0] + r[0] * a + u[0] * b - f[0] * 100, T[1] + r[1] * a + u[1] * b - f[1] * 100, T[2] + r[2] * a + u[2] * b - f[2] * 100], d: f };
 }
 
-/** Nearest cell whose top (topAt(x, y) metres) the ray hits; walls / blocks win over the floor behind them. */
+/** Nearest cell whose top (topAt(x, y) metres) the ray hits; walls / blocks win over the floor behind them.
+ *  Returns {x, y, fx, fz} — fx/fz: the hit point in world units (metric movement aims at it). */
 export function pickCell(cam, px, py, w, h, topAt) {
   const { o, d } = rayAt(cam, px, py);
   let best = null, bt = Infinity;
@@ -150,7 +151,7 @@ export function pickCell(cam, px, py, w, h, topAt) {
     const t = (top - o[1]) / d[1];
     if (t >= bt) continue;
     const X = o[0] + d[0] * t, Z = o[2] + d[2] * t;
-    if (X >= x && X < x + 1 && Z >= y && Z < y + 1) { bt = t; best = { x, y }; }
+    if (X >= x && X < x + 1 && Z >= y && Z < y + 1) { bt = t; best = { x, y, fx: X, fz: Z }; }
     else if (top > 0.3) { // side faces of tall cells: the ray passes through the column below its top
       const t2 = (0 - o[1]) / d[1];
       // sample the segment between the top plane and the floor plane
@@ -158,7 +159,7 @@ export function pickCell(cam, px, py, w, h, topAt) {
         const tt = t + ((t2 - t) * k) / 4;
         if (tt >= bt) break;
         const X2 = o[0] + d[0] * tt, Z2 = o[2] + d[2] * tt, Y2 = o[1] + d[1] * tt;
-        if (Y2 <= top && X2 >= x && X2 < x + 1 && Z2 >= y && Z2 < y + 1) { bt = tt; best = { x, y }; break; }
+        if (Y2 <= top && X2 >= x && X2 < x + 1 && Z2 >= y && Z2 < y + 1) { bt = tt; best = { x, y, fx: X2, fz: Z2 }; break; }
       }
     }
   }
