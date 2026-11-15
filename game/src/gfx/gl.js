@@ -214,6 +214,7 @@ ${depth ? '' : `  vec4 sp = uShadowVP * wp;
 }`;
 const SKIN_FS = `#version 300 es
 precision highp float;
+precision highp int;
 precision highp sampler2DShadow;
 flat in vec4 vTintI;
 flat in vec4 vFlatI;
