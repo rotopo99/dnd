@@ -46,6 +46,6 @@ export function drawTip(game, spec, mx, my) {
   if (x + w > game.width - 4) x = Math.max(4, mx - w - 12);
   if (x + w > game.width - 4) x = Math.max(4, game.width - w - 4);
   if (y + h > game.height - 4) y = Math.max(4, game.height - h - 4);
-  panel(ctx, x, y, w, h, C['0'], C.h);
+  panel(ctx, x, y, w, h, C['0'], chrome());
   drawRows(ctx, spec, lay.rows, x + 10, y + 6);
 }

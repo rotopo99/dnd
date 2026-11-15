@@ -12,6 +12,7 @@ import { C, FONT, FONT_B, FONT_L, LINE, text, wrap, panel, button, hitButton, fi
 import { play } from '../audio/sfx.js';
 import { t } from '../data/text/index.js';
 import { hotspot } from './tooltip.js';
+import { chrome, drawHeading, themeTitleColor } from './theme.js';
 import { createDetails, updateDetails, drawDetails } from './details.js';
 
 const DETAIL_W = 400;
@@ -126,8 +127,11 @@ export function renderModal(game) {
   const m = game.modals[game.modals.length - 1];
   const spec = m._spec || specOf(game, m);
   const L = m._layout || layout(game, spec, m);
-  panel(ctx, L.x, L.y, L.w, L.h, C['1'], spec.border ? C[spec.border] : C.h);
-  text(ctx, fit(ctx, spec.title || '', L.w - 48, FONT_L), L.x + 24, L.y + 22, spec.titleColor ? C[spec.titleColor] : C.h, FONT_L);
+  panel(ctx, L.x, L.y, L.w, L.h, C['1'], spec.border ? C[spec.border] : chrome());
+  const title = fit(ctx, spec.title || '', L.w - 48, FONT_L);
+  ctx.font = FONT_L;
+  drawHeading(ctx, L.x + 24, L.y + 22, L.w - 48, ctx.measureText(title).width);
+  text(ctx, title, L.x + 24, L.y + 22, spec.titleColor ? C[spec.titleColor] : themeTitleColor(), FONT_L);
   L.lines.forEach((l, i) => text(ctx, l.text, L.x + 24, L.y + 72 + i * LINE, l.color ? (C[l.color] || l.color) : C['5'], l.font || FONT));
   for (const b of L.buttons) {
     button(ctx, { ...b, selected: b.selected || (L.detail && b.inert && b.idx === m._detailIdx) }, m._hover === b && !b.inert);
@@ -162,7 +166,7 @@ export function renderToasts(game) {
     const x = Math.round(a.x - w / 2);
     const y = a.y + a.dir * (ts.length - 1 - i) * 40;
     ctx.globalAlpha = to.t > 2.6 ? Math.max(0, (3.2 - to.t) / 0.6) : 1;
-    panel(ctx, x, y, w, 32, C['0'], C[to.color] || C.h);
+    panel(ctx, x, y, w, 32, C['0'], C[to.color] || chrome());
     text(ctx, fit(ctx, label, w - 24, FONT_B), x + w / 2, y + 8, C[to.color] || C.h, FONT_B, 'center');
     ctx.globalAlpha = 1;
   }

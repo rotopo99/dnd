@@ -23,5 +23,9 @@ export const GFX_TEXT = {
   'settings.on': 'вкл.',
   'settings.off': 'выкл.',
   'settings.close': 'Закрыть',
+  'settings.theme': 'Тема интерфейса',
+  'settings.theme.auto': 'авто (по герою)',
+  'theme.steel': 'Сталь', 'theme.concrete': 'Бетон', 'theme.bone': 'Кость', 'theme.plastic': 'Пластик', 'theme.hide': 'Шкура',
+  'theme.bark': 'Кора', 'theme.rust': 'Ржавчина', 'theme.neon': 'Неон', 'theme.cult': 'Культ', 'theme.cable': 'Кабель',
   'settings.hint': '3D: [ / ] или кнопки ⟲ ⟳ — поворот камеры, колесо над картой — зум, стрелки / средняя или правая кнопка — сдвиг, Home — к активному юниту.',
 };

@@ -32,7 +32,7 @@ export const GFX = {
     fog: { near: 2, far: 22, max: 0.32, visMul: 0.06 },
     night: { amount: 0.55, dusk: 0.25, radiusMul: 1, max: 8 }, // max — point lights per frame (shader limit 8)
   },
-  unit: { scale: 1.2, r: 0.26, body: 0.95, head: 0.26, ring: [0.36, 0.46], hull: 1.07, xray: 0.3, headScale: 0.24, lerpH: 10, bossScale: 1.3, grow: 0.022, growTarget: 0.035 },
+  unit: { scale: 1.2, r: 0.26, body: 0.95, head: 0.26, ring: [0.36, 0.46], hull: 1.07, xray: 0.3, headScale: 0.27, lerpH: 10, bossScale: 1.3, grow: 0.022, growTarget: 0.035 },
   // enemy silhouettes (gfx/units3d.js): first rule that matches the enemy id (regexp) or tag wins; else humanoid
   bodies: [
     { re: 'spirit|hologram|cyber-demon|soul|scriptlet|ghost|glitch', tag: 'digital', type: 'spirit' },

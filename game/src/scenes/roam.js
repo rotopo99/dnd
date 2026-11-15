@@ -34,6 +34,9 @@ import { atBase, modActive as baseModActive } from '../world/base.js';
 import { saveGame } from '../save.js';
 import { roam3d, drawRoam3d, pickRoam, roamScreen, roamCamInput, bodyTop } from '../gfx/roam3d.js';
 import { pickWeather } from '../world/battlefields.js';
+import { hasWebGL2 } from '../gfx/gl.js';
+import { setGfxPref } from '../gfx/settings.js';
+import { centerCamera } from '../gfx/camera.js';
 import { play } from '../audio/sfx.js';
 import { canCampAt } from './rest.js';
 import { createLocationScene } from './location.js';
@@ -43,7 +46,7 @@ import {
 
 const HUD_H = 70; // px above the map for the node name
 // co-op guest: the panels he may open himself (the rest — the host's: menu, map, rest, skills, base)
-const GUEST_NAV = new Set(['party', 'rep', 'journal', 'gear', 'codex']);
+const GUEST_NAV = new Set(['party', 'rep', 'journal', 'gear', 'codex', 'gfx', 'camFocus']);
 /** Stable key of a map entity (co-op interaction requests). */
 const entKey = (e) => (e.kind === 'npc' ? `npc:${e.n.id}` : e.kind === 'obj' ? `obj:${e.o.type}:${e.o.x},${e.o.y}` : e.kind === 'skill' ? `skill:${e.p.s.id}` : `${e.kind}:${Math.round(e.x)},${Math.round(e.y)}`);
 const NPC_CLASSES = ['zabivnoy', 'ranger', 'reper', 'technik', 'shaman'];
@@ -544,6 +547,10 @@ export function createRoamScene(rawId, opts = {}) {
     const x0 = W0 - nav.length * (bw + gap) - 10;
     S.buttons = nav.map(([id, key, k], i) => ({ id, label: t(key), key: k || undefined, x: x0 + i * (bw + gap), y: H0 - 52, w: bw, h: 42 }));
     if (S.alarm) S.buttons.push({ id: 'fine', label: tf('roam.fine', { n: S.alarm.fine }), key: 'F', x: 10, y: 120, w: 200, h: 36, selected: true });
+    if (hasWebGL2() && !game.gfx?.failed) { // 3d.md stage 3: 2D / 3D toggle and «camera to the hero»
+      S.buttons.push({ id: 'gfx', label: S.r3?.v3 ? '2D' : '3D', tip: t('gfx.toggleTip'), x: W0 - 56, y: 68, w: 46, h: 30 });
+      if (S.r3?.v3) S.buttons.push({ id: 'camFocus', label: '◎', tip: t('gfx.roamFocusTip'), x: W0 - 96, y: 68, w: 34, h: 30 });
+    }
     if (S.skillAll) S.buttons.push({ id: 'skills', label: `${t('nsa.group')} ${S.skillOpen}/${S.skillAll}`, x: x0 - bw - gap, y: H0 - 52, w: bw, h: 42 });
     S.hints = hintSkillsOf(game.save, locId, loc);
     const sv = game.save;
@@ -564,6 +571,8 @@ export function createRoamScene(rawId, opts = {}) {
     if (id === 'skills') return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
     if (id === 'map') return confirmLeave(game);
     if (id === 'fine') return payAlarm(game);
+    if (id === 'gfx') { setGfxPref('mode', S.r3?.v3 ? '2d' : '3d'); S.r3 = null; S.cam = null; return; }
+    if (id === 'camFocus') { const V = S.r3?.v3; if (V) centerCamera(V.cam, V.cam.bx, V.cam.bz); return; }
     return L.nav(game, id);
   }
 
@@ -765,6 +774,7 @@ export function createRoamScene(rawId, opts = {}) {
       const R3 = view3(game);
       const A3 = roam3d(game, R3);
       S.r3R = R3;
+      if (!!A3 !== !!S.lay3) { S.lay3 = !!A3; layout(game); }
       if (A3) return render3d(game, A3, R3);
       clear(ctx, W0, H0);
       if (!S.layer) buildLayer();
@@ -860,9 +870,9 @@ export function createRoamScene(rawId, opts = {}) {
         const [px, py] = scr(n.fx, n.fy);
         const nm = NPCS[n.id]?.name || n.id;
         ctx.font = '12px monospace';
-        const tw = ctx.measureText(nm).width + 8;
-        ctx.fillStyle = rgba(C['0'], 0.7); ctx.fillRect(px + c / 2 - tw / 2, py - c * 0.6 - 14, tw, 15);
-        text(ctx, nm, px + c / 2, py - c * 0.6 - 13, hov ? C.a : C['5'], '12px monospace', 'center');
+        const tw = ctx.measureText(nm).width + 8, ny = plateY({ n }, px, py);
+        ctx.fillStyle = rgba(C['0'], 0.7); ctx.fillRect(px + c / 2 - tw / 2, ny, tw, 15);
+        text(ctx, nm, px + c / 2, ny + 1, hov ? C.a : C['5'], '12px monospace', 'center');
       }
       if (S.hoverEnt) {
         const e = S.hoverEnt;
@@ -935,7 +945,7 @@ export function createRoamScene(rawId, opts = {}) {
         text(ctx, r.o.name, p.x, p.y - 17, col, '12px monospace', 'center');
       }
     }
-    overlay2d(game, scr, c, (e, px, py) => (heads.get(e.n || e.p || e.h) ?? py) - 18 - (heads.has(e.n || e.p || e.h) ? 0 : c * 0.6));
+    overlay2d(game, scr, c, (e, px, py) => (heads.has(e.n) ? heads.get(e.n) - 20 : py - c * 0.6 - 14));
   }
   function objName(o) {
     if (o.type === 'stall') return o.npc ? `${t('roam.stall')}: ${NPCS[o.npc]?.name}` : t('roam.stall');

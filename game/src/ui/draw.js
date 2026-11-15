@@ -1,6 +1,7 @@
 // Shared immediate-mode UI drawing helpers: palette colours, text, wrapping, panels, buttons, bars, icons.
 // Colours follow docs/STYLE.md (resource bars: fill = resource colour, empty = its tile colour, frame = 0).
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
+import { drawThemedBox } from './theme.js'; // UI themes: texture / frame / ornaments cached offscreen
 
 /** Palette colour by key ('0'..'p'). */
 export const C = Object.fromEntries([...PALETTE_KEYS].map((k, i) => [k, PALETTE[i]]));
@@ -87,6 +88,7 @@ export function roundRect(ctx, x, y, w, h, r = 6) {
 
 /** Dark rounded tile panel (STYLE: flat symbol on a dark rounded tile). */
 export function panel(ctx, x, y, w, h, fill = C['1'], border = C['3']) {
+  if (drawThemedBox(ctx, x, y, w, h, { fill, border, kind: 'panel' })) return;
   roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 6);
   ctx.fillStyle = fill;
   ctx.fill();
@@ -176,7 +178,7 @@ export function flowButtons(ctx, items, { x, y, w, h, gap = 4, rows = 2, font = 
 export function button(ctx, b, hover) {
   const fill = b.selected ? C.i : hover && !b.disabled ? C['3'] : C['2'];
   const border = b.selected ? C.h : hover && !b.disabled ? C['4'] : C['3'];
-  panel(ctx, b.x, b.y, b.w, b.h, fill, border);
+  if (!drawThemedBox(ctx, b.x, b.y, b.w, b.h, { fill: b.selected ? C.i : fill, border, kind: 'btn', hover: !!hover && !b.disabled, sel: !!b.selected, disabled: !!b.disabled })) panel(ctx, b.x, b.y, b.w, b.h, fill, border);
   const col = b.disabled ? C['3'] : C['5'];
   const font = b.font || FONT_B;
   // the hotkey sits in the top-left corner: the label is centred in the space right of it

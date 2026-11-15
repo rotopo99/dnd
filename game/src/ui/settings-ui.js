@@ -4,6 +4,7 @@ import { t } from '../data/text/index.js';
 import { GFX } from '../data/gfx.js';
 import { gfxPrefs, setGfxPref, gfxMode, gfxBroken } from '../gfx/settings.js';
 import { hasWebGL2 } from '../gfx/gl.js';
+import { THEME_IDS, themePrefs, setThemePref } from './theme.js';
 
 const MODES = ['auto', '3d', '2d'];
 const onOff = (v) => t(v ? 'settings.on' : 'settings.off');
@@ -29,6 +30,13 @@ export function openSettings(game) {
           {
             label: `${t('settings.brightness')}: ${Math.round((p.brightness || 1) * 100)}%`, keep: true,
             run: () => { let v = Math.round(((p.brightness || 1) + B.step) * 10) / 10; if (v > B.max + 1e-6) v = B.min; setGfxPref('brightness', v); },
+          },
+          {
+            label: `${t('settings.theme')}: ${themePrefs().mode === 'auto' ? t('settings.theme.auto') : t(`theme.${themePrefs().id}`)}`, keep: true,
+            run: () => { // авто → steel → concrete → … → авто
+              const tp = themePrefs(), i = tp.mode === 'auto' ? -1 : THEME_IDS.indexOf(tp.id);
+              if (i + 1 >= THEME_IDS.length) setThemePref('auto'); else setThemePref('manual', THEME_IDS[i + 1]);
+            },
           },
           { label: t('settings.close') },
         ],
