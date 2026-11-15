@@ -305,8 +305,10 @@ export function createRoamScene(rawId, opts = {}) {
     if (game.coop?.guest) { const ld = S.party[0]; return game.coop.request(game, { kind: 'roam', ent: entKey(ent), x: ld.cx, y: ld.cy }); }
     if (ent.kind === 'skill') return openSkillAction(game, locId, ent.p.s, (g) => { syncSkills(g); L.refresh(g); });
     const o = ent.o;
-    const a = objectAction(o);
     const sv = game.save;
+    // re-read «opened» from the save every time: the live object copy is not rebuilt after a search (bug: endless loot)
+    if (o.type === 'stash') o.opened = o.cache ? (sv.caches || []).includes(o.cache.id) : !!sv.flags?.[stashKey(locId, o.id)];
+    const a = objectAction(o);
     if (a.kind === 'trade') {
       const npc = NPCS[a.npc];
       const tr = L.npc.npcActions(game, npc).find((x) => x.id === 'trade');
@@ -318,6 +320,7 @@ export function createRoamScene(rawId, opts = {}) {
     if (a.kind === 'stash') {
       const R = ROAM.stash;
       sv.flags[stashKey(locId, o.id)] = true;
+      o.opened = true;
       const credits = rollDice(Math.random, R.credits) * R.mult;
       const items = Math.random() < R.itemChance ? [{ item: R.items[Math.floor(Math.random() * R.items.length)], n: 1 }] : [];
       game.toast(t('loc.found'), 'a');
