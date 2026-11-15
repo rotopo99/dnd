@@ -23,6 +23,7 @@ import { NBONES } from './gl.js';
 import { resample, surfGrid, sweep, headShape, buildHead, buildHair, hairGrad } from './body3d.js';
 import { ramp } from './models.js';
 import { loft, limb, beam, tube, weapon, weaponKind, offhand } from './gear3d.js';
+import { roboWolf, roboRole } from './robo3d.js';
 
 // 0..10 body; 11..13 back-hair / ponytail chain, 14..15 cape chain, 16..17 bust, 18..19 side locks, 20..21 butt, 22 skirt hem
 // (11..22 are spring bones, gfx/anim.js: they follow the unit's motion with a lag)
@@ -268,16 +269,18 @@ function humanoidAnime(o) {
   const R = GFX.races[pf.race] || {}, F = pf.f, A = pf.armor, hide = pf.hide, thin = lod || !hero;
   const w = (R.w || 1) * (F ? 0.93 : 1) * (A === 'heavy' ? 1.05 : 1), lm = (R.limb || 1) * (F ? 0.88 : 1), hm = R.h || 1;
   let look = hero ? heroLook3d(u).look : enemyLook(base, pf);
-  if (hide.helm) look = { ...look, acc: (look.acc || []).filter((a) => !['hood', 'helmet', 'bandana'].includes(a)) };
+  if (hide.helm) look = { ...look, acc: (look.acc || []).filter((a) => !['hood', 'helmet', 'bandana', 'cap'].includes(a)) };
+  else if (!(look.acc || []).some((a) => ['hood', 'helmet', 'cap'].includes(a)) && ((hero && u.classId === 'arbiter') || (!hero && pf.faction === 'warprom' && ['elite', 'miniboss', 'boss'].includes(pf.rank)))) look = { ...look, acc: [...(look.acc || []), 'cap'] }; // peaked cap: arbiters, Warprom officers
   const av = buildAvatarMesh(look), M = matsOf(av);
   const cloth = (hero && look.cloth) || col.body;
   const rCloth = ramp(cloth), rUnder = ramp(col.legs), rDark = ramp('1'), rLeather = ramp('6'), rSkin = M.skin;
   const tights = F && (A === 'cloth' || A === 'light') ? ramp('1') : rUnder;
+  const accK = 'a', rPipe = ramp(accK), rGold = ramp('a'); // contrast piping / buttons: gold (palette a)
   const plate = ramp(pf.faction === 'tinBrotherhood' || A === 'heavy' ? '4' : '3');
   const shY = (F ? 1.105 : 1.13) * hm, hipY = (F ? 0.71 : 0.7) * hm, neckY = shY + 0.05 * hm, kn = hipY * 0.52;
   const sx = (F ? 0.176 : 0.212) * w, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.088 * lm * (F ? 1.04 : 1);
   const ey = shY - 0.25 * hm, wy = shY - 0.5 * hm;
-  const C = { w, h: hm, t, sx, lx, hipY, shY, neckY, kn, ey, wy, tl, rCloth, rUnder, rDark, rLeather, rSkin, plate, R, F, A, bot: false, bone: false, cloth };
+  const C = { w, h: hm, t, sx, lx, hipY, shY, neckY, kn, ey, wy, tl, rCloth, rUnder, rDark, rLeather, rSkin, plate, R, F, A, bot: false, bone: false, cloth, rPipe, rGold };
   P(BONE.pelvis, 0, hipY, 0); P(BONE.torso, 0, hipY + 0.04, 0); P(BONE.head, 0, neckY, 0);
   P(BONE.uaL, sx, shY, 0); P(BONE.faL, sx, ey, 0); P(BONE.uaR, -sx, shY, 0); P(BONE.faR, -sx, ey, 0);
   P(BONE.thL, lx, hipY, 0); P(BONE.shL, lx, kn, 0); P(BONE.thR, -lx, hipY, 0); P(BONE.shR, -lx, kn, 0);
@@ -356,6 +359,15 @@ function humanoidAnime(o) {
       { y: ey + 0.08, rx: r * 0.8, rz: r * 0.82, x }, { y: shY - 0.06, rx: r * 0.92, rz: r * 0.92, x, z: 0 }, { y: shY + 0.015, rx: r * 0.9, rz: r * 0.86, x: x * 0.97 },
     ], lod ? 6 : thin ? 8 : 11), sleeve, { seg: lod ? 6 : thin ? 8 : 10, capTop: true, rot: Math.PI / 10 });
     mb.setMat(0);
+    if (!lod && hero && (A === 'cloth' || A === 'light')) { // cuff with a contrast piping; armband (left sleeve) with a white stripe
+      loft(mb, [{ y: cuffY - 0.004, rx: r * 0.74, rz: r * 0.74, x, ao: 0.1 }, { y: cuffY + 0.04, rx: r * 0.8, rz: r * 0.8, x }], rDark, { seg: thin ? 9 : 11, capTop: false });
+      loft(mb, [{ y: cuffY + 0.04, rx: r * 0.815, rz: r * 0.815, x }, { y: cuffY + 0.05, rx: r * 0.815, rz: r * 0.815, x }], rPipe, { seg: thin ? 9 : 11, capTop: false, capBot: false });
+      if (s > 0 && hero) {
+        const ay = ey + 0.085;
+        loft(mb, [{ y: ay - 0.03, rx: r * 0.9, rz: r * 0.9, x, ao: 0 }, { y: ay + 0.03, rx: r * 0.92, rz: r * 0.92, x }], rPipe, { seg: 11, capTop: false });
+        for (const dy of [-0.012, 0.012]) loft(mb, [{ y: ay + dy, rx: r * 0.935, rz: r * 0.935, x }, { y: ay + dy + 0.007, rx: r * 0.935, rz: r * 0.935, x }], ramp('5'), { seg: 11, capTop: false, capBot: false });
+      }
+    }
     if (bareArm) {
       mb.setBone(fa);
       loft(mb, resample([{ y: wy - 0.005, rx: r * 0.5, rz: r * 0.5, x, ao: 0.1 }, { y: ey - 0.07, rx: r * 0.62, rz: r * 0.64, x, z: 0.004 }, { y: ey - 0.01, rx: r * 0.68, rz: r * 0.7, x }], lod ? 5 : 7), rSkin, { seg: lod ? 6 : 8, capTop: false });
@@ -418,12 +430,26 @@ function dressAnime(o, C) {
     loft(mb, resample(up, lod ? 6 : thin ? 8 : 11), ramps, { seg: lod ? 8 : thin ? 10 : 14, capTop: false, capBot: false, rot: Math.PI / 14, ao: 0 });
     mb.setBone(BONE.pelvis);
     const lo = [{ y: hipY - long, rx: (F ? 0.27 : 0.235) * w, rz: F ? 0.22 : 0.17, ao: 0.4 }, { y: hipY - long * 0.55, rx: (F ? 0.235 : 0.2) * w, rz: F ? 0.19 : 0.15 }, { y: hipY - 0.1, rx: (F ? 0.205 : 0.185) * w, rz: F ? 0.16 : 0.14 }, { y: hipY, rx: (F ? 0.178 : 0.17) * w, rz: F ? 0.13 : 0.125 }];
-    loft(mb, resample(lo, lod ? 5 : thin ? 6 : 9), ramps, { seg: lod ? 8 : thin ? 10 : 14, capTop: false, rot: Math.PI / 14 });
+    if (F && !lod && o.hero) { // pleated skirt: a triangular wave of the radius around the hem, deeper towards the bottom
+      const P = thin ? 10 : 14, k = resample(lo.slice().reverse(), 6), TAU = Math.PI * 2, tri = (x) => Math.abs(2 * (x - Math.floor(x)) - 1) * 2 - 1;
+      const at = (v) => { const q = v * 5, i = Math.min(4, Math.floor(q)), f = q - i; return { y: k[i].y + (k[i + 1].y - k[i].y) * f, rx: k[i].rx + (k[i + 1].rx - k[i].rx) * f, rz: k[i].rz + (k[i + 1].rz - k[i].rz) * f }; };
+      surfGrid(mb, (u, v) => { const a = TAU * u, c = at(v), pl = 1 + 0.1 * v * tri(u * P); return [Math.cos(a) * c.rx * pl, c.y, Math.sin(a) * c.rz * pl]; }, P * 2, 4, () => ramps, { closed: true, center: (p) => [0, p[1], 0], mat: 1 });
+    } else loft(mb, resample(lo, lod ? 5 : thin ? 6 : 9), ramps, { seg: lod ? 8 : thin ? 10 : 14, capTop: false, rot: Math.PI / 14 });
     mb.setMat(0);
-    if (!lod) loft(mb, [{ y: hipY - long + 0.03, rx: (F ? 0.272 : 0.238) * w, rz: F ? 0.222 : 0.172, ao: 0.2 }, { y: hipY - long + 0.0, rx: (F ? 0.272 : 0.238) * w, rz: F ? 0.222 : 0.172 }], C.rLeather, { seg: thin ? 10 : 14, capTop: false, capBot: false, rot: Math.PI / 14 }); // hem trim
+    if (!lod && !F) loft(mb, [{ y: hipY - long + 0.03, rx: (F ? 0.272 : 0.238) * w, rz: F ? 0.222 : 0.172, ao: 0.2 }, { y: hipY - long + 0.0, rx: (F ? 0.272 : 0.238) * w, rz: F ? 0.222 : 0.172 }], C.rLeather, { seg: thin ? 10 : 14, capTop: false, capBot: false, rot: Math.PI / 14 }); // hem trim
     mb.setBone(BONE.torso);
-    if (!lod) mb.bevelBox(-0.018, hipY + 0.1, F ? 0.106 : 0.114, 0.018, shY - 0.05, F ? 0.118 : 0.126, 0.005, C.rLeather, { ao: 0 }); // front placket
-    if (!lod) { loft(mb, [{ y: shY - 0.035, rx: 0.115 * w, rz: 0.088 }, { y: shY + 0.03, rx: 0.098 * w, rz: 0.08 }], rDark, { seg: 12, capTop: false }); } // collar
+    if (!lod && o.hero) { // piping along the front (centre + hem of the bodice), double-breasted buttons, stand-up collar with a piped edge
+      const lerp1 = (a, b, f) => a + (b - a) * f;
+      const zAt = (x, y) => { let a = up[0], b = up[up.length - 1]; for (let i = 0; i + 1 < up.length; i++) if ((up[i].y - y) * (up[i + 1].y - y) <= 0) { a = up[i]; b = up[i + 1]; break; } const f = a.y === b.y ? 0 : (y - a.y) / (b.y - a.y), rx = lerp1(a.rx, b.rx, f), rz = lerp1(a.rz, b.rz, f); return rz * Math.sqrt(Math.max(0, 1 - (x / rx) ** 2)); };
+      mb.setBone(BONE.torso);
+      for (const x of [0, -0.062 * w, 0.062 * w]) {
+        const pts = []; for (let j = 0; j <= 6; j++) { const y = lerp1(shY - 0.04, hipY + 0.1, j / 6); pts.push([x, y, zAt(x, y) + 0.006]); }
+        sweep(mb, pts, () => (x ? 0.01 : 0.014), () => 0.012, () => (x ? C.rPipe : C.rPipe), { seg: 4, side: () => [1, 0, 0] });
+      }
+      for (const sx of [-1, 1]) for (const j of [0.15, 0.5, 0.85]) { const y = lerp1(shY - 0.08, hipY + 0.14, j), x = sx * 0.062 * w; mb.cyl(x, y, zAt(x, y) + 0.004, 0.014, 0.014, C.rGold, { axis: 'z', seg: 6, ao: 0, r1: 0.011 }); }
+      loft(mb, [{ y: shY - 0.04, rx: 0.115 * w, rz: 0.088, ao: 0.1 }, { y: shY + 0.02, rx: 0.098 * w, rz: 0.08 }, { y: shY + 0.058, rx: 0.088 * w, rz: 0.074 }], rDark, { seg: 12, capTop: false });
+      loft(mb, [{ y: shY + 0.058, rx: 0.09 * w, rz: 0.076 }, { y: shY + 0.066, rx: 0.09 * w, rz: 0.076 }], C.rPipe, { seg: 12, capTop: false, capBot: false });
+    }
     return;
   }
   if (F && (A === 'light')) { // short shorts over the leggings
@@ -453,6 +479,16 @@ function headGear(o, C, Hd, look, grad, rCloth, plate) {
     sweep(mb, [[0, Hd.y0 + Hd.hh * 0.3, -0.1], [0, Hd.y0 - 0.02, -0.14], [0, Hd.y0 - 0.12, -0.15]], (s) => 0.2 - 0.06 * s, () => 0.03, () => rCloth, { seg: 6, side: () => [1, 0, 0] });
     top = Math.max(top, Hd.y0 + Hd.hh * 1.12);
   }
+  if (acc.includes('cap')) { // peaked cap: band with piping, wide flat crown, visor, glowing badge
+    const yb = Hd.y0 + Hd.hh * 0.8, yt = Hd.y0 + Hd.hh * 1.18, rc = pf.faction === 'warprom' ? ramp('l') : rCloth, rb = pf.faction === 'warprom' ? ramp('1') : ramp('1');
+    loft(mb, [{ y: yb - 0.01, rx: 0.1, rz: 0.108, z: -0.004, ao: 0.2 }, { y: yb + 0.035, rx: 0.103, rz: 0.11, z: -0.004 }], rb, { seg: lod ? 12 : 18, capTop: false });
+    loft(mb, [{ y: yb + 0.035, rx: 0.106, rz: 0.113, z: -0.004 }, { y: yb + 0.044, rx: 0.106, rz: 0.113, z: -0.004 }], ramp('a'), { seg: lod ? 12 : 18, capTop: false, capBot: false });
+    loft(mb, [{ y: yb + 0.044, rx: 0.103, rz: 0.11, z: -0.004 }, { y: yb + 0.09, rx: 0.122, rz: 0.13, z: 0.004 }, { y: yt - 0.01, rx: 0.138, rz: 0.143, z: 0.008 }, { y: yt, rx: 0.13, rz: 0.136, z: 0.008 }], rc, { seg: lod ? 12 : 18, capTop: true });
+    mb.quad([-0.1, yb + 0.005, 0.098], [0.1, yb + 0.005, 0.098], [0.085, yb - 0.018, 0.2], [-0.085, yb - 0.018, 0.2], rb, { inside: [0, yb + 0.02, 0.0] });
+    mb.quad([-0.1, yb + 0.004, 0.098], [-0.085, yb - 0.02, 0.2], [0.085, yb - 0.02, 0.2], [0.1, yb + 0.004, 0.098], rb, { inside: [0, yb + 0.02, 1.0] });
+    mb.cyl(0, yb + 0.025, 0.112, 0.014, 0.022, rampRGB(['a', 'b', 'a']), { axis: 'z', seg: 8, glow: true, ao: 0 });
+    top = Math.max(top, yt);
+  }
   if (acc.includes('bandana')) {
     const r = rampRGB(['d', 'c', 'e']);
     surfGrid(mb, (u, v) => { const a = TAU * u, t = 0.74 + v * 0.1; return add(Hd.S(a, t), mul(Hd.out(a, t), 0.014)); }, lod ? 12 : 20, 2, () => r, { closed: true, center: (p) => [0, p[1], -0.005] });
@@ -475,11 +511,14 @@ function headGear(o, C, Hd, look, grad, rCloth, plate) {
 // ---------------------------------------------------------------- armour by type (torso, shoulders, hips, pouches)
 function dress(o, C) {
   const { mb, lod, pf } = o, { w, t, sx, shY, hipY, rCloth, rLeather, plate, rDark, F, A } = C, hide = pf.hide;
-  const pouch = (x, y, z) => mb.bevelBox(x - 0.04, y - 0.045, z - 0.03, x + 0.04, y + 0.045, z + 0.03, 0.012, rLeather, { ao: 0 });
+  const pouch = (x, y, z) => { // rounded pouch (a lofted capsule with a flap and a button), not a block
+    loft(mb, [{ y: y - 0.045, rx: 0.026, rz: 0.018, x, z, ao: 0.3 }, { y: y - 0.025, rx: 0.04, rz: 0.028, x, z }, { y: y + 0.02, rx: 0.042, rz: 0.03, x, z }, { y: y + 0.045, rx: 0.034, rz: 0.024, x, z }], rLeather, { seg: o.hero ? 8 : 5, capBot: true, capTop: true });
+    if (!o.lod && o.hero) { loft(mb, [{ y: y + 0.012, rx: 0.044, rz: 0.032, x, z }, { y: y + 0.032, rx: 0.038, rz: 0.027, x, z }], rDark, { seg: 8, capTop: false, capBot: false }); mb.cyl(x, y + 0.012, z + 0.03, 0.008, 0.008, C.rGold || ramp('a'), { axis: 'z', seg: 5, ao: 0 }); }
+  };
   const dome = (s, r, rp, spike) => {
     mb.setBone(s > 0 ? BONE.uaL : BONE.uaR);
     const x = s * sx;
-    loft(mb, [{ y: shY - 0.05, rx: r * 1.05, rz: r, x, ao: 0.3 }, { y: shY + 0.02, rx: r * 1.15, rz: r * 1.05, x }, { y: shY + 0.075, rx: r * 0.8, rz: r * 0.75, x }, { y: shY + 0.095, rx: r * 0.3, x }], rp, { seg: lod ? 6 : 8 });
+    loft(mb, resample([{ y: shY - 0.06, rx: r * 1.0, rz: r * 0.95, x, ao: 0.3 }, { y: shY - 0.02, rx: r * 1.18, rz: r * 1.1, x }, { y: shY + 0.03, rx: r * 1.12, rz: r * 1.04, x }, { y: shY + 0.07, rx: r * 0.8, rz: r * 0.75, x }, { y: shY + 0.095, rx: r * 0.3, x }], lod ? 5 : 8), rp, { seg: lod ? 7 : 10 });
     if (spike) mb.cyl(x, shY + 0.09, 0, 0.1, 0.035, ramp('5'), { seg: 4, r1: 0, ao: 0 });
   };
   mb.setBone(BONE.torso);
@@ -603,7 +642,7 @@ function kit(o, C) {
   if (!k || k === 'none') return;
   const straps = () => { for (const s of [-1, 1]) beam(mb, [s * 0.09 * w, shY - 0.02, 0.1], [s * 0.1 * w, hipY + 0.14, -0.1], 0.03, 0.02, ramp('6')); };
   if ((k === 'pack' || k === 'antenna') && !hide.pack) {
-    mb.bevelBox(-0.14, hipY + 0.1, -0.26, 0.14, shY - 0.02, -0.11, 0.035, ramp(o.col.accent === o.col.body ? '6' : '7'), { ao: 0 });
+    loft(mb, [{ y: hipY + 0.1, rx: 0.1, rz: 0.06, z: -0.185, ao: 0.3 }, { y: hipY + 0.17, rx: 0.14, rz: 0.08, z: -0.19 }, { y: shY - 0.07, rx: 0.14, rz: 0.08, z: -0.19 }, { y: shY - 0.02, rx: 0.09, rz: 0.055, z: -0.185 }], ramp(o.col.accent === o.col.body ? '6' : '7'), { seg: 12, capBot: true, capTop: true }); // rounded pack
     mb.cyl(0, hipY + 0.06, -0.19, 0.28, 0.07, ramp('3'), { axis: 'x', seg: 6, ao: 0, r1: 0.07 }); // bedroll
     if (!o.lod) straps();
     if (k === 'antenna') { tube(mb, [0.08, shY - 0.02, -0.2], [0.08, shY + 0.42, -0.2], 0.012, 0.012, ramp('3'), { seg: 4 }); mb.box(0.065, shY + 0.42, -0.215, 0.095, shY + 0.46, -0.185, glowR('h'), { glow: true, ao: 0 }); }
@@ -611,7 +650,8 @@ function kit(o, C) {
     for (const s of [-1, 1]) loft(mb, [{ y: hipY + 0.08, rx: 0.06, x: s * 0.07, z: -0.19, ao: 0.3 }, { y: hipY + 0.2, rx: 0.075, x: s * 0.07, z: -0.19 }, { y: shY - 0.04, rx: 0.06, x: s * 0.07, z: -0.19 }, { y: shY - 0.01, rx: 0.02, x: s * 0.07, z: -0.19 }], ramp(s > 0 ? 'j' : '3'), { seg: 7 });
     if (!o.lod) straps();
   } else if (k === 'pads' && !hide.pads && C.A !== 'medium' && C.A !== 'heavy') {
-    for (const s of [-1, 1]) mb.bevelBox(s * sx - 0.1, shY - 0.04, -0.1, s * sx + 0.1, shY + 0.07, 0.1, 0.03, ramp('3'), { ao: 0 });
+    for (const s of [-1, 1]) { mb.setBone(s > 0 ? BONE.uaL : BONE.uaR); loft(mb, [{ y: shY - 0.05, rx: 0.1, rz: 0.1, x: s * sx, ao: 0.3 }, { y: shY + 0.02, rx: 0.115, rz: 0.115, x: s * sx }, { y: shY + 0.075, rx: 0.085, rz: 0.085, x: s * sx }, { y: shY + 0.095, rx: 0.03, rz: 0.03, x: s * sx }], ramp('3'), { seg: 10 }); loft(mb, [{ y: shY + 0.005, rx: 0.118, rz: 0.118, x: s * sx }, { y: shY + 0.02, rx: 0.12, rz: 0.12, x: s * sx }], C.rPipe || ramp('a'), { seg: 10, capTop: false, capBot: false }); }
+    mb.setBone(BONE.torso);
   } else if (k === 'cape' && !hide.cloak) {
     mb.quad([-0.2, shY, -0.13], [0.2, shY, -0.13], [0.27, hipY * 0.4, -0.25], [-0.27, hipY * 0.4, -0.25], rCloth, { inside: [0, hipY, 0] });
     mb.quad([-0.2, shY, -0.135], [-0.27, hipY * 0.4, -0.255], [0.27, hipY * 0.4, -0.255], [0.2, shY, -0.135], ramp('1'), { inside: [0, hipY, -1] });
@@ -623,6 +663,8 @@ function kit(o, C) {
 // ---------------------------------------------------------------- beast (mutant wolves, crawlers, robo-wolves)
 function beast(o) {
   const { mb, P, col, tags, base, lod } = o;
+  // machines of the Warprom «Wolf» project (and other mechanical quadrupeds) are not animals: robo-wolf silhouette
+  if (tags.includes('mechanical') || (tags.includes('hybrid') && /wolf/.test(base))) return roboWolf(o, BONE, roboRole(base, tags, ENEMIES[base]));
   const metal = tags.includes('mechanical'), big = base.includes('biomass') || base.includes('panther') ? 1.15 : 1;
   const rBody = ramp(metal ? '3' : col.body), rLegs = ramp(metal ? '2' : col.legs), rHead = ramp(metal ? '4' : col.body), rBelly = ramp(metal ? '2' : '8');
   const y = 0.42 * big, L = 0.32 * big;

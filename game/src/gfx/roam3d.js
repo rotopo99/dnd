@@ -122,7 +122,10 @@ function bodies(game, A, R) {
     const u = i === 0
       ? pseudo(A, `hero|${sv.hero.race}|${sv.hero.cls}|${sv.hero.look}|${JSON.stringify(sv.hero.hide || 0)}`, () => ({ id: 'r:hero', kind: 'hero', team: 'heroes', raceId: sv.hero.race, classId: sv.hero.cls, look: sv.hero.look, avatar: sv.hero.avatar || null, hide: sv.hero.hide || null, name: sv.hero.name }))
       : npcUnit(A, `r:${m.key}`, m.key, 'heroes');
-    out.push({ u, d: pos(u.id, m.x, m.y), alpha: 1, teamKey: i === 0 ? GFX.team.player : GFX.team.ally, ref: { kind: 'member', m } });
+    // controls-divinity.md: the sneaking crouch (S.crouch 0..1) and the attack lunge (m.ox / m.oy render offset)
+    const d = pos(u.id, m.x, m.y);
+    d.x += m.ox || 0; d.y += m.oy || 0;
+    out.push({ u, d, alpha: 1, teamKey: i === 0 ? GFX.team.player : GFX.team.ally, ref: { kind: 'member', m }, crouch: S.crouch || 0, walkMul: S.walkMul || 1 });
   });
   for (const n of S.npcs) {
     const u = npcUnit(A, `n:${n.id}`, n.id);
@@ -167,6 +170,7 @@ export function drawRoam3d(game, A, R, o = {}) {
   R.bodies = list;
   const hl = [];
   for (const p of o.path || []) hl.push({ x: p.x, y: p.y, dot: 'rgba(200,220,240,0.55)' });
+  for (const m of o.sel || []) hl.push({ x: m.cx, y: m.cy, stroke: '#6fcf7f' }); // selected party members
   if (o.hover) hl.push({ x: o.hover.x, y: o.hover.y, stroke: o.hoverEnt ? '#e8b04a' : 'rgba(220,220,220,0.45)' });
   const CN = GFX.roam.cone;
   const overlay = (ob, fl) => {

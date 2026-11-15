@@ -57,6 +57,14 @@ export const ROAM = {
     chase: 3.5, // hostiles walk toward the party, tiles per second
     repath: 0.5, // seconds between path updates of a hostile
   },
+  // controls-divinity.md: RMB «Атаковать» on the map — walk to reach (melee attackReach tiles, else the weapon range), the
+  // attack animation (dur s, lunge tiles forward and back), then the battle: firstStrike initiative for the attacker's side;
+  // from sneaking + from behind — surprise: the target side loses the first turn (enemyInit surprise).
+  attack: { reach: 1.5, dur: 0.35, lunge: 0.3, firstStrike: 1, surprise: -20 },
+  // sneaking pose (C): sprite height ×(1 − squash), shifted down px, step rhythm ×rhythm, transition s
+  crouch: { squash: 0.2, down: 2, rhythm: 0.6, blend: 0.2 },
+  // party control: chain (followers on the leader's trail) / free (only the selected walk); max selection hotkeys 1–4
+  group: { keys: 4, spread: [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]], boxMin: 8 },
   // этап 2: a raid on entering a node (danger ≥ minDanger, not hubs): raiders come from an exit and hunt the party
   raid: { chance: 0.12, minDanger: 2, kinds: ['town', 'camp', 'dungeon'] },
   // interactive objects highlight (outline by kind + icon over the object; ui/roam-highlight.js). Colours — palette keys

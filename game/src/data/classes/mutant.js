@@ -66,6 +66,13 @@ export default {
     { id: 'stalker', name: 'Скрытность', level: 1, path: 'predator',
       desc: 'Преимущество на проверки скрытности.', op: { advantage: ['stealth'] } },
     // ---------- Уровни 7–20 ----------
+    // Баланс-метрика (docs/qa/BALANCE-metric.md): мутант-одиночка против толпы в метрах слабее других классов.
+    { id: 'mutant-hardening', name: 'Закалка мутации', level: 10, path: null,
+      desc: '+1 КБ.', op: { kb: 1 } },
+    { id: 'mutant-apex', name: 'Вершина мутации', level: 15, path: null,
+      desc: '+25 ЗДР, +1 КБ, +3 к урону в ближнем бою.', op: { maxHp: 25, kb: 1, dmg: { melee: 3 } } },
+    { id: 'mutant-limit', name: 'Предел мутации', level: 19, path: null,
+      desc: '+40 ЗДР, +2 КБ, +4 к урону в ближнем бою.', op: { maxHp: 40, kb: 2, dmg: { melee: 4 } } },
     { id: 'savage-rage', name: 'Улучшенная ярость', level: 7, path: 'beast',
       desc: '+2 СИЛ и +2 к урону в ближнем бою.', op: { statBonus: { str: 2 }, dmg: { melee: 2 } } },
     { id: 'god-beast', name: 'Бог-зверь', level: 15, path: 'beast',

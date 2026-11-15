@@ -9,6 +9,7 @@ import { setSaveErrorHandler } from './save.js';
 import { t } from './data/text/index.js';
 import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
 import { renderTips, clearTips } from './ui/tooltip.js';
+import { renderContextMenu } from './ui/context-menu.js';
 import { syncTheme } from './ui/theme.js';
 import { updateBarks, renderBark } from './ui/bark.js';
 import { createGfx } from './gfx/scene3d.js';
@@ -124,6 +125,7 @@ function frame(now) {
   syncTheme(game); // ui/theme.js: by the hero's faction origin / race (or the manual choice)
   game.scene.render(game);
   game.coop?.render(game);
+  renderContextMenu(game); // controls-divinity.md: RMB menu over the scene (closed under a modal)
   if (game.modals.length) { clearTips(); renderModal(game); } // scene tooltips are stale under a modal
   renderBark(game);
   renderTips(game);

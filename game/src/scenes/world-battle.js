@@ -133,7 +133,7 @@ export function startWorldBattle(game, o) {
     },
     objectives: objectiveSpec(save, o, setup.enemies),
     onRetreatExit: (g, S) => retreatExit(g, S, o),
-    race: save.hero.race, ambush: !!o.ambush, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
+    race: save.hero.race, ambush: !!o.ambush, surprise: !!o.surprise, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {
       roamCut?.after?.(g, S); // the party stays where the battle ended, corpses on the node map
       queueBark('victory');

@@ -12,7 +12,7 @@ import { LOCATIONS, resolveLocation } from '../world/data.js';
 import { C, FONT, FONT_B, text, fit, panel, button, hitButton, clear } from '../ui/draw.js';
 import { hotspot } from '../ui/tooltip.js';
 import { TILE, drawSprite, heroSpriteIds, tileSpriteIds, idleFrame, enemySpriteIds } from '../assets/sprites.js';
-import { ENEMIES } from '../data/index.js';
+import { ENEMIES, ITEMS } from '../data/index.js';
 import { drawTileExtra } from '../ui/battle-terrain.js';
 import { fieldBiome, drawFieldCell, drawFieldProps, propCells, ambBiome, stepSurface } from '../ui/field-view.js';
 import { skillActionsAt, npcHintSkills, hintSkillsOf, hintLines } from '../world/node-actions.js';
@@ -40,6 +40,13 @@ import { centerCamera } from '../gfx/camera.js';
 import { play, setBiome } from '../audio/sfx.js';
 import { roamMarks, drawMarkFrames2d, drawMarkIcons, marks3d } from '../ui/roam-highlight.js';
 import { canCampAt } from './rest.js';
+import { openContextMenu, updateContextMenu, closeContextMenu, contextMenuOpen } from '../ui/context-menu.js';
+import { ctxItems, onlyInspect } from '../world/roam-ctx.js';
+import { startAct } from '../gfx/anim.js';
+import { codexLevel, enemyKey } from '../world/codex.js';
+import { giftOptions, giveGift } from '../world/companions.js';
+import { countAll, dropItem } from '../world/inventory.js';
+import { buildHero } from '../world/state.js';
 import { createLocationScene } from './location.js';
 import {
   roamMapFor, roamGrid, roamNpcIds, placeNpcs, liveObjects, objectAction, approachCell, roamPath, inReach, restorePos, stashKey,
@@ -67,7 +74,9 @@ export function createRoamScene(rawId, opts = {}) {
   const [W, H] = map.size;
   const S = { time: 0, zoom: 1, cam: null, party: [], trail: [], path: [], goal: null, npcs: [], objs: [], buttons: [], hover: null, hoverEnt: null, layer: null, saveT: 0, npcIds: '',
     // этап 2: posts of the node's guards, hostiles hunting the party, corpses, notice meter, alarm, sneaking
-    posts: [], hostiles: [], corpses: [], gone: [], notice: 0, seen: false, rollT: 0, rollOk: false, alarm: null, sneak: false };
+    posts: [], hostiles: [], corpses: [], gone: [], notice: 0, seen: false, rollT: 0, rollOk: false, alarm: null, sneak: false,
+    // controls-divinity.md: selected members (keys), chain | free, crouch blend 0..1, attack animation, selection box
+    sel: null, mode: 'chain', crouch: 0, walkMul: 1, atk: null, box: null, hoverMember: null, memScr: [] };
   const fac = locFaction(locId);
   let self;
   let L; // the node's menu controller (location scene), shares all actions
@@ -93,6 +102,9 @@ export function createRoamScene(rawId, opts = {}) {
       const at = lead || { x: map.spawn.world[0], y: map.spawn.world[1] };
       return { ...m, x: at.x, y: at.y, cx: Math.round(at.x), cy: Math.round(at.y), i };
     });
+    const keys = S.party.map((m) => m.key);
+    if (!S.sel || S.mode === 'chain') S.sel = new Set(keys);
+    else { for (const k of [...S.sel]) if (!keys.includes(k)) S.sel.delete(k); if (!S.sel.size) S.sel = new Set(keys); }
   }
   function syncNpcs(game, force = false) {
     const ids = roamNpcIds(locId, game.save);
@@ -176,11 +188,13 @@ export function createRoamScene(rawId, opts = {}) {
       if (S.trail.length > 24) S.trail.shift();
       ld.cx = ld.step.tx; ld.cy = ld.step.ty; ld.step = null;
       play('step', { surface: stepSurface(map, ld.cx, ld.cy), sneak: gait(game) === 'sneak', heavy: game.save?.hero?.armorType === 'heavy' });
+      if (S.goal?.attack && attackInReach(game, S.goal)) S.path = [];
       if (!S.path.length) arrived(game);
     }
     // WASD / arrows: one cell at a time while held (cancels a click path)
-    const dx = (inp.isDown('KeyD') || inp.isDown('ArrowRight') ? 1 : 0) - (inp.isDown('KeyA') || inp.isDown('ArrowLeft') ? 1 : 0);
-    const dy = (inp.isDown('KeyS') || inp.isDown('ArrowDown') ? 1 : 0) - (inp.isDown('KeyW') || inp.isDown('ArrowUp') ? 1 : 0);
+    const ctrl = inp.isDown('ControlLeft') || inp.isDown('ControlRight');
+    const dx = ctrl ? 0 : (inp.isDown('KeyD') || inp.isDown('ArrowRight') ? 1 : 0) - (inp.isDown('KeyA') || inp.isDown('ArrowLeft') ? 1 : 0);
+    const dy = ctrl ? 0 : (inp.isDown('KeyS') || inp.isDown('ArrowDown') ? 1 : 0) - (inp.isDown('KeyW') || inp.isDown('ArrowUp') ? 1 : 0);
     if (dx || dy) {
       S.path = []; S.goal = null; S.runTo = false;
       const tries = dx && dy ? [[dx, dy], [dx, 0], [0, dy]] : [[dx, dy]];
@@ -201,9 +215,21 @@ export function createRoamScene(rawId, opts = {}) {
       startStep(ld, n.x, n.y, speed(game));
     }
   }
+  /** A member walking its own path (free mode, regrouping): cell steps like the leader. */
+  function stepMember(m, dt, sp) {
+    if (m.step) {
+      m.step.t += dt;
+      const k = Math.min(1, m.step.t / m.step.dur);
+      m.x = m.step.fx + (m.step.tx - m.step.fx) * k; m.y = m.step.fy + (m.step.ty - m.step.fy) * k;
+      if (k < 1) return;
+      m.cx = m.step.tx; m.cy = m.step.ty; m.step = null;
+    }
+    if (m.path?.length) { const n = m.path.shift(); startStep(m, n.x, n.y, sp); }
+  }
   function updateFollowers(dt, sp) {
     for (let i = 1; i < S.party.length; i++) {
       const m = S.party[i];
+      if (S.mode === 'free' || m.step || m.path?.length) { stepMember(m, dt, sp); continue; }
       const tg = S.trail[S.trail.length - i * ROAM.chainGap];
       if (!tg) continue;
       const ddx = tg[0] - m.x, ddy = tg[1] - m.y;
@@ -239,25 +265,75 @@ export function createRoamScene(rawId, opts = {}) {
 
   // ---------------------------------------------------------------- interaction
   /** Walk to the entity, interact on arrival (immediately if already within reach). */
-  function goTo(game, ent, run = false) {
+  function goTo(game, ent, run = false, at = S.hoverCell, then = null) {
     const ld = S.party[0];
+    if (!ent && S.mode === 'free') return orderGo(game, at, run);
     S.runTo = run;
-    if (ent && reachOk(ld.cx, ld.cy, ent)) { S.path = []; S.goal = null; return interact(game, ent); }
-    const tx = ent ? ent.x : S.hoverCell.x, ty = ent ? ent.y : S.hoverCell.y;
+    if (ent && reachOk(ld.cx, ld.cy, ent)) { S.path = []; S.goal = null; return then ? then(game) : interact(game, ent); }
+    if (!ent && !at) return;
+    const tx = ent ? ent.x : at.x, ty = ent ? ent.y : at.y;
     const self2 = !ent || (ent.kind === 'obj' && !ent.o.solid);
     const dest = approachCell(grid, ld.step ? ld.step.tx : ld.cx, ld.step ? ld.step.ty : ld.cy, tx, ty, { self: self2 });
     if (!dest) return;
     const from = ld.step ? [ld.step.tx, ld.step.ty] : [ld.cx, ld.cy];
     S.path = roamPath(grid, from[0], from[1], dest.x, dest.y) || [];
-    S.goal = ent;
+    S.goal = ent && then ? { ...ent, then } : ent;
     if (!S.path.length && !ld.step) arrived(game);
+  }
+  /** Free mode: the selected members walk to free cells around the clicked one; the rest stay. */
+  function orderGo(game, at, run) {
+    if (!at) return;
+    S.runTo = run;
+    const taken = new Set();
+    for (const m of S.party) {
+      if (!S.sel.has(m.key)) continue;
+      const cell = ROAM.group.spread.map(([dx, dy]) => [at.x + dx, at.y + dy]).find(([x, y]) => isPassable(grid, x, y) && !taken.has(`${x},${y}`) && !npcAt(x, y));
+      if (!cell) continue;
+      taken.add(`${cell[0]},${cell[1]}`);
+      const from = m.step ? [m.step.tx, m.step.ty] : [m.cx, m.cy];
+      const path = roamPath(grid, from[0], from[1], cell[0], cell[1]) || [];
+      if (m === S.party[0]) { S.path = path; S.goal = null; } else m.path = path;
+    }
+  }
+  /** Chain / free (F2, HUD button); back to the chain — everybody walks up to the leader, all selected. */
+  function setMode(game, mode, quiet = false) {
+    if (S.mode === mode) return;
+    S.mode = mode;
+    if (mode === 'chain') {
+      S.sel = new Set(S.party.map((m) => m.key));
+      S.trail = [];
+      const ld = S.party[0];
+      S.party.slice(1).forEach((m, i) => {
+        const [dx, dy] = ROAM.group.spread[1 + (i % (ROAM.group.spread.length - 1))];
+        const tx = isPassable(grid, ld.cx + dx, ld.cy + dy) ? ld.cx + dx : ld.cx, ty = isPassable(grid, ld.cx + dx, ld.cy + dy) ? ld.cy + dy : ld.cy;
+        m.path = roamPath(grid, m.step ? m.step.tx : m.cx, m.step ? m.step.ty : m.cy, tx, ty) || [];
+      });
+    }
+    if (!quiet) game.toast(t(mode === 'free' ? 'roam.modeFree' : 'roam.modeChain'), 'b');
+    layout(game);
+  }
+  /** LMB on a member — select him only; Shift — add / remove; 1–4 — by number; Ctrl+A — all. A subset — free mode. */
+  function selectMembers(game, keys, add = false) {
+    if (game.coop?.guest) return;
+    if (add) { for (const k of keys) { if (S.sel.has(k)) S.sel.delete(k); else S.sel.add(k); } if (!S.sel.size) S.sel = new Set(keys); }
+    else S.sel = new Set(keys);
+    if (S.sel.size < S.party.length) setMode(game, 'free', true);
+    play('uiClick');
+    game.toast(S.sel.size === S.party.length ? t('roam.selAll') : tf('roam.sel', { n: S.party.filter((m) => S.sel.has(m.key)).map((m) => m.name).join(', ') }), 'b');
+    layout(game);
+  }
+  /** Member under the cursor (screen boxes from the last frame). */
+  function memberAt(mx, my) {
+    for (const b of S.memScr) if (Math.abs(mx - b.x) <= b.r && my >= b.y0 && my <= b.y1) return b.m;
+    return null;
   }
   const reachOk = (x, y, ent) => (ent.kind === 'obj' && ent.o.cells ? ent.o.cells.some(([cx, cy]) => inReach(x, y, cx, cy)) : inReach(x, y, Math.round(ent.x), Math.round(ent.y)));
   function arrived(game) {
     const ld = S.party[0];
     const goal = S.goal;
     S.goal = null; S.runTo = false;
-    if (goal && reachOk(ld.cx, ld.cy, goal)) return interact(game, goal);
+    if (goal?.attack) return attackInReach(game, goal) ? startStrike(game, goal) : null;
+    if (goal && reachOk(ld.cx, ld.cy, goal)) return goal.then ? goal.then(game) : interact(game, goal);
     if (!goal && grid.tiles[ld.cy * grid.w + ld.cx] === T_EXIT) {
       const ex = S.objs.find((o) => o.type === 'exit' && o.cells?.some(([x, y]) => x === ld.cx && y === ld.cy));
       if (ex) interact(game, { kind: 'obj', o: ex, x: ex.x, y: ex.y });
@@ -358,6 +434,134 @@ export function createRoamScene(rawId, opts = {}) {
     if (a.kind === 'exit') return confirmLeave(game);
     if (a.kind === 'transit') return import('./world-map.js').then((m) => m.openTransit(game, { before: (g) => writePos(g) }));
     game.toast(t(`roam.${o.type}`) || t('roam.nothing'), '4');
+  }
+  // ---------------------------------------------------------------- controls-divinity.md: RMB menu, attack on the map
+  /** Walk up to the entity, then run fn (immediately when already within reach). */
+  function goDo(game, ent, fn) {
+    return goTo(game, ent, false, null, fn);
+  }
+  const livePos = (e) => (e.kind === 'hostile' ? [e.h.fx, e.h.fy] : e.kind === 'post' ? [e.p.fx ?? e.p.x, e.p.fy ?? e.p.y] : [e.x, e.y]);
+  const watcherOf = (e) => { const [x, y] = livePos(e), r = e.h || e.p; return { x: Math.round(x), y: Math.round(y), face: r.face || 0 }; };
+  /** Reach of the hero's weapon: melee ROAM.attack.reach tiles, ranged — the weapon range (cells). */
+  function attackReach(game) {
+    if (S.reachCache?.day === game.save.day && S.reachCache.lv === game.save.hero.level) return S.reachCache;
+    const w = buildHero(game.save, game.data).weapon || {};
+    const ranged = (w.range || 1) > 1;
+    S.reachCache = { day: game.save.day, lv: game.save.hero.level, ranged, r: ranged ? w.range : ROAM.attack.reach };
+    return S.reachCache;
+  }
+  function attackInReach(game, e) {
+    const ld = S.party[0], [x, y] = livePos(e);
+    return Math.hypot(x - ld.cx, y - ld.cy) <= attackReach(game).r + 0.01;
+  }
+  /** «Атаковать» a hostile / a guard post: walk into reach, the attack animation, then the battle on the node map. */
+  function attackEnt(game, e) {
+    S.goal = null;
+    if (attackInReach(game, e)) return startStrike(game, e);
+    const ld = S.party[0], [x, y] = livePos(e);
+    const dest = approachCell(grid, ld.cx, ld.cy, Math.round(x), Math.round(y));
+    if (!dest) return;
+    S.path = roamPath(grid, ld.cx, ld.cy, dest.x, dest.y) || [];
+    S.goal = { ...e, attack: true };
+    if (!S.path.length && !ld.step) arrived(game);
+  }
+  function startStrike(game, e) {
+    const ld = S.party[0], [x, y] = livePos(e), A = ROAM.attack;
+    const d = Math.hypot(x - ld.x, y - ld.y) || 1;
+    const rg = attackReach(game).ranged;
+    // surprise: sneaking and outside the target's cone (from behind / the side)
+    const surprise = !!S.sneak && behindOf(grid, watcherOf(e), ld.cx, ld.cy);
+    S.atk = { t: 0, dur: A.dur, dx: (x - ld.x) / d, dy: (y - ld.y) / d, e, ranged: rg, surprise };
+    S.path = []; S.goal = null;
+    play(rg ? 'hit' : 'miss');
+    const V = S.r3?.v3;
+    if (V) startAct(V, 'r:hero', rg ? 'shoot' : 'swing', S.time, { x: x + 0.5, z: y + 0.5 });
+  }
+  function updateStrike(game, dt) {
+    const k = S.atk, ld = S.party[0];
+    k.t += dt;
+    const f = Math.min(1, k.t / k.dur), out = (k.ranged ? 0.3 : 1) * ROAM.attack.lunge * Math.sin(f * Math.PI);
+    ld.ox = k.dx * out; ld.oy = k.dy * out;
+    if (f < 1) return;
+    ld.ox = ld.oy = 0;
+    S.atk = null;
+    const xo = { heroInit: ROAM.attack.firstStrike, surprise: k.surprise };
+    game.toast(k.surprise ? t('ctx.surprise') : tf('ctx.firstStrike', { n: ROAM.attack.firstStrike }), 'j');
+    if (k.e.kind === 'hostile') return fightOnMap(game, k.e.h.kind, xo);
+    if (k.e.kind === 'post') { raiseAlarm(game); S.alarm.fight = true; return fightOnMap(game, 'guards', xo); }
+  }
+  /** «Осмотреть»: a toast with the name and the codex / description line. */
+  function inspect(game, kind, e, mem, at) {
+    const enemyOf = (r) => String(r?.enemy?.enemy || r?.enemy || '').split('^')[0];
+    if (mem) return game.toast(`${mem.name} · ${t(mem.key === 'hero' ? 'ctx.hero' : 'ctx.member')}`, '4');
+    if (e?.kind === 'npc') { const n = NPCS[e.n.id]; return game.toast(`${n.name}${n.role ? ` · ${n.role}` : ''}`, '4'); }
+    if (e && ['post', 'hostile', 'corpse'].includes(e.kind)) {
+      const id = enemyOf(e.p || e.h || e.c), key = enemyKey(id);
+      return game.toast(`${ENEMIES[key]?.name || ENEMIES[id]?.name || t('roam.hostile')} · ${t(`ctx.codex${codexLevel(game.save, key)}`)}`, '4');
+    }
+    if (e?.kind === 'skill') return game.toast(`${e.p.s.label} · ${t('battle.dc')} ${e.p.s.dc}`, '4');
+    if (e?.kind === 'obj') return game.toast([objName(e.o), ...objLines(e.o)].join(' · '), '4');
+    if (at) return game.toast(t(isPassable(grid, at.x, at.y) ? 'ctx.cellFloor' : 'ctx.cellWall'), '4');
+  }
+  /** Items of the menu for the target under the cursor (world/roam-ctx.js). → {kind, title, items, ent, mem, at} | null */
+  function ctxFor(game, ent, mem, at) {
+    const sv = game.save, ld = S.party[0];
+    if (mem) {
+      const gifts = mem.key === 'hero' ? null : giftOptions(sv, mem.key, countAll(sv)).length;
+      return { kind: 'member', title: mem.name, mem, items: ctxItems('member', { hero: mem.key === 'hero', gifts }) };
+    }
+    if (ent) {
+      const k = ent.kind;
+      if (k === 'npc') {
+        const npc = NPCS[ent.n.id], n = ent.n;
+        const behind = behindOf(grid, { x: Math.round(n.fx), y: Math.round(n.fy), face: n.face || 0 }, ld.cx, ld.cy);
+        const env = { acts: L.npc.npcActions(game, npc), sneak: !!S.sneak, theftMod: behind ? ROAM.stealth.theftBehind : 0, quests: L.npc.offeredBy(game, npc).length };
+        return { kind: k, title: npc.name, ent, env, items: ctxItems('npc', env) };
+      }
+      if (k === 'post' || k === 'hostile') {
+        const behind = behindOf(grid, watcherOf(ent), ld.cx, ld.cy);
+        return { kind: k, title: k === 'post' ? ent.p.name || t('roam.guard') : t('roam.hostile'), ent, items: ctxItems(k, { sneak: !!S.sneak, behind }) };
+      }
+      if (k === 'obj') {
+        const o = ent.o;
+        if (o.type === 'stash') o.opened = o.cache ? (sv.caches || []).includes(o.cache.id) : !!sv.flags?.[stashKey(locId, o.id)];
+        return { kind: k, title: objName(o), ent, items: ctxItems('obj', { obj: objectAction(o).kind }) };
+      }
+      if (k === 'skill') return { kind: k, title: ent.p.s.label, ent, items: ctxItems('skill', { sub: `${skillName(ent.p.s.skill)} · ${t('battle.dc')} ${ent.p.s.dc}` }) };
+      return { kind: k, title: t(`roam.${k}`), ent, items: ctxItems(k, {}) };
+    }
+    if (at) return { kind: 'cell', title: t('ctx.cell'), at, items: ctxItems('cell', { passable: isPassable(grid, at.x, at.y) && !npcAt(at.x, at.y), skills: S.skillOpen || 0 }) };
+    return null;
+  }
+  function openCtx(game, m) {
+    const c = ctxFor(game, S.hoverEnt, S.hoverMember, S.hoverCell ? { ...S.hoverCell } : null);
+    if (!c) return;
+    if (onlyInspect(c.items)) return inspect(game, c.kind, c.ent, c.mem, c.at);
+    openContextMenu(game, { x: m.x, y: m.y, title: c.title, items: c.items, target: c.ent || c.mem || c.at, onPick: (g, id) => pickCtx(g, id, c) });
+  }
+  function pickCtx(game, id, c) {
+    const { ent, mem, at } = c;
+    if (id === 'inspect') return inspect(game, c.kind, ent, mem, at);
+    if (id === 'go') return goTo(game, null, false, at);
+    if (id === 'select') return selectMembers(game, [mem.key], false);
+    if (id === 'give' && mem) {
+      const sv = game.save, gifts = giftOptions(sv, mem.key, countAll(sv));
+      return game.openModal({ title: `${t('comp.giftBtn')}: ${mem.name}`, lines: [],
+        options: [...gifts.slice(0, 10).map((x) => ({ label: ITEMS[x]?.name || x, run: (g2) => { toastAll(g2, giveGift(sv, mem.key, x, dropItem)); L.refresh(g2); } })),
+          { label: t('loc.close'), run: () => {} }] });
+    }
+    if (id === 'skill') {
+      if (ent?.kind === 'skill') return goDo(game, ent, (g) => interact(g, ent));
+      return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
+    }
+    if (id === 'attack' && ent && (ent.kind === 'hostile' || ent.kind === 'post')) return attackEnt(game, ent);
+    if (ent?.kind === 'npc') {
+      const npc = NPCS[ent.n.id];
+      if (id === 'quest') return goDo(game, ent, (g) => { const q = L.npc.offeredBy(g, npc)[0]; if (q) L.npc.offerQuest(g, q, npc.id); });
+      if (id === 'steal') return goDo(game, ent, (g) => L.npc.doNpc(g, npc, 'steal', { theftMod: c.env?.theftMod || 0 }));
+      return goDo(game, ent, (g) => L.npc.doNpc(g, npc, id));
+    }
+    if (ent) return goTo(game, ent); // trade at a stall, hack a terminal, search, use, leave — the object's own action
   }
   function confirmLeave(game) {
     game.openModal({ title: t('roam.leaveTitle'), lines: [{ text: t('roam.leaveText') }],
@@ -520,7 +724,7 @@ export function createRoamScene(rawId, opts = {}) {
     }
   }
   /** «Бой!»: the hostiles of this kind fight on the node map (the battle cut — the provider below). */
-  function fightOnMap(game, kind) {
+  function fightOnMap(game, kind, xo = {}) {
     const list = S.hostiles.filter((h) => h.kind === kind);
     if (!list.length) return;
     writePos(game);
@@ -528,7 +732,7 @@ export function createRoamScene(rawId, opts = {}) {
     const foes = list.map((h) => [Math.round(h.fx), Math.round(h.fy)]);
     const gone = list.filter((h) => h.post).map((h) => h.id);
     const title = kind === 'guards' ? tf('crime.guardsTitle', { faction: loc.name }) : S.raidTitle || loc.name;
-    startWorldBattle(game, { enemies: list.map((h) => h.enemy), faction: kind === 'guards' ? fac : S.raidFaction, title, roamFoes: foes, roamGone: gone, noObjectives: true,
+    startWorldBattle(game, { enemies: list.map((h) => h.enemy), faction: kind === 'guards' ? fac : S.raidFaction, title, roamFoes: foes, roamGone: gone, noObjectives: true, heroInit: xo.heroInit || 0, surprise: !!xo.surprise,
       onWin: (g) => { if (kind === 'guards') L.V(g).gate = true; self.again(g); } });
   }
   /** Raid on entering (ROAM.raid): raiders of the region come in from the farthest exit and hunt the party. */
@@ -607,6 +811,10 @@ export function createRoamScene(rawId, opts = {}) {
       S.buttons.push({ id: 'gfx', label: S.r3?.v3 ? '2D' : '3D', tip: t('gfx.toggleTip'), x: W0 - 56, y: 68, w: 46, h: 30 });
       if (S.r3?.v3) S.buttons.push({ id: 'camFocus', label: '◎', tip: t('gfx.roamFocusTip'), x: W0 - 96, y: 68, w: 34, h: 30 });
     }
+    if (S.party.length > 1 && !game.coop?.guest) { // controls-divinity.md: party chips (select) and chain / free
+      S.buttons.push({ id: 'mode', label: t(S.mode === 'free' ? 'roam.modeBtnChain' : 'roam.modeBtn'), key: 'F2', tip: t('roam.modeTip'), x: W0 - 250, y: 68, w: 144, h: 30, selected: S.mode === 'free' });
+      S.party.slice(0, ROAM.group.keys).forEach((q, i) => S.buttons.push({ id: `sel:${i}`, label: q.name, key: String(i + 1), x: 540 + i * 118, y: 12, w: 112, h: 28, selected: S.mode === 'free' && !!S.sel?.has(q.key) }));
+    }
     if (S.skillAll) S.buttons.push({ id: 'skills', label: `${t('nsa.group')} ${S.skillOpen}/${S.skillAll}`, x: x0 - bw - gap, y: H0 - 52, w: bw, h: 42 });
     S.hints = hintSkillsOf(game.save, locId, loc);
     const sv = game.save;
@@ -627,6 +835,8 @@ export function createRoamScene(rawId, opts = {}) {
     if (id === 'skills') return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
     if (id === 'map') return confirmLeave(game);
     if (id === 'fine') return payAlarm(game);
+    if (id === 'mode') return setMode(game, S.mode === 'free' ? 'chain' : 'free');
+    if (id.startsWith('sel:')) { const q = S.party[+id.slice(4)]; return q && selectMembers(game, [q.key], game.input.isDown('ShiftLeft') || game.input.isDown('ShiftRight')); }
     if (id === 'gfx') { setGfxPref('mode', S.r3?.v3 ? '2d' : '3d'); S.r3 = null; S.cam = null; return; }
     if (id === 'camFocus') { const V = S.r3?.v3; if (V) centerCamera(V.cam, V.cam.bx, V.cam.bz); return; }
     return L.nav(game, id);
@@ -755,6 +965,8 @@ export function createRoamScene(rawId, opts = {}) {
     toastAnchor(game) { return { x: game.width / 2, y: game.height - 80, dir: -1 }; },
     // test hooks
     goTo: (game, ent) => goTo(game, ent),
+    ctxFor: (game, ent, mem, at) => ctxFor(game, ent, mem, at), openCtx: (game, m) => openCtx(game, m), pickCtx: (game, id, c) => pickCtx(game, id, c),
+    select: (game, keys, add) => selectMembers(game, keys, add), setMode: (game, md) => setMode(game, md), attackEnt: (game, e) => attackEnt(game, e), goCell: (game, x, y) => goTo(game, null, false, { x, y }),
     raiseAlarm: (game) => raiseAlarm(game), spawnRaid: (game, enemies, name) => spawnRaid(game, enemies, name), watchers, provider,
     entities, interact: (game, ent) => interact(game, ent), npcMenu: (game, id) => npcMenu(game, NPCS[id]), grid, map,
     // multiplayer.md stage 3 (host): a guest's interaction request — the entity by key, within reach of the guest's cell
@@ -796,11 +1008,33 @@ export function createRoamScene(rawId, opts = {}) {
           || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my))
           || es.find((e) => e.kind === 'skill' && e.x === mx && e.y === my) || null;
       }
+      // controls-divinity.md: party members under the cursor, the RMB menu (takes the step's clicks / Esc), RMB click
+      S.hoverMember = !S.hover && !game.coop?.guest ? memberAt(m.x, m.y) : null;
+      if (S.hoverMember) S.hoverEnt = null;
+      if (updateContextMenu(game)) return;
+      if (m.rightClicked && !S.hover && !game.modals.length) openCtx(game, m);
+      // selection box: LMB drag from an empty cell
+      if (S.box) {
+        const B = S.box;
+        if (m.down) {
+          B.x1 = m.x; B.y1 = m.y;
+          if (!B.on && Math.hypot(B.x1 - B.x0, B.y1 - B.y0) >= ROAM.group.boxMin) { B.on = true; S.path = []; S.goal = null; for (const q of S.party) q.path = []; }
+        } else {
+          if (B.on) {
+            const x0 = Math.min(B.x0, B.x1), x1 = Math.max(B.x0, B.x1), y0 = Math.min(B.y0, B.y1), y1 = Math.max(B.y0, B.y1);
+            const keys = S.memScr.filter((b) => b.x >= x0 && b.x <= x1 && b.y1 >= y0 && b.y0 <= y1).map((b) => b.m.key);
+            if (keys.length) selectMembers(game, keys);
+          }
+          S.box = null;
+        }
+      }
       if (m.wheel && !A3) { S.zoom = Math.max(0, Math.min(ROAM.zooms.length - 1, S.zoom - Math.sign(m.wheel))); S.cam = null; }
       if (m.clicked && !(cam3 && S.r3?.v3?.drag?.on)) {
         if (S.hover) { if (S.hover.disabled) return; play('uiClick'); return nav(game, S.hover.id); }
+        if (S.hoverMember) return selectMembers(game, [S.hoverMember.key], inp.isDown('ShiftLeft') || inp.isDown('ShiftRight'));
         const dbl = S.lastClick && S.time - S.lastClick < 0.3;
         S.lastClick = S.time;
+        if (!S.hoverEnt && !game.coop?.guest && S.party.length > 1) S.box = { x0: m.x, y0: m.y, x1: m.x, y1: m.y, on: false };
         if (S.hoverEnt) goTo(game, S.hoverEnt, dbl);
         else if (S.hoverCell && isPassable(grid, mx, my)) goTo(game, null, dbl);
       } else if (inp.wasPressed('KeyE')) { const e = nearest(); if (e) interact(game, e); }
@@ -812,12 +1046,23 @@ export function createRoamScene(rawId, opts = {}) {
       else if (inp.wasPressed('KeyG')) return nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) return nav(game, 'codex');
       else if (inp.wasPressed('Escape')) return nav(game, 'menu');
-      else if (inp.wasPressed('KeyC')) { S.sneak = !S.sneak; game.toast(t(S.sneak ? 'roam.sneakOn' : 'roam.sneakOff'), S.sneak ? 'j' : '4'); }
+      else if (inp.wasPressed('KeyC')) { S.sneak = !S.sneak; play('step', { surface: 'grass', sneak: true }); game.toast(t(S.sneak ? 'roam.sneakOn' : 'roam.sneakOff'), S.sneak ? 'j' : '4'); }
       else if (inp.wasPressed('KeyZ')) { if (canCampAt(locId)) { writePos(game); return L.restAction(game).run(game); } game.toast(t('rest.notHere'), 'c'); }
       else if (inp.wasPressed('KeyH')) return toBase(game);
       else if (inp.wasPressed('KeyN')) { game.mapNight = !game.mapNight; game.toast(t(game.mapNight ? 'roam.nightOn' : 'roam.nightOff'), 'b'); }
       else if (inp.wasPressed('KeyF') && S.alarm) return payAlarm(game);
+      // controls-divinity.md: F2 — chain / free, 1–4 — a member, Ctrl+A — everybody (host only in co-op)
+      if (!game.coop?.guest && S.party.length > 1) {
+        if (inp.wasPressed('F2')) setMode(game, S.mode === 'free' ? 'chain' : 'free');
+        if ((inp.isDown('ControlLeft') || inp.isDown('ControlRight')) && inp.wasPressed('KeyA')) selectMembers(game, S.party.map((q) => q.key));
+        else for (let i = 0; i < Math.min(ROAM.group.keys, S.party.length); i++) if (inp.wasPressed(`Digit${i + 1}`)) selectMembers(game, [S.party[i].key]);
+      }
       if (game.modals.length || game.scene !== self) return;
+      // sneaking crouch: blend in / out over ROAM.crouch.blend s; slower step rhythm
+      const want = S.sneak && !running(game) ? 1 : 0, CR = ROAM.crouch;
+      S.crouch += Math.sign(want - S.crouch) * Math.min(Math.abs(want - S.crouch), dt / CR.blend);
+      S.walkMul = 1 - (1 - CR.rhythm) * S.crouch;
+      if (S.atk) return updateStrike(game, dt); // the attack animation, then the battle
       updateLeader(game, dt);
       updateFollowers(dt, speed(game));
       updateNpcs(dt);
@@ -891,7 +1136,8 @@ export function createRoamScene(rawId, opts = {}) {
       for (const p of S.posts) list.push({ y: p.fy ?? p.y, x: p.fx ?? p.x, sprite: p.sprite, foe: p });
       for (const h of S.hostiles) list.push({ y: h.fy, x: h.fx, sprite: h.sprite, foe: h, hunt: true });
       for (const n of S.npcs) list.push({ y: n.fy, x: n.fx, sprite: n.sprite, npc: n });
-      S.party.forEach((m, i) => list.push({ y: m.y, x: m.x, sprite: m.sprite, member: m, i }));
+      S.party.forEach((m, i) => list.push({ y: m.y + (m.oy || 0), x: m.x + (m.ox || 0), sprite: m.sprite, member: m, i }));
+      S.memScr = [];
       // multiplayer.md: the other players' heroes (positions from the host, interpolated)
       for (const o of game.coop?.others?.(game, locId) || []) list.push({ y: o.y, x: o.x, sprite: o.sprite || (o.sprite = heroSpriteIds(o.hero?.race || 'human', o.hero?.cls || 'zabivnoy', o.hero?.look)), other: o, i: o.slot });
       list.sort((a, b) => a.y - b.y);
@@ -899,7 +1145,18 @@ export function createRoamScene(rawId, opts = {}) {
         const [px, py] = scr(u.x, u.y);
         if (px < -c * 2 || py < -c * 2 || px > W0 + c || py > H0 + c * 2) continue;
         ctx.fillStyle = rgba(C['0'], 0.4); ctx.fillRect(px + c * 0.2, py + c * 0.8, c * 0.6, c * 0.15);
-        drawSprite(ctx, u.sprite, px, py, s, { frame: idleFrame(tms, (u.i || 0) * 0.37 + (u.npc ? u.x : 0)) });
+        if (u.member && S.mode === 'free' && S.sel?.has(u.member.key)) { // selected: a ring under the feet
+          ctx.strokeStyle = C.j; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(px + c / 2, py + c * 0.88, c * 0.42, c * 0.16, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        const ck = u.member ? S.crouch : 0;
+        if (ck > 0) { // sneaking: squashed to the feet, shifted down, slower rhythm
+          const CR = ROAM.crouch, foot = py + c, sy = 1 - CR.squash * ck;
+          ctx.save(); ctx.translate(0, foot + CR.down * ck); ctx.scale(1, sy); ctx.translate(0, -foot);
+          drawSprite(ctx, u.sprite, px, py, s, { frame: idleFrame(tms * S.walkMul, (u.i || 0) * 0.37) });
+          ctx.restore();
+        } else drawSprite(ctx, u.sprite, px, py, s, { frame: idleFrame(tms, (u.i || 0) * 0.37 + (u.npc ? u.x : 0)) });
+        if (u.member) S.memScr.push({ m: u.member, x: px + c / 2, r: c * 0.45, y0: py - c * 0.4, y1: py + c });
+        if (u.member && u.i === 0 && S.atk) drawStrike(ctx, px + c / 2, py + c * 0.5, c);
         if (u.member) { ctx.fillStyle = u.i === 0 ? (game.coop ? game.coop.myColor() : C.h) : C.j; ctx.fillRect(px + c * 0.3, py + c - 3, c * 0.4, 2); }
         if (u.other) {
           const col = C[u.other.color] || C.h;
@@ -919,6 +1176,16 @@ export function createRoamScene(rawId, opts = {}) {
       });
     },
   };
+  /** Attack flash: a blade arc (melee) or a muzzle flash (ranged) toward the target in the middle of the lunge. */
+  function drawStrike(ctx, x, y, c) {
+    const k = S.atk, f = k.t / k.dur;
+    if (f < 0.35 || f > 0.75) return;
+    const ex = x + k.dx * c * 0.75, ey = y + k.dy * c * 0.75;
+    ctx.save();
+    if (k.ranged) { ctx.fillStyle = C.a; ctx.beginPath(); ctx.arc(ex, ey, c * 0.16, 0, Math.PI * 2); ctx.fill(); }
+    else { const a = Math.atan2(k.dy, k.dx); ctx.strokeStyle = C['5']; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, c * 0.7, a - 0.7, a + 0.7); ctx.stroke(); }
+    ctx.restore();
+  }
   /** Names, hotspots and the HUD over the world (2D and 3D). scr(x, y) -> top-left of the cell box, c — its size, plateY. */
   function overlay2d(game, scr, c, plateY, marks, iconAt) {
     const { ctx, width: W0, height: H0 } = game;
@@ -986,6 +1253,19 @@ export function createRoamScene(rawId, opts = {}) {
       }
       text(ctx, fit(ctx, t('roam.help'), W0 - S.buttons.length * 130 - 40, '12px monospace'), 12, H0 - 36, C['4'], '12px monospace');
       for (const b of S.buttons) button(ctx, b, S.hover === b);
+      // sneaking: an «eye» over the leader
+      const lb = S.crouch > 0.5 && S.memScr.find((b) => b.m === ld);
+      if (lb) {
+        const ex = lb.x, ey = lb.y0 - 8;
+        ctx.save(); ctx.fillStyle = rgba(C['0'], 0.75); ctx.beginPath(); ctx.ellipse(ex, ey, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = S.seen ? C.c : C.j; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(ex, ey, 8, 4.5, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = S.seen ? C.c : C.j; ctx.beginPath(); ctx.arc(ex, ey, 2.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
+      if (S.box?.on) {
+        const B = S.box;
+        ctx.save(); ctx.strokeStyle = C.j; ctx.lineWidth = 1; ctx.setLineDash([5, 3]);
+        ctx.strokeRect(Math.min(B.x0, B.x1) + 0.5, Math.min(B.y0, B.y1) + 0.5, Math.abs(B.x1 - B.x0), Math.abs(B.y1 - B.y0)); ctx.restore();
+      }
   }
   /** 3D frame: the WebGL world (gfx/roam3d.js) + the 2D layer (skill badges, marks, names, tooltips, HUD) on top. */
   function render3d(game, A, R) {
@@ -996,7 +1276,8 @@ export function createRoamScene(rawId, opts = {}) {
     const cones = showCones(game) ? watchers().filter((w) => Math.hypot(w.x - ld.cx, w.y - ld.cy) <= ROAM.stealth.coneNear).map((w) => ({
       pts: conePoly(grid, w, range), hot: S.seen && S.party.some((m) => seesCell(grid, w, m.cx, m.cy, range)) })) : [];
     const marks = marksNow(game);
-    drawRoam3d(game, A, R, { path: S.path, hover: !S.hover ? S.hoverCell : null, hoverEnt: S.hoverEnt, marks: marks3d(marks), cones, zones: (map.zones || []).filter((z) => z.restricted) });
+    drawRoam3d(game, A, R, { path: S.path, hover: !S.hover ? S.hoverCell : null, hoverEnt: S.hoverEnt, marks: marks3d(marks), cones, zones: (map.zones || []).filter((z) => z.restricted),
+      sel: S.mode === 'free' ? S.party.filter((q) => S.sel?.has(q.key)) : [] });
     const c = A.L.cell;
     const scr = (x, y) => { const p = roamScreen(A, x, y); return [Math.round(p.x - c / 2), Math.round(p.y - c / 2)]; };
     for (const p of S.skills || []) {
@@ -1006,6 +1287,12 @@ export function createRoamScene(rawId, opts = {}) {
       drawSkillBadge(ctx, p.s.skill, px + (c - bs) / 2, py + (c - bs) / 2 - c * 0.3, bs, !!p.s.best && p.s.best.kind !== 'other');
     }
     const heads = new Map();
+    S.memScr = [];
+    for (const it of R.bodies || []) if (it.ref.kind === 'member') {
+      const a = roamScreen(A, it.d.x, it.d.y, 0), top = roamScreen(A, it.d.x, it.d.y, bodyTop(it)), r = Math.max(10, A.ppm * 0.32);
+      S.memScr.push({ m: it.ref.m, x: a.x, r, y0: top.y, y1: a.y + r * 0.4 });
+      if (it.ref.m === ld && S.atk) drawStrike(ctx, a.x, (a.y + top.y) / 2, Math.max(16, A.ppm * 0.7));
+    }
     for (const it of R.bodies || []) {
       const p = roamScreen(A, it.d.x, it.d.y, bodyTop(it));
       heads.set(it.ref.n || it.ref.p || it.ref.h || it.ref.o || it.ref.m, p.y);

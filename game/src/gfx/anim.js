@@ -199,7 +199,7 @@ function pose(T, st, d, now, flags) {
   if (T.anime && !flags.walking && st.iw > 0.01) idlePose(T, st, st.iw, now, tw, still);
   // walk
   if (flags.walking && type !== 'drone') {
-    const ph = st.walk * tw / A.walkStride, sw = Math.sin(ph) * A.walkSwing * mechK;
+    const ph = st.walk * tw / A.walkStride * (flags.walkMul || 1), sw = Math.sin(ph) * A.walkSwing * mechK;
     if (type === 'beast') {
       set(BONE.uaL, -sw, 0, 0); set(BONE.uaR, sw, 0, 0); set(BONE.thL, sw, 0, 0); set(BONE.thR, -sw, 0, 0);
       set(BONE.faL, Math.max(0, Math.cos(ph)) * 0.5, 0, 0); set(BONE.faR, Math.max(0, -Math.cos(ph)) * 0.5, 0, 0);
@@ -216,6 +216,16 @@ function pose(T, st, d, now, flags) {
       if (T.anime) { set(BONE.pelvis, 0, sw * 0.2, 0); set(BONE.head, 0, sw * 0.12, -Math.cos(ph) * 0.03); OFF[0] += Math.cos(ph) * 0.012; }
     }
   } else if (flags.walking && type === 'drone') set(BONE.pelvis, 0.15, 0, 0);
+  // crouch (roam sneaking, flags.crouch 0..1): knees bent, torso forward, the body sunk so the feet stay on the floor
+  const ck = flags.crouch || 0;
+  if (ck > 0 && type !== 'beast' && type !== 'drone' && type !== 'spirit') {
+    const K = A.crouch;
+    set(BONE.thL, K.thigh * ck, 0, 0); set(BONE.thR, K.thigh * ck, 0, 0);
+    set(BONE.shL, K.shin * ck, 0, 0); set(BONE.shR, K.shin * ck, 0, 0);
+    set(BONE.torso, K.torso * ck, 0, 0); set(BONE.head, K.head * ck, 0, 0);
+    set(BONE.uaL, K.arm * ck, 0, 0); set(BONE.uaR, K.arm * ck, 0, 0);
+    root.sink += K.sink * (T.top || 1.7) * T.scale * ck;
+  }
   // action
   if (st.act && now >= st.t0 && now < st.t0 + st.dur) {
     const k = (now - st.t0) / st.dur;
@@ -393,3 +403,8 @@ export function trackWalk(V, id, x, z) {
   return s;
 }
 export const animState = stOf;
+/** Start an action on a body outside the battle (roam attack): kind swing | shoot | cast | throw | use, aim {x, z}. */
+export function startAct(V, id, kind, now, aim = null) {
+  const s = stOf(V, id);
+  s.act = kind; s.t0 = now; s.dur = ACT_DUR[kind]; s.aim = aim;
+}

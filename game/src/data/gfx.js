@@ -46,6 +46,7 @@ export const GFX = {
   bodies: [
     { re: 'spirit|hologram|cyber-demon|soul|scriptlet|ghost|glitch', tag: 'digital', type: 'spirit' },
     { re: 'drone|turret|sprayer|beacon|hive-node|mech-node|lis-drone|lis-5|lis-2|sentry|battery', type: 'drone' },
+    { re: '^(boss-)?wolf-\\d', type: 'beast' }, // Warprom «Wolf» robo-wolves (wolf-5 included), gfx/robo3d.js
     { re: 'junk-mech|kuznechik|golem|harvester|great-mech|matyorny|mech-pilot|assimilator|loader|vibe-burner|sputnik|armory', tag: 'mech', type: 'mech' },
     { re: 'wolf|beast|crawler|panther|spider|biomass|(^|-)rat($|-)|(^|-)dog($|-)|lis-4|lis-9|lis-1', tag: 'beast', type: 'beast' },
     { tag: 'mechanical', type: 'robot' },
@@ -54,7 +55,7 @@ export const GFX = {
   // humanoid proportions by race: w — width, limb — limb thickness, h — height; extras on the head / shoulders
   races: {
     human: {}, skeleton: { limb: 0.7, w: 0.9, bone: true }, android: { limb: 0.85, robot: true }, 'mutant-beast': { w: 1.2, limb: 1.25, h: 1.05, ears: true },
-    'mutant-plant': { leaves: true, limb: 1.1 }, tekhonok: { h: 0.86, w: 1.05, antenna: true }, cringegon: { h: 1.08, w: 0.9, limb: 0.85, horns: true },
+    'mutant-plant': { leaves: true, limb: 1.1 }, tekhonok: { h: 0.86, w: 1.05, antenna: true }, cringegon: { h: 1.08, w: 0.9, limb: 0.85, horns: true, ears: true },
     skrilet: { spikes: true, limb: 0.95 }, 'cyber-spirit': { spirit: true },
   },
   // class kit on the back / shoulders
@@ -66,6 +67,8 @@ export const GFX = {
   anim: {
     breathHz: 0.28, breath: 0.012, walkStride: 1.15, walkSwing: 0.55, walkBob: 0.03, bobHz: 0.35,
     swing: 0.62, shoot: 0.5, cast: 0.8, throw: 0.62, hit: 0.38, death: 0.55, use: 0.45,
+    // controls-divinity.md: sneaking crouch (radians of thigh / shin / torso, sink — share of the height kept on the floor)
+    crouch: { thigh: -1.0, shin: 1.5, torso: 0.4, head: -0.25, arm: -0.3, sink: 0.145 },
     hitTilt: 0.32, hitPush: 0.08, lunge: 0.16, recoil: 0.12, launch: { shoot: 0.24, throw: 0.3, cast: 0.45 },
     boltSpeed: 22, throwSpeed: 9, castSpeed: 10, // m/s
     reduce: 0.5, // «Снизить движение»: amplitude of hit / lunge / recoil

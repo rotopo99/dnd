@@ -685,7 +685,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     if (!g || g.key !== p.T.key) { g = { key: p.T.key, m: p.m, first: row, nOp: 0, nTr: 0 }; groups.push(g); }
     if (p.trans) g.nTr++; else g.nOp++;
     const d = p.it.d, o = row * rowF;
-    poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, boneData, o, { walking: p.walking, reduceMotion: prefs.reduceMotion, physics: physicsK(prefs) });
+    poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, boneData, o, { walking: p.walking, reduceMotion: prefs.reduceMotion, physics: physicsK(prefs), crouch: p.it.crouch || 0, walkMul: p.it.walkMul || 1 });
     const emo = d.emoT > 0 && d.emo ? d.emo : 'neutral', seed = p.st.seed;
     const blink = p.dead || d.down || ((now * 0.37 + seed * 7.3) % 1) < 0.045;
     boneData.set([wc[0], wc[1], wc[2], p.flash, p.team[0], p.team[1], p.team[2], p.alpha, p.grow, p.T.anime ? faceCol(emo, blink) / FACE_COLS : 0, 0, 0], o + NBONES * 12);

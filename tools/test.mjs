@@ -4965,5 +4965,76 @@ console.log('metric combat stage 2 (ranges, areas, LOS, cover, zone of control, 
     assert.deepEqual(S.phobia, [], 'dropped after freeing 2 points');
   });
 }
+
+// ---------------------------------------------------------------- controls-divinity.md: RMB menu, sneaking, input
+{
+  const { ctxItems, onlyInspect } = await import('../game/src/world/roam-ctx.js');
+  const CM = await import('../game/src/ui/context-menu.js');
+  const ss = await import('../game/src/world/roam-stealth.js');
+  const { ROAM } = await import('../game/src/data/world/roam.js');
+  const { createInput } = await import('../game/src/input.js');
+  const { GFX } = await import('../game/src/data/gfx.js');
+  const ids = (l) => l.map((x) => x.id);
+  test('ctx menu: NPC items by conditions — trader / candidate, steal only while sneaking, order', () => {
+    const trader = [{ id: 'talk' }, { id: 'trade', label: 'Торговать' }, { id: 'steal' }, { id: 'attack' }];
+    const a = ctxItems('npc', { acts: trader, sneak: false, quests: 0 });
+    assert.deepEqual(ids(a), ['talk', 'trade', 'steal', 'attack', 'inspect']);
+    assert.ok(a.find((x) => x.id === 'steal').disabled && a.find((x) => x.id === 'steal').reason, 'steal grey with a reason');
+    assert.ok(!ctxItems('npc', { acts: trader, sneak: true }).find((x) => x.id === 'steal').disabled, 'steal open in the crouch');
+    const cand = ctxItems('npc', { acts: [{ id: 'talk' }, { id: 'recruit', label: 'Вербовать' }, { id: 'attack', disabled: true, reason: 'нет' }], quests: 2 });
+    assert.deepEqual(ids(cand), ['talk', 'recruit', 'quest', 'attack', 'inspect']);
+    assert.ok(cand.find((x) => x.id === 'attack').disabled);
+    assert.ok(!ids(cand).includes('trade'));
+    assert.deepEqual(ids(ctxItems('hostile', {})), ['attack', 'inspect']);
+    assert.deepEqual(ids(ctxItems('obj', { obj: 'terminal' })), ['hack', 'inspect']);
+    assert.ok(ctxItems('obj', { obj: 'empty' })[0].disabled, 'searched crate — grey');
+    assert.deepEqual(ids(ctxItems('cell', { passable: true })), ['go', 'inspect']);
+    assert.ok(onlyInspect(ctxItems('cell', { passable: false })), 'a wall — a toast, no menu');
+    assert.deepEqual(ids(ctxItems('unit', { foe: true, canAttack: false })), ['attack', 'pin', 'inspect']);
+    assert.deepEqual(ids(ctxItems('unit', { foe: false })), ['pin', 'inspect']);
+    assert.deepEqual(ids(ctxItems('member', { hero: false, gifts: 0 })), ['select', 'give', 'inspect']);
+  });
+  test('ctx menu: RMB drag does not open (input.js), click does; Esc / LMB outside close; pick runs', () => {
+    const mk = () => { const h = {}; return { h, addEventListener: (k, f) => { (h[k] ||= []).push(f); } }; };
+    const tgt = mk(), cv = { ...mk(), width: 1280, height: 720, getBoundingClientRect: () => ({ left: 0, top: 0, width: 1280, height: 720 }) };
+    const win = mk(); globalThis.window = win;
+    const inp = createInput(tgt, cv);
+    const fire = (o, k, e) => (o.h[k] || []).forEach((f) => f({ preventDefault() {}, ...e }));
+    fire(cv, 'pointerdown', { button: 2, clientX: 100, clientY: 100 });
+    fire(win, 'pointerup', { button: 2, clientX: 100 + GFX.camera.dragMin + 20, clientY: 100 });
+    assert.ok(!inp.mouse.rightClicked, 'drag — pan only');
+    fire(cv, 'pointerdown', { button: 2, clientX: 300, clientY: 200 });
+    fire(win, 'pointerup', { button: 2, clientX: 301, clientY: 200 });
+    assert.ok(inp.mouse.rightClicked, 'click opens');
+    delete globalThis.window;
+    let picked = null;
+    const keys = new Set();
+    const game = { width: 1280, height: 720, modals: [], scene: {}, ctx: null, input: { mouse: { x: 0, y: 0 }, wasPressed: (k) => keys.has(k) } };
+    CM.openContextMenu(game, { x: 300, y: 200, title: 'NPC', items: [{ id: 'talk', label: 'a' }, { id: 'steal', label: 'b', disabled: true }], onPick: (g, id) => { picked = id; } });
+    const r = CM.menuRect(game);
+    assert.ok(r.x + r.w <= 1280 && r.y + r.h <= 720);
+    Object.assign(game.input.mouse, { x: r.x + 10, y: r.y + r.h - 10, clicked: true });
+    assert.ok(CM.updateContextMenu(game) && picked === null && game.ctxMenu, 'disabled item does nothing');
+    Object.assign(game.input.mouse, { y: r.y + r.h - 40 });
+    CM.updateContextMenu(game);
+    assert.equal(picked, 'talk'); assert.ok(!game.ctxMenu);
+    CM.openContextMenu(game, { x: 1270, y: 715, items: [{ id: 'x', label: 'x' }] });
+    assert.ok(CM.menuRect(game).x + CM.menuRect(game).w <= 1280, 'pushed inside');
+    game.input.mouse.clicked = false; keys.add('Escape');
+    assert.ok(CM.updateContextMenu(game) && !game.ctxMenu, 'Esc closes first');
+    keys.clear();
+    CM.openContextMenu(game, { x: 10, y: 10, items: [{ id: 'x', label: 'x' }] });
+    Object.assign(game.input.mouse, { x: 900, y: 600, clicked: true });
+    assert.ok(CM.updateContextMenu(game) && !game.ctxMenu, 'LMB outside closes');
+    CM.openContextMenu(game, { x: 10, y: 10, items: [{ id: 'x', label: 'x' }] });
+    game.modals.push({});
+    assert.ok(!CM.updateContextMenu(game) && !game.ctxMenu, 'a modal closes it');
+  });
+  test('sneaking lowers noticeability: notice grows slower, the speed is ROAM.stealth.sneak', () => {
+    assert.ok(ss.noticeStep(0, 1, true, 'sneak') < ss.noticeStep(0, 1, true, 'walk'));
+    assert.ok(ROAM.stealth.sneak < ROAM.walk);
+    assert.ok(ROAM.crouch.squash === 0.2 && ROAM.crouch.rhythm === 0.6 && ROAM.attack.dur === 0.35 && ROAM.attack.reach === 1.5);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

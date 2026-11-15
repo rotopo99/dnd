@@ -25,7 +25,7 @@ export const ROAM_TEXT = {
   'roam.fire': 'Костёр',
   'roam.well': 'Колодец',
   'roam.nothing': 'Ничего интересного.',
-  'roam.help': 'ЛКМ — идти / действие · E — рядом · WASD — шаг · Shift — бег · C — красться (видны конусы охраны) · Alt — объекты и конусы · Z — привал · H — база · N — ночь · Tab — меню',
+  'roam.help': 'ЛКМ — идти / действие · ПКМ — меню действий · Shift+ЛКМ / 1–4 / Ctrl+A — выбор · F2 — свобода · E — рядом · WASD — шаг · Shift — бег · C — красться (видны конусы охраны) · Alt — объекты и конусы · Z — привал · H — база · N — ночь · Tab — меню',
   'roam.quest': 'есть дело',
   'roam.turnin': 'ждёт отчёта',
   // этап 2: battle on the map, stealth, alarm, raids
@@ -76,4 +76,19 @@ export const ROAM_TEXT = {
   'transit.arrive': '{kind}: прибыли в {name} за {days} дн.',
   'map.transit': 'Транспорт',
   'map.skip': 'Пропустить путь',
+  // controls-divinity.md: RMB context menu, sneaking, party selection
+  'ctx.talk': 'Поговорить', 'ctx.trade': 'Торговать', 'ctx.quest': 'Поручение', 'ctx.questSub': 'Есть задания: {n}',
+  'ctx.give': 'Отдать предмет', 'ctx.steal': 'Украсть', 'ctx.attack': 'Атаковать', 'ctx.inspect': 'Осмотреть',
+  'ctx.skill': 'Использовать навык', 'ctx.skillSub': 'Навыковые действия здесь: {n}', 'ctx.hack': 'Взломать', 'ctx.search': 'Обыскать',
+  'ctx.use': 'Использовать', 'ctx.leave': 'Покинуть узел', 'ctx.go': 'Идти сюда', 'ctx.select': 'Выбрать',
+  'ctx.pin': 'Закрепить карточку', 'ctx.unpin': 'Открепить карточку',
+  'ctx.far': 'Слишком далеко — подойдите ближе', 'ctx.noGift': 'Нечего подарить: нет подходящих вещей',
+  'ctx.needSneak': 'Только в режиме «Красться» (C)', 'ctx.noAttack': 'Сейчас не ваш ход или цель вне досягаемости',
+  'ctx.surpriseSub': 'Со спины и в приседе — враг теряет первый ход',
+  'ctx.firstStrike': 'Первый удар: +{n} к инициативе', 'ctx.surprise': 'Внезапность: враг теряет первый ход!',
+  'ctx.cell': 'Клетка', 'ctx.cellFloor': 'Проходимая клетка', 'ctx.cellWall': 'Не пройти',
+  'ctx.codex0': 'Кодекс: нет записи — встретьте в бою', 'ctx.codex1': 'Кодекс: видели', 'ctx.codex2': 'Кодекс: побеждали', 'ctx.codex3': 'Кодекс: изучен',
+  'ctx.member': 'Член партии', 'ctx.hero': 'Ваш герой',
+  'roam.sel': 'Выбрано: {n}', 'roam.selAll': 'Выбраны все', 'roam.modeChain': 'Режим: цепочка', 'roam.modeFree': 'Режим: свобода',
+  'roam.modeBtn': 'Свобода', 'roam.modeBtnChain': 'Цепочка', 'roam.modeTip': 'F2: цепочка — все за лидером; свобода — ходят только выбранные',
 };

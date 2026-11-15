@@ -183,10 +183,20 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
   };
   const chain = B ? [B.c1, B.c2, B.c3] : null;
   const sideB = (s) => (a) => (st) => [s, s, 0];
-  const frontLocks = (n, spread, tLen, side) => { // fringe over the forehead
+  const frontLocks = (n, spread, tLen, side, over = 0) => { // fringe over the forehead (over > 0: the outer layer of separate clumps)
+    if (over && o.lod) return;
     for (let i = 0; i < n; i++) {
-      const f = n === 1 ? 0.5 : i / (n - 1), a = Math.PI / 2 + (f - 0.5) * spread + (side || 0) * 0.15;
-      strand(a, 0.97 - 0.05 * Math.abs(f - 0.5), 0.74 - tLen * (0.5 + 0.5 * Math.sin(f * Math.PI)) + (side ? (f - 0.5) * side * 0.12 : 0), 0, 0.034 + 0.01 * R(), { off0: 0.016, off1: 0.026, n1: 4, taper: 1.2 });
+      const f = n === 1 ? 0.5 : i / (n - 1), a = Math.PI / 2 + (f - 0.5) * spread + (side || 0) * 0.15 + (over ? 0.5 * spread / n * (R() - 0.2) : 0);
+      strand(a, 0.97 - 0.05 * Math.abs(f - 0.5), 0.74 - tLen * (0.5 + 0.5 * Math.sin(f * Math.PI)) - (over ? 0.05 + 0.04 * R() : 0) + (side ? (f - 0.5) * side * 0.12 : 0), 0, 0.034 + 0.01 * R() + over * 0.4, { off0: 0.016 + over, off1: 0.026 + over * 1.4, n1: 4, taper: 1.2, gradK: over ? 0.85 : 1 });
+    }
+  };
+  // outer layer: second, thicker row of clumps between the first strands (volume, a layered cut)
+  const layer = (a0, a1, n, t0, t1, ext, width, p = {}) => {
+    if (o.lod) return;
+    for (let i = 0; i < n; i++) {
+      const ang = lerp(a0, a1, (i + 0.5) / n) + 0.06 * (R() - 0.5);
+      if (p.skip && p.skip(ang)) continue;
+      strand(ang, t0, t1, ext * (0.82 + 0.3 * R()), width * (0.9 + 0.25 * R()), { off0: 0.03, off1: 0.044, n1: 4, taper: 2, flare: 0.04, chain, gradK: 0.8, curl: p.curl || 0, seg: 5 });
     }
   };
   switch (style) {
@@ -249,6 +259,7 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
       frontLocks(5, 1.4, 0.12);
       pv.c1 = add(tie, [0, 0, 0]); pv.c2 = add(tie, [0, -0.14, -0.1]); pv.c3 = add(tie, [0, -0.28, -0.12]);
       for (const s of [-1, 1]) strand(Math.PI / 2 - s * 1.3, 0.8, 0.42, 0.12, 0.028, { off0: 0.014, off1: 0.02, bn: B ? (() => [s > 0 ? B.sR : B.sL, s > 0 ? B.sR : B.sL, 0]) : undefined });
+      frontLocks(4, 1.3, 0.12, 0, 0.012);
       break;
     }
     case 'fringe': {
@@ -275,6 +286,8 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
         strand(Math.PI / 2 - s * 1.2, 0.8, 0.45, 0.32, 0.045, { off0: 0.016, off1: 0.026, n1: 3, taper: 2, flare: 0.03, bn: bs ? ((t) => [bs, bs, 0]) : undefined });
       }
       frontLocks(5, 1.5, 0.1);
+      frontLocks(4, 1.3, 0.12, 0, 0.012);
+      layer(-0.45, Math.PI + 0.45, 10, 0.74, 0.28, 0.36, 0.056, { skip: (a) => Math.sin(a) > 0.55 });
       break;
     }
     default: { // 'short' (men: crop with a fringe; women: bob)
@@ -287,6 +300,8 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
         }
         for (const s of [-1, 1]) { const bs = s > 0 ? B?.sR : B?.sL; strand(Math.PI / 2 - s * 1.25, 0.8, 0.22, 0.04, 0.045, { off0: 0.016, off1: 0.03, curl: 0.03, bn: bs ? (() => [bs, bs, 0]) : undefined }); }
         frontLocks(6, 1.55, 0.13);
+        frontLocks(4, 1.4, 0.14, 0, 0.012);
+        layer(-0.5, Math.PI + 0.5, 8, 0.72, 0.2, 0.08, 0.056, { curl: 0.04, skip: (a) => Math.sin(a) > 0.5 });
       } else {
         cap(tbf(0.84, 0.56, 0.4), 0.014);
         frontLocks(5, 1.3, 0.1);

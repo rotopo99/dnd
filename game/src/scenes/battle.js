@@ -33,6 +33,9 @@ import { intentOf } from '../rules/archetypes.js';
 import { coverBonus, terrainHit } from '../rules/terrain.js';
 import { parseDice } from '../rules/dice.js';
 import { createPin, pinUnit, updatePin } from '../ui/unit-pin.js';
+import { openContextMenu, updateContextMenu, closeContextMenu } from '../ui/context-menu.js';
+import { ctxItems } from '../world/roam-ctx.js';
+import { codexLevel, enemyKey } from '../world/codex.js';
 import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { pickBattle, cameraInput3d } from '../gfx/scene3d.js';
@@ -174,6 +177,8 @@ export function createBattleScene(opts) {
       metric: opts.metric ?? combatMetric(), // metric-combat.md stage 1 (settings «Бой: по клеткам» -> 0)
     });
     const b = S.b;
+    // controls-divinity.md §3: a sneak attack from behind on the free map — the enemies lose their first turn
+    if (opts.surprise) for (const u of b.units) if (u.team === 'enemies' && !u.dead) combat.applyStatus(b, u, 'stun', 1, null);
     setBiome(ambBiome(b.map), { night: b.map.tod === 'night', weather: b.map.weather });
     S.hoverPath = null; // metric: {pts, len, cost, ok: 'move'|'dash'|'no', to}
     S.xray = false; // «Обзор»: X held / toggled
@@ -1006,12 +1011,28 @@ export function createBattleScene(opts) {
   }
 
   // ---------------------------------------------------------------- input
+  /** RMB menu over a battle unit: attack (enemy, our turn, in reach), pin the card, inspect (codex line). */
+  function unitMenu(game, u, locked, m) {
+    const foe = u.team !== 'heroes' && u.team !== 'allies';
+    const canAttack = foe && !locked && !!S.attackTargets?.has(u.id);
+    openContextMenu(game, { x: m.x, y: m.y, title: S.name(u.id), target: u.id,
+      items: ctxItems('unit', { foe, canAttack, pinned: S.pin.id === u.id }),
+      onPick: (g, id) => {
+        if (id === 'attack') { if (S.playerTurn && !S.queue.length && !busy() && !u.dead) doAction({ type: 'attack', target: u.id }); }
+        else if (id === 'pin') pinUnit(S, u);
+        else if (id === 'inspect') {
+          if (S.pin.id !== u.id) pinUnit(S, u);
+          if (u.enemyId) g.toast(`${S.name(u.id)} · ${t(`ctx.codex${codexLevel(g.save || {}, enemyKey(u.enemyId))}`)}`, '4');
+        }
+      } });
+  }
   function handleInput(game) {
     const inp = game.input;
     const m = inp.mouse;
     S.hover.button = null;
     S.hover.cell = null;
     S.hover.pt = null;
+    if (S.result || S.banner) closeContextMenu(game); // the battle moved on — the menu is stale
     // «Обзор»: X-ray — hold X (or toggle in the settings)
     if (gfxPrefs().xray === 'toggle') { if (inp.wasPressed('KeyX')) S.xray = !S.xray; } else S.xray = inp.isDown('KeyX');
     if (S.result) {
@@ -1025,6 +1046,7 @@ export function createBattleScene(opts) {
       if (m.clicked || inp.wasPressed('Space') || inp.wasPressed('Enter') || inp.wasPressed('Escape')) { S.banner = false; play('uiClick'); }
       return;
     }
+    if (updateContextMenu(game)) return; // controls-divinity.md §6: the RMB menu takes the step's clicks / Esc
     const L = S.L;
     // 3d.md: camera buttons / [ ] / wheel; a click on a camera button is not a map click
     if (cameraInput3d(game, S) && m.clicked) return;
@@ -1051,7 +1073,9 @@ export function createBattleScene(opts) {
     // pinned unit card: RMB / Tab over a unit — pin (again — unpin), Esc / × — unpin; scroll inside
     if (updatePin(S, m, inp)) return;
     const hcU = S.hover.cell ? S.b.units.find((u) => !u.dead && !u.removed && u.x === S.hover.cell.x && u.y === S.hover.cell.y && !isHiddenFoe(u)) : null;
-    if (inp.wasPressed('Tab') || (m.rightClicked && !S.sel)) { if (hcU || inp.wasPressed('Tab')) pinUnit(S, hcU); }
+    // controls-divinity.md §6: Tab pins as before; RMB on a unit (no targeting) — menu «Атаковать / Закрепить / Осмотреть»
+    if (inp.wasPressed('Tab')) pinUnit(S, hcU);
+    else if (m.rightClicked && !S.sel && hcU) { unitMenu(game, hcU, locked, m); return; }
     if (inp.wasPressed('Escape') || m.rightClicked) {
       if (S.sel) { S.sel = null; S.dirty = true; }
       else if (inp.wasPressed('Escape') && S.pin.id) pinUnit(S, null);

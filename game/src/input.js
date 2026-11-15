@@ -22,6 +22,7 @@ export function createInput(target, canvas) {
     if (!down.has(e.code) || e.code === 'Backspace') pressed.add(e.code); // Backspace auto-repeats in text fields
     down.add(e.code);
     if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) typed.push(e.key);
+    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !/INPUT|TEXTAREA/.test(e.target?.tagName || '')) e.preventDefault(); // roam: Ctrl+A selects the party
     if (e.code === 'Space' || e.code === 'Backspace' || e.code.startsWith('Arrow') || e.code.startsWith('Alt')) e.preventDefault(); // Alt: roam cones, no browser menu
   });
   target.addEventListener('keyup', (e) => down.delete(e.code));
