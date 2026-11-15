@@ -103,7 +103,8 @@ for (const [bi, biome] of biomes.entries()) {
       const p = await cellPt(tgt.x, tgt.y);
       await page.mouse.move(p.x, p.y); await wait(250);
       const hov = await page.evaluate(() => window.__game.scene.S.hover.cell);
-      ok(hov && hov.x === tgt.x && hov.y === tgt.y, `hover pick ${JSON.stringify(hov)} = ${tgt.x},${tgt.y}`);
+      const who = await page.evaluate(() => { const S = window.__game.scene.S; return { turn: S.b.turn?.unitId, pt: S.playerTurn, units: S.b.units.filter((u) => !u.dead).map((u) => `${u.id}@${u.x},${u.y}`).join(' ') }; });
+      ok(hov && hov.x === tgt.x && hov.y === tgt.y, `hover pick ${JSON.stringify(hov)} = ${tgt.x},${tgt.y} ${JSON.stringify(who)}`);
       await shot('gfx3d-hover-path');
       await page.mouse.click(p.x, p.y);
       await wait(1500);
@@ -126,7 +127,8 @@ for (const [bi, biome] of biomes.entries()) {
     const pp = await cellPt(hc.x, hc.y);
     await page.mouse.move(pp.x, pp.y + 6); await wait(200);
     const hov2 = await page.evaluate(() => window.__game.scene.S.hover.cell);
-    ok(hov2 && hov2.x === hc.x && hov2.y === hc.y, `pick after rotation ${JSON.stringify(hov2)} = ${hc.x},${hc.y}`);
+    const who = await page.evaluate(() => { const S = window.__game.scene.S; return { turn: S.b.turn?.unitId, pt: S.playerTurn, units: S.b.units.filter((u) => !u.dead).map((u) => `${u.id}@${u.x},${u.y}`).join(' ') }; });
+    ok(hov2 && hov2.x === hc.x && hov2.y === hc.y, `pick after rotation ${JSON.stringify(hov2)} = ${hc.x},${hc.y} ${JSON.stringify(who)}`);
     await key('BracketRight'); await wait(450);
     // zoom with the wheel over the map
     await page.mouse.move(400, 300);

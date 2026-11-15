@@ -3,7 +3,7 @@
 // Profiles (unit.ai): 'melee' closes in; 'ranged' / 'caster' / 'support' keep distance and like cover.
 
 import { avgDice, firstDie, chanceD20 } from './dice.js';
-import { chebyshev, lineOfSight, hasCover, distanceField, tileAt, T_HAZARD } from './grid.js';
+import { chebyshev, lineOfSight, hasCover, distanceField, tileAt, tileCover, T_HAZARD } from './grid.js';
 import {
   getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive, canRevive,
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
@@ -14,6 +14,9 @@ import {
 import { surfaceHarm, surfaceOf, surfaceDefs, surfaceKindsAt, cellAt, connected } from './surfaces.js';
 import { archTargetMul, archAbilityMul, archTileScore, archHarmMul, fleeAction } from './archetypes.js';
 import { objectAt } from './terrain.js';
+import { CELL_M, cm, posM, unitRadius, navField, navFree, navPath, budgetM } from './metric.js';
+import { geoOn, ptOf, gapM, distU, losPts, coverM, areaRadiusM, nearCover } from './metric-geo.js';
+import { METRIC } from '../data/combat.js';
 
 const STATUS_VALUE = {
   stun: 12, root: 4, slow: 3, fear: 5, blind: 5, silence: 4, disarm: 5, curse: 3, prone: 3, poison: 4,
@@ -494,7 +497,7 @@ function buildOptions(b, u) {
         const v = evalAbility(b, u, single, { unit: e.id });
         if (v > 0.5) list.push({ t: e, v });
       }
-      if (list.length) opts.push({ range: a.area.size || 1, noLos: false, ranged: false, action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
+      if (list.length) opts.push({ range: a.area.size || 1, selfArea: true, noLos: false, ranged: false, action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
       continue;
     }
     const mv = (a.effects || []).find((e) => e.op === 'move');
@@ -522,8 +525,19 @@ function preferredRange(b, u) {
   return Math.max(3, Math.min(6, r - 1));
 }
 
-function oaRisk(b, u, x, y) {
+function oaRisk(b, u, x, y, P) {
   if (b.turn.disengaged) return 0;
+  if (P) { // metric: leaving a foe's zone of control (zoc m edge to edge)
+    const H = ptOf(u);
+    if (Math.hypot(P.px - H.px, P.py - H.py) < 0.05) return 0;
+    let risk = 0;
+    for (const e of b.units) {
+      if (!isStanding(e) || e.team === u.team || e.reactionUsed || !isMeleeUnit(e)) continue;
+      const E = ptOf(e);
+      if (gapM(H, E) <= METRIC.zoc + 1e-6 && gapM(P, E) > METRIC.zoc + 1e-6) risk += weaponEV(b, e, u, null).v;
+    }
+    return risk;
+  }
   if (chebyshev(x, y, u.x, u.y) === 0) return 0;
   let risk = 0;
   for (const e of b.units) {
@@ -535,6 +549,7 @@ function oaRisk(b, u, x, y) {
 
 /** Best tile to stand on now. Returns { x, y, score, pot, current }. opts.ignoreOA — assume «Отход». */
 export function planTile(b, u, opts) {
+  if (geoOn(b)) return planPointM(b, u, opts);
   const ignoreOA = !!(opts && opts.ignoreOA);
   const canAct = b.turn.actions > 0;
   const g = b.grid;
@@ -604,6 +619,150 @@ export function planTile(b, u, opts) {
   return best;
 }
 
+/**
+ * Metric stage 2: the best point to stand on (metres). Candidates — reachable cell centres, points coverGap m off the
+ * edges of cover cells, rings round the targets at melee reach / weapon range / preferred range; reach by the nav
+ * cost field (navField), the winner is checked with navPath. Scores — the planTile weights with metric distances,
+ * rays for LOS and cover. Returns { x, y, px, py, score, pot, current }.
+ */
+function planPointM(b, u, opts) {
+  const ignoreOA = !!(opts && opts.ignoreOA);
+  const canAct = b.turn.actions > 0;
+  const g = b.grid;
+  const enemies = b.units.filter((e) => isStanding(e) && isHostile(b, u, e));
+  const options = buildOptions(b, u);
+  const df = enemies.length ? distanceField(g, enemies) : null;
+  const melee = u.ai === 'melee';
+  const harmMul = u.arch ? archHarmMul(b, u) : null;
+  const pref = preferredRange(b, u);
+  const drop = b.drops.length ? ownDrop(b, u) : null;
+  const budget = budgetM(b), ur = unitRadius(u), here = posM(u);
+  const fk = `${u.id}|${here.px},${here.py}|${budget}|${b.occVersion}|${b.gridVersion || 0}`;
+  if (!b.aiField || b.aiField.key !== fk) b.aiField = { key: fk, field: navField(b, u, budget) };
+  const field = b.aiField.field, free = navFree(b, u);
+  const W = g.w * CELL_M, H = g.h * CELL_M;
+  const cands = [{ px: here.px, py: here.py, x: u.x, y: u.y, cost: 0, cur: true }];
+  const seen = new Set([`${Math.round(here.px * 4)},${Math.round(here.py * 4)}`]);
+  const add = (px, py) => {
+    px = cm(px); py = cm(py);
+    if (!(px > 0 && py > 0 && px < W && py < H)) return;
+    const key = `${Math.round(px * 4)},${Math.round(py * 4)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const c = field.at(px, py);
+    if (!(c <= budget - 0.35) || !free(px, py)) return;
+    const x = Math.floor(px / CELL_M), y = Math.floor(py / CELL_M), holder = b.occ[y * g.w + x];
+    if (holder && b.units[holder - 1] !== u) return;
+    if (!approachOk(b, u, x, y)) return;
+    cands.push({ px, py, x, y, cost: c });
+  };
+  const span = Math.ceil(budget / CELL_M) + 1;
+  const bx0 = Math.max(0, u.x - span), bx1 = Math.min(g.w - 1, u.x + span), by0 = Math.max(0, u.y - span), by1 = Math.min(g.h - 1, u.y + span);
+  for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) add((x + 0.5) * CELL_M, (y + 0.5) * CELL_M);
+  // points at the cover edges (both sides, corners)
+  const off = CELL_M / 2 + METRIC.coverGap, offD = CELL_M / 2 + METRIC.coverGap * 0.7;
+  for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
+    if (tileCoverAt(g, x, y) < 2) continue;
+    const cx = (x + 0.5) * CELL_M, cy = (y + 0.5) * CELL_M;
+    add(cx + off, cy); add(cx - off, cy); add(cx, cy + off); add(cx, cy - off);
+    add(cx + offD, cy + offD); add(cx - offD, cy + offD); add(cx + offD, cy - offD); add(cx - offD, cy - offD);
+  }
+  // rings round the targets: melee reach, just inside each option's range, the preferred range
+  const nd = METRIC.ringDirs, reachM = budget + ur;
+  const ring = (T, rad) => {
+    if (rad <= 0) return;
+    const d0 = Math.hypot(T.px - here.px, T.py - here.py);
+    if (d0 - rad > reachM + 0.5 || rad - d0 > reachM + 0.5) return;
+    const a0 = Math.atan2(here.py - T.py, here.px - T.px); // first direction — toward the unit
+    for (let k = 0; k < nd; k++) { const a = a0 + (2 * Math.PI * k) / nd; add(T.px + Math.cos(a) * rad, T.py + Math.sin(a) * rad); }
+  };
+  const ringed = new Set();
+  for (const o of options) for (const it of o.list.slice(0, 3)) {
+    const T = ptOf(it.t);
+    const rad = o.selfArea ? areaRadiusM(o.range) + ur + T.r - 0.2 : ur + T.r + Math.max(0.2, o.range * CELL_M - 0.25);
+    const key = `${it.t.id}:${Math.round(rad * 10)}`;
+    if (ringed.has(key)) continue;
+    ringed.add(key);
+    ring(T, rad);
+    if (!o.selfArea && o.range > 1 && !ringed.has(`${it.t.id}:m`)) { ringed.add(`${it.t.id}:m`); ring(T, ur + T.r + 0.2); }
+  }
+  if (!melee) for (const e of enemies.slice(0, 4)) { const E = ptOf(e); ring(E, ur + E.r + pref * CELL_M); }
+
+  const P = { px: 0, py: 0, r: ur };
+  const nearAdj = (Q) => enemies.some((e) => gapM(Q, ptOf(e)) <= CELL_M + 1e-6);
+  const adjNow = nearAdj({ px: here.px, py: here.py, r: ur });
+  const EP = enemies.map((e) => ({ e, E: ptOf(e) }));
+  for (const c of cands) {
+    P.px = c.px; P.py = c.py;
+    const adjHere = c.cur ? adjNow : nearAdj(P);
+    const rangedMul = adjHere === adjNow ? 1 : adjHere ? 0.55 : 1 / 0.55;
+    let potA = 0, potB = 0;
+    for (const o of options) {
+      for (const it of o.list) {
+        const T = ptOf(it.t);
+        let cv = 1;
+        if (o.selfArea) {
+          if (Math.hypot(T.px - P.px, T.py - P.py) > areaRadiusM(o.range) + ur + T.r + 1e-6) continue;
+        } else {
+          const d = gapM(P, T) / CELL_M;
+          if (d > o.range + 1e-6 || (o.minRange && d <= o.minRange - 1)) continue;
+          if (!o.noLos && d > 1 && !losPts(b, P, T)) continue;
+          if (o.ranged && !o.arc && d > 1 && coverM(b, P, T, false) >= 2) cv = 0.8;
+        }
+        let v = it.v * cv;
+        if (o.ranged) v *= rangedMul;
+        if (o.action) { if (v > potA) potA = v; } else if (v > potB) potB = v;
+        break;
+      }
+    }
+    const pot = potA + potB;
+    let s = pot;
+    const idx = c.y * g.w + c.x, wd = df ? df[idx] : 0;
+    let near = Infinity;
+    for (const { E } of EP) near = Math.min(near, gapM(P, E) / CELL_M);
+    if (pot === 0 && df && wd >= 0) {
+      if (melee) s -= wd + near * 0.1;
+      else s -= canAct ? Math.abs(near - pref) * 0.7 : Math.max(0, pref - near) * 0.7;
+    }
+    if (!melee) {
+      let adj = 0, nearN = 0, cover = false;
+      for (const { e, E } of EP) {
+        const d = gapM(P, E) / CELL_M;
+        if (d <= 1 && isMeleeUnit(e)) adj++;
+        else if (d <= 2) nearN++;
+        if (!cover && !isMeleeWeapon(e) && coverM(b, E, P, false) >= 2) cover = true;
+      }
+      s -= adj * 4 + nearN;
+      if (cover) s += 1.5;
+    }
+    if (b.surfaces && b.surfaces.size) {
+      const h = surfaceHarm(b, u, c.x, c.y);
+      if (h) s -= h > 0 && harmMul != null ? h * harmMul : h > 0 && melee ? h * 0.5 : h;
+    } else if (tileAt(g, c.x, c.y) === T_HAZARD) s -= 6;
+    if (u.arch) s += archTileScore(b, u, c.x, c.y, enemies, P);
+    if (drop && c.x === drop.x && c.y === drop.y) s += 8;
+    if (!ignoreOA) s -= oaRisk(b, u, c.x, c.y, P);
+    s -= (c.cost / CELL_M) * 0.05;
+    c.score = s; c.pot = pot;
+  }
+  const current = cands[0];
+  const order = cands.slice(1).sort((p, q) => q.score - p.score);
+  let best = current;
+  for (let k = 0; k < Math.min(order.length, 6); k++) {
+    const c = order[k];
+    if (c.score <= current.score) break;
+    const np = navPath(b, u, c.px, c.py, { snap: 0 });
+    if (np && np.cost <= budget + 1e-6 && np.len > 0) { best = c; break; }
+  }
+  const out = { x: best.x, y: best.y, px: best.px, py: best.py, score: best.score, pot: best.pot };
+  out.current = { x: current.x, y: current.y, px: current.px, py: current.py, score: current.score, pot: current.pot };
+  return out;
+}
+const tileCoverAt = (g, x, y) => tileCover(tileAt(g, x, y));
+/** Is tile (a planTile result) somewhere else than u stands now? */
+const elsewhere = (u, tile) => (tile.px != null ? Math.hypot(tile.px - tile.current.px, tile.py - tile.current.py) > 0.05 : tile.x !== u.x || tile.y !== u.y);
+const moveTo = (tile) => (tile.px != null ? { px: tile.px, py: tile.py } : { x: tile.x, y: tile.y });
+
 // ---------------------------------------------------------------- decision
 
 function chaotic(b, u) {
@@ -614,7 +773,7 @@ function chaotic(b, u) {
 
 function adjacentThreats(b, u) {
   let n = 0;
-  for (const e of b.units) if (isStanding(e) && isHostile(b, u, e) && isMeleeUnit(e) && chebyshev(e.x, e.y, u.x, u.y) === 1) n++;
+  for (const e of b.units) if (isStanding(e) && isHostile(b, u, e) && isMeleeUnit(e) && (geoOn(b) ? distU(b, e, u) <= 1 : chebyshev(e.x, e.y, u.x, u.y) === 1)) n++;
   return n;
 }
 
@@ -644,12 +803,12 @@ export function chooseAction(b, unitId) {
   if (u.ai !== 'melee' && t.move > 0 && t.aiMoves === 0 && adjacentThreats(b, u) > 0) {
     const canDisengage = t.bonus > 0 && !t.disengaged;
     const tile = planTile(b, u, { ignoreOA: canDisengage });
-    if (tile && tile.current && (tile.x !== u.x || tile.y !== u.y) && tile.score > tile.current.score + 1) {
-      const risk = t.disengaged ? 0 : oaRisk(b, u, tile.x, tile.y);
+    if (tile && tile.current && elsewhere(u, tile) && tile.score > tile.current.score + 1) {
+      const risk = t.disengaged ? 0 : oaRisk(b, u, tile.x, tile.y, tile.px != null ? { px: tile.px, py: tile.py, r: unitRadius(u) } : null);
       if (canDisengage && risk > (bestBonus ? bestBonus.v : 0) * 0.8) return { type: 'disengage', unit: unitId };
       if (tile.score - risk <= tile.current.score + 1) return top0(best, bestBonus, end);
       t.aiMoves++;
-      return { type: 'move', unit: unitId, to: { x: tile.x, y: tile.y } };
+      return { type: 'move', unit: unitId, to: moveTo(tile) };
     }
   }
 
@@ -658,9 +817,9 @@ export function chooseAction(b, unitId) {
   if (top && top.v > 0.5) {
     if (t.move > 0 && t.aiMoves < 2) {
       const tile = planTile(b, u);
-      if (tile && tile.current && (tile.x !== u.x || tile.y !== u.y) && tile.pot > top.v * 1.5 + 1 && tile.score > tile.current.score + 1) {
+      if (tile && tile.current && elsewhere(u, tile) && tile.pot > top.v * 1.5 + 1 && tile.score > tile.current.score + 1) {
         t.aiMoves++;
-        return { type: 'move', unit: unitId, to: { x: tile.x, y: tile.y } };
+        return { type: 'move', unit: unitId, to: moveTo(tile) };
       }
     }
     return top.act;
@@ -668,14 +827,14 @@ export function chooseAction(b, unitId) {
 
   if (t.move > 0 && t.aiMoves < (t.aiDashed ? 3 : 2)) {
     const tile = planTile(b, u);
-    if (tile && tile.current && (tile.x !== u.x || tile.y !== u.y) && tile.score > tile.current.score + 0.05) {
+    if (tile && tile.current && elsewhere(u, tile) && tile.score > tile.current.score + 0.05) {
       // nothing to do here and nothing reachable: dash first to get further
       if (tile.pot === 0 && t.actions > 0 && !t.acted && !t.aiDashed && getSpeed(b, u) > 0 && hasHostiles(b, u)) {
         t.aiDashed = true;
         return { type: 'dash', unit: unitId };
       }
       t.aiMoves++;
-      return { type: 'move', unit: unitId, to: { x: tile.x, y: tile.y } };
+      return { type: 'move', unit: unitId, to: moveTo(tile) };
     }
   }
   return end;

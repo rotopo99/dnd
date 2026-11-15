@@ -106,10 +106,13 @@ flat in float vLitFace;
 in vec3 vWorld;
 in vec3 vShadow;
 in vec3 vNw;
-// metric-combat.md «Обзор»: floor height per cell (R32F), cut-away (focus xz, camera dir xz | fade k, cut height, cos,
-// x-ray keep share), see-through holes (gl_FragCoord xy, radius px, window depth) around the active unit / cursor
+// metric-combat.md «Обзор»: floor height per cell (R32F), cut-away (-, -, camera dir xz | fade k, cut height, -,
+// x-ray keep share) in boxes in front of the cut points (uCutP: x, z, length toward the camera, half width — whole
+// cells, so the JS lids match), see-through holes (gl_FragCoord xy, radius px, window depth) round the active unit / cursor
 uniform highp sampler2D uFloorT;
 uniform vec4 uCut;
+uniform vec4 uCutP[2];
+uniform int uNumCut;
 uniform vec4 uCutK;
 uniform vec4 uSee[4];
 uniform int uNumSee;
@@ -137,9 +140,13 @@ void main() {
     if (hh > 0.04) {
       float dith = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
       if (uCutK.x > 0.0 && hh > mix(6.0, uCutK.y, uCutK.x)) {
-        vec2 v = vWorld.xz - uCut.xy;
-        float l = length(v);
-        if (l > 0.35 && dot(v, uCut.zw) > uCutK.z * l) discard;
+        vec2 cc = vec2(tc) + 0.5;
+        for (int i = 0; i < 2; i++) {
+          if (i >= uNumCut) break;
+          vec2 v = cc - uCutP[i].xy;
+          float t = dot(v, uCut.zw), q = abs(v.x * uCut.w - v.y * uCut.z);
+          if (t > 0.3 && t < uCutP[i].z && q < uCutP[i].w) discard;
+        }
       }
       if (uCutK.w > 0.0 && dith > uCutK.w) discard;
       for (int i = 0; i < 4; i++) {

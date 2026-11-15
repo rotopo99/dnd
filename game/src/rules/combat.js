@@ -76,7 +76,8 @@
 //     corrosion — the bigger penalty).
 
 import { createRng } from './rng.js';
-import { CELL_M, cm, posM, cellCenterM, navPath, pathCellsM, subPolyline, pullCells, budgetM } from './metric.js';
+import { CELL_M, cm, posM, cellCenterM, navPath, pathCellsM, subPolyline, pullCells, budgetM, unitRadius } from './metric.js';
+import { geoOn, ptOf, fromPt, gapM, distU, losU, inAreaM, inRadiusU, zocExits, leavesZoc, rectGapM } from './metric-geo.js';
 import { METRIC } from '../data/combat.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
 import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './character.js';
@@ -311,7 +312,7 @@ export function getKb(b, u, attacker, ranged) {
   let kb = u.kb + buffSum(u, 'kb') + statusMod(b, u, 'kb');
   const mul = modProduct(b, u, 'armorKbMul');
   if (mul !== 1) kb -= u.armorKb - Math.floor(u.armorKb * mul);
-  if (attacker) kb += coverBonus(b, attacker.x, attacker.y, u.x, u.y, !ranged).kb;
+  if (attacker) kb += coverBonus(b, attacker.x, attacker.y, u.x, u.y, !ranged, geoOn(b) ? ptOf(attacker) : null, geoOn(b) ? ptOf(u) : null).kb;
   if (u.holdPos) kb += b.data.combat?.cover.holdKb ?? 0;
   if (u.arch) kb += archKb(b, u);
   return kb;
@@ -820,7 +821,7 @@ function deathEffects(b, u, x, y) {
     const all = a.target === 'any';
     for (const t of b.units.slice()) {
       if (!isAlive(t) || t === u || (!all && t.team === u.team)) continue;
-      if (chebyshev(x, y, t.x, t.y) > size || !lineOfSight(b.grid, x, y, t.x, t.y)) continue;
+      if (geoOn(b) ? !inAreaM(b, 'radius', size, null, ptOf({ x, y }), ptOf(t)) : chebyshev(x, y, t.x, t.y) > size || !lineOfSight(b.grid, x, y, t.x, t.y)) continue;
       let half = false;
       if (a.roll === 'save' && a.save && rollSave(b, t, a.save, dc, u, a.id)) {
         if (a.onSave !== 'half') continue;
@@ -1162,9 +1163,10 @@ export function rollSave(b, u, stat, dc, src, reason) {
 
 /** v1.2: a standing hostile adjacent to (x, y) -> ranged attacks from there have disadvantage. */
 export function enemyAdjacent(b, att, x = att.x, y = att.y) {
+  const P = geoOn(b) ? fromPt(att, x, y) : null; // metric: within melee reach (1.5 m edge to edge)
   for (const e of b.units) {
     if (e === att || !isStanding(e) || !isHostile(b, att, e)) continue;
-    if (Math.abs(e.x - x) <= 1 && Math.abs(e.y - y) <= 1) return true;
+    if (P ? gapM(P, ptOf(e)) <= CELL_M + 1e-6 : Math.abs(e.x - x) <= 1 && Math.abs(e.y - y) <= 1) return true;
   }
   return false;
 }
@@ -1536,9 +1538,10 @@ function walk(b, u, path, noProvoke) {
     if (!isStanding(u) || b.winner) break;
     if (!noProvoke && !b.reactionDepth) {
       let provokers = null;
+      const geo = geoOn(b), P = geo ? ptOf(u) : null, Q = geo ? cellCenterM(step.x, step.y) : null;
       for (const r of b.units) {
         if (!isStanding(r) || r.team === u.team || r.reactionUsed) continue;
-        if (chebyshev(r.x, r.y, u.x, u.y) !== 1 || chebyshev(r.x, r.y, step.x, step.y) <= 1) continue;
+        if (geo ? !leavesZoc(P, Q, P.r, ptOf(r)) : chebyshev(r.x, r.y, u.x, u.y) !== 1 || chebyshev(r.x, r.y, step.x, step.y) <= 1) continue;
         (provokers || (provokers = [])).push(r);
       }
       if (provokers) {
@@ -1587,11 +1590,36 @@ function walkM(b, u, np, noProvoke) {
     s0 = sAt;
     from.x = u.x; from.y = u.y;
   };
+  // stage 2: opportunity attacks when the path leaves a foe's zone of control (circle zoc m edge to edge)
+  const geo = geoOn(b), exits = [];
+  if (geo && !noProvoke && !b.reactionDepth) {
+    const mr = unitRadius(u);
+    for (const r of b.units) {
+      if (!isStanding(r) || r.team === u.team || r.reactionUsed) continue;
+      for (const e of zocExits(pts, mr, ptOf(r))) exits.push({ ...e, r });
+    }
+    exits.sort((p, q) => p.s - q.s);
+  }
+  const provokeUpTo = (s) => {
+    while (exits.length && exits[0].s <= s + 1e-9) {
+      const e0 = exits[0], group = [];
+      while (exits.length && Math.abs(exits[0].s - e0.s) < 1e-9) group.push(exits.shift().r);
+      const prov = group.filter((r) => isStanding(r) && !r.reactionUsed);
+      if (!prov.length) continue;
+      sAt = Math.max(s0, e0.s);
+      setPos(b, u, u.x, u.y, inCell(e0, u) ? { px: cm(e0.px), py: cm(e0.py) } : null);
+      flush();
+      for (const r of prov) { if (isStanding(u)) opportunity(b, r, u); }
+      if (!isStanding(u) || b.winner) return true;
+    }
+    return false;
+  };
   for (const step of cells) {
     if (!isStanding(u) || b.winner) { stopped = true; break; }
+    if (exits.length && provokeUpTo(step.s - 1e-6)) { stopped = true; break; }
     const holder = unitAt(b, step.x, step.y);
     if (holder && holder !== u) continue; // brushing past a corner of an occupied cell
-    if (!noProvoke && !b.reactionDepth) {
+    if (!geo && !noProvoke && !b.reactionDepth) {
       let provokers = null;
       for (const r of b.units) {
         if (!isStanding(r) || r.team === u.team || r.reactionUsed) continue;
@@ -1614,6 +1642,7 @@ function walkM(b, u, np, noProvoke) {
     if (b.traps.length && trapAt(b, u.x, u.y, u)) { flush(); trapCheck(b, u); }
     if (b.drops.length) pickUpCheck(b, u);
   }
+  if (!stopped && exits.length && isStanding(u) && !b.winner && provokeUpTo(np.len)) stopped = true;
   if (!stopped && isStanding(u) && !b.winner && u.x === np.to.x && u.y === np.to.y) {
     setPos(b, u, u.x, u.y, { px: np.to.px, py: np.to.py });
     sAt = np.len;
@@ -1763,7 +1792,7 @@ const moveBlocked = (b, u, mv) => mv.mode !== 'teleport' && getSpeed(b, u) === 0
  * line of sight. Both respect noApproachSource (fear).
  */
 function moveDestination(b, u, op, t) {
-  if (!t || t === u || chebyshev(u.x, u.y, t.x, t.y) <= 1) return 'stay';
+  if (!t || t === u || distU(b, u, t) <= 1) return 'stay';
   if (moveBlocked(b, u, op)) return null;
   const tiles = op.tiles || 1;
   const reach = op.mode === 'teleport' ? null : reachable(b.grid, u.x, u.y, tiles, b.occ);
@@ -1773,7 +1802,7 @@ function moveDestination(b, u, op, t) {
     if (!isPassable(b.grid, x, y) || unitAt(b, x, y)) continue;
     const d = reach ? reach.dist[y * b.grid.w + x] : chebyshev(u.x, u.y, x, y);
     if (d < 0 || d > tiles) continue;
-    if (!reach && !lineOfSight(b.grid, u.x, u.y, x, y)) continue;
+    if (!reach && !losU(b, u, { x, y })) continue;
     if (!approachOk(b, u, x, y)) continue;
     if (d < bestD) { bestD = d; best = { x, y }; }
   }
@@ -1784,12 +1813,12 @@ function moveTileValid(b, u, a, mv, x, y) {
   if (!inBounds(b.grid, x, y) || !isPassable(b.grid, x, y) || unitAt(b, x, y)) return false;
   if (moveBlocked(b, u, mv) || !approachOk(b, u, x, y)) return false;
   const lim = a.target === 'self' || a.range == null || a.range === 0 ? mv.tiles : Math.min(abilityRange(u, a), mv.tiles);
-  if (chebyshev(u.x, u.y, x, y) > lim) return false;
+  if (distU(b, u, { x, y }) > lim + 1e-6) return false;
   if (mv.mode !== 'teleport') {
     const reach = reachable(b.grid, u.x, u.y, mv.tiles, b.occ);
     return reach.dist[y * b.grid.w + x] > 0;
   }
-  return lineOfSight(b.grid, u.x, u.y, x, y);
+  return losU(b, u, { x, y });
 }
 
 /** Leap + area (melee-aoe: target 'tile', area, move op): the landing tile must be a valid move destination. */
@@ -1810,7 +1839,7 @@ export function targetValid(b, u, a, spec) {
     if (!spec || spec.x == null || !inBounds(b.grid, spec.x, spec.y)) return false;
     if (mv && (!a.area || !mv.random)) return moveTileValid(b, u, a, mv, spec.x, spec.y);
     if (tileAt(b.grid, spec.x, spec.y) === T_WALL) return false;
-    return chebyshev(u.x, u.y, spec.x, spec.y) <= range && lineOfSight(b.grid, u.x, u.y, spec.x, spec.y);
+    return distU(b, u, { x: spec.x, y: spec.y }) <= range + 1e-6 && losU(b, u, { x: spec.x, y: spec.y });
   }
   const t = spec && spec.unit ? b.byId[spec.unit] : null;
   if (!t || (!isAlive(t) && !(a.target === 'ally' && canRevive(a, t)))) return false;
@@ -1821,20 +1850,21 @@ export function targetValid(b, u, a, spec) {
   } else if (a.target === 'ally') {
     if (t.team !== u.team) return false;
   }
-  const d = chebyshev(u.x, u.y, t.x, t.y);
+  const d = distU(b, u, t);
   if (mv && !mv.random) {
     if (d > Math.max(range, mv.tiles + (hasOp(a, 'weapon') ? weaponRange(u) : 1))) return false;
     return moveDestination(b, u, mv, t) !== null;
   }
   const lim = hasOp(a, 'weapon') ? Math.min(Math.max(range, 1), weaponRange(u)) : Math.max(range, t === u ? 0 : 1);
-  if (d > lim) return false;
-  if (d > 1 && !lineOfSight(b.grid, u.x, u.y, t.x, t.y)) return false;
+  if (d > lim + 1e-6) return false;
+  if (d > 1 && !losU(b, u, t)) return false;
   return true;
 }
 
 function inArea(b, u, a, center, t) {
   const area = a.area;
   const size = area.size || 1;
+  if (geoOn(b)) return inAreaM(b, area.shape === 'cone' || area.shape === 'line' ? area.shape : 'radius', size, ptOf(u), ptOf(center), ptOf(t));
   if (area.shape === 'radius') {
     return chebyshev(center.x, center.y, t.x, t.y) <= size && lineOfSight(b.grid, center.x, center.y, t.x, t.y);
   }
@@ -1865,9 +1895,10 @@ function inArea(b, u, a, center, t) {
 export function abilityTargets(b, u, a, spec) {
   let center;
   let primary = null;
-  if (isSelfCentered(u, a, spec)) { center = { x: u.x, y: u.y }; primary = u; }
-  else if (spec && spec.unit) { primary = b.byId[spec.unit]; center = primary ? { x: primary.x, y: primary.y } : null; }
-  else if (spec && spec.x != null) center = { x: spec.x, y: spec.y };
+  const at = (p) => (geoOn(b) ? { x: p.x, y: p.y, ...posM(p) } : { x: p.x, y: p.y }); // metric: the unit's point
+  if (isSelfCentered(u, a, spec)) { center = at(u); primary = u; }
+  else if (spec && spec.unit) { primary = b.byId[spec.unit]; center = primary ? at(primary) : null; }
+  else if (spec && spec.x != null) center = geoOn(b) && spec.px != null ? { x: spec.x, y: spec.y, px: spec.px, py: spec.py } : { x: spec.x, y: spec.y };
   if (!center) return [];
   if (!a.area) return primary ? [primary] : [];
   const own = a.target === 'self' || a.target === 'ally';
@@ -2115,7 +2146,7 @@ function partTargets(b, u, primary, part) {
   if (part.area) {
     const c = part.area.center === 'spellTarget' && primary ? primary : u;
     const size = part.area.size || 1;
-    list = list.filter((x) => chebyshev(c.x, c.y, x.x, x.y) <= size);
+    list = list.filter((x) => inRadiusU(b, c, x, size));
   }
   const tags = part.filterTags || part.tags;
   if (tags) list = list.filter((x) => tags.some((tg) => x.tags.includes(tg)));
@@ -2147,7 +2178,7 @@ function hallucinate(b, u, t, range) {
   const chance = modValue(b, u, 'randomTarget');
   if (!chance || b.rng() >= chance) return t;
   const cands = b.units.filter((x) => x !== u && x !== t && isStanding(x)
-    && chebyshev(u.x, u.y, x.x, x.y) <= Math.max(1, range) && lineOfSight(b.grid, u.x, u.y, x.x, x.y));
+    && distU(b, u, x) <= Math.max(1, range) + 1e-6 && losU(b, u, x));
   if (!cands.length) return t;
   const nt = b.rng.pick(cands);
   emit(b, { type: 'hallucination', actor: u.id, target: nt.id, intended: t.id });
@@ -2240,7 +2271,7 @@ function trapCheck(b, u) {
   emit(b, { type: 'trapTriggered', target: u.id, actor: trap.owner, trap: trap.id, item: trap.item, x: trap.x, y: trap.y });
   const owner = b.byId[trap.owner] || u;
   const victims = trap.area
-    ? b.units.filter((x) => isAlive(x) && x.team !== trap.team && chebyshev(x.x, x.y, trap.x, trap.y) <= (trap.area.size || 1))
+    ? b.units.filter((x) => isAlive(x) && x.team !== trap.team && inRadiusU(b, trap, x, trap.area.size || 1))
     : [u];
   for (const t of victims) {
     let half = false;
@@ -2316,7 +2347,7 @@ function itemTargetValid(b, u, it, spec) {
   if (it.trap) {
     if (!spec || spec.x == null) return false;
     if (!isPassable(b.grid, spec.x, spec.y) || unitAt(b, spec.x, spec.y) || b.traps.some((t) => t.x === spec.x && t.y === spec.y)) return false;
-    return chebyshev(u.x, u.y, spec.x, spec.y) <= (a.range || 1) && lineOfSight(b.grid, u.x, u.y, spec.x, spec.y);
+    return distU(b, u, { x: spec.x, y: spec.y }) <= (a.range || 1) + 1e-6 && losU(b, u, { x: spec.x, y: spec.y });
   }
   return targetValid(b, u, a, spec);
 }
@@ -2374,7 +2405,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
     if (!isAlive(t) && !canRevive(a, t)) continue;
     const hostile = isHostile(b, u, t);
     if (hostile) offensive = true;
-    if (!a.area && t !== u && chebyshev(u.x, u.y, t.x, t.y) > reachLimit) {
+    if (!a.area && t !== u && distU(b, u, t) > reachLimit + 1e-6) {
       emit(b, { type: 'outOfRange', actor: u.id, target: t.id });
       continue;
     }
@@ -2553,21 +2584,22 @@ export function getLegalActions(b, unitId, opts) {
 function canAttack(b, u, e, range) {
   const ts = tauntSource(b, u);
   if (ts && ts !== e) return false;
-  const d = chebyshev(u.x, u.y, e.x, e.y);
+  const d = distU(b, u, e);
   if (b.grid.elev) {
     if (d <= 1 && !meleeElevOk(b, u.x, u.y, e.x, e.y)) return false;
     if (range > 1) range += elevRange(b, u, e.x, e.y);
   }
-  return d <= range && (d <= 1 || !!(u.weapon && u.weapon.arc) || lineOfSight(b.grid, u.x, u.y, e.x, e.y));
+  return d <= range + 1e-6 && (d <= 1 || !!(u.weapon && u.weapon.arc) || losU(b, u, e));
 }
 
 /** combat rework §3.2: a deliberate weapon attack on an object (melee — adjacent / reach, ranged — range + LOS). */
 export function smashOk(b, u, x, y) {
   if (!u.weapon || !objectAt(b, x, y)) return false;
-  const d = chebyshev(u.x, u.y, x, y);
-  if (d < 1) return false;
-  if (isMeleeWeapon(u)) return d <= Math.max(1, weaponRange(u));
-  return d <= weaponRange(u) && (d <= 1 || !!u.weapon.arc || lineOfSight(b.grid, u.x, u.y, x, y));
+  if (x === u.x && y === u.y) return false;
+  const d = geoOn(b) ? rectGapM(ptOf(u), x, y) / CELL_M : chebyshev(u.x, u.y, x, y); // metric: to the object's cell edge
+  if (d < 1 && !geoOn(b)) return false;
+  if (isMeleeWeapon(u)) return d <= Math.max(1, weaponRange(u)) + 1e-6;
+  return d <= weaponRange(u) + 1e-6 && (d <= 1 || !!u.weapon.arc || losU(b, u, { x, y }));
 }
 /** Objects u can smash now. */
 export function smashTargets(b, u) {
@@ -2585,15 +2617,16 @@ export function smashTargets(b, u) {
 function canThrow(b, u, e) {
   const ts = tauntSource(b, u);
   if (ts && ts !== e) return false;
-  const d = chebyshev(u.x, u.y, e.x, e.y);
-  return d >= 2 && d <= (u.weapon.thrown || 0) && lineOfSight(b.grid, u.x, u.y, e.x, e.y);
+  const d = distU(b, u, e);
+  return d > 1 && d <= (u.weapon.thrown || 0) + 1e-6 && losU(b, u, e);
 }
 
 /** Area weapon fired at a tile (no unit needed). */
 function areaTileOk(b, u, x, y) {
   if (!inBounds(b.grid, x, y) || tileAt(b.grid, x, y) === T_WALL) return false;
-  const d = chebyshev(u.x, u.y, x, y);
-  return d >= 1 && d <= weaponRange(u) && (d <= 1 || !!u.weapon.arc || lineOfSight(b.grid, u.x, u.y, x, y));
+  if (x === u.x && y === u.y) return false;
+  const d = distU(b, u, { x, y });
+  return d <= weaponRange(u) + 1e-6 && (d <= 1 || !!u.weapon.arc || losU(b, u, { x, y }));
 }
 
 /** Candidate target specs for an ability (enumeration for UI/AI). */
@@ -2651,7 +2684,7 @@ function areaTileSpecs(b, u, a) {
     const mv = moveOp(a);
     const r = Math.min(abilityRange(u, a) || mv.tiles, mv.tiles);
     for (let y = u.y - r; y <= u.y + r; y++) for (let x = u.x - r; x <= u.x + r; x++) {
-      if ((x === u.x && y === u.y) || !hostiles.some((e) => chebyshev(e.x, e.y, x, y) <= R)) continue;
+      if ((x === u.x && y === u.y) || !hostiles.some((e) => chebyshev(e.x, e.y, x, y) <= R + (geoOn(b) ? 1 : 0))) continue;
       push(x, y);
     }
     return out;
@@ -2671,6 +2704,9 @@ function fail(b, start, error) {
 }
 
 /** Perform an action for the current unit. Returns { ok, error?, events }. */
+/** Tile spec of an action: cell + optional exact aim point in metres (metric cones / lines / circles). */
+const tileSpec = (t) => (t.px != null ? { x: t.x, y: t.y, px: t.px, py: t.py } : { x: t.x, y: t.y });
+
 export function perform(b, action) {
   const start = b.log ? b.log.length : 0;
   if (b.winner) return fail(b, start, 'battleOver');
@@ -2823,7 +2859,7 @@ export function perform(b, action) {
       const why = itemUsable(b, u, action.item);
       if (why) return fail(b, start, why);
       const it = b.data.items[action.item];
-      const spec = action.target ? { unit: action.target } : action.tile ? { x: action.tile.x, y: action.tile.y } : {};
+      const spec = action.target ? { unit: action.target } : action.tile ? tileSpec(action.tile) : {};
       if (!itemTargetValid(b, u, it, spec)) return fail(b, start, 'badTarget');
       useItem(b, u, it, spec);
       checkVictory(b);
@@ -2834,7 +2870,7 @@ export function perform(b, action) {
       if (!a) return fail(b, start, 'noAbility');
       const why = abilityUsable(b, u, a, false);
       if (why) return fail(b, start, why);
-      const spec = action.target ? { unit: action.target } : action.tile ? { x: action.tile.x, y: action.tile.y } : {};
+      const spec = action.target ? { unit: action.target } : action.tile ? tileSpec(action.tile) : {};
       if (!targetValid(b, u, a, spec)) return fail(b, start, 'badTarget');
       resolveAbility(b, u, a, spec, false);
       break;
@@ -2853,7 +2889,7 @@ export function attackOdds(b, att, tgt, bonus, melee, isWeapon, fx = att.x, fy =
   const mode = m.adv === m.dis ? 'normal' : m.adv ? 'adv' : 'dis';
   let kb = getKb(b, tgt, null, false) - apReduction(att, tgt, isWeapon);
   const arc = isWeapon && !melee && att.weapon && att.weapon.arc;
-  if (!arc) kb += coverBonus(b, fx, fy, tgt.x, tgt.y, melee).kb;
+  if (!arc) kb += coverBonus(b, fx, fy, tgt.x, tgt.y, melee, geoOn(b) ? fromPt(att, fx, fy) : null, geoOn(b) ? ptOf(tgt) : null).kb;
   const total = bonus + att.hitBonus + condBonus(att, tgt, 'hit') + statusMod(b, att, 'hit') + buffSum(att, 'hit') + (b.surfaces.size ? surfaceHitBonus(b, att) : 0)
     + terrainHit(b, att, tgt, melee, fx, fy).total + (att.arch ? archHit(b, att) : 0);
   const critRange = Math.min(20, att.critRange || 20);

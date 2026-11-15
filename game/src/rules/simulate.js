@@ -4,12 +4,12 @@ import { createBattle } from './combat.js';
 import { playTurn } from './ai.js';
 
 /**
- * simulateBattle({ map, heroes, enemies, allies, rivals?, data, seed, maxRounds, log })
+ * simulateBattle({ map, heroes, enemies, allies, rivals?, data, seed, maxRounds, log, metric? })
  * Every unit is AI-controlled. Returns { winner: team | 'draw', rounds, survivors, log? }.
  * 'draw' — nobody won within maxRounds (or the turn loop stalled).
  */
-export function simulateBattle({ map, heroes, enemies, allies, rivals, data, seed = 1, maxRounds = 30, log = false } = {}) {
-  const b = createBattle({ map, heroes, enemies, allies, rivals, data, seed, log });
+export function simulateBattle({ map, heroes, enemies, allies, rivals, data, seed = 1, maxRounds = 30, log = false, metric = 0 } = {}) {
+  const b = createBattle({ map, heroes, enemies, allies, rivals, data, seed, log, metric });
   for (const u of b.units) u.control = 'ai';
   let guard = 0;
   const maxSteps = maxRounds * (b.units.length + 8) * 4;

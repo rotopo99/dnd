@@ -466,7 +466,7 @@ export function createBattleScene(opts) {
   S.areaPreview = (a, act) => {
     const b = S.b;
     const u = b.byId[S.heroId];
-    const spec = act && act.target ? { unit: act.target } : act && act.tile ? { x: act.tile.x, y: act.tile.y } : {};
+    const spec = act && act.target ? { unit: act.target } : act && act.tile ? { x: act.tile.x, y: act.tile.y, ...(act.tile.px != null ? { px: act.tile.px, py: act.tile.py } : {}) } : {};
     const units = abilityTargets(b, u, a, spec);
     const tiles = [];
     if (a.area) {
@@ -719,7 +719,9 @@ export function createBattleScene(opts) {
     const b = S.b;
     if (!cell || !S.targetCells) return null;
     const tc = S.targetCells.get(cell.y * b.grid.w + cell.x);
-    if (tc || S.sel?.kind !== 'ability' || S.sel.item || S.sel.weaponArea || aimKind(S.sel.a) !== 'dir') return tc || null;
+    // metric stage 2: cones / lines point at the exact cursor point (tile spec px / py)
+    const aimAt = (hit) => (hit && hit.dir && (b.metric || 0) >= 2 && S.hover.pt ? { ...hit, tile: { ...hit.tile, px: S.hover.pt.px, py: S.hover.pt.py } } : hit);
+    if (tc || S.sel?.kind !== 'ability' || S.sel.item || S.sel.weaponArea || aimKind(S.sel.a) !== 'dir') return aimAt(tc) || null;
     const u = b.byId[S.heroId];
     const vx = cell.x - u.x, vy = cell.y - u.y;
     const d = Math.max(Math.abs(vx), Math.abs(vy));
@@ -727,7 +729,7 @@ export function createBattleScene(opts) {
     for (let k = Math.min(d, abilityRange(u, S.sel.a)); k >= 1; k--) {
       const x = u.x + Math.round((vx * k) / d), y = u.y + Math.round((vy * k) / d);
       const hit = S.targetCells.get(y * b.grid.w + x);
-      if (hit) return hit;
+      if (hit) return aimAt(hit);
     }
     return null;
   };

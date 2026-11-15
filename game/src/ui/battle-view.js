@@ -18,7 +18,7 @@ import { drawObjectiveMarkers, drawObjectivePanel } from './battle-objectives.js
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
 import { battle3d, drawBattle3d, cellScreen, unitScreen, camButtons } from '../gfx/scene3d.js';
-import { drawMovePath2d, movePathOverlay3d, drawMovePill } from './move-path.js';
+import { drawMovePath2d, movePathOverlay3d, drawMovePill, aimShapes } from './move-path.js';
 import { budgetM } from '../rules/metric.js';
 
 const PANEL_W = 340;
@@ -328,6 +328,8 @@ function drawHighlights(ctx, S) {
   const out = { target: null, odds: null, area: null, path: null };
   const hero = b.byId[S.heroId];
   const busy = S.queue.length > 0;
+  const geo = (b.metric || 0) >= 2; // metric-combat.md stage 2: ranges / areas drawn as circles, cones, lines (S.aim)
+  S.aim = null;
   if (!S.playerTurn || busy || S.result) {
     if (hc) out.target = unitAtCell(b, hc.x, hc.y);
     return out;
@@ -335,7 +337,8 @@ function drawHighlights(ctx, S) {
   if (S.sel) {
     // ability / attack range
     const range = S.sel.kind === 'attack' ? (hero.weapon?.range || 1) : abilityRange(hero, S.sel.a);
-    if (range > 0) {
+    if (geo) S.aim = aimShapes(S, hero, { range });
+    if (range > 0 && !geo) {
       for (let y = hero.y - range; y <= hero.y + range; y++) {
         for (let x = hero.x - range; x <= hero.x + range; x++) {
           if (x < 0 || y < 0 || x >= w || y >= b.grid.h || b.grid.tiles[y * w + x] === 1) continue;
@@ -352,23 +355,29 @@ function drawHighlights(ctx, S) {
     if (tc) {
       if (S.sel.kind === 'ability') {
         const pv = S.areaPreview(S.sel.a, tc);
-        for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(S.sel.a));
+        if (!geo) for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(S.sel.a));
         out.area = pv;
       }
       const tu = tc.target ? b.byId[tc.target] : tc.dir || tc.leap ? null : unitAtCell(b, hc.x, hc.y);
       out.target = tu;
+      if (geo) S.aim = aimShapes(S, hero, { range, a: S.sel.kind === 'ability' ? S.sel.a : null, tc, target: tu && !(S.sel.kind === 'ability' && S.sel.a.area) && tu.team !== hero.team ? tu : null });
       if (tu) out.odds = S.odds(tu);
       if (tc.leap) drawLanding(ctx, L, hero, tc.tile);
-      else if (tc.dir) cellRect(ctx, L, tc.tile.x, tc.tile.y, null, C.a);
-      cellRect(ctx, L, hc.x, hc.y, null, C.a);
-    } else if (hc) out.target = unitAtCell(b, hc.x, hc.y);
+      else if (tc.dir && !geo) cellRect(ctx, L, tc.tile.x, tc.tile.y, null, C.a);
+      if (!geo || !tc.dir) cellRect(ctx, L, hc.x, hc.y, null, C.a);
+    } else if (hc) {
+      out.target = unitAtCell(b, hc.x, hc.y);
+      // stage 2: a foe out of reach / out of sight still shows its line of fire (red when blocked)
+      if (geo && out.target && out.target.team !== hero.team && !isHiddenFoe(out.target)) S.aim = aimShapes(S, hero, { range, target: out.target });
+    }
     return out;
   }
   // hovering a self/aura ability button: show its area around the hero
   const hb = S.hover.button;
   if (hb && hb.a && hb.a.area && !hb.disabled) {
     const pv = S.areaPreview(hb.a, null);
-    for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(hb.a));
+    if (geo) S.aim = aimShapes(S, hero, { a: hb.a });
+    else for (const idx of pv.tiles) if (b.grid.tiles[idx] !== 1) cellRect(ctx, L, idx % w, (idx / w) | 0, areaFill(hb.a));
     out.area = pv;
   }
   // reachable tiles
@@ -382,6 +391,7 @@ function drawHighlights(ctx, S) {
     if (u && S.attackTargets.has(u.id)) {
       cellRect(ctx, L, hc.x, hc.y, RED_FILL, C.c);
       out.odds = S.odds(u, { kind: 'attack' });
+      if (geo && hero.weapon && !hero.weapon.melee && (hero.weapon.range || 1) > 1) S.aim = aimShapes(S, hero, { target: u });
     } else if (S.reach && !b.metric && S.reach.dist[idx] > 0) {
       const pc = S.pathCache;
       if (!pc || pc.idx !== idx || pc.reach !== S.reach || pc.sv !== b.surfaceVersion) {

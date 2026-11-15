@@ -14,6 +14,7 @@
 
 import { T_RUBBLE, T_FLOOR, tileCover, coverLevel, inCoverSpot, elevAt, inBounds, chebyshev } from './grid.js';
 import { emitEvent } from './combat.js';
+import { geoOn, coverM, ptOf, fromPt } from './metric-geo.js';
 import { createSurface, radiusTiles, destroyBarrel, barrelAt, battleLevel } from './surfaces.js';
 
 const cfg = (b) => (b.data && b.data.combat) || null;
@@ -117,9 +118,12 @@ export function damageObjectsIn(b, test, amount, src, dmgType) {
 
 // ---------------------------------------------------------------- attack modifiers
 
-/** KB bonus from cover for a target at (tx, ty) vs an attacker at (ax, ay). Returns { level, kb }. */
-export function coverBonus(b, ax, ay, tx, ty, melee) {
-  const level = coverLevel(b.grid, ax, ay, tx, ty, melee);
+/**
+ * KB bonus from cover for a target at (tx, ty) vs an attacker at (ax, ay). Returns { level, kb }. Metric stage 2
+ * (geoOn): A, T — attacker / target points (metric-geo.js ptOf / fromPt), cover by rays and distance to the cover.
+ */
+export function coverBonus(b, ax, ay, tx, ty, melee, A, T) {
+  const level = A && T && geoOn(b) ? coverM(b, A, T, melee) : coverLevel(b.grid, ax, ay, tx, ty, melee);
   if (!level) return { level, kb: 0 };
   const C = cfg(b);
   if (melee) return { level, kb: C ? C.cover.fullMelee ?? 2 : 0 };
@@ -139,7 +143,8 @@ export function terrainHit(b, att, tgt, melee, fx = att.x, fy = att.y) {
   if (d > 0 && !melee) elev = Math.min(d * E.hitPer, E.hitMax);
   else if (d < 0) elev = -Math.min(-d * E.hitPer, E.hitMax);
   let flank = 0;
-  if (chebyshev(fx, fy, tgt.x, tgt.y) > 0 && inCoverSpot(b.grid, tgt.x, tgt.y) && !coverLevel(b.grid, fx, fy, tgt.x, tgt.y, melee)) flank = C.cover.flankHit ?? 1;
+  if (chebyshev(fx, fy, tgt.x, tgt.y) > 0 && inCoverSpot(b.grid, tgt.x, tgt.y)
+    && !(geoOn(b) ? coverM(b, fromPt(att, fx, fy), ptOf(tgt), melee) : coverLevel(b.grid, fx, fy, tgt.x, tgt.y, melee))) flank = C.cover.flankHit ?? 1;
   return { elev, flank, total: elev + flank };
 }
 

@@ -2,7 +2,7 @@
 // every class x every playable race x path x levels 1, 5, 10, 15, 20 (levels-20.md; ASI 'auto') vs ENCOUNTERS.standard1/5
 // (×2/×3/×4 on 10/15/20), N battles each; data check of `upgrades` (unknown ability / never applied);
 // story maps; every v3 weapon (items/weapons.js) on a hero vs ENCOUNTERS_V3 (counts v3.1 item-property events).
-// Usage: node tools/smoke-rules.mjs [--n 20] [--seed 1]   (exit code 1 on exceptions)
+// Usage: node tools/smoke-rules.mjs [--n 20] [--seed 1] [--metric 0|1|2]   (exit code 1 on exceptions)
 import fs from 'node:fs';
 import { RACES } from '../game/src/data/races.js';
 import { STATUSES, VEIL_TABLE, PROXY_STORM_TABLE } from '../game/src/data/effects.js';
@@ -15,6 +15,7 @@ const args = process.argv.slice(2);
 const arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? Number(args[i + 1]) : d; };
 const N = arg('--n', 20);
 const SEED = arg('--seed', 1);
+const METRIC_STAGE = arg('--metric', 0); // metric-combat.md: rules stage of the simulated battles (0 — cells)
 const data = { RACES, CLASSES, STATUSES, ENEMIES, ENCOUNTERS, VEIL_TABLE, PROXY_STORM_TABLE };
 const races = Object.values(RACES).filter((r) => r.playable);
 
@@ -50,7 +51,7 @@ for (const level of LEVELS) {
         for (let i = 0; i < N; i++) {
           try {
             const hero = buildCreature({ race, cls, level, path, data, asi: 'auto' });
-            const r = simulateBattle({ heroes: [hero], enemies: enc.enemies, data, seed: SEED + i, maxRounds: 40 });
+            const r = simulateBattle({ heroes: [hero], enemies: enc.enemies, data, seed: SEED + i, maxRounds: 40, metric: METRIC_STAGE });
             battles++; total++;
             if (r.winner === 'heroes') wins++;
             if (r.winner === 'draw') draws++;
@@ -72,7 +73,7 @@ for (const f of fs.readdirSync(mapDir).filter((x) => x.endsWith('.js')).sort()) 
   for (let i = 0; i < N; i++) {
     try {
       const hero = buildCreature({ race: 'human', cls: CLASS_ORDER[i % CLASS_ORDER.length], level: 1, data });
-      const r = simulateBattle({ map, heroes: [hero], data, seed: SEED + i, maxRounds: 30 });
+      const r = simulateBattle({ map, heroes: [hero], data, seed: SEED + i, maxRounds: 30, metric: METRIC_STAGE });
       battles++;
       if (r.winner === 'heroes') wins++;
     } catch (e) {
@@ -103,7 +104,7 @@ for (let wi = 0; wi < wlist.length; wi++) {
       const race = isAllowed('human', CLASSES[cid]) ? 'human' : CLASSES[cid].allowedRaces[0];
       const h1 = buildCreature({ race, cls: cid, level, data: GAME_DATA, equipment: { weapon: w.id }, inventory: kit });
       const h2 = buildCreature({ race: 'human', cls: CLASS_ORDER[(wi + i + 3) % CLASS_ORDER.length], level, data: GAME_DATA });
-      const r = simulateBattle({ heroes: [h1, h2], enemies: enc.enemies, data: GAME_DATA, seed: SEED + wi * 31 + i, maxRounds: 30, log: true });
+      const r = simulateBattle({ heroes: [h1, h2], enemies: enc.enemies, data: GAME_DATA, seed: SEED + wi * 31 + i, maxRounds: 30, metric: METRIC_STAGE, log: true });
       battles++; v3total++;
       if (r.winner === 'heroes') v3wins++;
       for (const e of r.log) if (NEW_EVENTS.includes(e.type)) seen[e.type] = (seen[e.type] || 0) + 1;

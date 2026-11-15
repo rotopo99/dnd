@@ -14,6 +14,8 @@
 
 import { chebyshev, elevAt, inCoverSpot, lineOfSight } from './grid.js';
 import { avgDice } from './dice.js';
+import { gapM, ptOf, distU, losU, nearCover } from './metric-geo.js';
+import { CELL_M } from './metric.js';
 import {
   emitEvent, isAlive, isStanding, isHostile, spawnSummon, unsummon, removeFromBattle, getReachable, getSpeed,
   removeStatus, weaponRange, isMeleeWeapon, enemyAdjacent,
@@ -205,7 +207,7 @@ export function archTargetMul(b, u, t) {
     case 'assault': return Math.max(0.85, Math.min(1.2, 1 + (16 - t.kb) * 0.03));
     case 'sniper': return ROLE_PRIO[t.role] ? A(b, 'sniper').prio : t.kb <= 13 ? 1.15 : 1;
     case 'coward': return hpShare(t) <= A(b, 'coward').woundedBelow ? A(b, 'coward').woundedMul : 0.8;
-    case 'berserk': return 1 / (1 + 0.2 * Math.max(0, chebyshev(u.x, u.y, t.x, t.y) - 1));
+    case 'berserk': return 1 / (1 + 0.2 * Math.max(0, distU(b, u, t) - 1));
     default: return 1;
   }
 }
@@ -226,19 +228,21 @@ export function archAbilityMul(b, u, a, t) {
   return 1;
 }
 
-/** Extra tile score for planTile. */
-export function archTileScore(b, u, x, y, enemies) {
+/** Extra tile score for planTile. P — metric point {px, py, r} of the candidate (stage 2 AI), else the cell. */
+export function archTileScore(b, u, x, y, enemies, P) {
+  const dist = (e) => (P ? gapM(P, ptOf(e)) / CELL_M : chebyshev(x, y, e.x, e.y));
+  const inCover = () => (P ? nearCover(b, P) : inCoverSpot(b.grid, x, y));
   switch (u.arch) {
     case 'sniper': {
       const S = A(b, 'sniper');
-      let s = elevAt(b.grid, x, y) * S.elevScore + (inCoverSpot(b.grid, x, y) ? S.coverScore : 0);
-      for (const e of enemies) if (chebyshev(x, y, e.x, e.y) <= S.threatRange && isMeleeWeapon(e)) s -= 2;
+      let s = elevAt(b.grid, x, y) * S.elevScore + (inCover() ? S.coverScore : 0);
+      for (const e of enemies) if (dist(e) <= S.threatRange && isMeleeWeapon(e)) s -= 2;
       return s;
     }
     case 'support': case 'summoner': {
       const k = A(b, 'support').keepAway;
-      let s = inCoverSpot(b.grid, x, y) ? 1 : 0;
-      for (const e of enemies) { const d = chebyshev(x, y, e.x, e.y); if (d < k) s -= (k - d) * 1.5; }
+      let s = inCover() ? 1 : 0;
+      for (const e of enemies) { const d = dist(e); if (d < k) s -= (k - d) * 1.5; }
       return s;
     }
     case 'assault': case 'berserk':
@@ -300,7 +304,7 @@ export function intentOf(b, u) {
   if (aoe) {
     const mv = (aoe.effects || []).find((op) => op.op === 'move');
     const reach = (aoe.range || 0) + (aoe.range && !mv && aoe.area.shape === 'radius' ? aoe.area.size || 1 : 0) + (mv || !aoe.range ? aoe.area.size || 1 : 0);
-    const near = foes.filter((e) => chebyshev(u.x, u.y, e.x, e.y) <= reach);
+    const near = foes.filter((e) => distU(b, u, e) <= reach);
     if (near.length >= 2) return { kind: 'zone', target: nearest(u, near).id };
   }
   if (isMeleeWeapon(u)) {
@@ -311,8 +315,8 @@ export function intentOf(b, u) {
   const r = weaponRange(u);
   let best = null, bs = -1e9;
   for (const e of foes) {
-    const d = chebyshev(u.x, u.y, e.x, e.y);
-    const s = archTargetMul(b, u, e) * 10 - (d > r ? 5 : 0) - (d > 1 && !lineOfSight(b.grid, u.x, u.y, e.x, e.y) ? 4 : 0) - d * 0.1;
+    const d = distU(b, u, e);
+    const s = archTargetMul(b, u, e) * 10 - (d > r ? 5 : 0) - (d > 1 && !losU(b, u, e) ? 4 : 0) - d * 0.1;
     if (s > bs) { bs = s; best = e; }
   }
   return { kind: 'ranged', target: best.id, dmg: avgHit(u) };

@@ -334,7 +334,8 @@ function viewState(S, V, cam, prefs, dt) {
   const want = mode === 'cut' && V.focusPt ? 1 : 0;
   const k0 = V.cutK ?? 0;
   V.cutK = prefs.reduceFx || prefs.reduceMotion ? want : k0 + Math.sign(want - k0) * Math.min(Math.abs(want - k0), dt / VW.fade);
-  const pts = [];
+  const pts = [], cuts = [];
+  const { f } = basis(cam), fl = Math.hypot(f[0], f[2]) || 1, tx = -f[0] / fl, tz = -f[2] / fl; // toward the camera
   if (mode !== 'off') {
     const b = S.b, Wd = V.world, flr = (x, z) => Wd.floor[Math.max(0, Math.min(Wd.h - 1, Math.floor(z))) * Wd.w + Math.max(0, Math.min(Wd.w - 1, Math.floor(x)))] || 0;
     const cur = b.turn ? b.byId[b.turn.unitId] : null;
@@ -345,8 +346,35 @@ function viewState(S, V, cam, prefs, dt) {
     const hu = hc ? b.units.find((u) => !u.dead && !u.removed && u.x === hc.x && u.y === hc.y) : null;
     if (hu && hu !== cur) add(hu);
     else if (S.hover?.pt) { const x = S.hover.pt.px / 1.5, z = S.hover.pt.py / 1.5; pts.push([x, flr(x, z) + 0.3, z]); }
+    // cut boxes: in front of the active unit (focus) and the cursor / hovered unit only
+    if (mode === 'cut') for (const p of pts.slice(0, 2)) cuts.push([p[0], p[2], VW.cutLen, VW.cutW]);
   }
-  return { k: V.cutK, xray: !!S.xray, pts: pts.slice(0, 4), moving: V.cutK !== want };
+  return { k: V.cutK, xray: !!S.xray, pts: pts.slice(0, 4), cuts, dir: [tx, tz], moving: V.cutK !== want };
+}
+
+/** Cells inside the cut boxes (the shader test on cell centres): [index]. */
+function cutCells(Wd, view) {
+  const out = new Set(), [tx, tz] = view.dir;
+  for (const [px, pz, len, hw] of view.cuts) {
+    const R = len + hw;
+    for (let y = Math.max(0, Math.floor(pz - R)); y <= Math.min(Wd.h - 1, Math.floor(pz + R)); y++) {
+      for (let x = Math.max(0, Math.floor(px - R)); x <= Math.min(Wd.w - 1, Math.floor(px + R)); x++) {
+        const vx = x + 0.5 - px, vz = y + 0.5 - pz, t = vx * tx + vz * tz, q = Math.abs(vx * tz - vz * tx);
+        if (t > 0.3 && t < len && q < hw) out.add(y * Wd.w + x);
+      }
+    }
+  }
+  return out;
+}
+/** Dark lids on the cut obstacles (the cut top would show the hollow inside). */
+function cutLids(V, view, ob) {
+  if (!(view.k > 0) || !view.cuts.length) return;
+  const Wd = V.world, VW = GFX.view, ch = 6 + (VW.cutH - 6) * view.k, col = [...keyRGB(VW.lid), 1];
+  for (const i of cutCells(Wd, view)) {
+    if (Wd.obst[i] <= ch + 0.01) continue;
+    const x = i % Wd.w, y = (i / Wd.w) | 0;
+    ob.rect(x, y, x + 1, y + 1, Wd.floor[i] + ch, col);
+  }
 }
 
 // picking: covers / props are surfaces (smash targets); walls are see-through for the cursor (cells behind them stay clickable)
@@ -549,6 +577,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     V.hgt[it.u.id] = h0 == null || prefs.reduceMotion ? ht : h0 + (ht - h0) * Math.min(1, dt * GFX.unit.lerpH);
   }
   // overlay: highlights, surfaces (decals), rings; particles of surfaces and actions
+  const view = viewState(S, V, cam, prefs, dt);
   ob.clear();
   PARTS.length = 0;
   const fl = (x, y) => (Wd.floor[y * Wd.w + x] ?? 0) + G.overlay;
@@ -575,7 +604,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   // render on demand: unchanged frame -> keep the last image (15 fps idle refresh: breathing, slow surface motion);
   // actions, hits, falls, projectiles, walking and camera tweens — every frame
   const walking = units.some((it) => it.d.path?.length);
-  const view = viewState(S, V, cam, prefs, dt);
+  cutLids(V, view, ob);
   const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving || view.moving;
   const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
   if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / GFX.idleFps) return;
@@ -798,7 +827,11 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.uniform1i(U.uFloorT, 4);
     const fp = V.focusPt || { x: 0, z: 0 };
     gl.uniform4f(U.uCut, fp.x, fp.z, -f[0] / dl, -f[2] / dl);
-    gl.uniform4f(U.uCutK, V.focusPt ? view.k : 0, VW.cutH, Math.cos((VW.cutDeg * Math.PI) / 180), view.xray ? VW.xrayAlpha : 0);
+    gl.uniform4f(U.uCutK, view.cuts.length ? view.k : 0, VW.cutH, 0, view.xray ? VW.xrayAlpha : 0);
+    const cp = new Float32Array(8);
+    view.cuts.forEach((c, i) => cp.set(c, i * 4));
+    if (U.uCutP) gl.uniform4fv(U.uCutP, cp);
+    if (U.uNumCut) gl.uniform1i(U.uNumCut, view.cuts.length);
     const see = new Float32Array(16);
     view.pts.forEach(([x, y, z], i) => {
       const cw = VP[3] * x + VP[7] * y + VP[11] * z + VP[15];

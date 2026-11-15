@@ -317,3 +317,90 @@ export function pullCells(b, u, from, cells) {
   const P = [[from.px, from.py], ...cells.map((c) => { const p = cellCenterM(c.x, c.y); return [p.px, p.py]; })];
   return toPts(pull(X, P));
 }
+
+// ---------------------------------------------------------------- stage 2: reach field (AI candidates, UI contour)
+
+/**
+ * Dijkstra cost field (metres, the A* step rules) over the nav grid from u's position up to maxCost:
+ * { W, H, nav (cell side m), cost: Float32Array (Infinity — out of reach), at(px, py) (cost of the nav cell + the
+ * offset to the point) }. Grid costs are >= the string-pulled path, so at() <= budget is a safe «reachable».
+ */
+export function navField(b, u, maxCost) {
+  const X = navCtx(b, u), { nav, g } = X, W = nav.W, H = nav.H, n = W * H;
+  const s = posM(u), si = Math.floor(s.px / NAV), sj = Math.floor(s.py / NAV);
+  const ok = new Int8Array(n); // 0 unknown, 1 free, -1 blocked (lazy: only cells the search touches)
+  const free = (i, j) => {
+    if (i < 0 || j < 0 || i >= W || j >= H) return false;
+    const k = j * W + i;
+    if (!ok[k]) ok[k] = !nav.block[k] && othersFree(X, (i + 0.5) * NAV, (j + 0.5) * NAV) ? 1 : -1;
+    return ok[k] === 1;
+  };
+  const cost = new Float32Array(n).fill(Infinity), closed = new Uint8Array(n), heap = new Heap();
+  const st = sj * W + si;
+  if (si >= 0 && sj >= 0 && si < W && sj < H) {
+    cost[st] = Math.hypot((si + 0.5) * NAV - s.px, (sj + 0.5) * NAV - s.py);
+    heap.push(st, cost[st]);
+  }
+  const lim = maxCost + NAV;
+  while (heap.size) {
+    const cur = heap.pop();
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    const ci = cur % W, cj = (cur / W) | 0, ct = tileIdx(g, (ci + 0.5) * NAV, (cj + 0.5) * NAV);
+    for (const [dx, dy, dl] of DIR) {
+      const ni = ci + dx, nj = cj + dy;
+      if (!free(ni, nj)) continue;
+      if (dx && dy && (!free(ci + dx, cj) || !free(ci, cj + dy))) continue;
+      const nk = nj * W + ni;
+      if (closed[nk]) continue;
+      const nt = tileIdx(g, (ni + 0.5) * NAV, (nj + 0.5) * NAV), cc = crossCost(g, ct, nt);
+      if (!cc) continue;
+      const nc = cost[cur] + dl * NAV * (mulAt(g, ct) + mulAt(g, nt)) / 2 + (cc > 1e-6 ? cc : 0);
+      if (nc >= cost[nk] || nc > lim) continue;
+      cost[nk] = nc;
+      heap.push(nk, nc);
+    }
+  }
+  const at = (px, py) => {
+    const i = Math.floor(px / NAV), j = Math.floor(py / NAV);
+    if (i < 0 || j < 0 || i >= W || j >= H) return Infinity;
+    return cost[j * W + i] + Math.hypot(px - (i + 0.5) * NAV, py - (j + 0.5) * NAV);
+  };
+  return { W, H, nav: NAV, cost, at };
+}
+
+/** Exact free-point test for unit u (walls inflated by r, other units' circles): (px, py) -> bool. */
+export function navFree(b, u) {
+  const X = navCtx(b, u);
+  return (px, py) => freeAt(X, px, py);
+}
+
+/**
+ * Contour of the area with field cost <= limit (marching squares over the nav cell centres, linear interpolation;
+ * blocked / unreachable samples count as limit + 2 nav cells): flat [x1, y1, x2, y2, ...] in metres.
+ */
+export function reachContour(field, limit) {
+  const { W, H, nav, cost } = field, out = [], far = limit + 2 * nav;
+  const v = (i, j) => (i < 0 || j < 0 || i >= W || j >= H ? far : Math.min(far, cost[j * W + i]));
+  const lerp = (a, c) => (Math.abs(c - a) < 1e-9 ? 0.5 : Math.max(0, Math.min(1, (limit - a) / (c - a))));
+  for (let j = -1; j < H; j++) for (let i = -1; i < W; i++) {
+    const a = v(i, j), c = v(i + 1, j), d = v(i + 1, j + 1), e = v(i, j + 1);
+    const k = (a <= limit ? 1 : 0) | (c <= limit ? 2 : 0) | (d <= limit ? 4 : 0) | (e <= limit ? 8 : 0);
+    if (k === 0 || k === 15) continue;
+    const x0 = (i + 0.5) * nav, y0 = (j + 0.5) * nav;
+    const T = [x0 + lerp(a, c) * nav, y0], Rr = [x0 + nav, y0 + lerp(c, d) * nav], B = [x0 + lerp(e, d) * nav, y0 + nav], L = [x0, y0 + lerp(a, e) * nav];
+    const seg = (p, q) => out.push(p[0], p[1], q[0], q[1]);
+    switch (k) {
+      case 1: case 14: seg(L, T); break;
+      case 2: case 13: seg(T, Rr); break;
+      case 3: case 12: seg(L, Rr); break;
+      case 4: case 11: seg(Rr, B); break;
+      case 6: case 9: seg(T, B); break;
+      case 7: case 8: seg(L, B); break;
+      case 5: seg(L, T); seg(Rr, B); break;
+      case 10: seg(T, Rr); seg(L, B); break;
+      default: break;
+    }
+  }
+  return out;
+}

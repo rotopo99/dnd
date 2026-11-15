@@ -4694,6 +4694,123 @@ console.log('metric movement (metric-combat.md stage 1)');
 }
 
 
+console.log('metric combat stage 2 (ranges, areas, LOS, cover, zone of control, AI points)');
+{
+  const M = await import('../game/src/rules/metric.js');
+  const G2 = await import('../game/src/rules/metric-geo.js');
+  const { planTile } = await import('../game/src/rules/ai.js');
+  const GUN = { name: 'w', dice: '1d6', dmgType: 'pierce', stat: 'dex', range: 10, hit: 0, attack: 4 };
+  const put = (b, u, px, py) => {
+    const g = b.grid, x = Math.floor(px / 1.5), y = Math.floor(py / 1.5);
+    if (u.x >= 0) b.occ[u.y * g.w + u.x] = 0;
+    u.x = x; u.y = y; u.px = px; u.py = py; b.occ[y * g.w + x] = b.units.indexOf(u) + 1; b.occVersion++;
+  };
+  const mk2 = (grid, enemies = ['thug']) => {
+    const b = createBattle({ map: { id: 'm2', grid, win: 'killAll' }, heroes: [hero()], enemies, data: DATA, seed: 3, autoReactions: false, metric: 2 });
+    return { b, H: b.units.find((u) => u.team === 'heroes'), E: b.units.filter((u) => u.team === 'enemies') };
+  };
+  const OPEN16 = ['##################', '#P...............#', '#................#', '#................#', '#................#', '#...............E#', '##################'];
+  const attackable = (b, u, t) => { forceTurn(b, u); return getLegalActions(b, u.id).some((a) => a.type === 'attack' && a.target === t.id); };
+  test('metric 2: weapon range 10 cells = 15 m edge to edge; melee 1.5 m (diagonal neighbours too)', () => {
+    const { b, H, E } = mk2(OPEN16);
+    const T = E[0];
+    T.weapon = { ...GUN };
+    put(b, T, 2.25, 4.5); put(b, H, 2.25 + 0.8 + 14.9, 4.5);
+    assert.ok(attackable(b, T, H), 'gap 14.9 m');
+    put(b, H, 2.25 + 0.8 + 15.3, 4.5);
+    assert.ok(!attackable(b, T, H), 'gap 15.3 m');
+    assert.ok(Math.abs(G2.distU(b, T, H) - 15.3 / 1.5) < 1e-6);
+    const C = mk2(OPEN16);
+    put(C.b, C.E[0], 3.75, 3.75); put(C.b, C.H, 5.25, 5.25); // diagonal cells: centres 2.12 m, gap 1.32 m
+    assert.ok(attackable(C.b, C.E[0], C.H), 'diagonal neighbour');
+    put(C.b, C.H, 3.75 + 0.8 + 1.6, 3.75);
+    assert.ok(!attackable(C.b, C.E[0], C.H), 'gap 1.6 m');
+  });
+  test('metric 2: circle / cone / line hit the unit circle (R x 1.5 x 1.1; cone 90 deg; line 1 m)', () => {
+    const { b } = mk2(OPEN16);
+    const O = { px: 3, py: 4.5, r: 0.4 }, at = (d, deg) => ({ px: O.px + d * Math.cos((deg * Math.PI) / 180), py: O.py + d * Math.sin((deg * Math.PI) / 180), r: 0.4 });
+    const C = { px: 12, py: 4.5 };
+    assert.ok(Math.abs(G2.areaRadiusM(2) - 3.3) < 1e-9);
+    assert.ok(G2.inAreaM(b, 'radius', 2, O, C, { px: 12 + 3.6, py: 4.5, r: 0.4 }));
+    assert.ok(!G2.inAreaM(b, 'radius', 2, O, C, { px: 12 + 3.8, py: 4.5, r: 0.4 }));
+    assert.ok(G2.inAreaM(b, 'radius', 1, O, O, at(2.4, 45)), 'aura from the caster edge reaches the diagonal neighbour');
+    const aim = { px: O.px + 3, py: O.py };
+    assert.ok(G2.inAreaM(b, 'cone', 3, O, aim, at(3, 50)), 'cone edge 45 deg + target radius');
+    assert.ok(!G2.inAreaM(b, 'cone', 3, O, aim, at(3, 55)));
+    assert.ok(G2.inAreaM(b, 'cone', 3, O, aim, at(4.8, 0)) && !G2.inAreaM(b, 'cone', 3, O, aim, at(5, 0)), 'cone length 4.5 m');
+    assert.ok(G2.inAreaM(b, 'line', 3, O, aim, { px: O.px + 2, py: O.py + 0.85, r: 0.4 }));
+    assert.ok(!G2.inAreaM(b, 'line', 3, O, aim, { px: O.px + 2, py: O.py + 0.95, r: 0.4 }));
+    const W = mk2(['#########', '#P..#..E#', '#.......#', '#########']);
+    const L = G2.lineEndM(W.b, { px: 2.25, py: 2.25 }, { px: 9, py: 2.25 }, 6);
+    assert.ok(Math.abs(L.px - 6) < 1e-6, `line stops at the wall: ${L.px}`);
+    assert.ok(!G2.inAreaM(W.b, 'line', 6, { px: 2.25, py: 2.25, r: 0.4 }, { px: 9, py: 2.25 }, { px: 7.5, py: 2.25, r: 0.4 }));
+  });
+  test('metric 2: LOS through a wall is blocked by geometry; one free ray = partial cover (+2 KB); half cover near the target', () => {
+    const MAP = ['##########', '#P.......#', '#...#....#', '#........#', '#.......E#', '##########'];
+    const { b, H, E } = mk2(MAP);
+    const T = E[0];
+    T.weapon = { ...GUN };
+    put(b, T, 2.25, 3.75); put(b, H, 11.25, 3.75); // the wall cell (4,2) spans x 6..7.5, y 3..4.5 — right on the line
+    assert.equal(G2.losU(b, T, H), false);
+    assert.ok(!attackable(b, T, H), 'no shot through the wall');
+    put(b, H, 11.25, 4.5 + 0.35); // shifted down: only the lower ray clears the wall corner
+    const A = G2.ptOf(T), P = G2.ptOf(H);
+    assert.equal(G2.raysFree(b, A, P), 1);
+    assert.equal(G2.coverM(b, A, P, false), 2);
+    assert.ok(attackable(b, T, H));
+    assert.equal(getKb(b, H, T, true) - getKb(b, H), 2, 'partial cover +2 KB');
+    put(b, H, 11.25, 6.4);
+    assert.equal(G2.coverM(b, G2.ptOf(T), G2.ptOf(H), false), 0, 'clear line');
+    const HC = mk2(['##########', '#P.......#', '#........#', '#......c.#', '#.......E#', '##########']);
+    const S2 = HC.E[0];
+    put(HC.b, S2, 2.25, 5.25); put(HC.b, HC.H, 12.4, 5.25); // half cover (7,3) x 10.5..12, the target 0.4 m behind it
+    assert.equal(G2.coverM(HC.b, G2.ptOf(S2), G2.ptOf(HC.H), false), 2, 'half cover next to the target');
+    put(HC.b, HC.H, 13.0, 5.25);
+    assert.equal(G2.coverM(HC.b, { px: 13.0, py: 2.25, r: 0.4 }, G2.ptOf(HC.H), false), 0, 'attack from another side: no cover');
+    put(HC.b, S2, 9.6, 5.25);
+    assert.equal(G2.coverM(HC.b, G2.ptOf(HC.H), G2.ptOf(S2), false), 2, 'cover next to the target, toward the shooter');
+    put(HC.b, S2, 5.0, 5.25);
+    assert.equal(G2.coverM(HC.b, G2.ptOf(HC.H), G2.ptOf(S2), false), 0, 'cover 5.5 m from the target does not count');
+  });
+  test('metric 2: opportunity attack only when leaving the 1.5 m zone of control', () => {
+    const { b, H, E } = mk2(OPEN16);
+    const T = E[0];
+    put(b, T, 7.5 + 0.75, 4.5 + 0.75); put(b, H, 6.1, 5.25); // gap 1.35
+    forceTurn(b, H); b.turn.move = 6;
+    assert.ok(perform(b, { type: 'move', to: { px: 8.25, py: 7.1 } }).ok); // round the foe, still inside
+    assert.equal(events(b, 'opportunity').length, 0);
+    assert.ok(perform(b, { type: 'move', to: { px: 8.25, py: 8.6 } }).ok); // leaves
+    assert.equal(events(b, 'opportunity').length, 1);
+  });
+  test('metric 2: ranged AI picks a point behind half cover facing a ranged hero', () => {
+    const MAP = ['##################', '#P...............#', '#................#', '#.........c......#', '#................#', '#...........E....#', '##################'];
+    const { b, H, E } = mk2(MAP, ['gunner']);
+    const G = E[0];
+    H.weapon = { ...GUN };
+    forceTurn(b, G);
+    const p = planTile(b, G);
+    assert.ok(p && p.px != null, 'metric point');
+    const P = { px: p.px, py: p.py, r: M.unitRadius(G) };
+    assert.ok(G2.coverM(b, G2.ptOf(H), P, false) >= 2, `in cover from the hero: ${p.px},${p.py}`);
+    assert.ok(G2.nearCover(b, P), 'next to the cover object');
+    const a = chooseAction(b, G.id);
+    assert.equal(a.type, 'move');
+    assert.ok(a.to.px != null && perform(b, a).ok);
+  });
+  test('metric 2: AI plays whole battles (melee + ranged) without errors; positions stay consistent', () => {
+    for (const seed of [5, 6]) {
+      const b = createBattle({ map: makeArena({ heroes: 2, enemies: 3 }), heroes: [hero(), hero()], enemies: ['thug', 'gunner', 'thug'], data: DATA, seed, metric: 2 });
+      for (let i = 0; i < 500 && !b.winner && b.turn; i++) {
+        const u = b.byId[b.turn.unitId];
+        const a = chooseAction(b, u.id);
+        if (!a || a.type === 'endTurn' || !perform(b, a).ok) endTurn(b);
+        for (const x of b.units) if (!x.dead && !x.removed && x.px != null) assert.deepEqual(M.cellOf(M.posM(x).px, M.posM(x).py), { x: x.x, y: x.y });
+      }
+      assert.ok(b.winner, 'battle ends');
+    }
+  });
+}
+
 // ---------------------------------------------------------------- roguelike «Забег» (docs/specs/roguelike.md)
 {
   const R = await import('../game/src/world/run.js');
