@@ -22,7 +22,7 @@ export const RUN = {
 
 // Party level by layer inside an act: lvl[0] at layer 0 → lvl[1] at the boss layer, linear, rounded down.
 export const ACTS = [
-  { id: 'act1', name: 'Окраины', layers: 8, lvl: [3, 5], tier: 2, bossScale: 1.0, eliteScale: 0.7, fightScale: 1.0,
+  { id: 'act1', name: 'Окраины', layers: 8, lvl: [3, 5], tier: 2, bossScale: 0.9, eliteScale: 0.6, fightScale: 1.0,
     biomes: ['wasteland', 'ruins-city', 'swamp', 'port', 'factory'],
     fight: ['v3-pir-raid', 'v3-wp-corridor', 'v3-mech-plague', 'v3-scv-skeleton-hunt', 'v3-cult-plague', 'v3-mutz-hunt',
       'v3-band-foxes', 'v3-band-panthers', 'v3-fauna-mine', 'v3-lis-bunker', 'v3-wolf-pack', 'v3-ai-lox', 'v3-tin-arena',
@@ -31,7 +31,7 @@ export const ACTS = [
     elite: ['v3-pir-flagship', 'v3-ai-commissar', 'v3-mech-hive', 'v3-tek-golem', 'v3-mutz-alpha', 'v3-band-bisons',
       'v3-cult-temple', 'v3-scv-kings-yard', 'enc-sputnik-raid'],
     boss: ['v3-boss-bazaar', 'v3-boss-ice-ring', 'v3-boss-sputnik', 'v3-boss-lis-1'] },
-  { id: 'act2', name: 'Пустоши и Зоны', layers: 9, lvl: [6, 9], tier: 3, bossScale: 1.5, eliteScale: 1.0, fightScale: 1.0,
+  { id: 'act2', name: 'Пустоши и Зоны', layers: 9, lvl: [6, 9], tier: 3, bossScale: 1.2, eliteScale: 0.8, fightScale: 1.0,
     biomes: ['wasteland', 'mutant-forest', 'factory', 'bunker-interior', 'swamp'],
     fight: ['v4-scv-patrol', 'v4-mutr-patrol', 'v4-agro-patrol', 'v4-scv-host', 'v4-agro-host', 'v4-mutr-host', 'v4-tek-patrol',
       'v4-mech-patrol', 'v4-tek-host', 'v4-mech-host', 'x-cult-scavengers-2', 'x-cult-agrozone-2', 'x-cult-mutantsPlant-2',
