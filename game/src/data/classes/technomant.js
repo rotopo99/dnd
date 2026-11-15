@@ -45,6 +45,14 @@ export default {
     },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
+      desc: 'Баланс метрических боёв: +10 ЗДР, +1 урона.', op: { maxHp: 10, dmg: 1 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: -45 ЗДР, -1 КБ, -6 урона.', op: { maxHp: -45, kb: -1, dmg: -6 } },
+    { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
+      desc: 'Баланс метрических боёв: +20 ЗДР, +3 урона.', op: { maxHp: 20, dmg: 3 } },
+    // BAL-END
     { id: 'phantom-mastery', name: 'Мастер иллюзий', level: 5, path: 'illusionist',
       desc: 'Иллюзии становятся неотличимы от реальности (канон, class-paths): +2 к урону способностей.', op: { dmg: { spell: 2 } } },
     // ---------- Уровни 7–20 ----------

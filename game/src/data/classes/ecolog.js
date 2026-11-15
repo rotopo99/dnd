@@ -24,6 +24,12 @@ export default {
     { id: 'techno-shaman', name: 'Путь Техно-Шамана', desc: 'Управление технологиями через магию: разряды, ритуальные апгрейды, ЭМ-шаманство.' },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
+      desc: 'Баланс метрических боёв: +8 ЗДР, +1 урона.', op: { maxHp: 8, dmg: 1 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: -6 ЗДР.', op: { maxHp: -6 } },
+    // BAL-END
     { id: 'ritual-upgrade', name: 'Ритуальный апгрейд', level: 5, path: 'techno-shaman',
       desc: 'Шаманские разряды сильнее: +2 к урону способностей.', op: { dmg: { spell: 2 } } },
     { id: 'shadow-dance', name: 'Танец теней', level: 5, path: 'spirits',

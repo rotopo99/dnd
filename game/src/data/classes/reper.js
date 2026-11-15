@@ -25,6 +25,14 @@ export default {
     { id: 'techno-musician', name: 'Путь Техно-Музыканта', desc: 'Звуковые атаки: аккорды, звуковые волны, кричащий микрофон.' },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
+      desc: 'Баланс метрических боёв: -10 ЗДР, -1 урона.', op: { maxHp: -10, dmg: -1 } },
+    { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
+      desc: 'Баланс метрических боёв: +12 ЗДР, +1 урона.', op: { maxHp: 12, dmg: 1 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: +40 ЗДР, +3 урона.', op: { maxHp: 40, dmg: 3 } },
+    // BAL-END
     { id: 'loud-sound', name: 'Громкий звук', level: 1, path: 'techno-musician',
       desc: 'Техно-музыкант выкручивает громкость: +3 к урону способностей.', op: { dmg: { spell: 3 } } },
     { id: 'kvn', name: 'Участник КВН', level: 1, path: null,

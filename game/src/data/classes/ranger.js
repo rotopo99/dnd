@@ -49,6 +49,12 @@ export default {
     },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
+      desc: 'Баланс метрических боёв: -6 ЗДР.', op: { maxHp: -6 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: -24 ЗДР, -2 урона.', op: { maxHp: -24, dmg: -2 } },
+    // BAL-END
     { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
       desc: 'Ступень владения «мастерство»: +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { ranged: 2 } } },
     { id: 'marksman', name: 'Меткий стрелок', level: 1, path: 'hunter',

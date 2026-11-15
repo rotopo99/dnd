@@ -25,6 +25,12 @@ export default {
     { id: 'curses', name: 'Путь Проклятий', desc: 'Проклятия Судьи: ослабляет, глушит и метит врагов на смерть.' },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
+      desc: 'Баланс метрических боёв: -10 ЗДР, -1 урона.', op: { maxHp: -10, dmg: -1 } },
+    { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
+      desc: 'Баланс метрических боёв: +5 ЗДР.', op: { maxHp: 5 } },
+    // BAL-END
     { id: 'overclock', name: 'Разгон ядра', level: 6, path: null,
       desc: 'Процессор в разгоне: +1 к атаке, +3 к урону способностей, +10 ЭНР.', op: { hit: 1, dmg: { spell: 3 }, maxEnr: 10 } },
     { id: 'soul-eater-unbreakable', name: 'Несокрушимый пожиратель душ', level: 13, path: 'soul-eater',

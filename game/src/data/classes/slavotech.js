@@ -25,6 +25,14 @@ export default {
     { id: 'proxy-master', name: 'Путь Прокси-Мастера', desc: 'Прокси — магия Старого бога: крушит механизмы, слабо берёт живую плоть.' },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
+      desc: 'Баланс метрических боёв: +30 ЗДР, +2 урона.', op: { maxHp: 30, dmg: 2 } },
+    { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
+      desc: 'Баланс метрических боёв: +40 ЗДР, +1 КБ, +2 урона.', op: { maxHp: 40, kb: 1, dmg: 2 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: +25 ЗДР, +1 КБ, +3 урона.', op: { maxHp: 25, kb: 1, dmg: 3 } },
+    // BAL-END
     { id: 'blessed-wrench', name: 'Освящённое железо', level: 1, path: null,
       desc: 'Старый бог направляет руку: +1 к атаке. Вне канона, не противоречит: баланс.', op: { hit: 1 } },
     { id: 'proxy-hunter', name: 'Прокси-охотник', level: 1, path: 'proxy-master',

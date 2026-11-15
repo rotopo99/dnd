@@ -46,6 +46,14 @@ export default {
     },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
+      desc: 'Баланс метрических боёв: +15 ЗДР, +2 урона.', op: { maxHp: 15, dmg: 2 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: +8 ЗДР, +1 урона.', op: { maxHp: 8, dmg: 1 } },
+    { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
+      desc: 'Баланс метрических боёв: +20 ЗДР, +3 урона.', op: { maxHp: 20, dmg: 3 } },
+    // BAL-END
     { id: 'subdermal-armor', name: 'Подкожная броня', level: 5, path: 'mechanic',
       desc: 'Имплант под кожей: +2 КБ.', op: { kb: 2 } },
     // ---------- Уровни 7–20 ----------

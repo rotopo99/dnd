@@ -48,6 +48,14 @@ export default {
     },
   ],
   passives: [
+    // BAL-BEGIN (docs/qa/BALANCE-metric.md)
+    { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
+      desc: 'Баланс метрических боёв: -18 ЗДР, -1 урона.', op: { maxHp: -18, dmg: -1 } },
+    { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
+      desc: 'Баланс метрических боёв: -15 ЗДР, -1 урона.', op: { maxHp: -15, dmg: -1 } },
+    { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
+      desc: 'Баланс метрических боёв: -30 ЗДР, -2 урона.', op: { maxHp: -30, dmg: -2 } },
+    // BAL-END
     { id: 'weapon-mastery', name: 'Мастерство оружия', level: 5, path: null,
       desc: 'Ступень владения «мастерство»: +1 к атаке и +2 к урону оружием.', op: { hit: 1, dmg: { melee: 2 } } },
     { id: 'claws', name: 'Когти', level: 1, path: 'beast',
