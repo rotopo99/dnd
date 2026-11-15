@@ -15,12 +15,14 @@ export const RUN = {
   eliteRewardChoices: 3,                      // elite: choices are rare+; plus a relic offer
   bossHeal: 1,                                // full heal after act boss
   killMemory: 0,                              // memory points: see META
-  shopPriceMul: 0.25,                         // run shops: world price × this (run credits are scarce: 15–25 per fight)
+  shopPriceMul: 0.25,
+  rescue: { skill: 'medicine', dc: 10 },      // canon «при смерти», as in D&D: after a won fight the standing allies try to save the downed one
+                                              // (best medicine check); failure or a dead body = permadeath                         // run shops: world price × this (run credits are scarce: 15–25 per fight)
 };
 
 // Party level by layer inside an act: lvl[0] at layer 0 → lvl[1] at the boss layer, linear, rounded down.
 export const ACTS = [
-  { id: 'act1', name: 'Окраины', layers: 8, lvl: [3, 5], tier: 2, bossScale: 1.0,
+  { id: 'act1', name: 'Окраины', layers: 8, lvl: [3, 5], tier: 2, bossScale: 1.0, eliteScale: 1.0, fightScale: 1.0,
     biomes: ['wasteland', 'ruins-city', 'swamp', 'port', 'factory'],
     fight: ['v3-pir-raid', 'v3-wp-corridor', 'v3-mech-plague', 'v3-scv-skeleton-hunt', 'v3-cult-plague', 'v3-mutz-hunt',
       'v3-band-foxes', 'v3-band-panthers', 'v3-fauna-mine', 'v3-lis-bunker', 'v3-wolf-pack', 'v3-ai-lox', 'v3-tin-arena',
@@ -29,14 +31,14 @@ export const ACTS = [
     elite: ['v3-pir-flagship', 'v3-ai-commissar', 'v3-mech-hive', 'v3-tek-golem', 'v3-mutz-alpha', 'v3-band-bisons',
       'v3-cult-temple', 'v3-scv-kings-yard', 'enc-sputnik-raid'],
     boss: ['v3-boss-bazaar', 'v3-boss-ice-ring', 'v3-boss-sputnik', 'v3-boss-lis-1'] },
-  { id: 'act2', name: 'Пустоши и Зоны', layers: 9, lvl: [6, 9], tier: 3, bossScale: 1.5,
+  { id: 'act2', name: 'Пустоши и Зоны', layers: 9, lvl: [6, 9], tier: 3, bossScale: 1.5, eliteScale: 1.0, fightScale: 1.0,
     biomes: ['wasteland', 'mutant-forest', 'factory', 'bunker-interior', 'swamp'],
     fight: ['v4-scv-patrol', 'v4-mutr-patrol', 'v4-agro-patrol', 'v4-scv-host', 'v4-agro-host', 'v4-mutr-host', 'v4-tek-patrol',
       'v4-mech-patrol', 'v4-tek-host', 'v4-mech-host', 'x-cult-scavengers-2', 'x-cult-agrozone-2', 'x-cult-mutantsPlant-2',
       'x-cult-tekhonki-2'],
     elite: ['v4-mutz-elite', 'v4-scv-elite', 'v4-agro-elite', 'v4-mutr-elite', 'v4-tek-elite', 'v4-mech-elite', 'v4-mon-hill'],
     boss: ['v3-boss-great-mech', 'v3-boss-plague-seed', 'v3-boss-vibe-burner', 'v3-boss-armory'] },
-  { id: 'act3', name: 'Сердце Руслании', layers: 9, lvl: [10, 13], tier: 4, bossScale: 1.0,
+  { id: 'act3', name: 'Сердце Руслании', layers: 9, lvl: [10, 13], tier: 4, bossScale: 1.0, eliteScale: 1.0, fightScale: 1.0,
     biomes: ['ruins-city', 'factory', 'snow', 'bunker-interior', 'cyberspace'],
     fight: ['v4-ren-patrol', 'v4-wild-patrol', 'v4-ren-host', 'v4-wp-patrol', 'v4-crg-patrol', 'v4-wild-host', 'v4-wp-host',
       'v4-crg-host', 'x-cult-renegades-2', 'x-cult-wilds-2', 'x-cult-warprom-2', 'x-cult-cringegons-2', 'v4-mon-lake'],
@@ -62,7 +64,7 @@ export const NODE_TYPES = {
   event:    { name: 'Событие', pool: 'events', fightChance: 0.2 },
   shop:     { name: 'Лавка', vendors: ['nikola', 'gans', 'galina', 'paracetamol', 'pip-junior', 'bosun-sukhar'], archetypes: ['gunsmith', 'bladesmith', 'armorer', 'medic', 'techmod', 'chemist', 'hunter', 'fence'], stock: [7, 9], reroll: 15 },
   rest:     { name: 'Привал', options: ['heal', 'train', 'remove-status'], trainXp: 1 },
-  treasure: { name: 'Сокровище', pick: 'treasure', trapChance: 0.25, trapDc: [11, 13], skills: ['lockpick', 'perception'] },
+  treasure: { name: 'Сокровище', pick: 'treasure', trapChance: 0.25, trapDc: [11, 13], skills: ['lockpicking', 'perception'] },
   boss:     { name: 'Босс акта', rewards: 'boss', credits: [60, 80], relicChoices: 3 },
 };
 

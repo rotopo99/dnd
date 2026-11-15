@@ -356,10 +356,12 @@ export function nodeEnemies(run, node, encId = node.enc) {
   if (shift < 0) list = list.slice(0, Math.max(Math.min(2, list.length), list.length + shift));
   else if (shift > 0) { const base = list.length > 1 ? list.slice(1) : list; for (let i = 0; i < shift; i++) list.push(base[i % base.length]); }
   const boss = node.type === 'boss';
-  const p = boss ? ACTS[run.act].bossScale * fx.bossScale : 1;
+  const A = ACTS[run.act];
+  // power multiplier (scaleV3): boss — bossScale × ascension; elite — act eliteScale × NODE_TYPES.elite.danger; fight — fightScale
+  const p = boss ? A.bossScale * fx.bossScale : node.type === 'elite' ? (A.eliteScale ?? 1) * (NODE_TYPES.elite.danger ?? 1) : (A.fightScale ?? 1);
   return list.map((id) => {
     let nid = id;
-    if (boss && p !== 1 && enemyDef(id)) nid = scaleV3(id, p);
+    if (p !== 1 && enemyDef(id)) nid = scaleV3(id, Math.round(p * 100) / 100);
     let def = enemyDef(nid);
     if (!def) return id;
     const finale = boss && fx.finalBossPhase && run.act === ACTS.length - 1 && (def.boss || def.rank === 'boss');
@@ -399,7 +401,13 @@ export function applyFight(run, node, units, won) {
   for (const m of alive(run)) {
     const u = units.find((x) => x.runMember === m.id);
     if (!u) continue;
-    const gone = !won || u.dead || u.down || u.removed;
+    let gone = !won || u.dead || u.down || u.removed;
+    if (won && u.down && !u.dead && !u.removed) { // canon «при смерти»: the standing allies try to save him after the fight
+      const savers = units.filter((x) => x.runMember && !x.dead && !x.down && !x.removed).map((x) => x.runMember);
+      const chk = savers.length ? runCheck(run, `rescue:${node.id}:${m.id}`, RUN.rescue.skill, RUN.rescue.dc, savers) : null;
+      (out.rescues = out.rescues || []).push({ name: m.name, ok: !!chk?.ok, check: chk });
+      if (chk?.ok) { gone = false; u.hp = 1; u.down = false; }
+    }
     if (gone && won && !run.revived && hasRelic(run, 'r-reboot-chip')) {
       run.revived = true; out.revived = m.name;
       m.hpLost = u.maxHp - 1; m.mrlLost = Math.max(0, u.maxMrl - Math.max(1, u.mrl));
@@ -609,9 +617,10 @@ export function eventFor(run, node) {
 }
 
 /** Best living member for a skill (by check total). → { m, info } */
-export function bestFor(run, skills) {
+export function bestFor(run, skills, only = null) {
   let best = null;
   for (const m of alive(run)) {
+    if (only && !only.includes(m.id)) continue;
     const unit = buildMember(run, m, { carry: false });
     for (const sk of [].concat(skills)) {
       const info = checkInfo({ unit, name: m.name }, sk);
@@ -622,8 +631,8 @@ export function bestFor(run, skills) {
   return best;
 }
 /** Deterministic d20 check of the best member. → { ok, nat, total, dc, who, skill } */
-export function runCheck(run, part, skills, dc) {
-  const b = bestFor(run, skills);
+export function runCheck(run, part, skills, dc, only = null) {
+  const b = bestFor(run, skills, only);
   const rng = rngFor(run, `check:${part}`);
   const r1 = rng.int(1, 20), r2 = rng.int(1, 20);
   const nat = b?.info.mode === 'adv' ? Math.max(r1, r2) : b?.info.mode === 'dis' ? Math.min(r1, r2) : r1;
