@@ -2,7 +2,8 @@
 // wedges) with palette ramps and baked AO, GPU upload, dynamic overlay batch (translucent highlight quads).
 //   rampRGB(keys[3])               -> [[r,g,b] x3] (0..1) from palette keys
 //   new MeshBuilder()              .quad(p0..p3, ramp, {ao:[4], glow, inside}) .tri .box .bevelBox .cyl .wedge
-//   uploadMesh(gl, mb)             -> { vao, count, bufs } (null when empty);  freeMesh(gl, m)
+//   uploadMesh(gl, mb)             -> { vao, count, bufs } (null when empty; + bone attribute 6 after mb.setBone);  freeMesh
+//   uploadInstanced(gl, mesh, slot, data) -> per-instance attributes (particles: loc 2..4, 12 floats) on a dynamic buffer
 //   new OverlayBuilder()           .quad(p0..p3, rgba) .rect(x0, z0, x1, z1, y, rgba) .frame(...)
 //   uploadOverlay(gl, ob, slot)    -> reuses one dynamic buffer per slot
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
@@ -27,7 +28,9 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
 export class MeshBuilder {
-  constructor() { this.v = []; this.i = []; this.n = 0; }
+  constructor() { this.v = []; this.i = []; this.n = 0; this.b = null; this.bone = 0; }
+  /** Skinned meshes (gfx/units3d.js): every vertex added from now on belongs to bone k. */
+  setBone(k) { if (!this.b) this.b = new Array(this.n).fill(0); this.bone = k; return this; }
   get empty() { return this.n === 0; }
   _poly(pts, ramp, o = {}) {
     let n = norm(cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])));
@@ -40,6 +43,7 @@ export class MeshBuilder {
     const base = this.n, [S, B, L] = ramp, g = o.glow ? 1 : 0;
     pts.forEach((p, k) => {
       this.v.push(p[0], p[1], p[2], n[0], n[1], n[2], S[0], S[1], S[2], B[0], B[1], B[2], L[0], L[1], L[2], o.ao ? o.ao[k] : 0, g);
+      if (this.b) this.b.push(this.bone);
     });
     for (let k = 1; k < pts.length - 1; k++) this.i.push(base, base + k, base + k + 1);
     this.n += pts.length;
@@ -112,6 +116,7 @@ export class MeshBuilder {
       for (let j = 3; j < VERT; j++) this.v.push(mb.v[k + j]);
     }
     for (const i of mb.i) this.i.push(i + base);
+    if (this.b) for (let k = 0; k < mb.n; k++) this.b.push(mb.b ? mb.b[k] : this.bone);
     this.n += mb.n;
     return this;
   }
@@ -130,11 +135,21 @@ export function uploadMesh(gl, mb) {
   gl.bindBuffer(gl.ARRAY_BUFFER, vb);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mb.v), gl.STATIC_DRAW);
   setupAttribs(gl, [3, 3, 3, 3, 3, 2], VERT);
+  const bufs = [vb];
+  if (mb.b) { // bone index per vertex (location 6)
+    const bb = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bb);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mb.b), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(6);
+    gl.vertexAttribPointer(6, 1, gl.FLOAT, false, 4, 0);
+    bufs.push(bb);
+  }
   const ib = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(mb.i), gl.STATIC_DRAW);
   gl.bindVertexArray(null);
-  return { vao, count: mb.i.length, bufs: [vb, ib] };
+  bufs.push(ib);
+  return { vao, count: mb.i.length, bufs };
 }
 export function freeMesh(gl, m) {
   if (!m) return;
@@ -189,3 +204,32 @@ export function uploadOverlay(gl, ob, slot = 0) {
 }
 /** Forget dynamic buffers (context restored). */
 export const resetOverlays = (gl) => slots.delete(gl);
+
+// ---------------------------------------------------------------- instanced particles (gfx/fx3d.js)
+const islots = new WeakMap();
+/** Mesh (static, pos+normal from a MeshBuilder) + dynamic per-instance buffer: iPos(4) iCol(4) iShape(4). */
+export function uploadInstanced(gl, mb, data, slot = 0) {
+  let S = islots.get(gl);
+  if (!S) { S = []; islots.set(gl, S); }
+  let s = S[slot];
+  if (!s) {
+    const m = uploadMesh(gl, mb);
+    s = { vao: m.vao, count: m.count, ib: gl.createBuffer(), cap: 0 };
+    gl.bindVertexArray(s.vao);
+    // the static mesh enabled 0..5; particles read pos (0) + normal (1) only
+    for (const k of [2, 3, 4, 5]) gl.disableVertexAttribArray(k);
+    gl.bindBuffer(gl.ARRAY_BUFFER, s.ib);
+    for (const [loc, off] of [[2, 0], [3, 4], [4, 8]]) {
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 48, off * 4);
+      gl.vertexAttribDivisor(loc, 1);
+    }
+    gl.bindVertexArray(null);
+    S[slot] = s;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, s.ib);
+  if (data.length > s.cap) { s.cap = Math.max(1200, data.length * 2); gl.bufferData(gl.ARRAY_BUFFER, s.cap * 4, gl.DYNAMIC_DRAW); }
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+  return { vao: s.vao, count: s.count, n: data.length / 12 };
+}
+export const resetInstanced = (gl) => islots.delete(gl);

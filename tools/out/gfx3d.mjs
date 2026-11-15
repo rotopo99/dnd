@@ -1,6 +1,7 @@
 // 3D battlefield (docs/specs/3d.md, stage 1): WebGL2 through SwiftShader, battles in 3 biomes (+ night), camera
 // rotation and zoom, click on a cell moves the hero (camera ray picking), 3D / 2D toggle, context loss -> 2D fallback,
-// frame time as a reference. Screenshots: tools/out/gfx3d-*.png. Exit code 1 on failures or console errors.
+// frame time as a reference; stage 2: surfaces + shot / cast / swing animations in 3 biomes (gfx3d-anim-*.png), «Снизить
+// эффекты» / shadow quality. Screenshots: tools/out/gfx3d-*.png. Exit code 1 on failures or console errors.
 // node tools/out/gfx3d.mjs [--biomes wasteland,snow,factory]
 import { open } from './v3-harness.mjs';
 
@@ -55,6 +56,33 @@ for (const [bi, biome] of biomes.entries()) {
   await page.mouse.move(5, 300);
   await wait(200);
   await shot(`gfx3d-${bi + 1}-${biome}`);
+  if (bi === 0) { await page.evaluate(() => { window.__game.scene.S.v3.cam.zoomIdx = 2; }); await wait(700); }
+  // stage 2: surfaces around the hero + a shot / a cast / a melee swing in flight (view-only events)
+  const fx = await page.evaluate(async () => {
+    const S = window.__game.scene.S, b = S.b, an = await import('/game/src/gfx/anim.js'), sf = await import('/game/src/rules/surfaces.js');
+    const g = await import('/game/src/rules/grid.js');
+    b.map.tod = 'day';
+    const h = b.byId[S.heroId], foe = b.units.filter((u) => u.team !== 'heroes' && !u.dead).sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0];
+    const kinds = ['fire', 'electric', 'water', 'ice', 'acid', 'toxgas', 'smoke', 'oil'];
+    const occ = new Set(b.units.map((u) => `${u.x},${u.y}`));
+    let k = 0;
+    for (let r = 1; r <= 4 && k < kinds.length; r++) for (let dy = -r; dy <= r && k < kinds.length; dy += 2) for (let dx = -r; dx <= r && k < kinds.length; dx += 2) {
+      const x = h.x + dx, y = h.y + dy;
+      if (!g.inBounds(b.grid, x, y) || !g.isPassable(b.grid, x, y) || occ.has(`${x},${y}`) || b.surfaces?.get(`${x},${y}`)) continue;
+      if (sf.createSurface(b, kinds[k], [{ x, y }], null, { noIgnite: true }).length) k++;
+    }
+    an.animEvent3d(S, { type: 'attack', actor: h.id, target: foe.id, melee: false, hit: true });
+    an.animEvent3d(S, { type: 'damage', actor: h.id, target: foe.id, amount: 3 });
+    an.animEvent3d(S, { type: 'ability', actor: foe.id, target: h.id, name: 'x' });
+    const T = (await import('/game/src/gfx/units3d.js')).unitTemplate(foe);
+    return { placed: k, foe: foe.enemyId, type: T.type, active: an.animActive(S.v3, S.time) };
+  });
+  ok(fx.placed >= 5 && fx.active, `${biome}: ${fx.placed} surfaces, foe ${fx.foe} (${fx.type}), animation active`);
+  await wait(380);
+  const stx = await page.evaluate(() => ({ ...window.__game.scene.S.v3.stats }));
+  ok(stx.particles > 10 && stx.groups >= 1 && stx.shadow > 0, `${biome}: stats ${JSON.stringify(stx)}`);
+  await shot(`gfx3d-anim-${biome}`);
+  if (bi === 0) { await page.evaluate(() => { window.__game.scene.S.v3.cam.zoomIdx = 1; }); await wait(1500); }
   if (bi === 0) {
     // click on a reachable cell -> the hero walks there
     const tgt = await page.evaluate(() => {
@@ -97,7 +125,7 @@ for (const [bi, biome] of biomes.entries()) {
     await page.mouse.move(400, 300);
     await page.mouse.wheel(0, -120); await wait(500);
     const z = await page.evaluate(() => window.__game.scene.S.v3.cam.zoomIdx);
-    ok(z === 1, `wheel zoom -> level ${z}`);
+    ok(z === 2, `wheel zoom -> level ${z}`);
     await shot('gfx3d-zoom');
     await page.mouse.wheel(0, 120); await wait(400);
     // frame time (SwiftShader: CPU rasteriser — a reference only, target 16 ms on a real GPU)
@@ -108,6 +136,19 @@ for (const [bi, biome] of biomes.entries()) {
     await wait(300);
     await shot('gfx3d-night');
     await page.evaluate(() => { window.__game.scene.S.b.map.tod = 'day'; });
+    // «Снизить эффекты» + «Снизить движение»: no shadows, no particles, simple heads; then shadows «низкие»
+    const red = await page.evaluate(async () => {
+      const m = await import('/game/src/gfx/settings.js'), S = window.__game.scene.S;
+      m.setGfxPref('reduceFx', true); m.setGfxPref('reduceMotion', true); S.v3.lastSig = '';
+      await new Promise((r) => setTimeout(r, 400));
+      const a = { ...S.v3.stats };
+      m.setGfxPref('reduceFx', false); m.setGfxPref('reduceMotion', false); m.setGfxPref('shadows', 'low'); S.v3.lastSig = '';
+      await new Promise((r) => setTimeout(r, 400));
+      const c = { ...S.v3.stats };
+      m.setGfxPref('shadows', 'high');
+      return { a, c };
+    });
+    ok(red.a.shadow === 0 && red.c.shadow === 512, `reduce effects: shadow ${red.a.shadow}, particles ${red.a.particles}; low shadows ${red.c.shadow}`);
     // 3D -> 2D -> 3D with the top bar button
     const g = await page.evaluate(async () => { const m = await import('/game/src/gfx/scene3d.js'); return m.camButtons(window.__game.scene.S, window.__game).find((b) => b.id === 'gfx'); });
     await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await wait(300);

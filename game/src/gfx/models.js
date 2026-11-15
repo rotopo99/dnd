@@ -1,16 +1,12 @@
 // Procedural models of the 3D battlefield (docs/specs/3d.md §2, stage 1): props of assets/props.js by type
 // (car / barrel / wagon / container / crate / generator / shelf / block ..., the rest — a box of the prop's colour and
-// height), unit dummies (capsule body in the sprite's colours + team belt) with the hero head from ui/avatar3d.js.
+// height). Units — gfx/units3d.js.
 //   ramp(key)                     -> rgb ramp of a palette key (GFX.ramps)
 //   propColors(id)                -> [main, second] palette keys (most common colours of the prop sprite)
 //   propModel(id)                 -> MeshBuilder in footprint space (0..w × 0..h cells, y up from the floor), cached
 //   propTop(id)                   -> height (m) used for picking / cover readability
-//   unitModel(u)                  -> { mb, top } capsule + head, cached by look + class / enemy id
 import { GFX } from '../data/gfx.js';
 import { PROPS, propGrid } from '../assets/props.js';
-import { SPRITES, heroSpriteIds, enemySpriteIds } from '../assets/sprites.js';
-import { buildAvatarMesh } from '../ui/avatar3d.js';
-import { heroLook3d } from '../ui/hero-avatar.js';
 import { MeshBuilder, rampRGB } from './mesh.js';
 
 const rampCache = new Map();
@@ -176,56 +172,4 @@ export function propModel(id) {
   }
   cache.set(id, mb);
   return mb;
-}
-
-// ---------------------------------------------------------------- units
-const dominant = (rows, y0 = 0, y1 = 99) => {
-  const n = {};
-  rows.forEach((r, y) => { if (y >= y0 && y <= y1) for (const ch of r) if (ch !== '.' && ch !== '0' && ch !== ' ') n[ch] = (n[ch] || 0) + 1; });
-  return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || null;
-};
-const frame0 = (id) => SPRITES[id]?.frames?.[0] || [];
-
-const unitCache = new Map();
-/** Capsule dummy: legs, torso (sprite colours), team belt is drawn as an overlay ring; head — avatar (heroes) or a ball. */
-export function unitModel(u) {
-  const hero = u.kind === 'hero';
-  const ids = hero ? heroSpriteIds(u.raceId, u.classId, u.look) : enemySpriteIds(u.enemyId || u.id);
-  const key = hero ? `h|${u.raceId}|${u.classId}|${u.look}|${JSON.stringify(u.avatar || u.name || '')}` : `e|${ids.join('+')}`;
-  let m = unitCache.get(key);
-  if (m) return m;
-  const base = frame0(ids[0]), layer = ids[1] ? frame0(ids[1]) : [];
-  const body = dominant(layer, 7, 13) || dominant(base, 7, 13) || '3';
-  const legs = dominant(base, 13, 15) || dominant(base, 11, 15) || '1';
-  const skin = dominant(base, 1, 6) || '9';
-  const U = GFX.unit, mb = new MeshBuilder();
-  const r = U.r, bh = U.body;
-  mb.cyl(0, 0, 0, bh * 0.45, r * 0.8, ramp(legs), { seg: 8, r1: r * 0.85 });
-  mb.cyl(0, bh * 0.45, 0, bh * 0.55, r * 0.95, ramp(body), { seg: 8, r1: r * 1.05, cap: ramp(body) });
-  // shoulders / arms
-  for (const s of [-1, 1]) mb.cyl(s * (r + 0.07), bh * 0.42, 0, bh * 0.5, 0.07, ramp(body), { seg: 6 });
-  let top = bh;
-  const hs = U.headScale;
-  if (hero) {
-    const mesh = buildAvatarMesh(heroLook3d(u));
-    const R = {};
-    for (const [k, v] of Object.entries(mesh.mats)) { R[k] = rampRGB(v); R[k].glow = !!v.glow; }
-    const hy = bh + 0.75 * hs;
-    for (const f of mesh.faces) {
-      const cy = f.v.reduce((s, p) => s + p[1], 0) / f.v.length;
-      if (cy < -0.72) continue; // shoulders of the bust: the capsule has its own
-      const pts = f.v.map((p) => [p[0] * hs, hy + p[1] * hs, p[2] * hs]);
-      const rr = R[f.m] || R.skin;
-      mb._poly(pts, rr, { glow: rr.glow, inside: [0, hy, 0] });
-      top = Math.max(top, ...pts.map((p) => p[1]));
-    }
-  } else {
-    const hr = U.head;
-    mb.cyl(0, bh, 0, hr * 1.5, hr * 0.8, ramp(skin), { seg: 8, r1: hr * 0.65 });
-    mb.box(-hr * 0.55, bh + hr * 0.75, hr * 0.6, hr * 0.55, bh + hr * 0.95, hr * 0.78, rampRGB(['c', 'c', 'c']), { glow: true, ao: 0 });
-    top = bh + hr * 1.5;
-  }
-  m = { mb, top, key };
-  unitCache.set(key, m);
-  return m;
 }

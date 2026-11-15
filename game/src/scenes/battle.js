@@ -32,6 +32,7 @@ import { createPin, pinUnit, updatePin } from '../ui/unit-pin.js';
 import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { pickBattle, cameraInput3d } from '../gfx/scene3d.js';
+import { animEvent3d } from '../gfx/anim.js';
 import { objectiveStripBottom } from '../ui/battle-objectives.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
@@ -893,6 +894,7 @@ export function createBattleScene(opts) {
       }
       default: break;
     }
+    if (S.v3) animEvent3d(S, e); // 3D view: unit animations, projectiles (read-only)
     opts.onEvent?.(S, e);
     S.dirty = true;
   }

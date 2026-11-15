@@ -1,4 +1,4 @@
-// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, «Снизить эффекты», «Снизить движение», brightness.
+// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, «Снизить эффекты», «Снизить движение», shadows, brightness.
 // openSettings(game) — modal (ui/modal.js), values live in gfx/settings.js (localStorage).
 import { t } from '../data/text/index.js';
 import { GFX } from '../data/gfx.js';
@@ -22,6 +22,10 @@ export function openSettings(game) {
           { label: `${t('settings.mode')}: ${modeLabel}`, keep: true, disabled: !can3d, run: () => setGfxPref('mode', MODES[(MODES.indexOf(p.mode) + 1) % MODES.length]) },
           { label: `${t('settings.reduceFx')}: ${onOff(p.reduceFx)}`, keep: true, run: () => setGfxPref('reduceFx', !p.reduceFx) },
           { label: `${t('settings.reduceMotion')}: ${onOff(p.reduceMotion)}`, keep: true, run: () => setGfxPref('reduceMotion', !p.reduceMotion) },
+          {
+            label: `${t('settings.shadows')}: ${t(`settings.shadows.${p.shadows || 'high'}`)}${p.reduceFx ? ` (${t('settings.shadowsFx')})` : ''}`, keep: true,
+            run: () => { const L = GFX.shadow.levels; setGfxPref('shadows', L[(L.indexOf(p.shadows || 'high') + 1) % L.length]); },
+          },
           {
             label: `${t('settings.brightness')}: ${Math.round((p.brightness || 1) * 100)}%`, keep: true,
             run: () => { let v = Math.round(((p.brightness || 1) + B.step) * 10) / 10; if (v > B.max + 1e-6) v = B.min; setGfxPref('brightness', v); },

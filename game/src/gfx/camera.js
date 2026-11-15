@@ -1,7 +1,8 @@
 // Isometric orthographic camera (docs/specs/3d.md §1): yaw in 90° steps with a 0.25 s ease, 3 zoom levels relative to
 // «the whole map fits the area», pitch 35.26°. World: X = cell x, Z = cell y, Y = up (metres).
 //   createCamera()                         -> cam
-//   fitCamera(cam, area, w, h, maxH)       screen area {x,y,w,h} + map size -> base pixels per metre
+//   fitCamera(cam, area, w, h, maxH)       screen area {x,y,w,h} + map size -> base pixels per metre + zoom levels
+//                                          (0 — whole map, 1 default — floor = GFX.camera.widthFill of the width, 2 — closer)
 //   rotateCamera(cam, dir), zoomCamera(cam, d), updateCamera(cam, dt, {focus:{x,z}, instant})
 //   viewProj(cam, W, H)                    -> Float32Array(16) (column-major, for gl)
 //   project(cam, x, y, z)                  -> {x, y, d} screen px + depth
@@ -16,7 +17,7 @@ export function createCamera() {
   const C = GFX.camera;
   return {
     step: 0, yaw: C.yaw, yawFrom: C.yaw, yawTo: C.yaw, tw: 1, pitch: C.pitch,
-    zoomIdx: C.zoomDefault, zoom: C.zoom[C.zoomDefault], ppmFit: 30, area: { x: 0, y: 0, w: 1, h: 1 },
+    zoomIdx: C.zoomDefault, zoom: 1, zooms: [1, 1.3, 1.3 * C.closer], zoomSet: false, ppmFit: 30, area: { x: 0, y: 0, w: 1, h: 1 },
     cx: 0, cz: 0, cy: 0, mapW: 1, mapH: 1, moving: false,
   };
 }
@@ -42,6 +43,12 @@ export function fitCamera(cam, area, w, h, maxH = 1.6) {
     x0 = Math.min(x0, a); x1 = Math.max(x1, a); y0 = Math.min(y0, b); y1 = Math.max(y1, b);
   }
   cam.ppmFit = Math.max(8, Math.min(area.w / (x1 - x0), area.h / (y1 - y0)) * 0.97);
+  // default level: the floor diamond takes widthFill of the area width (3d.md stage 2: the field was too small)
+  let f0 = Infinity, f1 = -Infinity;
+  for (const X of [0, w]) for (const Z of [0, h]) { const a = dot([X, 0, Z], r); f0 = Math.min(f0, a); f1 = Math.max(f1, a); }
+  const C = GFX.camera, wide = Math.max(1, (area.w * C.widthFill) / (f1 - f0) / cam.ppmFit);
+  cam.zooms = [1, wide, wide * C.closer];
+  if (first || !cam.zoomSet) { cam.zoom = cam.zooms[cam.zoomIdx]; cam.zoomSet = true; }
   if (first) { cam.cx = w / 2; cam.cz = h / 2; }
 }
 
@@ -52,7 +59,7 @@ export function rotateCamera(cam, dir) {
   cam.tw = 0;
 }
 export function zoomCamera(cam, d) {
-  const n = GFX.camera.zoom.length;
+  const n = cam.zooms.length;
   cam.zoomIdx = Math.max(0, Math.min(n - 1, cam.zoomIdx + (d > 0 ? 1 : -1)));
 }
 
@@ -65,7 +72,7 @@ export function updateCamera(cam, dt, { focus = null, instant = false } = {}) {
     cam.yaw = cam.yawFrom + (cam.yawTo - cam.yawFrom) * ease(cam.tw);
     moving = true;
   } else cam.yaw = cam.yawTo;
-  const zt = C.zoom[cam.zoomIdx];
+  const zt = cam.zooms[cam.zoomIdx];
   const k = instant ? 1 : 1 - Math.exp(-dt * 12);
   if (Math.abs(cam.zoom - zt) > 1e-3) { cam.zoom += (zt - cam.zoom) * k; moving = true; } else cam.zoom = zt;
   const mx = cam.mapW / 2, mz = cam.mapH / 2;

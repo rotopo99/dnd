@@ -1,7 +1,8 @@
 // 3D battlefield (docs/specs/3d.md, stage 1): WebGL layer under the Canvas 2D UI. Builds the static world from the
 // battle grid (tiles, `elev`, walls / covers, props of the map def, live objects) in 8x8 chunks (a chunk is rebuilt
-// when its cells change — `breakObject`), draws units as capsule dummies (hull outline in the team colour, x-ray
-// silhouette behind walls), highlights of the 2D view as translucent quads, surfaces, team rings.
+// when its cells change — `breakObject`), draws units (stage 2: skinned templates of gfx/units3d.js, instanced per
+// template, poses of gfx/anim.js in a bone texture; hull outline in the team colour, x-ray silhouette behind walls),
+// a shadow map pass, highlights of the 2D view as translucent quads, surfaces and effects of gfx/fx3d.js, team rings.
 // Battle data never depends on this module (co-op determinism): it only reads S.
 //   createGfx(canvas, game)           -> game.gfx { ok(), resize(w, h, cw, ch), endFrame(), use() }
 //   battle3d(game, S)                 -> S.v3 (state) when 3D is on, else null (drops S.v3)
@@ -20,10 +21,13 @@ import { PROPS } from '../assets/props.js';
 import { liveChar } from '../ui/battle-terrain.js';
 import { fieldBiome, propCells } from '../ui/field-view.js';
 import { visionOf, lightSources } from '../world/battlefields.js';
-import { createGL, worldProgram, overlayProgram, hasWebGL2 } from './gl.js';
-import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, keyRGB, rampRGB, cssRGBA } from './mesh.js';
+import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, BONE_TEX_W } from './gl.js';
+import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, uploadInstanced, resetInstanced, keyRGB, rampRGB, cssRGBA } from './mesh.js';
 import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis } from './camera.js';
-import { ramp, propModel, propTop, unitModel } from './models.js';
+import { ramp, propModel, propTop } from './models.js';
+import { unitTemplate } from './units3d.js';
+import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
+import { buildFx, particleMesh } from './fx3d.js';
 import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken } from './settings.js';
 
 const G = GFX.geo;
@@ -40,7 +44,7 @@ export function createGfx(canvas, game) {
       try {
         X.gl = createGL(canvas, {
           onLost: () => { X.lost = true; X.lostAt = performance.now(); },
-          onRestored: () => { X.lost = false; X.P = null; X.gen++; X.gpu.clear(); resetOverlays(X.gl); X.init(); },
+          onRestored: () => { X.lost = false; X.P = null; X.gen++; X.gpu.clear(); X.sh = null; X.bt = null; resetOverlays(X.gl); resetInstanced(X.gl); X.init(); },
         });
         if (!X.gl) throw new Error('no webgl2');
         X.init();
@@ -51,7 +55,11 @@ export function createGfx(canvas, game) {
         return false;
       }
     },
-    init() { X.P = worldProgram(X.gl); X.O = overlayProgram(X.gl); },
+    init() {
+      const gl = X.gl;
+      X.P = worldProgram(gl); X.O = overlayProgram(gl); X.K = skinProgram(gl); X.PT = particleProgram(gl);
+      X.D = depthProgram(gl, false); X.DK = depthProgram(gl, true);
+    },
     fail() {
       X.failed = true; X.gl = null;
       markGfxBroken();
@@ -263,7 +271,7 @@ export function battle3d(game, S) {
     if (S.v3) dropBattle3d(game, S);
     return null;
   }
-  if (!S.v3 || S.v3.gen !== game.gfx.gen) S.v3 = { cam: S.v3?.cam || createCamera(), chunks: new Map(), gen: game.gfx.gen, face: {}, hgt: {}, lastSig: '', lastDraw: -1, gv: -1, world: null };
+  if (!S.v3 || S.v3.gen !== game.gfx.gen) S.v3 = { cam: S.v3?.cam || createCamera(), chunks: new Map(), gen: game.gfx.gen, face: {}, hgt: {}, anim: {}, impact: {}, fx: [], lastSig: '', lastDraw: -1, gv: -1, world: null };
   const V = S.v3, b = S.b;
   const gv = `${b.gridVersion || 0}|${b.objects?.size || 0}`;
   if (V.gv !== gv) {
@@ -298,7 +306,8 @@ export function pickBattle(S, px, py) {
     if (u.dead || u.removed) continue;
     const d = S.dispOf(u);
     const h = V.hgt[u.id] ?? 0;
-    const a = project(cam, d.x + 0.5, h, d.y + 0.5), c = project(cam, d.x + 0.5, h + unitModel(u).top * GFX.unit.scale, d.y + 0.5);
+    const T = unitTemplate(u, { simple: !!gfxPrefs().reduceFx });
+    const a = project(cam, d.x + 0.5, h, d.y + 0.5), c = project(cam, d.x + 0.5, h + T.top * T.scale, d.y + 0.5);
     const rw = cam.ppmFit * cam.zoom * 0.3;
     if (px > a.x - rw && px < a.x + rw && py < a.y && py > c.y && a.d < bd) { bd = a.d; best = { x: u.x, y: u.y }; }
   }
@@ -315,7 +324,8 @@ export function cellScreen(S, x, y, h = 0) {
 export function unitScreen(S, u, d) {
   const L = S.L, V = S.v3;
   if (!V?.world) return { x: L.mapX + d.x * L.cell, y: L.mapY + d.y * L.cell };
-  const top = unitModel(u).top * GFX.unit.scale + 0.15;
+  const T = unitTemplate(u, { simple: !!gfxPrefs().reduceFx });
+  const top = T.top * T.scale + 0.15;
   const p = project(V.cam, d.x + 0.5, (V.hgt[u.id] ?? 0) + top, d.y + 0.5);
   return { x: p.x - L.cell / 2, y: p.y };
 }
@@ -366,12 +376,80 @@ function modelMat(x, y, z, yaw, lie = 0, s = 1) {
 }
 const TEAM = (u) => (u.team === 'heroes' ? (u.kind === 'hero' ? 'player' : 'ally') : u.team === 'enemies' ? 'enemy' : 'rival');
 const ob = new OverlayBuilder();
+const PARTS = [];
+let boneData = new Float32Array(BONE_TEX_W * 4 * 32);
+
+/** Shadow resources of the context: depth texture + framebuffer of `size` (1 = dummy, shadows off). */
+function shadowRes(X, size) {
+  const gl = X.gl;
+  if (X.sh && X.sh.size === size) return X.sh;
+  if (X.sh) { gl.deleteTexture(X.sh.tex); gl.deleteFramebuffer(X.sh.fb); }
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, size, size, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, tex, 0);
+  gl.drawBuffers([gl.NONE]);
+  gl.readBuffer(gl.NONE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.activeTexture(gl.TEXTURE0);
+  X.sh = { tex, fb, size };
+  return X.sh;
+}
+/** Bone texture (RGBA32F, BONE_TEX_W x rows) with the instance data of the frame. */
+function boneTex(X, rows) {
+  const gl = X.gl;
+  if (!X.bt || X.bt.rows < rows) {
+    if (X.bt) gl.deleteTexture(X.bt.tex);
+    const n = Math.max(32, 1 << Math.ceil(Math.log2(rows)));
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONE_TEX_W, n, 0, gl.RGBA, gl.FLOAT, null);
+    for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, gl.NEAREST);
+    X.bt = { tex, rows: n };
+  }
+  return X.bt;
+}
+/** Orthographic light matrix fitted to the map box (static per camera step: no swimming shadows). */
+function lightVP(Ld, Wd) {
+  const l = Math.hypot(...Ld), L = [Ld[0] / l, Ld[1] / l, Ld[2] / l];
+  const f = [-L[0], -L[1], -L[2]];
+  const up = Math.abs(f[1]) > 0.99 ? [0, 0, 1] : [0, 1, 0];
+  let r = [f[1] * up[2] - f[2] * up[1], f[2] * up[0] - f[0] * up[2], f[0] * up[1] - f[1] * up[0]];
+  const rl = Math.hypot(...r); r = r.map((v) => v / rl);
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  const d = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const pad = GFX.shadow.pad;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const X of [-pad, Wd.w + pad]) for (const Z of [-pad, Wd.h + pad]) for (const Y of [G.base - 0.5, G.wall + 2.5]) {
+    const P = [X, Y, Z];
+    x0 = Math.min(x0, d(P, r)); x1 = Math.max(x1, d(P, r)); y0 = Math.min(y0, d(P, u)); y1 = Math.max(y1, d(P, u)); z0 = Math.min(z0, d(P, f)); z1 = Math.max(z1, d(P, f));
+  }
+  const sx = 2 / (x1 - x0), sy = 2 / (y1 - y0), sz = 2 / (z1 - z0);
+  const m = new Float32Array(16);
+  m[0] = sx * r[0]; m[4] = sx * r[1]; m[8] = sx * r[2]; m[12] = -sx * (x0 + x1) / 2;
+  m[1] = sy * u[0]; m[5] = sy * u[1]; m[9] = sy * u[2]; m[13] = -sy * (y0 + y1) / 2;
+  m[2] = sz * f[0]; m[6] = sz * f[1]; m[10] = sz * f[2]; m[14] = -sz * (z0 + z1) / 2;
+  m[15] = 1;
+  return m;
+}
+/** Shadow quality: off with «Снизить эффекты» or the setting. */
+const shadowSize = (prefs) => (prefs.reduceFx || prefs.shadows === 'off' ? 0 : GFX.shadow.size[prefs.shadows] || GFX.shadow.size.high);
 
 export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) {
   const X = game.gfx, gl = X.gl, V = S.v3;
   if (!gl || !V?.world || X.lost) return;
   X.use();
-  const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam;
+  const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam, now = S.time;
   const dt = Math.min(0.1, V.lastT == null ? 0 : S.time - V.lastT);
   V.lastT = S.time;
   // camera: lean to the active unit when zoomed in
@@ -384,24 +462,11 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     const h0 = V.hgt[it.u.id];
     V.hgt[it.u.id] = h0 == null || prefs.reduceMotion ? ht : h0 + (ht - h0) * Math.min(1, dt * GFX.unit.lerpH);
   }
-  // overlay: highlights, surfaces, rings
+  // overlay: highlights, surfaces (decals), rings; particles of surfaces and actions
   ob.clear();
+  PARTS.length = 0;
   const fl = (x, y) => (Wd.floor[y * Wd.w + x] ?? 0) + G.overlay;
-  for (const [k, cell] of b.surfaces || []) {
-    const [x, y] = k.split(',').map(Number);
-    if (x < 0 || y < 0 || x >= Wd.w || y >= Wd.h) continue;
-    for (const layer of ['floor', 'gas']) {
-      const s = cell[layer], d = s && b.data.surfaces?.[s.kind];
-      if (!d || s.hazard) continue;
-      const c = keyRGB(d.color || '5');
-      if (layer === 'floor') { ob.rect(x, y, x + 1, y + 1, fl(x, y), [c[0], c[1], c[2], 0.35]).frame(x, y, x + 1, y + 1, fl(x, y) + 0.001, 0.05, [c[0], c[1], c[2], 0.75]); }
-      else ob.rect(x, y, x + 1, y + 1, fl(x, y) + 0.6, [c[0], c[1], c[2], 0.22]);
-    }
-  }
-  for (const z of b.zones || []) {
-    const R = z.size || 1, c = z.kind === 'smoke' ? [0.7, 0.73, 0.78, 0.22] : [0.47, 0.78, 0.55, 0.2];
-    for (let y = z.y - R; y <= z.y + R; y++) for (let x = z.x - R; x <= z.x + R; x++) if (x >= 0 && y >= 0 && x < Wd.w && y < Wd.h) ob.rect(x, y, x + 1, y + 1, fl(x, y) + 0.5, c);
-  }
+  const fxActive = buildFx(S, V, now, prefs, ob, PARTS);
   for (const tr of b.traps || []) if (tr.team === 'heroes') ob.frame(tr.x + 0.2, tr.y + 0.2, tr.x + 0.8, tr.y + 0.8, fl(tr.x, tr.y), 0.06, [...keyRGB('a'), 0.9]);
   for (const h of hl) {
     if (h.x < 0 || h.y < 0 || h.x >= Wd.w || h.y >= Wd.h) continue;
@@ -418,9 +483,12 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     ob.ring(d.x + 0.5, d.y + 0.5, y, r0, r1, [c[0], c[1], c[2], it.u === cur ? 0.95 * pulse : 0.7]);
     if (it.u === cur) ob.ring(d.x + 0.5, d.y + 0.5, y, r1 + 0.04, r1 + 0.08, [c[0], c[1], c[2], 0.5 * pulse]);
   }
-  // render on demand: unchanged frame -> keep the last image (15 fps idle refresh)
-  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}`;
-  if (sig === V.lastSig && S.time - V.lastDraw < 1 / GFX.idleFps) return;
+  // render on demand: unchanged frame -> keep the last image (15 fps idle refresh: breathing, slow surface motion);
+  // actions, hits, falls, projectiles, walking and camera tweens — every frame
+  const walking = units.some((it) => it.d.path?.length);
+  const busy = fxActive || walking || animActive(V, now) || cam.moving;
+  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}`;
+  if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / GFX.idleFps) return;
   V.lastSig = sig; V.lastDraw = S.time;
 
   // chunks
@@ -432,11 +500,115 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     V.chunks.set(key, { sig: s, mesh: uploadMesh(gl, buildChunk(Wd, cx, cy)) });
   }
 
+  // ---- units: templates (cached meshes) + per-instance bones / colours in the bone texture
+  const simple = !!prefs.reduceFx;
+  const heroes = b.units.filter((u) => u.team === 'heroes' && !u.dead), foes = b.units.filter((u) => u.team !== 'heroes' && !u.dead);
+  const inst = [];
+  for (const it of units) {
+    const u = it.u, d = it.d;
+    const T = unitTemplate(u, { simple });
+    const m = X.mesh(`tpl:${T.key}`, () => T.mb);
+    if (!m) continue;
+    // facing: the target of the current action, else movement direction, else towards the other side
+    const fz = V.face[u.id] || (V.face[u.id] = { x: d.x, y: d.y, a: null });
+    let a = fz.a;
+    const aim = aimOf(V, u.id, now);
+    if (Math.abs(d.x - fz.x) + Math.abs(d.y - fz.y) > 0.01) { a = Math.atan2(d.x - fz.x, d.y - fz.y); fz.x = d.x; fz.y = d.y; }
+    if (aim) a = Math.atan2(aim.x - (d.x + 0.5), aim.z - (d.y + 0.5));
+    else if (a == null || !d.path?.length) {
+      const other = u.team === 'heroes' ? foes : heroes;
+      if (other.length && !(d.path?.length) && !(u.dead || u.removed)) {
+        let ox = 0, oy = 0; for (const o of other) { ox += o.x; oy += o.y; }
+        const want = Math.atan2(ox / other.length - d.x, oy / other.length - d.y);
+        a = a == null || prefs.reduceMotion ? want : a + angDelta(a, want) * Math.min(1, dt * 8);
+      } else if (a == null) a = cam.yaw * Math.PI / 180;
+    }
+    fz.a = a;
+    const st = trackWalk(V, u.id, d.x, d.y);
+    const dead = !!(u.dead || u.removed);
+    if (dead && st.deathT0 < 0) st.deathT0 = now; // removed without an event (fled / unsummoned)
+    // dying units: stay opaque while they fall, then fade
+    const alpha = dead ? Math.min(1, it.alpha * 2.2) : it.alpha;
+    const flash = Math.min(0.6, (d.flash || 0) * 3);
+    const team = keyRGB(it.tint || GFX.team[TEAM(u)]);
+    inst.push({ it, T, m, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.growTarget : GFX.unit.grow });
+  }
+  // rows: grouped by template, opaque first (x-ray / body / outline draw the opaque run, the translucent run after)
+  inst.sort((p, q) => (p.T.key < q.T.key ? -1 : p.T.key > q.T.key ? 1 : (p.trans ? 1 : 0) - (q.trans ? 1 : 0)));
+  const groups = [];
+  const rowF = BONE_TEX_W * 4;
+  if (boneData.length < inst.length * rowF) boneData = new Float32Array(inst.length * rowF * 2);
+  const wc = keyRGB('5'); // hit flash: bone white, soft (d.flash fades)
+  inst.forEach((p, row) => {
+    let g = groups[groups.length - 1];
+    if (!g || g.key !== p.T.key) { g = { key: p.T.key, m: p.m, first: row, nOp: 0, nTr: 0 }; groups.push(g); }
+    if (p.trans) g.nTr++; else g.nOp++;
+    const d = p.it.d, o = row * rowF;
+    poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, boneData, o, { walking: p.walking, reduceMotion: prefs.reduceMotion });
+    boneData.set([wc[0], wc[1], wc[2], p.flash, p.team[0], p.team[1], p.team[2], p.alpha, p.grow, 0, 0, 0], o + 132);
+  });
+  const BT = boneTex(X, Math.max(1, inst.length));
+  if (inst.length) {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, BT.tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONE_TEX_W, inst.length, gl.RGBA, gl.FLOAT, boneData.subarray(0, inst.length * rowF));
+  }
+  const drawGroup = (P, g, from, n) => {
+    if (!n) return;
+    gl.uniform1i(P.u.uBase, g.first + from);
+    gl.bindVertexArray(g.m.vao);
+    gl.drawElementsInstanced(gl.TRIANGLES, g.m.count, gl.UNSIGNED_INT, 0, n);
+  };
+
   const W = gl.canvas.width, H = gl.canvas.height;
+  const { r, f } = basis(cam), Ld = GFX.light.dir;
+  const lv = [r[0] * Ld[0] - f[0] * Ld[2], Ld[1], r[2] * Ld[0] - f[2] * Ld[2]];
+  const ll = Math.hypot(...lv);
+  // ---- shadow pass (1 directional light from the upper left of the screen, steeper than the shading light)
+  const shSize = shadowSize(prefs);
+  const SH = shadowRes(X, shSize || 1);
+  const Sd = GFX.shadow.dir;
+  const sv = [r[0] * Sd[0] - f[0] * Sd[2], Sd[1], r[2] * Sd[0] - f[2] * Sd[2]];
+  const SVP = lightVP(sv, Wd);
+  if (shSize) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, SH.fb);
+    gl.viewport(0, 0, shSize, shSize);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.depthMask(true);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(2, 4);
+    const D = X.D;
+    gl.useProgram(D.prog);
+    gl.uniformMatrix4fv(D.u.uVP, false, SVP);
+    gl.uniformMatrix4fv(D.u.uModel, false, IDENT);
+    if (D.u.uGrow) gl.uniform1f(D.u.uGrow, 0);
+    for (const c of V.chunks.values()) if (c.mesh) { gl.bindVertexArray(c.mesh.vao); gl.drawElements(gl.TRIANGLES, c.mesh.count, gl.UNSIGNED_INT, 0); }
+    const nearS = nearMask(cam);
+    for (const e of V.edges || []) { const m = e.mask & nearS ? e.low : e.full; if (m) { gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0); } }
+    const DK = X.DK;
+    gl.useProgram(DK.prog);
+    gl.uniformMatrix4fv(DK.u.uVP, false, SVP);
+    gl.uniform1i(DK.u.uBones, 0);
+    if (DK.u.uMode) gl.uniform1i(DK.u.uMode, 0);
+    if (DK.u.uGrow) gl.uniform1f(DK.u.uGrow, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, BT.tex);
+    for (const g of groups) drawGroup(DK, g, 0, g.nOp);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   gl.viewport(0, 0, W, H);
   const bg = keyRGB(GFX.sky[Wd.biome] || GFX.sky.default);
   gl.clearColor(bg[0], bg[1], bg[2], 1);
   gl.disable(gl.SCISSOR_TEST);
+  gl.depthMask(true);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   // the world only inside the map area (UI panels around it stay clean)
   const A = cam.area;
@@ -447,44 +619,51 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.BACK);
   gl.disable(gl.BLEND);
-  gl.depthMask(true);
 
-  const P = X.P, U = P.u, VP = viewProj(cam, W, H);
-  gl.useProgram(P.prog);
-  gl.uniformMatrix4fv(U.uVP, false, VP);
-  gl.uniformMatrix4fv(U.uModel, false, IDENT);
-  const { r, f } = basis(cam), Ld = GFX.light.dir;
-  const lv = [r[0] * Ld[0] - f[0] * Ld[2], Ld[1], r[2] * Ld[0] - f[2] * Ld[2]];
-  const ll = Math.hypot(...lv);
-  gl.uniform3f(U.uLight, lv[0] / ll, lv[1] / ll, lv[2] / ll);
-  gl.uniform2f(U.uSteps, GFX.light.steps[0], GFX.light.steps[1]);
-  gl.uniform1f(U.uAo, GFX.light.ao);
-  gl.uniform1f(U.uGrow, 0);
-  // fog: biome colour, denser in fog / rain (WEATHER vis); off with «Снизить эффекты»
+  const VP = viewProj(cam, W, H);
+  // shared uniforms of the world and the skinned program
   const vis = visionOf(b.map), FG = GFX.light.fog;
   const fc = keyRGB(GFX.fogColor[Wd.biome] || GFX.fogColor.default);
-  const T = [cam.cx, cam.cy, cam.cz];
-  gl.uniform4f(U.uFogPlane, f[0], f[1], f[2], -(f[0] * T[0] + f[1] * T[1] + f[2] * T[2]));
-  gl.uniform4f(U.uFog, fc[0], fc[1], fc[2], prefs.reduceFx ? 0 : vis.vis ? Math.min(0.6, FG.max + 0.2) : FG.max);
-  gl.uniform2f(U.uFogRange, vis.vis ? -4 : FG.near, vis.vis ? vis.vis * 2 : FG.far);
-  // night / dusk tint with static light holes
+  const Tg = [cam.cx, cam.cy, cam.cz];
   const tod = b.map.tod, NT = GFX.light.night;
   const amount = vis.dark ? NT.amount : tod === 'dusk' ? NT.dusk : 0;
   const ovl = WEATHER.tod[tod]?.overlay?.[0] || '0', nc = keyRGB(ovl);
-  gl.uniform4f(U.uNight, nc[0], nc[1], nc[2], amount);
-  if (amount) {
-    const ls = vis.dark ? lightSources(b).slice(0, 8) : [];
-    const arr = new Float32Array(24);
-    ls.forEach(([x, y, rr], k) => { arr[k * 3] = x + 0.5; arr[k * 3 + 1] = y + 0.5; arr[k * 3 + 2] = (rr + 0.5) * NT.radiusMul; });
-    gl.uniform3fv(U.uLights, arr);
+  const ls = amount && vis.dark ? lightSources(b).slice(0, 8) : [];
+  const larr = new Float32Array(24);
+  ls.forEach(([x, y, rr], k) => { larr[k * 3] = x + 0.5; larr[k * 3 + 1] = y + 0.5; larr[k * 3 + 2] = (rr + 0.5) * NT.radiusMul; });
+  const common = (P) => {
+    const U = P.u;
+    gl.useProgram(P.prog);
+    gl.uniformMatrix4fv(U.uVP, false, VP);
+    gl.uniformMatrix4fv(U.uShadowVP, false, SVP);
+    gl.uniform3f(U.uLight, lv[0] / ll, lv[1] / ll, lv[2] / ll);
+    gl.uniform2f(U.uSteps, GFX.light.steps[0], GFX.light.steps[1]);
+    gl.uniform1f(U.uAo, GFX.light.ao);
+    gl.uniform1f(U.uGrow, 0);
+    // fog: biome colour, denser in fog / rain (WEATHER vis); off with «Снизить эффекты»
+    gl.uniform4f(U.uFogPlane, f[0], f[1], f[2], -(f[0] * Tg[0] + f[1] * Tg[1] + f[2] * Tg[2]));
+    gl.uniform4f(U.uFog, fc[0], fc[1], fc[2], prefs.reduceFx ? 0 : vis.vis ? Math.min(0.6, FG.max + 0.2) : FG.max);
+    gl.uniform2f(U.uFogRange, vis.vis ? -4 : FG.near, vis.vis ? vis.vis * 2 : FG.far);
+    // night / dusk tint with static light holes
+    gl.uniform4f(U.uNight, nc[0], nc[1], nc[2], amount);
+    gl.uniform3fv(U.uLights, larr);
     gl.uniform1i(U.uNumLights, ls.length);
-  } else gl.uniform1i(U.uNumLights, 0);
+    gl.uniform1f(U.uBright, prefs.brightness || 1);
+    gl.uniform1f(U.uMaxPix, GFX.maxPixel);
+    gl.uniform1i(U.uShadow, 1);
+    gl.uniform3f(U.uShadowOn, shSize ? GFX.shadow.strength : 0, 1 / (shSize || 1), GFX.shadow.bias);
+  };
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, SH.tex);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, BT.tex);
+
+  const P = X.P, U = P.u;
+  common(P);
+  gl.uniformMatrix4fv(U.uModel, false, IDENT);
   gl.uniform4f(U.uTint, 0, 0, 0, 0);
   gl.uniform4f(U.uFlat, 0, 0, 0, 0);
   gl.uniform1f(U.uAlpha, 1);
-  gl.uniform1f(U.uBright, prefs.brightness || 1);
-  gl.uniform1f(U.uMaxPix, GFX.maxPixel);
-
   for (const c of V.chunks.values()) if (c.mesh) { gl.bindVertexArray(c.mesh.vao); gl.drawElements(gl.TRIANGLES, c.mesh.count, gl.UNSIGNED_INT, 0); }
   const near = nearMask(cam);
   for (const e of V.edges || []) {
@@ -498,34 +677,13 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     gl.uniformMatrix4fv(U.uModel, false, modelMat(br.x, Wd.floor[br.y * Wd.w + br.x] || 0, br.y, 0));
     gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0);
   }
-  // units: body, hull outline (front faces culled, grown along normals), x-ray behind walls
-  const drawn = [];
-  const heroes = b.units.filter((u) => u.team === 'heroes' && !u.dead), foes = b.units.filter((u) => u.team !== 'heroes' && !u.dead);
-  for (const it of units) {
-    const u = it.u, d = it.d;
-    const mdl = unitModel(u), m = X.mesh(`unit:${mdl.key}`, () => mdl.mb);
-    if (!m) continue;
-    // facing: movement direction, else towards the other side
-    const fz = V.face[u.id] || (V.face[u.id] = { x: d.x, y: d.y, a: null });
-    let a = fz.a;
-    if (Math.abs(d.x - fz.x) + Math.abs(d.y - fz.y) > 0.01) { a = Math.atan2(d.x - fz.x, d.y - fz.y); fz.x = d.x; fz.y = d.y; }
-    if (a == null || !d.path?.length) {
-      const other = u.team === 'heroes' ? foes : heroes;
-      if (other.length && !(d.path?.length)) {
-        let ox = 0, oy = 0; for (const o of other) { ox += o.x; oy += o.y; }
-        a = Math.atan2(ox / other.length - d.x, oy / other.length - d.y);
-      } else if (a == null) a = cam.yaw * Math.PI / 180;
-    }
-    fz.a = a;
-    let y = V.hgt[u.id] ?? 0, lie = 0;
-    if (u.dead || u.removed) y -= (1 - it.alpha) * 0.6;
-    if (d.down) { lie = Math.PI / 2; y += GFX.unit.r; }
-    const M = modelMat(d.x + 0.5, y, d.y + 0.5, a, lie, GFX.unit.scale);
-    drawn.push({ m, M, it });
-  }
-  const team = (it) => keyRGB(it.tint || GFX.team[TEAM(it.u)]);
-  // x-ray: units hidden behind walls / props — flat team colour at 30 %, drawn against the world depth before the units
-  // themselves (no self-occlusion); stencil keeps it one layer thick
+
+  // ---- units (instanced per template): x-ray behind walls -> body -> outline hull -> translucent
+  const K = X.K, KU = K.u;
+  common(K);
+  gl.uniform1i(KU.uBones, 0);
+  // x-ray: units hidden behind walls / props — flat team colour at 30 %, drawn against the world depth before the
+  // units themselves (no self-occlusion); stencil keeps it one layer thick
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.depthFunc(gl.GREATER);
@@ -534,54 +692,34 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
   gl.enable(gl.STENCIL_TEST);
   gl.stencilFunc(gl.EQUAL, 0, 0xff);
   gl.stencilOp(gl.KEEP, gl.KEEP, gl.INCR);
-  for (const o of drawn) {
-    if (o.it.u.dead || o.it.u.removed) continue;
-    const c = team(o.it);
-    gl.uniformMatrix4fv(U.uModel, false, o.M);
-    gl.uniform4f(U.uFlat, c[0], c[1], c[2], 1);
-    gl.uniform1f(U.uAlpha, GFX.unit.xray);
-    gl.bindVertexArray(o.m.vao);
-    gl.drawElements(gl.TRIANGLES, o.m.count, gl.UNSIGNED_INT, 0);
-  }
+  gl.uniform1i(KU.uMode, 1);
+  gl.uniform1f(KU.uFlatMul, 1);
+  gl.uniform1f(KU.uXAlpha, GFX.unit.xray);
+  for (const g of groups) drawGroup(K, g, 0, g.nOp);
   gl.disable(gl.STENCIL_TEST);
   gl.disable(gl.BLEND);
   gl.depthFunc(gl.LEQUAL);
   gl.depthMask(true);
-  gl.uniform4f(U.uFlat, 0, 0, 0, 0);
-  gl.uniform1f(U.uAlpha, 1);
-  const translucent = [];
-  for (const o of drawn) {
-    const it = o.it;
-    if (it.alpha < 0.99) { translucent.push(o); continue; }
-    gl.uniformMatrix4fv(U.uModel, false, o.M);
-    gl.bindVertexArray(o.m.vao);
-    const fl2 = Math.min(0.6, (it.d.flash || 0) * 3);
-    const wc = keyRGB('5'); // hit flash: bone white, soft (d.flash fades)
-    gl.uniform4f(U.uTint, wc[0], wc[1], wc[2], fl2);
-    gl.drawElements(gl.TRIANGLES, o.m.count, gl.UNSIGNED_INT, 0);
-    // outline hull
-    const c = team(it);
-    gl.cullFace(gl.FRONT);
-    gl.uniform1f(U.uGrow, it.tint ? 0.035 : 0.022);
-    gl.uniform4f(U.uFlat, c[0] * 0.8, c[1] * 0.8, c[2] * 0.8, 1);
-    gl.drawElements(gl.TRIANGLES, o.m.count, gl.UNSIGNED_INT, 0);
-    gl.cullFace(gl.BACK);
-    gl.uniform1f(U.uGrow, 0);
-    gl.uniform4f(U.uFlat, 0, 0, 0, 0);
-  }
-  gl.uniform4f(U.uTint, 0, 0, 0, 0);
+  // bodies
+  gl.uniform1i(KU.uMode, 0);
+  for (const g of groups) drawGroup(K, g, 0, g.nOp);
+  // outline hull: front faces culled, grown along normals (per instance: targets thicker), team colour x 0.8
+  gl.cullFace(gl.FRONT);
+  gl.uniform1i(KU.uMode, 1);
+  gl.uniform1f(KU.uFlatMul, 0.8);
+  gl.uniform1f(KU.uXAlpha, 1);
+  gl.uniform1f(KU.uGrow, 0.0001);
+  for (const g of groups) drawGroup(K, g, 0, g.nOp);
+  gl.cullFace(gl.BACK);
+  gl.uniform1f(KU.uGrow, 0);
+  // fading / downed / own invisible units
+  gl.uniform1i(KU.uMode, 0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  for (const o of translucent) { // fading / downed / own invisible units
-    gl.uniformMatrix4fv(U.uModel, false, o.M);
-    gl.uniform1f(U.uAlpha, o.it.alpha);
-    gl.bindVertexArray(o.m.vao);
-    gl.drawElements(gl.TRIANGLES, o.m.count, gl.UNSIGNED_INT, 0);
-  }
+  for (const g of groups) drawGroup(K, g, g.nOp, g.nTr);
   gl.depthFunc(gl.LEQUAL);
-  gl.uniform4f(U.uFlat, 0, 0, 0, 0);
-  gl.uniform1f(U.uAlpha, 1);
-  // overlay quads (no depth write, slight offset against z-fighting)
+
+  // ---- overlay quads (no depth write, slight offset against z-fighting)
   if (ob.count) {
     gl.depthMask(false);
     gl.disable(gl.CULL_FACE);
@@ -596,9 +734,23 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null } = {}) 
     gl.drawArrays(gl.TRIANGLES, 0, o.count);
     gl.disable(gl.POLYGON_OFFSET_FILL);
   }
+  // ---- particles (instanced low-poly balls, translucent, depth-tested)
+  if (PARTS.length) {
+    gl.depthMask(false);
+    gl.enable(gl.CULL_FACE);
+    gl.useProgram(X.PT.prog);
+    gl.uniformMatrix4fv(X.PT.u.uVP, false, VP);
+    gl.uniform1f(X.PT.u.uBright, prefs.brightness || 1);
+    gl.uniform1f(X.PT.u.uMaxPix, GFX.maxPixel);
+    const pi = uploadInstanced(gl, particleMesh(), new Float32Array(PARTS), 0);
+    gl.bindVertexArray(pi.vao);
+    gl.drawElementsInstanced(gl.TRIANGLES, pi.count, gl.UNSIGNED_INT, 0, pi.n);
+  }
   gl.depthMask(true);
   gl.disable(gl.BLEND);
   gl.disable(gl.SCISSOR_TEST);
   gl.bindVertexArray(null);
+  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy };
 }
+const angDelta = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 function hashArr(a) { let h = 0; for (let i = 0; i < a.length; i += 7) h = (Math.imul(h, 31) + (a[i] * 1000 | 0) + (a[i + 2] * 977 | 0) + (a[i + 6] * 100 | 0)) | 0; return h; }
