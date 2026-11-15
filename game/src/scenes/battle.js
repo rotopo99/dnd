@@ -252,7 +252,7 @@ export function createBattleScene(opts) {
     S.endStatuses = [];
     S.smashTiles = new Set();
     if (S.playerTurn) {
-      if (b.turn.move > 0 && !b.metric) S.reach = getReachable(b, S.heroId);
+      if (b.turn.move > 0) S.reach = getReachable(b, S.heroId); // metric: cells kept for old hooks, not drawn
       for (const act of getLegalActions(b, S.heroId, { noMoves: true })) {
         if (act.target && isHiddenFoe(b.byId[act.target])) continue;
         if (act.type === 'endStatus') { S.endStatuses.push(act.status); continue; }

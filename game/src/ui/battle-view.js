@@ -372,7 +372,7 @@ function drawHighlights(ctx, S) {
     out.area = pv;
   }
   // reachable tiles
-  if (S.reach) {
+  if (S.reach && !b.metric) {
     for (const idx of S.reach.list) if (S.reach.dist[idx] > 0) cellRect(ctx, L, idx % w, (idx / w) | 0, CY_FILL);
   }
   if (hc) {
@@ -382,7 +382,7 @@ function drawHighlights(ctx, S) {
     if (u && S.attackTargets.has(u.id)) {
       cellRect(ctx, L, hc.x, hc.y, RED_FILL, C.c);
       out.odds = S.odds(u, { kind: 'attack' });
-    } else if (S.reach && S.reach.dist[idx] > 0) {
+    } else if (S.reach && !b.metric && S.reach.dist[idx] > 0) {
       const pc = S.pathCache;
       if (!pc || pc.idx !== idx || pc.reach !== S.reach || pc.sv !== b.surfaceVersion) {
         S.pathCache = { idx, reach: S.reach, sv: b.surfaceVersion, path: movePath(b, hero, { x: hc.x, y: hc.y }) || [] };
