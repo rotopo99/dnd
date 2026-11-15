@@ -37,7 +37,9 @@ function raceTraits(r, statuses) {
   return { good, bad };
 }
 
-export function createCreateScene() {
+/** opts.onDone(game, hero) — instead of the prologue (co-op hero), opts.onBack(game) — instead of the main menu. */
+export function createCreateScene(opts = {}) {
+  const goBack = (game) => (opts.onBack ? opts.onBack(game) : game.setScene(menuScene));
   const st = { race: PLAYABLE_RACES[0], cls: null, path: null, name: '', mode: 'rec', focus: { kind: 'race', id: PLAYABLE_RACES[0] }, time: 0 };
   let buttons = [];
   let hover = null;
@@ -81,7 +83,7 @@ export function createCreateScene() {
     else if (b.kind === 'class') st.cls = b.id;
     else if (b.kind === 'path') st.path = b.id;
     else if (b.kind === 'mode') { st.mode = b.id; layout(game); return; }
-    else if (b.kind === 'back') { game.setScene(menuScene); return; }
+    else if (b.kind === 'back') { goBack(game); return; }
     else if (b.kind === 'start') { begin(game); return; }
     if (b.kind !== 'name') st.focus = { kind: b.kind, id: b.id };
     fixClass(game);
@@ -90,7 +92,7 @@ export function createCreateScene() {
 
   function begin(game) {
     const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName') };
-    const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { g.hero = full; startPrologue(g, full); });
+    const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { if (opts.onDone) { opts.onDone(g, full); return; } g.hero = full; startPrologue(g, full); });
     // steps: [build (flex)] -> look (3D avatar) -> talents
     const look = (h, backTo) => { let lk; lk = createLookScene(h, backTo, (g, full) => g.setScene(talents(full, lk))); return lk; };
     if (st.mode === 'flex') {
@@ -228,7 +230,7 @@ export function createCreateScene() {
       if (inp.wasPressed('Backspace')) st.name = st.name.slice(0, -1);
       if (inp.typed().length || inp.wasPressed('Backspace')) built.name = st.name || t('create.defaultName');
       if (inp.wasPressed('Enter')) begin(game);
-      else if (inp.wasPressed('Escape')) game.setScene(menuScene);
+      else if (inp.wasPressed('Escape')) goBack(game);
     },
     render(game) {
       const { ctx, width: W, height: H } = game;

@@ -10,6 +10,7 @@ import { createCreateScene } from './create.js';
 import { createBattleScene } from './battle.js';
 import { hasSave } from '../save.js';
 import { continueLatest, openLoadMenu } from '../ui/save-ui.js';
+import { openNetMenu } from './net-menu.js';
 
 /** Load the most recent save (autosave or a manual slot) and go to its location / Cyberspace episode. */
 export function continueGame(game) {
@@ -47,15 +48,17 @@ function layout(game) {
   const W = game.width, H = game.height;
   const w = 320, h = 52;
   const x = Math.floor((W - w) / 2);
-  const y = Math.floor(H / 2) - 10;
+  const y = Math.floor(H / 2) - 20;
+  const gap = 10;
   buttons = [];
   let yy = y;
   if (hasSave()) {
-    buttons.push({ id: 'continue', label: t('menu.continue'), x, y: yy, w, h, selected: true }); yy += h + 16;
-    buttons.push({ id: 'load', label: t('save.load'), key: 'L', x, y: yy, w, h }); yy += h + 16;
+    buttons.push({ id: 'continue', label: t('menu.continue'), x, y: yy, w, h, selected: true }); yy += h + gap;
+    buttons.push({ id: 'load', label: t('save.load'), key: 'L', x, y: yy, w, h }); yy += h + gap;
   }
-  buttons.push({ id: 'new', label: t('menu.newGame'), x, y: yy, w, h });
-  buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: yy + h + 16, w, h: 60 });
+  buttons.push({ id: 'new', label: t('menu.newGame'), x, y: yy, w, h }); yy += h + gap;
+  buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: yy, w, h: 56 }); yy += 56 + gap;
+  buttons.push({ id: 'net', label: t('menu.net'), sub: t('menu.netHint'), key: 'M', x, y: yy, w, h: 56 });
 }
 
 export const menuScene = {
@@ -81,11 +84,13 @@ export const menuScene = {
     if (game.input.wasPressed('Enter') || game.input.wasPressed('Space')) act = buttons[0].id;
     if (game.input.wasPressed('KeyN')) act = 'new';
     if (game.input.wasPressed('KeyQ')) act = 'quick';
+    if (game.input.wasPressed('KeyM')) act = 'net';
     if (game.input.wasPressed('KeyL') && hasSave()) act = 'load';
     if (!act) return;
     play('uiClick');
     if (act === 'continue') return continueGame(game);
     if (act === 'load') return openLoadMenu(game);
+    if (act === 'net') return openNetMenu(game);
     if (act === 'new') game.setScene(createCreateScene());
     else startQuickBattle(game);
   },

@@ -122,23 +122,29 @@ const REASONS = {
 /** combat rework §6.2: why «Отступить» is off (rules/objectives.js retreatWhy). */
 const RETREAT_WHY = { locked: 'obj.exitLocked', notOnExit: 'obj.notOnExit', turn: 'battle.notTurn', action: 'battle.noAction', noExit: 'obj.notOnExit' };
 
+/** A level-1-style hero spec (create / save format) → battle creature (same build as a single-hero battle). */
+export function buildHeroUnit(game, h, id = 'hero') {
+  const base = { race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id, anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id };
+  // v3 flexible build (prologue hero): stats, skills, proficiencies, phobias, chosen gear
+  const flex = { stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined, equipment: h.equipment || undefined };
+  let u;
+  try { u = buildCreature({ ...base, ...flex }); } catch { u = buildCreature(base); }
+  u.look = h.look || null; u.avatar = h.avatar || null;
+  return u;
+}
+
 export function createBattleScene(opts) {
   const S = { opts };
   let seed = opts.seed ?? ((Math.random() * 1e9) | 0);
+  // multiplayer.md: co-op hooks (net/coop-battle.js). Host — authority: applies every command and broadcasts it;
+  // guest — sends intents and replays the host's commands (S.applyCmd). null — single player, as before.
+  const net = opts.net || null;
+  S.net = net;
 
   function start(game) {
     let heroes;
     if (opts.heroes) heroes = typeof opts.heroes === 'function' ? opts.heroes(game) : opts.heroes;
-    else {
-      const h = opts.hero;
-      const base = { race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id: 'hero', anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id };
-      // v3 flexible build (prologue hero): stats, skills, proficiencies, phobias, chosen gear
-      const flex = { stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined, equipment: h.equipment || undefined };
-      let u;
-      try { u = buildCreature({ ...base, ...flex }); } catch { u = buildCreature(base); }
-      u.look = h.look || null; u.avatar = h.avatar || null;
-      heroes = [u];
-    }
+    else heroes = [buildHeroUnit(game, opts.hero)];
     S.queue = [];
     let enemies = opts.enemies;
     // ambush (world.md §2): enemies get +5 initiative; v4: enemyInit (failed talks, skills.md N3) and heroInit (Military, N6)
@@ -161,7 +167,8 @@ export function createBattleScene(opts) {
       objectives: opts.objectives || null, // combat rework §6: optional objective, chests, exits
     });
     const b = S.b;
-    S.heroId = heroes[0].id; // the player-controlled unit whose turn it is (party: switches every turn)
+    S.heroId = net?.myId || heroes[0].id; // the player-controlled unit whose turn it is (party: switches every turn)
+    S.pending = false; // co-op guest: an intent is on its way to the host
     S.mainId = heroes[0].id;
     S.partySize = heroes.length;
     // display names: duplicates get a number
@@ -224,7 +231,7 @@ export function createBattleScene(opts) {
     vision();
     const cu = currentUnit(b);
     if (cu && !b.winner && cu.team === 'heroes' && cu.kind === 'hero' && !isAiTurn(b) && isStanding(cu)) S.heroId = cu.id;
-    S.playerTurn = !!cu && !b.winner && cu.id === S.heroId && !isAiTurn(b);
+    S.playerTurn = !!cu && !b.winner && cu.id === S.heroId && !isAiTurn(b) && (!net || (net.mine(cu) && !S.pending));
     const hero = b.byId[S.heroId];
     S.reach = null;
     S.attackTargets = new Set();
@@ -252,7 +259,7 @@ export function createBattleScene(opts) {
     // action buttons
     const btns = [];
     const bt = b.turn;
-    const reasonOf = (r) => (r ? t(REASONS[r] || 'battle.notAllowedHere') : null);
+    const reasonOf = (r) => (r ? (r === 'turn' && net ? net.waitText(currentUnit(b)) : t(REASONS[r] || 'battle.notAllowedHere')) : null);
     let r = !S.playerTurn ? 'turn' : bt.actions <= 0 ? 'action' : hero.noAttack || !hero.weapon ? 'disarm' : hero.weaponJam ? 'jam' : S.attackTargets.size || (S.specs[AREA_KEY] || []).length ? null : 'noTargets';
     btns.push({ id: 'attack', label: t('battle.attack'), sub: hero.weapon ? `${hero.weapon.dice}${hero.weapon.range > 1 ? ` ↔${hero.weapon.range}` : ''}` : '', key: 'A', disabled: !!r, reason: reasonOf(r), selected: S.sel?.kind === 'attack' });
     let n = 0;
@@ -309,7 +316,7 @@ export function createBattleScene(opts) {
       btns.push({ id: 'exitRetreat', label: t('obj.retreatBtn'), sub: why ? t(RETREAT_WHY[why] || 'battle.notAllowedHere') : t('act.action'), key: 'D', disabled: !!why, reason: why ? t(RETREAT_WHY[why] || 'battle.notAllowedHere') : null });
     }
     if (opts.onRetreat) btns.push({ id: 'retreat', label: t('battle.retreat'), sub: t('battle.retreatSub'), disabled: !S.playerTurn });
-    btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: t('battle.endTurnKey'), disabled: !S.playerTurn, reason: S.playerTurn ? null : t('battle.notTurn') });
+    btns.push({ id: 'endTurn', label: t('battle.endTurn'), sub: t('battle.endTurnKey'), disabled: !S.playerTurn, reason: S.playerTurn ? null : reasonOf('turn') });
     S.buttons = btns;
     buildQuick(hero); // positioned by layoutBattle.buttons (right of the log)
     layoutBattle.buttons(S);
@@ -467,8 +474,42 @@ export function createBattleScene(opts) {
   };
 
   // ---------------------------------------------------------------- actions
+  /**
+   * Every change of the battle goes through a command (co-op: replayed on all clients in the host's order):
+   * { k: 'act', a: action } — perform; { k: 'end' } — endTurn; { k: 'trick', sk, u, x }; { k: 'ai', force } — one AI step.
+   */
+  function applyCmd(cmd) {
+    const b = S.b;
+    let res = { ok: true };
+    if (cmd.k === 'act') res = perform(b, cmd.a);
+    else if (cmd.k === 'end') endTurn(b);
+    else if (cmd.k === 'trick') {
+      const u = b.byId[cmd.u], x = b.byId[cmd.x];
+      if (u && x && b.turn?.unitId === u.id && b.turn.bonus > 0) trickApply(cmd.sk, u, x); else res = { ok: false, error: 'trick' };
+    } else if (cmd.k === 'ai') res = aiApply(cmd.force);
+    else res = { ok: false, error: 'cmd' };
+    S.dirty = true;
+    return res;
+  }
+  S.applyCmd = applyCmd;
+  /** Local command: single player / host — apply (host broadcasts); guest — send the intent and wait. */
+  function run(cmd) {
+    if (net && !net.host) {
+      if (S.pending) return { ok: false, error: 'pending' };
+      S.pending = true;
+      S.sel = null;
+      S.dirty = true;
+      net.intent(cmd);
+      return { ok: true, remote: true };
+    }
+    const res = applyCmd(cmd);
+    if (net && res.ok) net.applied(cmd);
+    return res;
+  }
+  S.run = run;
+
   function doAction(action) {
-    const res = perform(S.b, action);
+    const res = run({ k: 'act', a: action });
     if (!res.ok) {
       const key = res.error === 'fear' ? 'battle.noFear' : res.error === 'outOfRange' ? 'battle.outOfRange' : 'battle.notAllowedHere';
       say(t(key));
@@ -499,7 +540,7 @@ export function createBattleScene(opts) {
       case 'trick': openTricks(); return;
       case 'dash': doAction({ type: 'dash' }); break;
       case 'disengage': doAction({ type: 'disengage' }); break;
-      case 'endTurn': S.sel = null; perform(b, { type: 'endTurn' }); break;
+      case 'endTurn': S.sel = null; run({ k: 'act', a: { type: 'endTurn' } }); break;
       case 'retreat': opts.onRetreat(game, S); return;
       case 'interact': doAction({ type: 'interact', tile: btn.tile }); break;
       case 'exitRetreat': confirmRetreat(); return;
@@ -584,9 +625,13 @@ export function createBattleScene(opts) {
   const trickDc = (sk, x) => (SKILL_RULES.tricks[sk] ? SKILL_RULES.tricks.dc : trick2(sk)?.dc ?? battleTrick(sk)?.dc ?? SKILL_RULES.tricks.dc) + (x.team !== 'heroes' ? Math.floor((x.level || 0) / 2) : 0);
 
   function doTrick(sk, u, x) {
+    if (S.b.turn.bonus <= 0 || S.b.turn.unitId !== u.id) return;
+    run({ k: 'trick', sk, u: u.id, x: x.id });
+  }
+
+  function trickApply(sk, u, x) {
     const b = S.b;
     const T = SKILL_RULES.tricks;
-    if (b.turn.bonus <= 0 || b.turn.unitId !== u.id) return;
     b.turn.bonus -= 1;
     S.tricksUsed[u.id].push(sk);
     const dc = trickDc(sk, x);
@@ -701,6 +746,14 @@ export function createBattleScene(opts) {
     for (const id in S.disp) if (S.disp[id].path.length) return true;
     return false;
   }
+  /** Nothing to animate: the next remote command can be applied (co-op guest pacing). */
+  S.idle = () => !S.queue.length && !busy();
+  /** After a full state restore (co-op desync): display follows the new state. */
+  S.resync = () => {
+    S.queue.length = 0;
+    for (const u of S.b.units) { const d = dispOf(u); d.path.length = 0; d.x = u.x; d.y = u.y; d.hp = u.hp; d.mrl = u.mrl; d.down = u.down; d.gone = !!(u.dead && u.kind !== 'hero'); }
+    S.sel = null; S.pending = false; S.dirty = true;
+  };
 
   function pushLog(segs) {
     if (!segs) return;
@@ -885,17 +938,23 @@ export function createBattleScene(opts) {
     const u = currentUnit(b);
     if (!u) return;
     if (S.aiUnit !== b.turn) { S.aiUnit = b.turn; S.aiSteps = 0; }
-    let act = S.aiSteps >= MAX_AI_STEPS ? { type: 'endTurn' } : chooseAction(b, u.id);
+    const force = S.aiSteps >= MAX_AI_STEPS;
     S.aiSteps++;
-    if (!act || act.type === 'endTurn') {
-      endTurn(b);
-      S.aiTimer = AI_TURN_GAP;
-    } else {
-      const res = perform(b, act);
-      if (!res.ok) { endTurn(b); S.aiTimer = AI_TURN_GAP; }
-      else S.aiTimer = act.type === 'move' || act.type === 'disengage' ? PACE.moveStep : AI_STEP;
-    }
+    const res = run({ k: 'ai', force });
+    S.aiTimer = res.timer ?? AI_TURN_GAP;
     S.dirty = true;
+  }
+
+  /** One AI step of the current unit (chooseAction mutates turn counters and uses b.rng — replayed as a whole). */
+  function aiApply(force) {
+    const b = S.b;
+    const u = currentUnit(b);
+    if (!u) return { ok: true, timer: AI_TURN_GAP };
+    const act = force ? { type: 'endTurn' } : chooseAction(b, u.id);
+    if (!act || act.type === 'endTurn') { endTurn(b); return { ok: true, timer: AI_TURN_GAP }; }
+    const res = perform(b, act);
+    if (!res.ok) { endTurn(b); return { ok: true, timer: AI_TURN_GAP }; }
+    return { ok: true, timer: act.type === 'move' || act.type === 'disengage' ? PACE.moveStep : AI_STEP };
   }
 
   // ---------------------------------------------------------------- input
@@ -960,7 +1019,7 @@ export function createBattleScene(opts) {
     play('uiClick');
     if (id === 'next') opts.onWin(game, S);
     else if (id === 'lose') opts.onLose(game, S);
-    else if (id === 'retry') { seed = (seed + 7919) | 0; start(game); }
+    else if (id === 'retry' && !net) { seed = (seed + 7919) | 0; start(game); }
     else if (id === 'menu') opts.onExit(game);
   }
 
@@ -1002,7 +1061,8 @@ export function createBattleScene(opts) {
         return;
       }
       if (S.banner) return;
-      if (isAiTurn(b)) {
+      if (net && !net.host) return; // co-op guest: every change comes from the host
+      if (isAiTurn(b) || net?.auto(currentUnit(b))) {
         S.aiTimer -= dt * k;
         if (S.aiTimer <= 0) aiStep();
       } else if (!b.turn) {
@@ -1014,9 +1074,10 @@ export function createBattleScene(opts) {
         // hero fell during own turn (e.g. opportunity attack) or a non-hero player-side unit: pass the turn
         if (!cu || cu.id !== S.heroId || !isStanding(cu)) {
           S.sel = null;
-          endTurn(b);
+          run({ k: 'end' });
           S.dirty = true;
-        }
+        } else net?.tick(cu, dt); // co-op host: turn timer of a remote player
+
       }
     },
     render(game) { renderBattle(game, S); },

@@ -4254,5 +4254,140 @@ console.log('Card game «Хлам и Кринж» / casino (cards-casino.md)');
   });
 }
 
+// ---------------------------------------------------------------- multiplayer.md: invite codes, protocol, session, determinism
+{
+  const P = await import('../game/src/net/peer.js');
+  const PR = await import('../game/src/net/protocol.js');
+  const { createSession } = await import('../game/src/net/session.js');
+  const SY = await import('../game/src/net/sync.js');
+  const { scaleEnemies } = await import('../game/src/net/coop-battle.js');
+  const { PLAY_DATA } = await import('../game/src/world/data.js');
+  const { makeWorldMap } = await import('../game/src/world/arena.js');
+  const { currentUnit } = await import('../game/src/rules/combat.js');
+  async function atest(name, fn) {
+    try { await fn(); passed++; console.log(`  ok  ${name}`); }
+    catch (e) { failed++; console.log(`  FAIL ${name}\n       ${e.stack.split('\n').slice(0, 3).join('\n       ')}`); }
+  }
+  const SDP = ['v=0', 'o=- 4611 2 IN IP4 127.0.0.1', 's=-', 't=0 0', 'a=group:BUNDLE 0', 'a=extmap-allow-mixed', 'a=msid-semantic: WMS',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+    'a=candidate:1 1 udp 2113937151 1a2b3c.local 54321 typ host generation 0 network-cost 999',
+    'a=candidate:2 1 tcp 1518280447 192.168.1.5 9 typ host tcptype active generation 0',
+    'a=candidate:3 1 udp 1677729535 203.0.113.7 61000 typ srflx raddr 0.0.0.0 rport 0 generation 0',
+    'a=ice-ufrag:abcd', 'a=ice-pwd:0123456789abcdefghijklmn', 'a=ice-options:trickle',
+    'a=fingerprint:sha-256 ' + Array.from({ length: 32 }, (_, i) => (i * 7 % 256).toString(16).padStart(2, '0').toUpperCase()).join(':'),
+    'a=setup:actpass', 'a=mid:0', 'a=sctp-port:5000', 'a=max-message-size:262144', ''].join('\r\n');
+
+  await atest('net: invite code round trip (RSL1., deflate-raw + base64url, raw fallback, slim SDP)', async () => {
+    const code = await P.encodeDescription({ type: 'offer', sdp: SDP });
+    assert.ok(code.startsWith('RSL1.') && /^RSL1\.[A-Za-z0-9_-]+$/.test(code), code);
+    assert.ok(code.length < 1500, `length ${code.length}`);
+    const d = await P.decodeDescription('  ' + code.slice(0, 40) + '\n' + code.slice(40) + ' ', 'offer'); // messenger line breaks
+    assert.equal(d.type, 'offer');
+    assert.ok(d.sdp.includes('a=ice-ufrag:abcd') && d.sdp.includes('a=fingerprint:sha-256') && d.sdp.includes('a=sctp-port:5000'));
+    assert.ok(d.sdp.includes('typ srflx') && d.sdp.includes('.local 54321'), 'udp candidates kept');
+    assert.ok(!d.sdp.includes('tcptype') && !d.sdp.includes('extmap'), 'tcp candidates / extmap dropped');
+    const raw = await P.encodeCode({ v: 1, type: 'answer', sdp: 'x', ice: [] }, { compress: false });
+    assert.ok(raw.startsWith('RSL1.!'));
+    assert.deepEqual(await P.decodeCode(raw), { v: 1, type: 'answer', sdp: 'x', ice: [] });
+    for (const bad of ['', 'hello', 'RSL1.', 'RSL1.@@@', 'RSL2.' + code.slice(5), code.slice(0, -12)]) {
+      await assert.rejects(() => P.decodeDescription(bad), (e) => e instanceof P.NetError && e.code === 'badCode', bad);
+    }
+    await assert.rejects(() => P.decodeDescription(code, 'answer'), (e) => e.code === 'wrongType' && e.info.need === 'answer');
+  });
+
+  test('net: protocol — validate, hello / version check, chunking 64 KB', () => {
+    assert.equal(PR.validate({ t: 'chat', text: 'привет' }).ok, true);
+    assert.equal(PR.validate({ t: 'chat' }).ok, false);
+    assert.equal(PR.validate({ t: 'nope' }).ok, false);
+    assert.equal(PR.validate({ t: 'chat', text: 'x'.repeat(201) }).ok, false);
+    const h = PR.makeHello({ name: 'Гость', hero: { race: 'human', cls: 'ranger', secret: 1, name: 'A' } });
+    assert.equal(PR.validate(h).ok, true);
+    assert.equal(h.hero.secret, undefined);
+    assert.equal(PR.checkHello(h), null);
+    const bad = PR.checkHello({ ...h, gameVer: '0.0-old' });
+    assert.equal(bad.reason, 'version');
+    assert.ok(bad.mine.startsWith('0.0-old') && bad.theirs.startsWith(PR.GAME_VERSION));
+    const big = { t: 'fullState', turn: 3, state: 'я'.repeat(150000) };
+    const frames = PR.packMessage(big);
+    assert.ok(frames.length >= 3 && frames.every((f) => f.length <= 60200));
+    const un = PR.createUnpacker();
+    let out = null;
+    for (const f of frames.reverse()) out = un.push(f) || out; // order of chunks does not matter
+    assert.deepEqual(out, big);
+    assert.equal(un.pending, 0);
+    assert.equal(PR.cleanChat(' a\nb '), 'a b');
+  });
+
+  test('net: session over loopback — slots, lobby, chat relay, ready, version reject, full lobby', () => {
+    const hero = { race: 'human', cls: 'ranger', name: 'H' };
+    const host = createSession({ role: 'host', name: 'Host', hero, pingEvery: 0 });
+    const guests = [];
+    const link = (name, opts = {}) => {
+      const g = createSession({ role: 'guest', name, hero: { ...hero, name }, pingEvery: 0, ...opts });
+      const [a, b] = P.createLoopPair();
+      host.attach(a); g.attach(b);
+      guests.push(g);
+      return g;
+    };
+    const g1 = link('G1'), g2 = link('G2');
+    assert.equal(g1.slot, 1); assert.equal(g2.slot, 2);
+    assert.equal(g1.status, 'connected');
+    assert.equal(host.players.length, 3);
+    assert.equal(g1.players.length, 3, 'lobby broadcast');
+    g1.chatSend('всем привет');
+    assert.equal(host.chat.at(-1).text, 'всем привет');
+    assert.equal(g2.chat.at(-1).name, 'G1');
+    assert.equal(g1.chat.filter((l) => l.text === 'всем привет').length, 1, 'sender sees the line once');
+    g2.setReady(true);
+    assert.equal(host.player(2).ready, true);
+    assert.equal(g1.players.find((p) => p.slot === 2).ready, true);
+    const old = link('Old', { version: { ...PR.localVersion(), gameVer: '0.0-old' } });
+    assert.equal(old.status, 'rejected');
+    assert.equal(old.error.code, 'version');
+    assert.equal(host.players.length, 3, 'rejected guest is not in the lobby');
+    link('G3');
+    const g4 = link('G4');
+    assert.equal(g4.error?.code, 'full');
+    const msgs = [];
+    host.on('msg', (m, from) => msgs.push([m.t, from]));
+    g2.send({ t: 'hash', turn: 1, h: 5 });
+    assert.deepEqual(msgs, [['hash', 2]]);
+    g1.pending.close();
+    assert.equal(host.player(1).connected, false);
+    assert.equal(g2.players.find((p) => p.slot === 1).connected, false);
+  });
+
+  test('net: deterministic co-op battle — same commands → same hash; fullState restores a corrupted copy', () => {
+    const D = PLAY_DATA;
+    const enemies = scaleEnemies(D.ENCOUNTERS.standard1.enemies, 2);
+    assert.equal(enemies.length, D.ENCOUNTERS.standard1.enemies.length + 1);
+    const map = makeWorldMap({ seed: 11, enemies: enemies.length, id: 'coop-training' });
+    const heroes = [{ race: 'human', cls: 'zabivnoy', id: 'hero' }, { race: 'human', cls: 'technomant', id: 'hero2' }];
+    const mk = () => createBattle({ map: JSON.parse(JSON.stringify(map)), heroes, enemies, data: D, seed: 4242 });
+    const A = mk(), B = mk();
+    assert.equal(SY.battleHash(A), SY.battleHash(B));
+    // host decides (AI for everyone here), the guest replays the same command list
+    const step = (b, cmd) => {
+      const u = currentUnit(b);
+      if (!u) return;
+      const act = cmd.force ? null : chooseAction(b, u.id);
+      if (!act || act.type === 'endTurn') endTurn(b); else if (!perform(b, act).ok) endTurn(b);
+    };
+    let n = 0;
+    for (; n < 600 && A.turn; n++) {
+      step(A, { k: 'ai' }); step(B, { k: 'ai' });
+      assert.equal(SY.battleHash(A), SY.battleHash(B), `step ${n}`);
+      if (n === 40) { // corrupt the guest, detect, restore from the host
+        B.units.find((u) => u.team === 'enemies' && !u.dead).hp -= 1;
+        assert.notEqual(SY.battleHash(A), SY.battleHash(B));
+        SY.restoreBattle(B, SY.snapshotBattle(A));
+        assert.equal(SY.battleHash(A), SY.battleHash(B));
+      }
+    }
+    assert.ok(A.winner && A.winner === B.winner, `winner ${A.winner}`);
+    assert.ok(n > 41);
+  });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

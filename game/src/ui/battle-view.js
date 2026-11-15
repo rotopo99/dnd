@@ -497,11 +497,12 @@ function drawTopBar(ctx, S) {
   let labelW = 0;
   if (cu) {
     const many = S.partySize > 1;
-    const label = cu.id === S.heroId && S.playerTurn ? (many ? `${t('battle.yourTurn')}: ${S.name(cu.id)}` : t('battle.yourTurn')) : cu.team === 'heroes' ? `${t('battle.allyTurn')}: ${S.name(cu.id)}` : `${t('battle.enemyTurn')}: ${S.name(cu.id)}`;
+    const nl = S.net?.turnLabel(cu); // co-op: «Ходит: <герой> (<игрок>)» in the player's colour
+    const label = nl ? nl.text : cu.id === S.heroId && S.playerTurn ? (many ? `${t('battle.yourTurn')}: ${S.name(cu.id)}` : t('battle.yourTurn')) : cu.team === 'heroes' ? `${t('battle.allyTurn')}: ${S.name(cu.id)}` : `${t('battle.enemyTurn')}: ${S.name(cu.id)}`;
     const s = fit(ctx, label, L.area.w - 2 * roundW - 40, FONT_L);
     ctx.font = FONT_L;
     labelW = ctx.measureText(s).width;
-    text(ctx, s, L.area.w / 2, 8, teamColor(cu), FONT_L, 'center');
+    text(ctx, s, L.area.w / 2, 8, nl ? nl.color : teamColor(cu), FONT_L, 'center');
   }
   const titleW = Math.floor((L.area.w - labelW) / 2) - 24;
   if (titleW > 40) text(ctx, fit(ctx, S.opts.title || '', titleW, FONT_B), 12, 12, C['4'], FONT_B);
@@ -660,7 +661,7 @@ function unitCard(ctx, S, u, x, y, w, odds) {
   const top = y;
   battlePortrait(ctx, S, u, x, y, 1);
   const tx = x + 56, tw = w - 56;
-  text(ctx, fit(ctx, S.name(u.id), tw, FONT_B), tx, y, teamColor(u), FONT_B);
+  text(ctx, fit(ctx, S.name(u.id), tw, FONT_B), tx, y, S.net?.unitColor(u) || teamColor(u), FONT_B);
   y += 24;
   resLineTip(ctx, tx, y, tw, 'hp', d.hp, v.maxHp, t('res.hp'), v.shield); y += 22;
   if (v.maxMrl > 0) { resLineTip(ctx, tx, y, tw, 'mrl', d.mrl, v.maxMrl, t('res.mrl')); y += 22; }
@@ -778,7 +779,7 @@ function drawPanel(ctx, S, preview) {
     if (!u || u.dead || u.removed || (isHidden(u) && u.team !== 'heroes')) continue;
     const curr = k === 0 && b.turn && b.turn.unitId === u.id;
     if (curr) { ctx.fillStyle = C['2']; ctx.fillRect(x - 6, y - 2, w + 12, 22); }
-    ctx.fillStyle = teamColor(u);
+    ctx.fillStyle = S.net?.unitColor(u) || teamColor(u); // co-op: the owner's colour
     ctx.fillRect(x, y + 4, 8, 8);
     text(ctx, fit(ctx, S.name(u.id), w - 90), x + 16, y, curr ? C['5'] : C['4'], curr ? FONT_B : FONT);
     text(ctx, u.down ? t('battle.downTag') : `${S.dispOf(u).hp}/${u.maxHp}`, x + w - (u.shield && !u.down ? 34 : 0), y, u.down ? C.c : C['3'], FONT, 'right');
