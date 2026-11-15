@@ -1,5 +1,8 @@
 // Keyboard + mouse input. Mouse coords are in canvas pixels.
 // Per-frame flags (wasPressed, clicked, typed) are cleared by endFrame() after each logic step.
+// Right click fires on release and only if the pointer moved < dragMin px (a right drag pans the 3D camera).
+import { GFX } from './data/gfx.js';
+
 export function createInput(target, canvas) {
   const down = new Set();
   const pressed = new Set();
@@ -7,11 +10,14 @@ export function createInput(target, canvas) {
   const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false, down: false, released: false, wheel: 0, middle: false, right: false };
   const pending = [];
   const hoverPos = { x: -1, y: -1, inside: false };
+  let rightAt = null; // right button press: becomes a click on release unless dragged
   const applyClick = (c) => {
     mouse.x = c.x; mouse.y = c.y; mouse.inside = true;
     if (c.right) mouse.rightClicked = true;
     else mouse.clicked = true;
   };
+  // fast double clicks within one logic step are queued, one click per step
+  const queueClick = (c) => { if (mouse.clicked || mouse.rightClicked || pending.length) pending.push(c); else applyClick(c); };
   target.addEventListener('keydown', (e) => {
     if (!down.has(e.code) || e.code === 'Backspace') pressed.add(e.code); // Backspace auto-repeats in text fields
     down.add(e.code);
@@ -35,11 +41,9 @@ export function createInput(target, canvas) {
     });
     canvas.addEventListener('pointerdown', (e) => {
       pos(e);
-      if (e.button !== 0 && e.button !== 2) return; // middle — camera drag only, never a click
-      const c = { x: hoverPos.x, y: hoverPos.y, right: e.button === 2 };
-      // fast double clicks within one logic step are queued, one click per step
-      if (mouse.clicked || mouse.rightClicked || pending.length) pending.push(c);
-      else applyClick(c);
+      if (e.button === 2) { rightAt = { x: hoverPos.x, y: hoverPos.y, cx: e.clientX, cy: e.clientY }; return; } // click on release
+      if (e.button !== 0) return; // middle — camera drag only, never a click
+      queueClick({ x: hoverPos.x, y: hoverPos.y, right: false });
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     // held button (drag / pan) and wheel (zoom): read by scenes that need them, cleared per step
@@ -48,9 +52,13 @@ export function createInput(target, canvas) {
     window.addEventListener('pointerup', (e) => {
       if (e.button === 0 && mouse.down) { mouse.down = false; mouse.released = true; }
       if (e.button === 1) mouse.middle = false;
-      if (e.button === 2) mouse.right = false;
+      if (e.button === 2) {
+        mouse.right = false;
+        if (rightAt && Math.hypot(e.clientX - rightAt.cx, e.clientY - rightAt.cy) < GFX.camera.dragMin) queueClick({ x: rightAt.x, y: rightAt.y, right: true });
+        rightAt = null;
+      }
     });
-    window.addEventListener('blur', () => { mouse.middle = false; mouse.right = false; });
+    window.addEventListener('blur', () => { mouse.middle = false; mouse.right = false; rightAt = null; });
     canvas.addEventListener('wheel', (e) => { mouse.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
   }
   return {

@@ -492,7 +492,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   if (!gl || !V?.world || X.lost) return;
   X.use();
   const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam, now = S.time;
-  const dt = Math.min(0.1, V.lastT == null ? 0 : S.time - V.lastT);
+  const dt = Math.min(GFX.camera.maxDt, V.lastT == null ? 0 : S.time - V.lastT);
   V.lastT = S.time;
   // camera: lean to the active unit when zoomed in
   const cu = cur ? S.dispOf(cur) : null;
@@ -711,6 +711,8 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.uniform2f(U.uFogRange, vis.vis ? -4 : FG.near, vis.vis ? vis.vis * 2 : FG.far);
     // night / dusk tint with static light holes
     gl.uniform4f(U.uNight, nc[0], nc[1], nc[2], amount);
+    const wc = keyRGB(NT.warm);
+    if (U.uLightCol) gl.uniform4f(U.uLightCol, wc[0], wc[1], wc[2], amount ? NT.warmAmt * amount / NT.amount : 0);
     gl.uniform3fv(U.uLights, larr);
     gl.uniform1i(U.uNumLights, ls.length);
     gl.uniform1f(U.uBright, prefs.brightness || 1);

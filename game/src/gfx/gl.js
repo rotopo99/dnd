@@ -130,6 +130,7 @@ uniform vec4 uFog;
 uniform vec2 uFogRange;
 uniform vec4 uNight;
 uniform vec3 uLights[8];
+uniform vec4 uLightCol; // warm glow of night lights: palette rgb, strength
 uniform int uNumLights;
 uniform float uBright;
 uniform float uMaxPix;
@@ -150,14 +151,16 @@ ${skin ? '  vec4 uTint = vTintI, uFlat = vFlatI; float uAlpha = vAlphaI;' : ''}
     c = mix(c, vShade, (1.0 - lit) * uShadowOn.x);
   }
   if (uNight.a > 0.0) {
-    float lit = 0.0;
+    float lit = 0.0, glow = 0.0;
     for (int i = 0; i < 8; i++) {
       if (i >= uNumLights) break;
       float r = uLights[i].z;
       float dd = length(vWorld.xz - uLights[i].xy);
       lit = max(lit, 1.0 - smoothstep(r * 0.6, r, dd));
+      glow = max(glow, 1.0 - smoothstep(0.0, r * 0.9, dd));
     }
     c = mix(c, uNight.rgb, uNight.a * (1.0 - lit));
+    c = mix(c, uLightCol.rgb, uLightCol.a * glow * glow); // static warm pool, no flicker
   }
   float depth = dot(vWorld, uFogPlane.xyz) + uFogPlane.w;
   float f = clamp((depth - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0) * uFog.a;

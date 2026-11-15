@@ -37,6 +37,13 @@ const cellPt = (x, y) => page.evaluate(async ({ x, y }) => {
   const S = window.__game.scene.S, p = m.cellScreen(S, x, y);
   return { x: p.x + S.L.cell / 2, y: p.y + S.L.cell / 2 };
 }, { x, y });
+/** Wait until the camera tweens (turn / zoom / follow) are done: slow SwiftShader frames must not race fixed waits. */
+const settle = async (ms = 4000) => {
+  for (let t = 0; t < ms; t += 50) {
+    if (await page.evaluate(() => { const c = window.__game.scene.S.v3?.cam; return !c || (c.tw >= 1 && !c.moving); })) return;
+    await wait(50);
+  }
+};
 /** Average frame time over n forced redraws (camera nudged every frame). */
 const frameMs = (n = 60) => page.evaluate((n) => new Promise((res) => {
   const S = window.__game.scene.S; let k = 0; const t0 = performance.now();
@@ -82,7 +89,7 @@ for (const [bi, biome] of biomes.entries()) {
   const stx = await page.evaluate(() => ({ ...window.__game.scene.S.v3.stats }));
   ok(stx.particles > 10 && stx.groups >= 1 && stx.shadow > 0, `${biome}: stats ${JSON.stringify(stx)}`);
   await shot(`gfx3d-anim-${biome}`);
-  if (bi === 0) { await page.evaluate(() => { window.__game.scene.S.v3.cam.zoomIdx = 1; }); await wait(1500); }
+  if (bi === 0) { await page.evaluate(() => { window.__game.scene.S.v3.cam.zoomIdx = 1; }); await wait(300); await settle(); }
   if (bi === 0) {
     // click on a reachable cell -> the hero walks there
     const tgt = await page.evaluate(() => {
@@ -105,16 +112,16 @@ for (const [bi, biome] of biomes.entries()) {
     }
     // rotate the camera: ] and the on-screen button
     const yaw0 = await page.evaluate(() => window.__game.scene.S.v3.cam.yawTo);
-    await key('BracketRight'); await wait(450);
+    await key('BracketRight'); await wait(100); await settle();
     const yaw1 = await page.evaluate(() => window.__game.scene.S.v3.cam.yaw);
     ok(Math.abs(yaw1 - yaw0 - 90) < 0.01, `rotate ] : yaw ${yaw0} -> ${yaw1}`);
     await shot('gfx3d-rotated');
     const btn = await page.evaluate(async () => { const m = await import('/game/src/gfx/scene3d.js'); const S = window.__game.scene.S; return m.camButtons(S, window.__game).find((b) => b.id === 'rotL'); });
-    await page.mouse.click(btn.x + btn.w / 2, btn.y + btn.h / 2); await wait(450);
+    await page.mouse.click(btn.x + btn.w / 2, btn.y + btn.h / 2); await wait(100); await settle();
     const yaw2 = await page.evaluate(() => window.__game.scene.S.v3.cam.yaw);
     ok(Math.abs(yaw2 - yaw0) < 0.01, `rotate button ⟲ : yaw ${yaw2}`);
     // picking still lands on the right cell after a turn
-    await key('BracketLeft'); await wait(450);
+    await key('BracketLeft'); await wait(100); await settle();
     const hc = await page.evaluate(() => { const S = window.__game.scene.S, h = S.b.byId[S.heroId]; return { x: h.x, y: h.y }; });
     const pp = await cellPt(hc.x, hc.y);
     await page.mouse.move(pp.x, pp.y + 6); await wait(200);

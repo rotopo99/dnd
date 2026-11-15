@@ -133,6 +133,7 @@ if (tg) {
   ok((await st()).v3, 'roam toggle → 3D');
 }
 // 10. battle on the node map in 3D: raid hunters → battle; arrows pan, Home centres the active unit
+await force({ tod: 'night', weather: 'rain' }); // the node battle takes the node's weather
 await page.evaluate(() => { const sc = window.__game.scene; sc.spawnRaid(window.__game, ['scavenger', 'scavenger'], 'Мародёры'); });
 for (let i = 0; i < 60; i++) { if ((await page.evaluate(() => window.__game.scene.id)) === 'battle') break; await wait(250); }
 const bid = await page.evaluate(() => window.__game.scene.id);
@@ -140,8 +141,9 @@ ok(bid === 'battle', `raid → battle (${bid})`);
 if (bid === 'battle') {
   await wait(800);
   for (let i = 0; i < 8; i++) { const b = await page.evaluate(() => !!window.__game.scene.S.banner); if (!b) break; await key('Enter'); await wait(200); }
-  const b3 = await page.evaluate(() => ({ v3: !!window.__game.scene.S.v3, id: window.__game.scene.S.b.map.id }));
+  const b3 = await page.evaluate(() => { const m = window.__game.scene.S.b.map; return { v3: !!window.__game.scene.S.v3, id: m.id, tod: m.tod, weather: m.weather }; });
   ok(b3.v3 && b3.id.startsWith('roam-'), `node battle in 3D (${b3.id})`);
+  ok(b3.tod === 'night' && b3.weather === 'rain', `node battle keeps the node weather (${b3.tod}, ${b3.weather})`);
   await page.mouse.move(640, 300);
   await page.keyboard.down('ArrowLeft'); await wait(400); await page.keyboard.up('ArrowLeft');
   const pan = await page.evaluate(() => { const c = window.__game.scene.S.v3.cam; return Math.hypot(c.px, c.pz); });

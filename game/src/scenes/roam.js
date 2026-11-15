@@ -519,6 +519,7 @@ export function createRoamScene(rawId, opts = {}) {
       const k = foes.length;
       while (foes.length < enemies.length) foes.push(foes[foes.length % k]);
       const def = roamBattleMap(map, S.objs, { party, foes: foes.slice(0, Math.max(1, enemies.length)), allies: allies.map(() => party[0]), id: locId, name: loc.name });
+      Object.assign(def, weatherOf(game)); // the battle keeps the node's weather / time of day (as on the free map)
       return {
         map: def,
         after(g, BS) {

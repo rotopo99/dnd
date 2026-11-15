@@ -25,12 +25,14 @@ export const GFX = {
     zoomDefault: 1, follow: 6, // 1/s, camera centre lerp
     // stage 3: pan — drag with the middle / right button (right: after dragMin px, a right click stays a click), arrows px/s
     dragMin: 6, panSpeed: 720,
+    maxDt: 0.25, // s per drawn frame for camera / animation tweens (= main loop cap: slow frames keep real-time tweens)
   },
   light: {
     // direction in camera space: left, up, towards the camera -> top faces get the base tone, left faces light, right shadow
     dir: [-0.75, 0.55, 0.35], steps: [0.62, 0.22], ao: 0.55,
     fog: { near: 2, far: 22, max: 0.32, visMul: 0.06 },
-    night: { amount: 0.55, dusk: 0.25, radiusMul: 1, max: 8 }, // max — point lights per frame (shader limit 8)
+    // max — point lights per frame (shader limit 8); warm / warmAmt — static warm pool of the lights (palette key, strength)
+    night: { amount: 0.62, dusk: 0.25, radiusMul: 1.2, max: 8, warm: 'a', warmAmt: 0.36 },
   },
   unit: { scale: 1.2, r: 0.26, body: 0.95, head: 0.26, ring: [0.36, 0.46], hull: 1.07, xray: 0.3, headScale: 0.27, lerpH: 10, bossScale: 1.3, grow: 0.022, growTarget: 0.035 },
   // enemy silhouettes (gfx/units3d.js): first rule that matches the enemy id (regexp) or tag wins; else humanoid
