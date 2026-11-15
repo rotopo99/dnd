@@ -1,6 +1,7 @@
 // Battle view of the combat rework (docs/specs/combat-rework.md §5, §9): objects and heights on the map layer,
 // object HP bars and hover tips, cover marks, enemy intent icons, the hit/damage card at the target, help line.
 // Drawn procedurally in the palette (no new sprite sheets): concrete, flimsy wall, machine, generator, rubble, heights.
+import { cellScreen, unitScreen } from '../gfx/scene3d.js';
 import { t } from '../data/text/index.js';
 import { C, FONT, FONT_B, LINE, text, fit, panel, bar } from './draw.js';
 import { hotspot } from './tooltip.js';
@@ -78,12 +79,13 @@ export function drawObjects(ctx, S) {
   const list = [...new Set(b.objects.values()), ...(b.barrels || []).filter((r) => r.hp != null).map((r) => ({ ...r, kind: 'barrel' }))];
   for (const o of list) {
     if (o.hp >= o.maxHp) continue;
-    bar(ctx, L.mapX + o.x * L.cell + 3, L.mapY + o.y * L.cell + L.cell - 6, L.cell - 6, Math.max(2, L.s + 1), o.hp, o.maxHp, 'hp');
+    const p = cellScreen(S, o.x, o.y, S.v3 ? 1 : 0); // 3d.md: over the object in 3D
+    bar(ctx, p.x + 3, p.y + L.cell - 6, L.cell - 6, Math.max(2, L.s + 1), o.hp, o.maxHp, 'hp');
   }
   // attack mode: mark smashable objects
   if (S.sel && S.sel.kind === 'attack' && S.smashTiles) {
     ctx.strokeStyle = rgba(C.a, 0.8); ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
-    for (const idx of S.smashTiles) ctx.strokeRect(L.mapX + (idx % b.grid.w) * L.cell + 2, L.mapY + ((idx / b.grid.w) | 0) * L.cell + 2, L.cell - 4, L.cell - 4);
+    for (const idx of S.smashTiles) if (S.hl3) S.hl3.push({ x: idx % b.grid.w, y: (idx / b.grid.w) | 0, stroke: rgba(C.a, 0.8) }); else ctx.strokeRect(L.mapX + (idx % b.grid.w) * L.cell + 2, L.mapY + ((idx / b.grid.w) | 0) * L.cell + 2, L.cell - 4, L.cell - 4);
     ctx.setLineDash([]);
   }
   const hc = S.hover.cell;
@@ -91,7 +93,8 @@ export function drawObjects(ctx, S) {
   const o = objectAt(b, hc.x, hc.y);
   const e = elevAt(b.grid, hc.x, hc.y);
   if (!o && !e) return;
-  hotspot(L.mapX + hc.x * L.cell, L.mapY + hc.y * L.cell, L.cell, L.cell, () => {
+  const hp = cellScreen(S, hc.x, hc.y);
+  hotspot(hp.x, hp.y, L.cell, L.cell, () => {
     if (!o) return { title: `${t('elev.tile')} ${e}`, lines: [t('elev.hint')] };
     const C2 = b.data.combat?.objects?.[o.kind] || {};
     const lines = [
@@ -116,7 +119,8 @@ export function drawIntents(ctx, S) {
     const u = b.byId[id];
     if (!it || !u || u.dead || u.removed || u.down || id === cur) continue;
     const d = S.dispOf(u);
-    const x = Math.round(L.mapX + d.x * L.cell + L.cell - s - 1), y = Math.round(L.mapY + d.y * L.cell + 1);
+    const p = unitScreen(S, u, d);
+    const x = Math.round(p.x + L.cell - s - 1 + (S.v3 ? s + 4 : 0)), y = Math.round(p.y + 1 - (S.v3 ? s + 8 : 0));
     ctx.fillStyle = C['0']; ctx.fillRect(x - 1, y - 1, s + 2, s + 2);
     drawStatusIcon(ctx, `intent:${it.kind}`, x, y, s);
     hotspot(x - 1, y - 1, s + 2, s + 2, { title: `${t('intent.title')}: ${S.name(id)}`, lines: [intentText(S, it)] });
@@ -142,8 +146,9 @@ export function drawOddsCard(ctx, S, preview) {
   const w = Math.max(...rows.map((r) => { ctx.font = r[2]; return ctx.measureText(r[0]).width; })) + 14;
   const h = rows.length * LINE + 8;
   const d = S.dispOf(u);
-  let x = Math.round(L.mapX + (d.x + 1) * L.cell + 4), y = Math.round(L.mapY + d.y * L.cell - 4);
-  if (x + w > L.area.x + L.area.w - 4) x = Math.round(L.mapX + d.x * L.cell - w - 4);
+  const p = unitScreen(S, u, d);
+  let x = Math.round(p.x + L.cell + 4), y = Math.round(p.y - 4);
+  if (x + w > L.area.x + L.area.w - 4) x = Math.round(p.x - w - 4);
   y = Math.max(L.area.y + 2, Math.min(L.area.y + L.area.h - h - 2, y));
   panel(ctx, x, y, w, h, C['0'], col);
   rows.forEach((r, i) => text(ctx, fit(ctx, r[0], w - 10, r[2]), x + 7, y + 4 + i * LINE, r[1], r[2]));

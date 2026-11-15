@@ -1,0 +1,20 @@
+// Strings of the 3D renderer and the graphics settings (docs/specs/3d.md).
+export const GFX_TEXT = {
+  'gfx.unavailable': '3D недоступно — включена 2D-графика',
+  'gfx.toggleTip': 'Графика: 3D / 2D',
+  'gfx.rotTip': 'Повернуть камеру на 90° ( [ / ] ), колесо — зум',
+  'menu.settings': 'Настройки',
+  'settings.title': 'Настройки',
+  'settings.mode': 'Графика',
+  'settings.mode.auto': 'авто',
+  'settings.mode.3d': '3D',
+  'settings.mode.2d': '2D',
+  'settings.no3d': '3D недоступно на этом устройстве',
+  'settings.reduceFx': 'Снизить эффекты',
+  'settings.reduceMotion': 'Снизить движение',
+  'settings.brightness': 'Яркость',
+  'settings.on': 'вкл.',
+  'settings.off': 'выкл.',
+  'settings.close': 'Закрыть',
+  'settings.hint': '3D: [ / ] или кнопки ⟲ ⟳ — поворот камеры, колесо над картой — зум.',
+};

@@ -1,6 +1,7 @@
 // Плейтест: поднимает статический сервер, открывает игру в headless Chromium,
 // жмёт клавиши по сценарию, снимает скриншоты, собирает ошибки консоли.
-// Использование: node tools/playtest.mjs [--keys "ArrowRight*10,Space"] [--wait 1000]
+// Использование: node tools/playtest.mjs [--keys "ArrowRight*10,Space"] [--wait 1000] [--gfx 2d|3d]
+// Графика: под автоматизацией по умолчанию 2D (navigator.webdriver); --gfx 3d — WebGL2 через SwiftShader.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +19,7 @@ const arg = (name, def) => {
 };
 const keys = arg('--keys', '');
 const wait = Number(arg('--wait', 1000));
+const gfx = arg('--gfx', '');
 
 let chromium;
 try {
@@ -44,10 +46,10 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(p).pipe(res);
 });
 await new Promise((r) => server.listen(0, r));
-const url = `http://localhost:${server.address().port}/game/index.html`;
+const url = `http://localhost:${server.address().port}/game/index.html${gfx ? `?gfx=${gfx}` : ''}`;
 
 const errors = [];
-const browser = await chromium.launch();
+const browser = await chromium.launch(gfx === '3d' ? { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } : {});
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`));
 page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));

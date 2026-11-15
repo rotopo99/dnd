@@ -1,6 +1,7 @@
 // Battle objectives on screen (combat-rework.md §6, §9; stage 2): markers on the map — exits 'D', hold zone, cargo,
 // captive / terminal / chest props, the assassination target — with hover tips, and the objectives panel (bottom-left of
 // the map area). State: S.b.objectives (rules/objectives.js). Called by ui/battle-view.js.
+import { cellScreen } from '../gfx/scene3d.js';
 import { t } from '../data/text/index.js';
 import { C, FONT, FONT_B, text, fit, panel } from './draw.js';
 import { hotspot } from './tooltip.js';
@@ -48,30 +49,35 @@ export function drawObjectiveMarkers(ctx, S) {
   const c = L.cell, k = c / 16;
   const px = (x) => L.mapX + x * c, py = (y) => L.mapY + y * c;
   const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
+  const g = O.goal;
+  const active = g && g.state === 'active';
+  if (S.hl3) { // 3d.md: cell markers become floor quads of the 3D layer, props / target — icons by projection
+    for (const e of O.exits) S.hl3.push({ x: e.x, y: e.y, fill: rgba(O.exitLock ? C.c : C.j, 0.22 + 0.12 * pulse), stroke: O.exitLock ? C.c : C.j });
+    if (active && g.id === 'hold') for (const z of g.zone) S.hl3.push({ x: z.x, y: z.y, fill: rgba(C.a, 0.16 + 0.08 * pulse), stroke: C.a });
+    if (active && g.id === 'nofire') for (const q of g.cargo) S.hl3.push({ x: q.x, y: q.y, stroke: C.e });
+  }
   // exits
-  for (const e of O.exits) {
+  if (!S.hl3) for (const e of O.exits) {
     ctx.fillStyle = rgba(O.exitLock ? C.c : C.j, 0.22 + 0.12 * pulse);
     ctx.fillRect(px(e.x), py(e.y), c, c);
     ctx.strokeStyle = O.exitLock ? C.c : C.j; ctx.lineWidth = 2;
     ctx.strokeRect(px(e.x) + 1, py(e.y) + 1, c - 2, c - 2);
     text(ctx, O.exitLock ? '×' : 'D', px(e.x) + c / 2, py(e.y) + c / 2 - 8, O.exitLock ? C.c : C.j, FONT_B, 'center');
   }
-  const g = O.goal;
-  const active = g && g.state === 'active';
-  if (active && g.id === 'hold') {
+  if (active && g.id === 'hold' && !S.hl3) {
     ctx.fillStyle = rgba(C.a, 0.16 + 0.08 * pulse);
     for (const z of g.zone) ctx.fillRect(px(z.x), py(z.y), c, c);
     ctx.strokeStyle = C.a; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
     for (const z of g.zone) ctx.strokeRect(px(z.x) + 2, py(z.y) + 2, c - 4, c - 4);
     ctx.setLineDash([]);
   }
-  if (active && g.id === 'nofire') {
+  if (active && g.id === 'nofire' && !S.hl3) {
     ctx.strokeStyle = C.e; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
     for (const p of g.cargo) ctx.strokeRect(px(p.x) + 1, py(p.y) + 1, c - 2, c - 2);
     ctx.setLineDash([]);
   }
   for (const p of O.props) {
-    const x = px(p.x), y = py(p.y);
+    const { x, y } = cellScreen(S, p.x, p.y);
     if (p.kind === 'captive') {
       ctx.fillStyle = C['8']; ctx.fillRect(x + 6 * k, y + 7 * k, 4 * k, 7 * k); // body
       ctx.fillStyle = C['9']; ctx.fillRect(x + 6 * k, y + 3 * k, 4 * k, 4 * k); // head
@@ -95,7 +101,8 @@ export function drawObjectiveMarkers(ctx, S) {
     const u = b.byId[g.target];
     if (u && !u.dead && !u.removed) {
       const d = S.dispOf(u);
-      const cx = L.mapX + (d.x + 0.5) * c, cy = L.mapY + (d.y + 0.5) * c, r = c * 0.48;
+      const q = cellScreen(S, d.x, d.y, S.v3 ? 0.7 : 0);
+      const cx = q.x + c / 2, cy = q.y + c / 2, r = c * 0.48;
       ctx.strokeStyle = u.fleeing ? C.c : C.a; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(cx + dx * r * 0.6, cy + dy * r * 0.6); ctx.lineTo(cx + dx * r * 1.15, cy + dy * r * 1.15); }
@@ -106,7 +113,8 @@ export function drawObjectiveMarkers(ctx, S) {
   const hc = S.hover?.cell;
   if (!hc) return;
   const at = (list) => list && list.find((p) => p.x === hc.x && p.y === hc.y);
-  const tip = (spec) => hotspot(px(hc.x), py(hc.y), c, c, spec);
+  const hp = cellScreen(S, hc.x, hc.y);
+  const tip = (spec) => hotspot(hp.x, hp.y, c, c, spec);
   const p = at(O.props);
   if (p) {
     if (p.kind === 'captive') tip({ title: t('obj.captive'), lines: [t('obj.captiveHint'), ...(g ? goalTip(b, g).lines : [])] });

@@ -115,6 +115,9 @@ const BIO = {
     half: 'datablock', full: 'monolith', debris: ['h', 'n', 'o', 'i'], water: ['0', 'o', 'n'], decals: ['glitch', 'glitch'] },
 };
 
+/** Palette keys of a biome (3D renderer, gfx/scene3d.js): { o: {base, dk, lt, ex}, wc, debris, water }. */
+export const biomeTones = (biome) => BIO[biome] || BIO.wasteland;
+
 // ---------------------------------------------------------------------------
 // floors
 // ---------------------------------------------------------------------------

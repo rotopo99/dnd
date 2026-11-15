@@ -17,6 +17,7 @@ import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHe
 import { drawObjectiveMarkers, drawObjectivePanel } from './battle-objectives.js';
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
+import { battle3d, drawBattle3d, cellScreen, unitScreen, camButtons } from '../gfx/scene3d.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -196,14 +197,58 @@ export function renderBattle(game, S) {
   const { ctx } = game;
   const L = S.L;
   const b = S.b;
-  clear(ctx, L.W, L.H);
+  const V = battle3d(game, S); // 3d.md: WebGL world under this canvas, or null (2D)
+  S.hl3 = V ? [] : null; // 3D: cell highlights are captured here and drawn as floor quads
+  S.units3 = V ? [] : null;
+  if (V) ctx.clearRect(0, 0, L.W, L.H); else clear(ctx, L.W, L.H);
   ctx.imageSmoothingEnabled = false;
-  if ((b.gridVersion || 0) !== S.gridV) buildMapLayer(S); // a barrel / object broke
+  if (!V && (b.gridVersion || 0) !== S.gridV) buildMapLayer(S); // a barrel / object broke
   // combat rework: camera shake on crits, explosions, boss phases
-  const shaking = S.shake > 0;
+  const shaking = S.shake > 0 && !V; // 3D: no shake (3d.md §3)
   if (shaking) { ctx.save(); ctx.translate(Math.round((Math.random() - 0.5) * 8), Math.round((Math.random() - 0.5) * 8)); }
-  ctx.drawImage(S.mapLayer, L.mapX, L.mapY);
   const tms = S.time * 1000;
+  if (!V) drawWorld2d(ctx, S, tms);
+  drawObjects(ctx, S);
+  drawObjectiveMarkers(ctx, S); // combat rework §6: exits, zone, cargo, props, target
+  const preview = drawHighlights(ctx, S);
+  drawUnits(ctx, S, preview, tms);
+  drawIntents(ctx, S);
+  if (!V) {
+    drawSurfaces(ctx, S, tms, 'gas');
+    drawWeather(ctx, S, tms); // battlefields.md §4: time of day / weather, night light holes
+  } else drawBattle3d(game, S, { hl: S.hl3, units: S.units3, cur: b.turn ? b.byId[b.turn.unitId] : null });
+  {
+    const hc = S.hover.cell;
+    const inReach = !!(hc && S.playerTurn && !S.sel && S.reach && S.reach.dist[hc.y * b.grid.w + hc.x] > 0);
+    surfaceHover(S, b.byId[S.heroId], inReach);
+  }
+  drawPopups(ctx, S);
+  drawActPops(ctx, S);
+  if (shaking) ctx.restore();
+  drawOddsCard(ctx, S, preview);
+  drawHelp(ctx, S);
+  drawObjectivePanel(ctx, S);
+  drawPin(ctx, S);
+  drawTopBar(ctx, S);
+  drawActionBar(ctx, S);
+  drawQuickBar(ctx, S);
+  drawLog(ctx, S);
+  drawPanel(ctx, S, preview);
+  for (const bt of camButtons(S, game)) button(ctx, bt, S.camHover === bt || S.camHover?.id === bt.id);
+  if (S.message) {
+    const w = Math.min(L.area.w - 40, 560);
+    const x = L.area.x + Math.floor((L.area.w - w) / 2);
+    panel(ctx, x, L.mapY + 8, w, 32, C['1'], C.a);
+    text(ctx, fit(ctx, S.message.text, w - 16), x + w / 2, L.mapY + 16, C.a, FONT, 'center');
+  }
+  if (S.banner) drawBanner(ctx, S);
+  if (S.result) drawResult(ctx, S);
+}
+
+/** 2D world: cached map layer, floor surfaces, barrels, fire, smoke zones, drops, own traps. */
+function drawWorld2d(ctx, S, tms) {
+  const L = S.L, b = S.b;
+  ctx.drawImage(S.mapLayer, L.mapX, L.mapY);
   drawSurfaces(ctx, S, tms, 'floor');
   drawBarrels(ctx, S);
   // fire (animated)
@@ -240,41 +285,10 @@ export function renderBattle(game, S) {
     ctx.moveTo(x + c * 0.75, y + c * 0.25); ctx.lineTo(x + c * 0.25, y + c * 0.75); ctx.stroke();
     ctx.strokeRect(x + c * 0.18, y + c * 0.18, c * 0.64, c * 0.64);
   }
-  drawObjects(ctx, S);
-  drawObjectiveMarkers(ctx, S); // combat rework §6: exits, zone, cargo, props, target
-  const preview = drawHighlights(ctx, S);
-  drawUnits(ctx, S, preview, tms);
-  drawIntents(ctx, S);
-  drawSurfaces(ctx, S, tms, 'gas');
-  drawWeather(ctx, S, tms); // battlefields.md §4: time of day / weather, night light holes
-  {
-    const hc = S.hover.cell;
-    const inReach = !!(hc && S.playerTurn && !S.sel && S.reach && S.reach.dist[hc.y * b.grid.w + hc.x] > 0);
-    surfaceHover(S, b.byId[S.heroId], inReach);
-  }
-  drawPopups(ctx, S);
-  drawActPops(ctx, S);
-  if (shaking) ctx.restore();
-  drawOddsCard(ctx, S, preview);
-  drawHelp(ctx, S);
-  drawObjectivePanel(ctx, S);
-  drawPin(ctx, S);
-  drawTopBar(ctx, S);
-  drawActionBar(ctx, S);
-  drawQuickBar(ctx, S);
-  drawLog(ctx, S);
-  drawPanel(ctx, S, preview);
-  if (S.message) {
-    const w = Math.min(L.area.w - 40, 560);
-    const x = L.area.x + Math.floor((L.area.w - w) / 2);
-    panel(ctx, x, L.mapY + 8, w, 32, C['1'], C.a);
-    text(ctx, fit(ctx, S.message.text, w - 16), x + w / 2, L.mapY + 16, C.a, FONT, 'center');
-  }
-  if (S.banner) drawBanner(ctx, S);
-  if (S.result) drawResult(ctx, S);
 }
 
 function cellRect(ctx, L, x, y, fill, stroke) {
+  if (L.hl3) { L.hl3.push({ x, y, fill, stroke }); return; } // 3D: floor quad (gfx/scene3d.js)
   const px = L.mapX + x * L.cell, py = L.mapY + y * L.cell;
   if (fill) { ctx.fillStyle = fill; ctx.fillRect(px, py, L.cell, L.cell); }
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, L.cell - 2, L.cell - 2); }
@@ -282,6 +296,7 @@ function cellRect(ctx, L, x, y, fill, stroke) {
 
 /** melee-aoe leap preview: dashed jump line from the hero and a framed landing cell. */
 function drawLanding(ctx, L, hero, p) {
+  if (L.hl3) { L.hl3.push({ x: p.x, y: p.y, stroke: C.a }); return; }
   const c = L.cell, half = c / 2;
   ctx.save();
   ctx.strokeStyle = rgba(C.a, 0.8);
@@ -303,6 +318,7 @@ function unitAtCell(b, x, y) {
 /** Highlights for reach / path / ability range and area. Returns preview info for the panel. */
 function drawHighlights(ctx, S) {
   const L = S.L, b = S.b;
+  L.hl3 = S.hl3; // cellRect / drawLanding push into the 3D overlay instead of painting
   const w = b.grid.w;
   const hc = S.hover.cell;
   const out = { target: null, odds: null, area: null, path: null };
@@ -371,9 +387,11 @@ function drawHighlights(ctx, S) {
       out.path = path;
       ctx.fillStyle = C.h;
       const d = Math.max(2, L.s * 2);
-      for (const p of path) ctx.fillRect(L.mapX + p.x * L.cell + L.cell / 2 - d / 2, L.mapY + p.y * L.cell + L.cell / 2 - d / 2, d, d);
+      if (S.hl3) for (const p of path) S.hl3.push({ x: p.x, y: p.y, dot: C.h });
+      else for (const p of path) ctx.fillRect(L.mapX + p.x * L.cell + L.cell / 2 - d / 2, L.mapY + p.y * L.cell + L.cell / 2 - d / 2, d, d);
       cellRect(ctx, L, hc.x, hc.y, null, CY_LINE);
-      text(ctx, String(path.length), L.mapX + hc.x * L.cell + L.cell - 3, L.mapY + hc.y * L.cell + 2, C.h, '12px monospace', 'right');
+      const lp = cellScreen(S, hc.x, hc.y);
+      text(ctx, String(path.length), lp.x + L.cell - 3, lp.y + 2, C.h, '12px monospace', 'right');
     }
   }
   return out;
@@ -397,28 +415,32 @@ function drawUnits(ctx, S, preview, tms) {
     const hidden = isHidden(u) && !(u.dead || u.removed);
     const own = u.team === 'heroes';
     if (hidden && !own) continue;
-    const px = Math.round(L.mapX + d.x * L.cell);
-    let py = Math.round(L.mapY + d.y * L.cell);
+    const sp = unitScreen(S, u, d); // 3D: anchor above the head of the 3D dummy
+    const px = Math.round(sp.x);
+    let py = Math.round(sp.y);
     let alpha = 1;
     if (u.dead || u.removed) { alpha = Math.max(0, d.fade); py -= Math.round((1 - d.fade) * (d.drift ? L.cell : 4)); }
     if (d.down) alpha = 0.5;
     if (hidden) alpha = 0.55;
-    ctx.globalAlpha = alpha;
-    if (!(u.dead || u.removed)) drawTeamMarker(ctx, markerTeam(u), px, py, L.s);
     let tint = null;
     if (u.id === cur && !(u.dead || u.removed)) tint = own ? (u.kind === 'hero' ? 'h' : 'j') : u.team === 'rivals' ? 'a' : 'c';
     if ((preview.target === u) || affected.has(u.id)) tint = 'a';
-    const moving = d.path.length > 0;
-    drawSprite(ctx, unitSprite(u), px, py, L.s, {
-      frame: d.down ? 0 : moving ? 1 : idleFrame(tms, d.phase), flip: u.team !== 'heroes', tint, mono: d.flash > 0 ? '5' : null,
-    });
-    ctx.globalAlpha = 1;
+    if (S.units3) S.units3.push({ u, d, alpha, tint: tint === 'a' ? 'a' : null });
+    else {
+      ctx.globalAlpha = alpha;
+      if (!(u.dead || u.removed)) drawTeamMarker(ctx, markerTeam(u), px, py, L.s);
+      const moving = d.path.length > 0;
+      drawSprite(ctx, unitSprite(u), px, py, L.s, {
+        frame: d.down ? 0 : moving ? 1 : idleFrame(tms, d.phase), flip: u.team !== 'heroes', tint, mono: d.flash > 0 ? '5' : null,
+      });
+      ctx.globalAlpha = 1;
+    }
     if (u.dead || u.removed) continue;
     // overhead bars
     const bw = L.cell - 6, bh = Math.max(2, L.s + 1);
     const bx = px + 3;
     const base = String(u.enemyId || '').split('^')[0];
-    const by = py - (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s - bh * 2 - 4;
+    const by = py - (S.units3 ? 0 : (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s) - bh * 2 - 4;
     bar(ctx, bx, by, bw, bh, d.hp, u.maxHp, 'hp', u.shield ? u.shield.value : 0);
     if (u.maxMrl > 0) bar(ctx, bx, by + bh + 1, bw, bh, d.mrl, u.maxMrl, 'mrl');
     // status icons (Stage B: palette colour per status, max 4, then «+N»)
@@ -430,7 +452,7 @@ function drawUnits(ctx, S, preview, tms) {
       drawStatusIcon(ctx, s.id, sx, by - pip - 2, pip, { bare: true });
       sx += pip;
     });
-    if (d.down) text(ctx, t('battle.downTag'), px + L.cell - 2, py + 2, C.c, FONT_B, 'right');
+    if (d.down) text(ctx, t('battle.downTag'), px + L.cell - 2, py + (S.units3 ? L.cell / 2 : 2), C.c, FONT_B, 'right');
   }
   // speech bubbles
   for (const bu of S.bubbles) {
@@ -441,9 +463,10 @@ function drawUnits(ctx, S, preview, tms) {
     const lines = wrap(ctx, bu.text, 240);
     const bw = Math.min(260, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16) + pw;
     const bh = Math.max(lines.length * LINE + 10, pw ? 56 : 0);
-    let x = Math.round(L.mapX + d.x * L.cell + L.cell / 2 - bw / 2);
+    const sp = unitScreen(S, u, d);
+    let x = Math.round(sp.x + L.cell / 2 - bw / 2);
     x = Math.max(4, Math.min(L.area.w - bw - 4, x));
-    const y = Math.max(TOP_H + 2, Math.round(L.mapY + d.y * L.cell - bh - 14 * L.s / 2 - 10));
+    const y = Math.max(TOP_H + 2, Math.round(sp.y - bh - (S.v3 ? 24 : 14 * L.s / 2) - 10));
     ctx.globalAlpha = bu.t > 2.8 ? Math.max(0, (3.2 - bu.t) / 0.4) : 1;
     panel(ctx, x, y, bw, bh, C['5'], C['0']);
     if (pw) battlePortrait(ctx, S, u, x + 4, y + 4, 1);
@@ -461,8 +484,10 @@ function drawPopups(ctx, S) {
   ctx.strokeStyle = C['0'];
   for (const p of S.popups) {
     if (p.t < 0) continue;
-    const x = L.mapX + p.x * L.cell + L.cell / 2;
-    const y = L.mapY + p.y * L.cell - 8 - p.t * 28;
+    const pu = p.id != null && S.v3 ? S.b.byId[p.id] : null; // 3D: over the head of the unit
+    const sp = pu ? unitScreen(S, pu, { x: p.x, y: p.y }) : cellScreen(S, p.x, p.y, S.v3 ? 1 : 0);
+    const x = sp.x + L.cell / 2;
+    const y = sp.y - 8 - p.t * 28;
     ctx.globalAlpha = p.t > 0.8 ? Math.max(0, (1.1 - p.t) / 0.3) : 1;
     ctx.strokeText(p.text, x, y);
     ctx.fillStyle = p.color;
@@ -481,8 +506,9 @@ function drawActPops(ctx, S) {
     const d = u ? S.dispOf(u) : { x: p.tx, y: p.ty };
     ctx.font = font;
     const w = Math.ceil(ctx.measureText(p.text).width) + 14;
-    const x = Math.round(L.mapX + d.x * L.cell + L.cell / 2 - w / 2);
-    const y = Math.max(TOP_H + 2, Math.round(L.mapY + d.y * L.cell - 34 - Math.min(0.25, p.t) * 16));
+    const sp = u ? unitScreen(S, u, d) : cellScreen(S, d.x, d.y, S.v3 ? 1 : 0);
+    const x = Math.round(sp.x + L.cell / 2 - w / 2);
+    const y = Math.max(TOP_H + 2, Math.round(sp.y - 34 - (S.v3 ? 12 : 0) - Math.min(0.25, p.t) * 16));
     ctx.globalAlpha = p.t > 0.9 ? Math.max(0, (1.2 - p.t) / 0.3) : 1;
     panel(ctx, x, y, w, 20, C['0'], p.color);
     text(ctx, p.text, x + w / 2, y + 3, p.color, font, 'center');

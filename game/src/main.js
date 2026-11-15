@@ -10,6 +10,7 @@ import { t } from './data/text/index.js';
 import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
 import { renderTips, clearTips } from './ui/tooltip.js';
 import { updateBarks, renderBark } from './ui/bark.js';
+import { createGfx } from './gfx/scene3d.js';
 
 // Minimal logical size: the UI is laid out for >= 1280x720. Bigger windows get a bigger canvas
 // at 1:1 pixels (pixel-perfect); smaller ones are downscaled by CSS as a fallback.
@@ -25,6 +26,7 @@ const game = {
   width: canvas.width,
   height: canvas.height,
   input: createInput(window, canvas),
+  gfx: null, // 3d.md: WebGL layer under the 2D canvas (gfx/scene3d.js createGfx)
   data: GAME_DATA,
   hero: null, // { race, cls, path, name } — chosen in character creation
   scene: null,
@@ -56,6 +58,8 @@ const game = {
   },
 };
 
+game.gfx = createGfx(document.getElementById('gl'), game);
+
 function resize() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -67,6 +71,7 @@ function resize() {
   canvas.style.width = `${Math.floor(w * k)}px`;
   canvas.style.height = `${Math.floor(h * k)}px`;
   ctx.imageSmoothingEnabled = false;
+  game.gfx.resize(w, h, canvas.style.width, canvas.style.height);
   game.width = w;
   game.height = h;
   game.scene?.resize?.(game);
@@ -119,6 +124,7 @@ function frame(now) {
   renderBark(game);
   renderTips(game);
   renderToasts(game);
+  game.gfx.endFrame(); // the WebGL layer is shown only while a scene drew into it this frame
 }
 requestAnimationFrame(frame);
 

@@ -1,6 +1,7 @@
 // Stage B: drawing battle surfaces (fire, current, water, oil, acid, gas…) and the tile hover tip.
 // Colours — palette keys from data/surfaces.js (docs/STYLE.md). Animations: fire flickers (3 frames × 0.15 s), current
 // arcs, water/oil/ice/blood shine, acid bubbles, cringe pulses, proxy stripes; gas is fog drawn over units.
+import { cellScreen } from '../gfx/scene3d.js';
 import { drawProp } from '../assets/props.js';
 import { C } from './draw.js';
 import { hotspot } from './tooltip.js';
@@ -141,7 +142,8 @@ export function surfaceHover(S, hero, inReach) {
   if (!cell) return;
   const step = hero && inReach ? surfaceEnterPreview(b, hero, hc.x, hc.y) : null;
   const L = S.L;
-  hotspot(L.mapX + hc.x * L.cell, L.mapY + hc.y * L.cell, L.cell, L.cell, () => {
+  const hp = cellScreen(S, hc.x, hc.y);
+  hotspot(hp.x, hp.y, L.cell, L.cell, () => {
     const parts = [cell.floor, cell.gas].filter(Boolean).map((s, i, arr) => surfaceTip(s, i === arr.length - 1 ? step : null, b.data.surfaces)).filter(Boolean);
     if (!parts.length) return null;
     if (parts.length === 1) return parts[0];

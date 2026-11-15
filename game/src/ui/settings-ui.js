@@ -1,0 +1,34 @@
+// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, «Снизить эффекты», «Снизить движение», brightness.
+// openSettings(game) — modal (ui/modal.js), values live in gfx/settings.js (localStorage).
+import { t } from '../data/text/index.js';
+import { GFX } from '../data/gfx.js';
+import { gfxPrefs, setGfxPref, gfxMode, gfxBroken } from '../gfx/settings.js';
+import { hasWebGL2 } from '../gfx/gl.js';
+
+const MODES = ['auto', '3d', '2d'];
+const onOff = (v) => t(v ? 'settings.on' : 'settings.off');
+
+export function openSettings(game) {
+  game.openModal({
+    title: t('settings.title'),
+    width: 560,
+    build() {
+      const p = gfxPrefs(), B = GFX.brightness;
+      const can3d = hasWebGL2() && !gfxBroken();
+      const modeLabel = `${t(`settings.mode.${p.mode}`)}${p.mode === 'auto' ? ` (${gfxMode().toUpperCase()})` : ''}`;
+      return {
+        lines: [t('settings.hint'), ...(can3d ? [] : [{ text: t('settings.no3d'), color: 'c' }])],
+        options: [
+          { label: `${t('settings.mode')}: ${modeLabel}`, keep: true, disabled: !can3d, run: () => setGfxPref('mode', MODES[(MODES.indexOf(p.mode) + 1) % MODES.length]) },
+          { label: `${t('settings.reduceFx')}: ${onOff(p.reduceFx)}`, keep: true, run: () => setGfxPref('reduceFx', !p.reduceFx) },
+          { label: `${t('settings.reduceMotion')}: ${onOff(p.reduceMotion)}`, keep: true, run: () => setGfxPref('reduceMotion', !p.reduceMotion) },
+          {
+            label: `${t('settings.brightness')}: ${Math.round((p.brightness || 1) * 100)}%`, keep: true,
+            run: () => { let v = Math.round(((p.brightness || 1) + B.step) * 10) / 10; if (v > B.max + 1e-6) v = B.min; setGfxPref('brightness', v); },
+          },
+          { label: t('settings.close') },
+        ],
+      };
+    },
+  });
+}

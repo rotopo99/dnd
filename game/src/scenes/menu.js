@@ -11,6 +11,7 @@ import { createBattleScene } from './battle.js';
 import { hasSave } from '../save.js';
 import { continueLatest, openLoadMenu } from '../ui/save-ui.js';
 import { openNetMenu } from './net-menu.js';
+import { openSettings } from '../ui/settings-ui.js';
 
 /** Load the most recent save (autosave or a manual slot) and go to its location / Cyberspace episode. */
 export function continueGame(game) {
@@ -59,6 +60,7 @@ function layout(game) {
   buttons.push({ id: 'new', label: t('menu.newGame'), x, y: yy, w, h }); yy += h + gap;
   buttons.push({ id: 'quick', label: t('menu.quickBattle'), sub: t('menu.quickHint'), x, y: yy, w, h: 56 }); yy += 56 + gap;
   buttons.push({ id: 'net', label: t('menu.net'), sub: t('menu.netHint'), key: 'M', x, y: yy, w, h: 56 });
+  buttons.push({ id: 'settings', label: t('menu.settings'), key: 'O', x: W - 216, y: 16, w: 200, h: 40 }); // 3d.md: graphics
 }
 
 export const menuScene = {
@@ -86,11 +88,13 @@ export const menuScene = {
     if (game.input.wasPressed('KeyQ')) act = 'quick';
     if (game.input.wasPressed('KeyM')) act = 'net';
     if (game.input.wasPressed('KeyL') && hasSave()) act = 'load';
+    if (game.input.wasPressed('KeyO')) act = 'settings';
     if (!act) return;
     play('uiClick');
     if (act === 'continue') return continueGame(game);
     if (act === 'load') return openLoadMenu(game);
     if (act === 'net') return openNetMenu(game);
+    if (act === 'settings') return openSettings(game);
     if (act === 'new') game.setScene(createCreateScene());
     else startQuickBattle(game);
   },

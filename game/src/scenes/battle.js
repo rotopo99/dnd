@@ -31,6 +31,7 @@ import { parseDice } from '../rules/dice.js';
 import { createPin, pinUnit, updatePin } from '../ui/unit-pin.js';
 import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
+import { pickBattle, cameraInput3d } from '../gfx/scene3d.js';
 import { objectiveStripBottom } from '../ui/battle-objectives.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
@@ -975,7 +976,10 @@ export function createBattleScene(opts) {
       return;
     }
     const L = S.L;
-    if (inRect(L.map, m.x, m.y)) {
+    // 3d.md: camera buttons / [ ] / wheel; a click on a camera button is not a map click
+    if (cameraInput3d(game, S) && m.clicked) return;
+    if (S.v3) { if (inRect(L.area, m.x, m.y) && !S.camHover) S.hover.cell = pickBattle(S, m.x, m.y); }
+    else if (inRect(L.map, m.x, m.y)) {
       const cx = Math.floor((m.x - L.mapX) / L.cell), cy = Math.floor((m.y - L.mapY) / L.cell);
       if (cx >= 0 && cy >= 0 && cx < S.b.grid.w && cy < S.b.grid.h) S.hover.cell = { x: cx, y: cy };
     }

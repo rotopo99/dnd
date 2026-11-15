@@ -1,0 +1,39 @@
+// Graphics settings (docs/specs/3d.md §3): 3D / 2D, «Снизить эффекты», «Снизить движение», brightness.
+// Stored in localStorage; `?gfx=2d|3d` in the URL overrides the mode (tests: old scenarios run in 2D by default under
+// automation — navigator.webdriver — new ones pass ?gfx=3d).
+import { GFX } from '../data/gfx.js';
+import { hasWebGL2, softwareGL } from './gl.js';
+
+let prefs = null;
+export function gfxPrefs() {
+  if (prefs) return prefs;
+  prefs = { ...GFX.defaults };
+  try { Object.assign(prefs, JSON.parse(globalThis.localStorage?.getItem(GFX.storageKey) || '{}')); } catch { /* private mode */ }
+  return prefs;
+}
+export function setGfxPref(k, v) {
+  gfxPrefs()[k] = v;
+  if (k === 'mode') session = null; // an explicit choice beats ?gfx= for the rest of the session
+  try { globalThis.localStorage?.setItem(GFX.storageKey, JSON.stringify(prefs)); } catch { /* private mode */ }
+}
+
+let session;
+const urlMode = () => {
+  if (session === undefined) { try { session = new URLSearchParams(globalThis.location?.search || '').get('gfx'); } catch { session = null; } }
+  return session;
+};
+let broken = false; // shader error / lost context: 2D until reload
+export const markGfxBroken = () => { broken = true; };
+export const gfxBroken = () => broken;
+
+/** Effective mode: '3d' | '2d'. */
+export function gfxMode() {
+  if (broken || !hasWebGL2()) return '2d';
+  const u = urlMode();
+  if (u === '2d' || u === '3d') return u;
+  const m = gfxPrefs().mode;
+  if (m === '2d' || m === '3d') return m;
+  // auto: 3D on real GPUs; automation (old 2D tests) and software GL (slow) — 2D
+  if (globalThis.navigator?.webdriver || softwareGL()) return '2d';
+  return '3d';
+}

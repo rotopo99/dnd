@@ -1,0 +1,231 @@
+// Procedural models of the 3D battlefield (docs/specs/3d.md §2, stage 1): props of assets/props.js by type
+// (car / barrel / wagon / container / crate / generator / shelf / block ..., the rest — a box of the prop's colour and
+// height), unit dummies (capsule body in the sprite's colours + team belt) with the hero head from ui/avatar3d.js.
+//   ramp(key)                     -> rgb ramp of a palette key (GFX.ramps)
+//   propColors(id)                -> [main, second] palette keys (most common colours of the prop sprite)
+//   propModel(id)                 -> MeshBuilder in footprint space (0..w × 0..h cells, y up from the floor), cached
+//   propTop(id)                   -> height (m) used for picking / cover readability
+//   unitModel(u)                  -> { mb, top } capsule + head, cached by look + class / enemy id
+import { GFX } from '../data/gfx.js';
+import { PROPS, propGrid } from '../assets/props.js';
+import { SPRITES, heroSpriteIds, enemySpriteIds } from '../assets/sprites.js';
+import { buildAvatarMesh } from '../ui/avatar3d.js';
+import { heroLook3d } from '../ui/hero-avatar.js';
+import { MeshBuilder, rampRGB } from './mesh.js';
+
+const rampCache = new Map();
+export function ramp(k) {
+  let r = rampCache.get(k);
+  if (!r) { r = rampRGB(GFX.ramps[k] || GFX.ramps['3']); rampCache.set(k, r); }
+  return r;
+}
+const glowR = (k) => rampRGB([k, k, k]);
+
+const colorMemo = new Map();
+export function propColors(id) {
+  let c = colorMemo.get(id);
+  if (c) return c;
+  const n = {};
+  for (const r of propGrid(id)) for (const ch of r) if (ch !== '.' && ch !== '0') n[ch] = (n[ch] || 0) + 1;
+  const keys = Object.keys(n).sort((a, b) => n[b] - n[a]);
+  c = [keys[0] || '3', keys[1] || keys[0] || '2'];
+  colorMemo.set(id, c);
+  return c;
+}
+
+// heights (m) by prop id; props not listed: half cover 0.6, full cover 1.2, else 0.5 (+ height levels / rise)
+const H = {
+  lada: 0.9, moskvich: 0.9, bus: 1.7, kamaz: 1.6, barrel: 0.8, 'barrel-toxic': 0.8, crate: 0.6, 'crate-stack': 1.2, fence: 1.2,
+  'concrete-block': 1.1, sandbags: 0.6, tower: 2.8, wagon: 1.7, container: 1.5, 'container-red': 1.5, transformer: 1.3, garages: 1.5,
+  campfire: 0.3, tent: 1.0, 'monument-stump': 1.4, kiosk: 1.4, heatpipe: 0.65, buoy: 0.7, bollard: 0.5, server: 1.4, 'glitch-cube': 1.1,
+  'tire-pile': 0.55, 'dead-tree': 2.2, lamp: 2.4, bench: 0.45, slab: 0.7, generator: 0.7, dumpster: 0.8, 'ice-block': 1.1, antenna: 3.2,
+  rowboat: 0.45, 'hologram-pillar': 1.3, 'data-pylon': 1.6, 'pallet-stack': 0.6, trench: 0.02, bridge: 0.15,
+};
+export function propTop(id) {
+  const p = PROPS[id];
+  if (!p) return 0;
+  return H[id] ?? (p.cover === 'full' ? 1.2 : p.cover === 'half' ? 0.6 : 0.5);
+}
+
+const cache = new Map();
+export function propModel(id) {
+  let mb = cache.get(id);
+  if (mb) return mb;
+  mb = new MeshBuilder();
+  const p = PROPS[id] || { w: 1, h: 1 };
+  const W = p.w || 1, D = p.h || 1, top = propTop(id);
+  const [k1, k2] = propColors(id);
+  const A = ramp(k1), B = ramp(k2), dark = ramp('1'), steel = ramp('3');
+  const m = 0.08; // inset from the footprint edge
+  const wheels = (n, r = 0.17) => {
+    for (let i = 0; i < n; i++) {
+      const x = m + 0.3 + ((W - 2 * m - 0.6) * i) / Math.max(1, n - 1);
+      mb.cyl(x, r, m + 0.02, 0.12, r, dark, { axis: 'z', seg: 8 });
+      mb.cyl(x, r, D - m - 0.14, 0.12, r, dark, { axis: 'z', seg: 8 });
+    }
+  };
+  switch (id) {
+    case 'lada': case 'moskvich': case 'rowboat':
+      if (id === 'rowboat') { mb.box(m, 0, 0.2, W - m, top, D - 0.2, A); mb.box(m + 0.15, top - 0.05, 0.3, W - m - 0.15, top, D - 0.3, dark); break; }
+      mb.box(m, 0.15, 0.14, W - m, 0.55, D - 0.14, A, { ao: 0.2 });
+      mb.box(W * 0.3, 0.55, 0.2, W * 0.75, top, D - 0.2, A, { top: B });
+      mb.box(W * 0.31, 0.6, 0.18, W * 0.74, top - 0.06, D - 0.18, glowR('i'));
+      wheels(2);
+      break;
+    case 'bus': case 'wagon': case 'container': case 'container-red': case 'garages': case 'kamaz': {
+      if (id === 'kamaz') {
+        mb.box(m, 0.3, 0.12, W * 0.42, top, D - 0.12, A, { top: B });
+        mb.box(m + 0.02, top - 0.55, 0.1, m + 0.04, top - 0.15, D - 0.1, glowR('i'));
+        mb.box(W * 0.42, 0.3, 0.16, W - m, 0.75, D - 0.16, steel);
+        wheels(2, 0.25);
+        break;
+      }
+      const y0 = id === 'bus' || id === 'wagon' ? 0.25 : 0;
+      mb.bevelBox(m, y0, 0.1, W - m, top, D - 0.1, 0.06, A, { top: B });
+      if (id === 'bus') mb.box(m + 0.1, top - 0.6, 0.08, W - m - 0.1, top - 0.25, D - 0.08, glowR('i'));
+      if (id === 'container' || id === 'container-red' || id === 'wagon') {
+        for (let x = m + 0.25; x < W - m - 0.1; x += 0.35) { mb.box(x, y0 + 0.05, 0.06, x + 0.06, top - 0.08, 0.1, B); mb.box(x, y0 + 0.05, D - 0.1, x + 0.06, top - 0.08, D - 0.06, B); }
+      }
+      if (id === 'garages') for (let i = 0; i < W; i++) mb.box(i + 0.15, 0, D - 0.12, i + 0.85, top - 0.35, D - 0.08, B);
+      if (y0) wheels(id === 'wagon' ? 3 : 2, 0.2);
+      break;
+    }
+    case 'barrel': case 'barrel-toxic': case 'buoy': case 'bollard':
+      mb.cyl(W / 2, 0, D / 2, top, id === 'bollard' ? 0.2 : 0.3, A, { seg: 10, cap: B });
+      if (id !== 'bollard') for (const y of [0.22, top - 0.2]) mb.cyl(W / 2, y, D / 2, 0.05, 0.315, B, { seg: 10 });
+      if (id === 'barrel-toxic') mb.cyl(W / 2, top, D / 2, 0.02, 0.18, glowR('j'), { seg: 10, glow: true });
+      break;
+    case 'tire-pile':
+      for (let i = 0; i < 3; i++) mb.cyl(W / 2 + (i % 2) * 0.05, i * 0.17, D / 2, 0.16, 0.34 - i * 0.03, dark, { seg: 10, cap: ramp('0') });
+      break;
+    case 'crate': case 'crate-stack': case 'pallet-stack': case 'dumpster': {
+      if (id === 'crate-stack') { mb.box(0.1, 0, 0.1, 0.9, 0.6, 0.9, A, { top: B }); mb.box(0.18, 0.6, 0.15, 0.85, top, 0.82, A, { top: B, ao: 0.3 }); break; }
+      if (id === 'pallet-stack') { for (let i = 0; i < 4; i++) mb.box(0.1, i * 0.15, 0.1, 0.9, i * 0.15 + 0.11, 0.9, i % 2 ? B : A); break; }
+      mb.box(0.12, 0, 0.12, W - 0.12, top, D - 0.12, A, { top: B });
+      if (id === 'crate') { mb.box(0.1, 0.25, 0.1, W - 0.1, 0.33, D - 0.1, B); }
+      break;
+    }
+    case 'generator':
+      mb.box(0.12, 0, 0.18, 0.88, top - 0.15, 0.82, A, { top: B });
+      mb.cyl(0.3, top - 0.15, 0.5, 0.15, 0.06, steel, { seg: 6 });
+      mb.box(0.6, top - 0.15, 0.3, 0.8, top - 0.1, 0.45, glowR('a'), { glow: true });
+      break;
+    case 'server': case 'transformer': case 'kiosk':
+      mb.bevelBox(0.14, 0, 0.14, 0.86, top, 0.86, 0.05, A, { top: B });
+      if (id === 'server') for (let y = 0.3; y < top - 0.1; y += 0.25) mb.box(0.2, y, 0.86, 0.8, y + 0.04, 0.88, glowR('h'), { glow: true });
+      if (id === 'kiosk') mb.box(0.2, 0.6, 0.86, 0.8, 1.05, 0.88, glowR('i'));
+      if (id === 'transformer') mb.box(0.4, 0.6, 0.86, 0.6, 0.85, 0.88, glowR('a'), { glow: true });
+      break;
+    case 'concrete-block': case 'slab': case 'monument-stump': case 'ice-block':
+      if (id === 'monument-stump') { mb.box(0.15, 0, 0.15, 0.85, 0.35, 0.85, B); mb.bevelBox(0.3, 0.35, 0.3, 0.7, top, 0.7, 0.06, A); break; }
+      mb.bevelBox(0.1, 0, 0.1, 0.9, top, 0.9, GFX.geo.bevel, A, { top: id === 'ice-block' ? ramp('5') : B });
+      break;
+    case 'glitch-cube': case 'data-pylon': case 'hologram-pillar':
+      if (id === 'hologram-pillar') { mb.cyl(0.5, 0, 0.5, 0.15, 0.3, steel, { seg: 8 }); mb.cyl(0.5, 0.15, 0.5, top - 0.15, 0.18, glowR('h'), { seg: 8, glow: true, r1: 0.12 }); break; }
+      mb.box(0.15, 0, 0.15, 0.85, top, 0.85, ramp('i'), { top: glowR(id === 'glitch-cube' ? 'n' : 'h') });
+      mb.box(0.13, top * 0.45, 0.13, 0.87, top * 0.45 + 0.06, 0.87, glowR(id === 'glitch-cube' ? 'n' : 'h'), { glow: true });
+      break;
+    case 'sandbags':
+      for (let i = 0; i < 3; i++) mb.bevelBox(0.08, i * 0.2, 0.15 + (i % 2) * 0.04, 0.92, i * 0.2 + 0.2, 0.85 - (i % 2) * 0.04, 0.06, A, { ao: i ? 0.2 : 0.6 });
+      break;
+    case 'heatpipe':
+      for (let x = 0.3; x < W; x += 1) mb.box(x - 0.06, 0, 0.42, x + 0.06, 0.35, 0.58, steel);
+      mb.cyl(0.02, 0.45, 0.5, W - 0.04, 0.2, A, { axis: 'x', seg: 8, cap: B });
+      break;
+    case 'fence':
+      for (const x of [0.1, 0.9]) mb.box(x - 0.04, 0, 0.46, x + 0.04, top, 0.54, steel);
+      mb.box(0.1, 0.1, 0.49, 0.9, top - 0.05, 0.51, B);
+      break;
+    case 'tower':
+      for (const [x, z] of [[0.15, 0.15], [0.85, 0.15], [0.15, 0.85], [0.85, 0.85]]) mb.box(x - 0.04, 0, z - 0.04, x + 0.04, top - 0.7, z + 0.04, B);
+      mb.box(0.05, top - 0.7, 0.05, 0.95, top - 0.6, 0.95, A);
+      mb.wedge(0.05, top - 0.15, 0.05, 0.95, top, 0.95, A);
+      mb.box(0.1, top - 0.6, 0.1, 0.9, top - 0.15, 0.9, B, { ao: 0.2 });
+      break;
+    case 'antenna': case 'lamp':
+      mb.cyl(0.5, 0, 0.5, top, 0.06, steel, { seg: 6, r1: 0.04 });
+      if (id === 'lamp') mb.box(0.5, top - 0.1, 0.42, 0.85, top, 0.58, steel).box(0.7, top - 0.13, 0.44, 0.84, top - 0.1, 0.56, glowR('b'), { glow: true });
+      else { mb.box(0.35, top - 0.9, 0.48, 0.65, top - 0.85, 0.52, steel); mb.box(0.47, top - 0.05, 0.47, 0.53, top, 0.53, glowR('c'), { glow: true }); }
+      break;
+    case 'dead-tree':
+      mb.cyl(0.5, 0, 0.5, top * 0.75, 0.13, A, { seg: 6, r1: 0.06 });
+      mb.cyl(0.5, top * 0.45, 0.5, 0.7, 0.04, A, { axis: 'x', seg: 5 });
+      mb.cyl(0.5, top * 0.62, 0.5, 0.55, 0.035, A, { axis: 'z', seg: 5 });
+      break;
+    case 'campfire':
+      mb.cyl(0.2, 0.06, 0.5, 0.6, 0.06, ramp('7'), { axis: 'x', seg: 5 });
+      mb.cyl(0.5, 0.06, 0.2, 0.6, 0.06, ramp('6'), { axis: 'z', seg: 5 });
+      mb.cyl(0.5, 0.05, 0.5, 0.3, 0.16, glowR('e'), { seg: 6, r1: 0.02, glow: true });
+      break;
+    case 'tent':
+      mb.wedge(0.1, 0, 0.1, W - 0.1, top, D - 0.1, A);
+      break;
+    case 'bench':
+      mb.box(0.1, 0.25, 0.3, 0.9, 0.32, 0.7, A).box(0.15, 0, 0.35, 0.22, 0.25, 0.65, steel).box(0.78, 0, 0.35, 0.85, 0.25, 0.65, steel).box(0.1, 0.32, 0.64, 0.9, top, 0.7, A);
+      break;
+    case 'trench':
+      mb.box(0.05, -0.02, 0.15, W - 0.05, 0.0, D - 0.15, ramp('1'), { ao: 0 });
+      mb.box(0.05, 0, 0.08, W - 0.05, 0.12, 0.15, A).box(0.05, 0, D - 0.15, W - 0.05, 0.12, D - 0.08, A);
+      break;
+    case 'bridge':
+      mb.box(0, 0, 0.12, W, 0.08, D - 0.12, ramp('8'), { ao: 0.2 });
+      mb.box(0, 0.08, 0.1, W, 0.5, 0.15, ramp('7')).box(0, 0.08, D - 0.15, W, 0.5, D - 0.1, ramp('7'));
+      break;
+    default:
+      mb.bevelBox(0.1, 0, 0.1, W - 0.1, top, D - 0.1, 0.06, A, { top: B });
+  }
+  cache.set(id, mb);
+  return mb;
+}
+
+// ---------------------------------------------------------------- units
+const dominant = (rows, y0 = 0, y1 = 99) => {
+  const n = {};
+  rows.forEach((r, y) => { if (y >= y0 && y <= y1) for (const ch of r) if (ch !== '.' && ch !== '0' && ch !== ' ') n[ch] = (n[ch] || 0) + 1; });
+  return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || null;
+};
+const frame0 = (id) => SPRITES[id]?.frames?.[0] || [];
+
+const unitCache = new Map();
+/** Capsule dummy: legs, torso (sprite colours), team belt is drawn as an overlay ring; head — avatar (heroes) or a ball. */
+export function unitModel(u) {
+  const hero = u.kind === 'hero';
+  const ids = hero ? heroSpriteIds(u.raceId, u.classId, u.look) : enemySpriteIds(u.enemyId || u.id);
+  const key = hero ? `h|${u.raceId}|${u.classId}|${u.look}|${JSON.stringify(u.avatar || u.name || '')}` : `e|${ids.join('+')}`;
+  let m = unitCache.get(key);
+  if (m) return m;
+  const base = frame0(ids[0]), layer = ids[1] ? frame0(ids[1]) : [];
+  const body = dominant(layer, 7, 13) || dominant(base, 7, 13) || '3';
+  const legs = dominant(base, 13, 15) || dominant(base, 11, 15) || '1';
+  const skin = dominant(base, 1, 6) || '9';
+  const U = GFX.unit, mb = new MeshBuilder();
+  const r = U.r, bh = U.body;
+  mb.cyl(0, 0, 0, bh * 0.45, r * 0.8, ramp(legs), { seg: 8, r1: r * 0.85 });
+  mb.cyl(0, bh * 0.45, 0, bh * 0.55, r * 0.95, ramp(body), { seg: 8, r1: r * 1.05, cap: ramp(body) });
+  // shoulders / arms
+  for (const s of [-1, 1]) mb.cyl(s * (r + 0.07), bh * 0.42, 0, bh * 0.5, 0.07, ramp(body), { seg: 6 });
+  let top = bh;
+  const hs = U.headScale;
+  if (hero) {
+    const mesh = buildAvatarMesh(heroLook3d(u));
+    const R = {};
+    for (const [k, v] of Object.entries(mesh.mats)) { R[k] = rampRGB(v); R[k].glow = !!v.glow; }
+    const hy = bh + 0.75 * hs;
+    for (const f of mesh.faces) {
+      const cy = f.v.reduce((s, p) => s + p[1], 0) / f.v.length;
+      if (cy < -0.72) continue; // shoulders of the bust: the capsule has its own
+      const pts = f.v.map((p) => [p[0] * hs, hy + p[1] * hs, p[2] * hs]);
+      const rr = R[f.m] || R.skin;
+      mb._poly(pts, rr, { glow: rr.glow, inside: [0, hy, 0] });
+      top = Math.max(top, ...pts.map((p) => p[1]));
+    }
+  } else {
+    const hr = U.head;
+    mb.cyl(0, bh, 0, hr * 1.5, hr * 0.8, ramp(skin), { seg: 8, r1: hr * 0.65 });
+    mb.box(-hr * 0.55, bh + hr * 0.75, hr * 0.6, hr * 0.55, bh + hr * 0.95, hr * 0.78, rampRGB(['c', 'c', 'c']), { glow: true, ao: 0 });
+    top = bh + hr * 1.5;
+  }
+  m = { mb, top, key };
+  unitCache.set(key, m);
+  return m;
+}
