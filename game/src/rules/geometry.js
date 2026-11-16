@@ -8,6 +8,7 @@
 //  - surface shapes: a layer's `shape` is a list of circles {cx, cy, r} (m) — the union; no shape = the whole cell.
 //   shapedOn(b) · geoOf(b) · segPolyT(ax, ay, bx, by, it) · ptPolyDist(px, py, it) · itemsOnSegment(b, ax, ay, bx, by, visit)
 //   inShape(shape, px, py) · cellShape(shape, x, y) · unionShape(a, b) · circleTiles(b, cx, cy, r)
+//   stage 4: polygon parts {pts} — conePoly · linePoly · polyTiles · clipPolyRect · partHas · inPts · segDist
 import { GEO } from '../data/combat.js';
 import { T_WALL, T_FULL, T_BARREL, tileCover, inBounds, isPassable, lineOfSight } from './grid.js';
 
@@ -15,7 +16,8 @@ const CM = 1.5;
 const EPS = 1e-9;
 export const shapedOn = (b) => !!b && (b.metric || 0) >= 3;
 
-// ---------------------------------------------------------------- surface shapes (circles)
+// ---------------------------------------------------------------- surface shapes (circles, convex polygons)
+// A shape part is a circle {cx, cy, r} or (stage 4: cone / line spills) a convex polygon {pts: [[x, y]…]} in metres.
 
 const circleHitsCell = (c, x, y) => {
   const x0 = x * CM, y0 = y * CM;
@@ -26,21 +28,95 @@ const circleCoversCell = (c, x, y) => {
   const fx = Math.max(Math.abs(x * CM - c.cx), Math.abs((x + 1) * CM - c.cx)), fy = Math.max(Math.abs(y * CM - c.cy), Math.abs((y + 1) * CM - c.cy));
   return fx * fx + fy * fy <= c.r * c.r;
 };
-/** Point inside the union of circles (no shape — the whole cell). */
-export const inShape = (shape, px, py) => !shape || shape.some((c) => (px - c.cx) ** 2 + (py - c.cy) ** 2 <= c.r * c.r + 1e-6);
-/** The circles of `shape` touching cell (x, y); null (whole cell) when one of them covers the cell. */
+/** Point inside a polygon given as [[x, y]…] (even-odd; edges count as inside within 1e-6). */
+export function inPts(P, px, py) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [xi, yi] = P[i], [xj, yj] = P[j];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  if (inside) return true;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) if (segDist(px, py, P[j][0], P[j][1], P[i][0], P[i][1]) < 1e-6) return true;
+  return false;
+}
+/** Distance from a point to the segment a-b. */
+export function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+  return Math.hypot(px - ax - dx * t, py - ay - dy * t);
+}
+/** Convex polygon clipped to the axis rectangle (Sutherland–Hodgman) → [[x, y]…] (may be empty). */
+export function clipPolyRect(pts, x0, y0, x1, y1) {
+  let P = pts;
+  const edge = (inside, cut) => {
+    const out = [];
+    for (let i = 0; i < P.length; i++) {
+      const a = P[(i + P.length - 1) % P.length], c = P[i], ia = inside(a), ic = inside(c);
+      if (ic) { if (!ia) out.push(cut(a, c)); out.push(c); } else if (ia) out.push(cut(a, c));
+    }
+    P = out;
+  };
+  const atX = (X) => (a, c) => [X, a[1] + ((c[1] - a[1]) * (X - a[0])) / (c[0] - a[0])];
+  const atY = (Y) => (a, c) => [a[0] + ((c[0] - a[0]) * (Y - a[1])) / (c[1] - a[1]), Y];
+  edge((p) => p[0] >= x0, atX(x0)); if (P.length) edge((p) => p[0] <= x1, atX(x1));
+  if (P.length) edge((p) => p[1] >= y0, atY(y0)); if (P.length) edge((p) => p[1] <= y1, atY(y1));
+  return P;
+}
+/** Area of a polygon [[x, y]…]. */
+export const polyArea = (P) => { let a = 0; for (let i = 0, j = P.length - 1; i < P.length; j = i++) a += (P[j][0] + P[i][0]) * (P[j][1] - P[i][1]); return Math.abs(a) / 2; };
+export const partHitsCell = (k, x, y) => (k.pts ? polyArea(clipPolyRect(k.pts, x * CM, y * CM, (x + 1) * CM, (y + 1) * CM)) > 1e-4 : circleHitsCell(k, x, y));
+const partCoversCell = (k, x, y) => (k.pts ? [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]].every(([cx, cy]) => inPts(k.pts, cx * CM, cy * CM)) : circleCoversCell(k, x, y));
+/** Point inside one shape part. */
+export const partHas = (k, px, py) => (k.pts ? inPts(k.pts, px, py) : (px - k.cx) ** 2 + (py - k.cy) ** 2 <= k.r * k.r + 1e-6);
+/** Point inside the union of the parts (no shape — the whole cell). */
+export const inShape = (shape, px, py) => !shape || shape.some((k) => partHas(k, px, py));
+/** The parts of `shape` touching cell (x, y); null (whole cell) when one of them covers the cell. */
 export function cellShape(shape, x, y) {
   if (!shape) return null;
-  const s = shape.filter((c) => circleHitsCell(c, x, y));
-  if (s.some((c) => circleCoversCell(c, x, y))) return null;
+  const s = shape.filter((k) => partHitsCell(k, x, y));
+  if (s.some((k) => partCoversCell(k, x, y))) return null;
   return s.length ? s : shape;
 }
-/** Union of two shapes (null = whole cell wins); circles inside others are dropped, at most 6 kept (largest). */
+const partSize = (k) => (k.pts ? Math.sqrt(polyArea(k.pts) / Math.PI) : k.r);
+const samePart = (c, d) => (c.pts || d.pts ? !!c.pts && !!d.pts && JSON.stringify(c.pts) === JSON.stringify(d.pts) : d.cx === c.cx && d.cy === c.cy && d.r === c.r);
+/** Union of two shapes (null = whole cell wins); circles inside others are dropped, at most 6 parts kept (largest). */
 export function unionShape(a, b) {
   if (!a || !b) return null;
-  const all = [...a, ...b.filter((c) => !a.some((d) => d.cx === c.cx && d.cy === c.cy && d.r === c.r))];
-  const keep = all.filter((c, i) => !all.some((d, j) => j !== i && d.r >= c.r && Math.hypot(d.cx - c.cx, d.cy - c.cy) + c.r <= d.r + 1e-6 && (d.r > c.r || j < i)));
-  return keep.length > 6 ? keep.sort((p, q) => q.r - p.r).slice(0, 6) : keep;
+  const all = [...a, ...b.filter((c) => !a.some((d) => samePart(c, d)))];
+  const keep = all.filter((c, i) => c.pts || !all.some((d, j) => j !== i && !d.pts && d.r >= c.r && Math.hypot(d.cx - c.cx, d.cy - c.cy) + c.r <= d.r + 1e-6 && (d.r > c.r || j < i)));
+  return keep.length > 6 ? keep.sort((p, q) => partSize(q) - partSize(p)).slice(0, 6) : keep;
+}
+/**
+ * Stage 4: polygon of a cone from (ox, oy) toward angle `ang`, half-angle `half`, from radius r0 (the caster's edge) to
+ * `len` m — convex (half <= 90°); the arc is split into steps of <= 10°.
+ */
+export function conePoly(ox, oy, ang, half, len, r0 = 0) {
+  const n = Math.max(2, Math.ceil((2 * half) / (Math.PI / 18))), out = [];
+  const at = (a, r) => [Math.round((ox + Math.cos(a) * r) * 1000) / 1000, Math.round((oy + Math.sin(a) * r) * 1000) / 1000];
+  if (r0 > 0) { out.push(at(ang + half, r0)); out.push(at(ang - half, r0)); } else out.push(at(0, 0));
+  for (let i = 0; i <= n; i++) out.push(at(ang - half + (2 * half * i) / n, len));
+  return out;
+}
+/** Stage 4: rectangle of a line from (ox, oy) to (ex, ey), w m wide, starting r0 m from the origin. */
+export function linePoly(ox, oy, ex, ey, w, r0 = 0) {
+  const L = Math.hypot(ex - ox, ey - oy) || 1, ux = (ex - ox) / L, uy = (ey - oy) / L, nx = -uy * (w / 2), ny = ux * (w / 2);
+  const sx = ox + ux * Math.min(r0, L * 0.5), sy = oy + uy * Math.min(r0, L * 0.5);
+  const R = (v) => Math.round(v * 1000) / 1000;
+  return [[R(sx + nx), R(sy + ny)], [R(ex + nx), R(ey + ny)], [R(ex - nx), R(ey - ny)], [R(sx - nx), R(sy - ny)]];
+}
+/** Cells a polygon spill reaches: touched by the polygon, enterable (or a barrel), in LOS of the origin cell. */
+export function polyTiles(b, pts, ox, oy) {
+  const g = b.grid, out = [];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const cx = Math.floor(ox / CM), cy = Math.floor(oy / CM);
+  for (let y = Math.floor(y0 / CM); y <= Math.floor(y1 / CM); y++) for (let x = Math.floor(x0 / CM); x <= Math.floor(x1 / CM); x++) {
+    if (!inBounds(g, x, y) || !partHitsCell({ pts }, x, y)) continue;
+    if (!isPassable(g, x, y) && g.tiles[y * g.w + x] !== T_BARREL) continue;
+    if ((x !== cx || y !== cy) && inBounds(g, cx, cy) && !lineOfSight(g, cx, cy, x, y)) continue;
+    out.push({ x, y });
+  }
+  return out;
 }
 /** Cells a circle spill reaches: touched by the circle, enterable (or a barrel), in LOS of the centre cell (walls clip). */
 export function circleTiles(b, cx, cy, r) {

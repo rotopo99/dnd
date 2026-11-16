@@ -19,7 +19,7 @@
 
 import { rollDice, avgDice } from './dice.js';
 import { GEO, METRIC } from '../data/combat.js';
-import { shapedOn, inShape, cellShape, unionShape, circleTiles } from './geometry.js';
+import { shapedOn, inShape, cellShape, unionShape, circleTiles, polyTiles } from './geometry.js';
 import { posM, cellCenterM, CELL_M } from './metric.js';
 import { damageObjectsIn } from './terrain.js';
 import { chebyshev, lineOfSight, inBounds, isPassable, walkLine, DIRS8, T_HAZARD, T_WATER, T_BARREL, T_FLOOR } from './grid.js';
@@ -482,6 +482,13 @@ export function spillAt(b, kind, at, size, src, o = {}) {
   const r = o.r ?? (size > 0 ? size * CELL_M * METRIC.areaK : GEO.pool);
   const cx = Math.round(P.px * 100) / 100, cy = Math.round(P.py * 100) / 100;
   return createSurface(b, kind, circleTiles(b, cx, cy, r), src, { ...o, shape: [{ cx, cy, r }] });
+}
+/**
+ * Metric stage 4: spill a surface as a convex polygon (cone / line of an ability) — the cells it touches (LOS from the
+ * origin cell clips walls), the layer shape is the polygon itself.
+ */
+export function spillPoly(b, kind, pts, origin, src, o = {}) {
+  return createSurface(b, kind, polyTiles(b, pts, origin.px, origin.py), src, { ...o, shape: [{ pts }] });
 }
 /** Barrels touched by an area (predicate over tiles). */
 export function breakBarrelsIn(b, test, src) {

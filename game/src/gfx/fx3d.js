@@ -141,7 +141,8 @@ function shapePolys(shape, x, y) {
   const out = [];
   for (const k of shape) {
     let pts = [];
-    for (let i = 0; i < SEG; i++) { const a = (i / SEG) * TW; pts.push([(k.cx + Math.cos(a) * k.r) / 1.5, (k.cy + Math.sin(a) * k.r) / 1.5]); }
+    if (k.pts) pts = k.pts.map(([px, py]) => [px / 1.5, py / 1.5]); // stage 4: a cone / line polygon
+    else for (let i = 0; i < SEG; i++) { const a = (i / SEG) * TW; pts.push([(k.cx + Math.cos(a) * k.r) / 1.5, (k.cy + Math.sin(a) * k.r) / 1.5]); }
     for (const [axis, v, keep] of [[0, x, 1], [0, x + 1, -1], [1, y, 1], [1, y + 1, -1]]) pts = clipHalf(pts, axis, v, keep);
     if (pts.length >= 3) out.push(pts);
   }
@@ -157,7 +158,7 @@ function clipHalf(pts, axis, v, keep) {
   }
   return out;
 }
-const centreIn = (shape, x, y) => shape.some((k) => ((x + 0.5) * 1.5 - k.cx) ** 2 + ((y + 0.5) * 1.5 - k.cy) ** 2 <= k.r * k.r);
+const centreIn = (shape, x, y) => inShape(shape, (x + 0.5) * 1.5, (y + 0.5) * 1.5);
 function shapedDecal(ob, P, d, x, y, f, t, ph, parts, prefs, shape, base0) {
   const c = rgb(d.color || '5');
   const base = d.id === 'cringe' ? 0.3 + 0.08 * Math.sin(TW * 0.5 * t + ph * TW) : d.id === 'ice' ? 0.42 : base0;

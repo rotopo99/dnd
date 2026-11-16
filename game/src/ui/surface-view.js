@@ -43,7 +43,7 @@ export function drawSurfaces(ctx, S, tms, layer) {
     ctx.fillStyle = rgba(col, 0.85);
     if (shaped) {
       ctx.strokeStyle = rgba(col, 0.85); ctx.lineWidth = 4;
-      for (const k of s.shape) { ctx.beginPath(); ctx.arc(L.mapX + (k.cx / 1.5) * c, L.mapY + (k.cy / 1.5) * c, (k.r / 1.5) * c, 0, Math.PI * 2); ctx.stroke(); }
+      for (const k of s.shape) { ctx.beginPath(); partPath(ctx, L, c, k); ctx.stroke(); }
     } else {
       if (!sameKind(b, x, y - 1, layer, s.kind)) ctx.fillRect(px, py, c, 2);
       if (!sameKind(b, x, y + 1, layer, s.kind)) ctx.fillRect(px, py + c - 2, c, 2);
@@ -99,12 +99,18 @@ export function drawSurfaces(ctx, S, tms, layer) {
   }
 }
 
-/** Clip to cell rect ∩ union of the shape's circles (metres → screen); the caller restores. */
+/** Path of one shape part (circle {cx, cy, r} / stage-4 polygon {pts}, metres → screen). */
+function partPath(ctx, L, c, k) {
+  if (k.pts) { k.pts.forEach(([x, y], i) => (i ? ctx.lineTo(L.mapX + (x / 1.5) * c, L.mapY + (y / 1.5) * c) : ctx.moveTo(L.mapX + (x / 1.5) * c, L.mapY + (y / 1.5) * c))); ctx.closePath(); return; }
+  const X = L.mapX + (k.cx / 1.5) * c, Y = L.mapY + (k.cy / 1.5) * c;
+  ctx.moveTo(X + (k.r / 1.5) * c, Y); ctx.arc(X, Y, (k.r / 1.5) * c, 0, Math.PI * 2);
+}
+/** Clip to cell rect ∩ union of the shape's parts (metres → screen); the caller restores. */
 function clipShape(ctx, L, px, py, c, shape) {
   ctx.save();
   ctx.beginPath(); ctx.rect(px, py, c, c); ctx.clip();
   ctx.beginPath();
-  for (const k of shape) { const X = L.mapX + (k.cx / 1.5) * c, Y = L.mapY + (k.cy / 1.5) * c; ctx.moveTo(X + (k.r / 1.5) * c, Y); ctx.arc(X, Y, (k.r / 1.5) * c, 0, Math.PI * 2); }
+  for (const k of shape) partPath(ctx, L, c, k);
   ctx.clip();
   return true;
 }

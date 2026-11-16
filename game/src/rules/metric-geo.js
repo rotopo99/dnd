@@ -14,9 +14,11 @@
 import { METRIC } from '../data/combat.js';
 import { CELL_M, posM, unitRadius, cellCenterM } from './metric.js';
 import { T_WALL, T_FULL, tileCover, chebyshev, lineOfSight, elevAt } from './grid.js';
-import { shapedOn, itemsOnSegment, segPolyT, ptPolyDist, ptInPoly, nearestOnPoly, geoOf } from './geometry.js';
+import { shapedOn, itemsOnSegment, segPolyT, ptPolyDist, ptInPoly, nearestOnPoly, geoOf, segDist, conePoly, linePoly } from './geometry.js';
 
 export const geoOn = (b) => !!b && (b.metric || 0) >= 2;
+/** Stage 4: cones / lines hit and spill by their exact form; AI by metric geometry. */
+export const exactOn = (b) => !!b && (b.metric || 0) >= 4;
 const EPS = 1e-6;
 const isUnit = (t) => t && t.team !== undefined && t.hp !== undefined;
 
@@ -222,18 +224,41 @@ export function inAreaM(b, shape, size, O, C, T) {
   const tx = T.px - O.px, ty = T.py - O.py, d = Math.hypot(tx, ty);
   if (d < 0.05) return false;
   if (shape === 'cone') {
-    if (d - T.r > coneLenM(size) + EPS) return false;
+    const len = coneLenM(size);
+    if (d - T.r > len + EPS) return false;
     const cos = Math.max(-1, Math.min(1, (vx * tx + vy * ty) / (vl * d)));
-    const extra = d > T.r ? Math.asin(T.r / d) : Math.PI;
-    if (Math.acos(cos) > coneHalf() + extra + EPS) return false;
+    if (Math.acos(cos) > coneHalf() + EPS) {
+      // stage 4 (exact form): outside the angle the circle must reach one of the two side edges of the sector
+      if (!exactOn(b)) { const extra = d > T.r ? Math.asin(T.r / d) : Math.PI; if (Math.acos(cos) > coneHalf() + extra + EPS) return false; }
+      else {
+        const a0 = Math.atan2(vy, vx), h = coneHalf();
+        const e1 = segDist(T.px, T.py, O.px, O.py, O.px + Math.cos(a0 + h) * len, O.py + Math.sin(a0 + h) * len);
+        const e2 = segDist(T.px, T.py, O.px, O.py, O.px + Math.cos(a0 - h) * len, O.py + Math.sin(a0 - h) * len);
+        if (Math.min(e1, e2) > T.r + EPS) return false;
+      }
+    }
     return losPts(b, { px: O.px, py: O.py, r: 0 }, T);
   }
   const E = lineEndM(b, O, C, size);
   if (!E) return false;
   const ux = vx / vl, uy = vy / vl, s = tx * ux + ty * uy, perp = Math.abs(tx * uy - ty * ux);
+  if (exactOn(b)) { // stage 4: the circle against the exact rectangle O..E, lineW wide
+    const hw = METRIC.lineW / 2, ds = Math.max(0, -s, s - E.len), dp = Math.max(0, perp - hw);
+    return s > 0 && Math.hypot(ds, dp) <= T.r + EPS;
+  }
   if (s <= 0 || s > E.len + T.r + EPS) return false;
   if (s > E.len) return Math.hypot(T.px - E.px, T.py - E.py) <= T.r + EPS;
   return perp <= METRIC.lineW / 2 + T.r + EPS;
+}
+
+/** Stage 4: exact polygon (metres) of a cone / line from O toward C, from O's edge; null — no direction. */
+export function areaPolyM(b, shape, size, O, C) {
+  const vx = C.px - O.px, vy = C.py - O.py;
+  if (Math.hypot(vx, vy) < EPS) return null;
+  if (shape === 'cone') return conePoly(O.px, O.py, Math.atan2(vy, vx), coneHalf(), coneLenM(size), O.r || 0);
+  if (shape !== 'line') return null;
+  const E = lineEndM(b, O, C, size);
+  return E && E.len > (O.r || 0) + 0.05 ? linePoly(O.px, O.py, E.px, E.py, METRIC.lineW, O.r || 0) : null;
 }
 
 // ---------------------------------------------------------------- zone of control

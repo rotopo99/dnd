@@ -77,7 +77,7 @@
 
 import { createRng } from './rng.js';
 import { CELL_M, cm, posM, cellCenterM, navPath, pathCellsM, subPolyline, pullCells, budgetM, unitRadius } from './metric.js';
-import { geoOn, ptOf, fromPt, gapM, distU, losU, inAreaM, inRadiusU, zocExits, leavesZoc, rectGapM } from './metric-geo.js';
+import { geoOn, exactOn, ptOf, fromPt, gapM, distU, losU, inAreaM, inRadiusU, zocExits, leavesZoc, rectGapM, areaPolyM } from './metric-geo.js';
 import { METRIC } from '../data/combat.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
 import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './character.js';
@@ -94,9 +94,9 @@ import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath
 import {
   initSurfaces, tickSurfaces, surfaceEffect, createSurface, radiusTiles, elementHit, surfacesOn, clearSurfaces,
   gasBetween, surfaceHitBonus, surfaceHarm, surfaceKindsAt, battleLevel, tierFor, breakBarrelsIn, floorAt, cellAt,
-  spillAt, surfaceEntries,
+  spillAt, spillPoly, surfaceEntries,
 } from './surfaces.js';
-import { shapedOn } from './geometry.js';
+import { shapedOn, partHitsCell } from './geometry.js';
 
 export const STATUS_FALLBACK = {
   stun: { kind: 'debuff', skipTurn: true },
@@ -1459,6 +1459,10 @@ function placeSurfaceOp(b, u, a, op, center, tgt) {
   const o = { turns: op.turns ?? undefined, size: op.size ?? (a && a.area ? a.area.size : 0) };
   if (shapedOn(b) && (op.size != null || (!tgt && a && a.area && a.area.shape === 'radius'))) { spillAt(b, op.kind, center, op.size ?? (a.area.size || 1), u, o); return; }
   if (shapedOn(b) && (tgt || !a || !a.area)) { spillAt(b, op.kind, center, 0, u, o); return; }
+  if (exactOn(b) && (a.area.shape === 'cone' || a.area.shape === 'line')) { // stage 4: the exact cone / line polygon
+    const O = ptOf(u), pts = areaPolyM(b, a.area.shape, a.area.size || 1, O, ptOf(center.px != null ? { px: center.px, py: center.py } : center));
+    if (pts) { spillPoly(b, op.kind, pts, O, u, o); return; }
+  }
   createSurface(b, op.kind, surfaceTiles(b, u, tgt ? null : a, op, center), u, o);
 }
 /** Center of an ability's area (self / target unit / tile). */
@@ -1890,6 +1894,11 @@ export function targetValid(b, u, a, spec) {
 function inArea(b, u, a, center, t) {
   const area = a.area;
   const size = area.size || 1;
+  if (exactOn(b) && t.team === undefined && t.px == null && (area.shape === 'cone' || area.shape === 'line')) {
+    // stage 4: an object / barrel / bridge cell is hit when the exact cone / line polygon touches its cell
+    const P = areaPolyM(b, area.shape, size, ptOf(u), ptOf(center));
+    return !!P && partHitsCell({ pts: P }, t.x, t.y) && (t.x === u.x && t.y === u.y ? false : lineOfSight(b.grid, u.x, u.y, t.x, t.y));
+  }
   if (geoOn(b)) return inAreaM(b, area.shape === 'cone' || area.shape === 'line' ? area.shape : 'radius', size, ptOf(u), ptOf(center), ptOf(t));
   if (area.shape === 'radius') {
     return chebyshev(center.x, center.y, t.x, t.y) <= size && lineOfSight(b.grid, center.x, center.y, t.x, t.y);
