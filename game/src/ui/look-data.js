@@ -101,6 +101,7 @@ export const OUTFITS = [
   { id: 'technician', name: 'Техник', armor: 'light', trim: 'aiParty', tip: 'Нарукавная повязка и значок с циановым огоньком.' },
   { id: 'tin', name: 'Жесть', armor: 'medium', trim: 'tinBrotherhood', tip: 'Ламеллярная юбка и знамя Жестяного братства.' },
   { id: 'renegade', name: 'Отступник', armor: 'light', trim: 'renegades', tip: 'Шарф и патронташ.' },
+  { id: 'crop', name: 'Кроп-топ', armor: 'cloth', tip: 'Короткий топ с открытым животом, рукава-колокола, брюки-клёш, белые кеды. Кайма — цвет акцента.' },
 ];
 export const outfitOf = (look) => OUTFITS.find((o) => o.id === look?.outfit && o.id !== 'auto') || null;
 

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Танец — превью анимации</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0c0e14; color: #b8c0cc; font: 13px monospace; }
+  body { display: grid; place-items: center; }
+  #stage { height: min(100vh, 177.7vw); aspect-ratio: 9 / 16; display: block; }
+  #hud { position: fixed; left: 10px; bottom: 8px; opacity: 0.7; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="720" height="1280"></canvas>
+<div id="hud">Пробел — пауза · R — сначала · ?t=секунды — кадр</div>
+<script type="module">
+// Dance preview: one anime hero (look below) dancing gfx/anim.js DANCE on a dark studio stage.
+// window.__dance.renderAt(t) draws the frame at t seconds (tools/dance-record.mjs records it to a video).
+import { createViewer } from './src/gfx/viewer.js';
+import { unitTemplate } from './src/gfx/units3d.js';
+import { animState, danceFace, DANCE } from './src/gfx/anim.js';
+import { migrateLook } from './src/ui/look-data.js';
+
+// red-haired girl: pale skin, long scarlet hair, grey eyes, a red mark on the cheek, dark crop top with red trim, flares
+const look = migrateLook({
+  v: 2, race: 'human', gender: 'f', skin: 5, face: { w: -0.2, j: -0.4, h: 0.1, c: -0.3, k: 0.3 },
+  hair: 'long', hairColor: 'red', hairTip: 'c', fringe: 0.8, beard: 'none', eyes: 'grey', eyeShape: 'almond', brows: 'thin',
+  mouth: 'full', nose: 'small', makeup: 1, scar: 1, acc: [], cloth: '1', accent: 'c', build: 'lean', bust: 0.6, hips: 0.3, outfit: 'crop',
+});
+const hero = { kind: 'hero', team: 'heroes', raceId: 'human', classId: 'ugolovnik', armorType: 'cloth', name: 'dancer', id: 'dancer',
+  offhand: null, weapon: null, avatar: look, hide: { weapon: true, pack: true, pads: true, cloak: true } };
+
+const W = 720, H = 1280, YAW = 12, PITCH = 6, ZOOM = 0.8;
+const out = document.getElementById('stage'), g = out.getContext('2d');
+const gc = document.createElement('canvas'); gc.width = W; gc.height = H;
+const T = unitTemplate(hero);
+const V = createViewer(gc, { yaw: YAW, pitch: PITCH, alpha: true, bg: [0, 0, 0, 0] });
+const focus = T.top * T.scale * 0.56;
+
+function backdrop(t) {
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#1b2130'); bg.addColorStop(0.72, '#141925'); bg.addColorStop(0.73, '#0f131c'); bg.addColorStop(1, '#0a0d14');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // curtain folds
+  for (let x = 0; x < W; x += 36) {
+    const k = 0.5 + 0.5 * Math.sin(x * 0.11);
+    g.fillStyle = `rgba(120,140,180,${0.03 + 0.05 * k})`; g.fillRect(x, 0, 18, H * 0.73);
+    g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x + 30, 0, 6, H * 0.73);
+  }
+  // neon: cyan on the left, orange behind; they pulse on the beat
+  const beat = 0.5 + 0.5 * Math.cos(Math.PI * 2 * ((t * DANCE.bpm) / 60));
+  const neon = (x, w, col, a) => {
+    const gr = g.createLinearGradient(x - w * 6, 0, x + w * 6, 0);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, col.replace('A', a * 0.45)); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(x - w * 6, 0, w * 12, H * 0.73);
+    g.fillStyle = col.replace('A', a); g.fillRect(x - w / 2, 0, w, H * 0.73);
+  };
+  neon(46, 8, 'rgba(70,220,255,A)', 0.75 + 0.25 * beat);
+  neon(W * 0.62, 14, 'rgba(255,150,60,A)', 0.6 + 0.3 * beat);
+  // floor light pool and the dancer's shadow
+  const fy = H / 2 + (focus * Math.cos(PITCH * Math.PI / 180)) / ((T.top * T.scale + 0.12) / ZOOM / 2) * (H / 2);
+  const pool = g.createRadialGradient(W / 2, fy, 10, W / 2, fy, W * 0.55);
+  pool.addColorStop(0, 'rgba(90,110,160,0.35)'); pool.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = pool; g.fillRect(0, H * 0.6, W, H * 0.4);
+  g.fillStyle = 'rgba(0,0,0,0.45)';
+  g.beginPath(); g.ellipse(W / 2, fy + 4, W * 0.17, 22, 0, 0, Math.PI * 2); g.fill();
+}
+
+let st = animState({ anim: {} }, 'dancer'), lastT = null;
+function frame(t) {
+  if (lastT == null || t < lastT || t - lastT > 0.5) { // jump: fresh state, warm the springs on the way in
+    st = animState({ anim: {} }, 'dancer'); st.seed = 0.7;
+    for (let k = 30; k > 0; k--) V.draw(T, view(t - k / 60));
+  }
+  lastT = t;
+  backdrop(t);
+  V.draw(T, view(t));
+  g.drawImage(gc, 0, 0);
+}
+function view(t) {
+  const f = danceFace(t);
+  return { x: 0, y: 0, w: W, h: H, st, now: t, pos: { x: 0, y: 0, z: 0, yaw: 0 }, flags: { walking: false, reduceMotion: false, physics: 1, dance: t }, emo: f.emo, blink: f.blink, zoom: ZOOM, focus };
+}
+window.__dance = { renderAt: frame, loop: (60 / DANCE.bpm) * DANCE.beats };
+
+const q = new URLSearchParams(location.search);
+if (q.has('t')) frame(Number(q.get('t')) || 0);
+else {
+  let paused = false, t = 0, prev = performance.now();
+  addEventListener('keydown', (e) => { if (e.code === 'Space') paused = !paused; if (e.code === 'KeyR') { t = 0; lastT = null; } });
+  const tick = (now) => {
+    const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+    if (!paused) { t += dt; frame(t); }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+</script>
+</body>
+</html>

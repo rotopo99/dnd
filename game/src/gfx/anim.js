@@ -184,7 +184,7 @@ function pose(T, st, d, now, flags) {
   R.fill(0); OFF.fill(0); KICK = 0;
   const type = T.type, still = flags.reduceMotion, amp = still ? A.reduce : 1, mechK = type === 'mech' ? 0.6 : 1;
   const tw = Math.PI * 2;
-  const root = { lie: 0, roll: 0, sink: 0 };
+  const root = { lie: 0, roll: 0, sink: 0, yaw: 0 };
   // idle: breathing / hovering
   const br = still ? 0 : Math.sin(tw * A.breathHz * now + st.seed * tw);
   OFF[1] += br * A.breath;
@@ -197,6 +197,7 @@ function pose(T, st, d, now, flags) {
     if (type === 'spirit') { set(BONE.thL, 0.15 + hb * 0.1, 0, 0); set(BONE.thR, 0.15 - hb * 0.1, 0, 0); }
   }
   if (T.anime && !flags.walking && st.iw > 0.01) idlePose(T, st, st.iw, now, tw, still);
+  if (flags.dance != null && type !== 'beast' && type !== 'drone') dancePose(flags.dance, root, still ? A.reduce : 1);
   // walk
   if (flags.walking && type !== 'drone') {
     const ph = st.walk * tw / A.walkStride * (flags.walkMul || 1), sw = Math.sin(ph) * A.walkSwing * mechK;
@@ -317,6 +318,63 @@ function idlePose(T, st, iw, now, tw, still) {
   }
 }
 
+// ---------------------------------------------------------------- dance (flags.dance = seconds since the dance started)
+// A looped "paws" dance, 32 beats: spin-in, paws (one hand high, the other elbow-up), paws mirrored, lean-in with a point
+// at the camera, both hands up, back to the spin. Every beat: knee bounce + hip sway to the side of the beat; hands flick.
+// Keyframes are channel lists [bone, x, y, z]; neighbours are cross-faded over DANCE.blend beats.
+export const DANCE = { bpm: 126, beats: 32, blend: 0.6 };
+const DK = {
+  open: [[BONE.uaL, -0.3, 0, 1.0], [BONE.faL, -0.4, 0, 0.5], [BONE.uaR, -0.3, 0, -1.0], [BONE.faR, -0.4, 0, -0.5], [BONE.head, -0.08, 0, 0]],
+  pawsL: [[BONE.uaL, -0.25, 0, 2.35], [BONE.faL, -0.3, 0, 1.15], [BONE.uaR, -0.35, 0, -1.25], [BONE.faR, -0.25, 0, -1.55],
+    [BONE.torso, 0, 0.14, -0.05], [BONE.head, 0.04, -0.1, 0.16]],
+  pawsR: [[BONE.uaR, -0.25, 0, -2.35], [BONE.faR, -0.3, 0, -1.15], [BONE.uaL, -0.35, 0, 1.25], [BONE.faL, -0.25, 0, 1.55],
+    [BONE.torso, 0, -0.14, 0.05], [BONE.head, 0.04, 0.1, -0.16]],
+  lean: [[BONE.torso, 0.3, -0.2, 0.12], [BONE.head, -0.22, 0.15, 0.28], [BONE.pelvis, 0, 0.12, 0],
+    [BONE.uaR, -1.25, 0, -0.15], [BONE.faR, -0.75, 0, 0], [BONE.uaL, -0.2, 0, 0.35], [BONE.faL, -1.7, 0, 0],
+    [BONE.thR, -0.25, 0, -0.05], [BONE.shR, 0.35, 0, 0]],
+  up: [[BONE.uaL, -0.1, 0, 2.75], [BONE.faL, 0, 0, -0.35], [BONE.uaR, -0.1, 0, -2.75], [BONE.faR, 0, 0, 0.35], [BONE.head, -0.15, 0, 0]],
+};
+// [from beat, key]; the spin runs over beats 0..3
+const DSEQ = [[0, 'open'], [3, 'pawsL'], [11, 'pawsR'], [19, 'lean'], [25, 'up'], [29, 'pawsL'], [31.4, 'open']];
+function dancePose(t, root, amp) {
+  const tw = Math.PI * 2, bt = (t * DANCE.bpm) / 60, b = bt % DANCE.beats, ph = bt % 1;
+  // keyframe cross-fade
+  let i = 0;
+  while (i < DSEQ.length - 1 && b >= DSEQ[i + 1][0]) i++;
+  const cur = DK[DSEQ[i][1]], prev = DK[DSEQ[(i + DSEQ.length - 1) % DSEQ.length][1]];
+  const k = smooth((b - DSEQ[i][0]) / DANCE.blend);
+  for (const [bn, x, y, z] of prev) set(bn, x * (1 - k), y * (1 - k), z * (1 - k));
+  for (const [bn, x, y, z] of cur) set(bn, x * k, y * k, z * k);
+  const key = DSEQ[i][1];
+  // spin-in: one full turn with a small hop
+  if (b < 3) { const s = smooth(b / 3); root.yaw += tw * s; OFF[1] += 0.06 * Math.sin(Math.PI * s) * amp; }
+  // bounce: knees dip on the beat, the body rises between beats
+  const dip = (0.5 + 0.5 * Math.cos(tw * ph)) * amp;
+  set(BONE.thL, -0.22 * dip, 0, 0); set(BONE.thR, -0.22 * dip, 0, 0); set(BONE.shL, 0.42 * dip, 0, 0); set(BONE.shR, 0.42 * dip, 0, 0);
+  set(BONE.torso, 0.06 * dip, 0, 0); OFF[1] -= 0.035 * dip; OFF[2] -= 0.01 * dip;
+  // hip sway: to the left on even beats, to the right on odd ones (smooth across the beat)
+  const lg = Math.sin(Math.PI * (bt - 0.5)) * amp, tws = Math.sin(Math.PI * bt) * amp;
+  OFF[0] += 0.035 * lg;
+  set(BONE.pelvis, 0, 0.05 * tws, 0.09 * lg); set(BONE.torso, 0, 0, -0.11 * lg); set(BONE.head, 0, 0, 0.1 * lg);
+  // the leg on the swaying side straightens, the other bends a bit more
+  set(BONE.thL, -0.1 * Math.max(0, -lg), 0, 0.04 * lg); set(BONE.shL, 0.2 * Math.max(0, -lg), 0, 0);
+  set(BONE.thR, -0.1 * Math.max(0, lg), 0, 0.04 * lg); set(BONE.shR, 0.2 * Math.max(0, lg), 0, 0);
+  // paws flick twice per beat; the lean-in point pumps on the beat
+  if (key === 'pawsL' || key === 'pawsR' || key === 'up') {
+    const fl = Math.sin(tw * 2 * bt) * 0.18 * amp * k;
+    set(BONE.faL, fl, 0, 0); set(BONE.faR, -fl, 0, 0);
+  } else if (key === 'lean') {
+    const pp = Math.max(0, Math.cos(tw * ph)) * amp * k;
+    set(BONE.uaR, -0.18 * pp, 0, 0); set(BONE.faR, 0.15 * pp, 0, 0); set(BONE.head, 0, 0, 0.06 * pp);
+  }
+}
+/** Face of the dance at time t: smile, smug on the lean-in, a blink every few beats. */
+export function danceFace(t) {
+  const bt = (t * DANCE.bpm) / 60, b = bt % DANCE.beats;
+  const emo = b >= 19 && b < 25 ? 'smug' : b >= 25 && b < 29 ? 'surprised' : 'happy';
+  return { emo, blink: bt % 7 > 6.82 };
+}
+
 // ---------------------------------------------------------------- spring bones (hair, cape, hem, bust, butt): lagging 2nd-order springs
 // per bone: [omega, zeta, gain forward (rad per m/s), gain sideways, gain vertical, kind]; kind 'b' — body (settings «Физика тела»)
 const SPR = [];
@@ -376,14 +434,14 @@ const angDelta = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2
  */
 export function poseBones(T, st, d, now, pos, out, o, flags) {
   if (st.iw == null) st.iw = 1;
-  const busy = !!(st.act && now >= st.t0 && now < st.t0 + st.dur + 0.15) || d.dead || d.down;
+  const busy = !!(st.act && now >= st.t0 && now < st.t0 + st.dur + 0.15) || d.dead || d.down || flags.dance != null;
   st.iw += ((busy || flags.walking ? 0 : 1) - st.iw) * 0.12;
   const root = pose(T, st, d, now, flags);
   springs(T, st, pos, now, flags);
   let y = pos.y - root.sink;
   if (root.lie) y += 0.12 * Math.abs(Math.sin(root.lie)) * T.scale; // back thickness: stays above the floor
   if (root.roll) y += 0.1 * Math.abs(Math.sin(root.roll)) * T.scale;
-  modelMatrix(pos.x, y, pos.z, pos.yaw, T.scale, root.lie, root.roll, M0);
+  modelMatrix(pos.x, y, pos.z, pos.yaw + root.yaw, T.scale, root.lie, root.roll, M0);
   const pv = T.pivots;
   for (let b = 0; b < NBONES; b++) {
     const off = b === 0 ? OFF : null;

@@ -1,7 +1,9 @@
-// Model viewer: renders unit templates with the real skin shaders into a sheet (tools/out/models-sheet.mjs). Same programs,
-// toon / rim / outline / face atlas as the battle, no world. Not used by the game itself.
-//   renderSheet(cells, {cols, cw, ch, yaw, pitch, emo, time, physics}) -> canvas (2D, with labels)
-//   cells: [{label, u, lod?, zoom?, emo?, pose?}]  — u is a unit-like object (see units3d unitTemplate)
+// Model viewer: renders unit templates with the real skin shaders, no world. Same programs, toon / rim / outline /
+// face atlas as the battle. Not used by the game itself.
+//   createViewer(canvas, {yaw, pitch, alpha}) -> { gl, draw(T, view) }   one GL context, many draws (live pages: dance.html)
+//     view: {x, y, w, h (viewport px), st (anim state), now, pos {x, y, z, yaw}, flags (poseBones), emo, blink, zoom, focus}
+//   renderSheet(cells, {cols, cw, ch, yaw, pitch, physics}) -> { canvas (2D, with labels), stats }  (tools/out/models-*.mjs)
+//     cells: [{label, u, lod?, zoom?, focus?, emo?, blink?, walk?, yaw?, seed?, time?, dance?}] — u is a unit-like object
 import { GFX } from '../data/gfx.js';
 import { createGL, skinProgram, NBONES, BONE_TEX_W } from './gl.js';
 import { uploadMesh, keyRGB } from './mesh.js';
@@ -10,11 +12,8 @@ import { poseBones, animState } from './anim.js';
 import { gpuAtlas, faceCol, FACE_COLS } from './faces.js';
 
 const DEG = Math.PI / 180;
-export function renderSheet(cells, o = {}) {
-  const cols = o.cols || 6, cw = o.cw || 220, ch = o.ch || 300, rows = Math.ceil(cells.length / cols);
-  const gc = document.createElement('canvas');
-  gc.width = cw * cols; gc.height = ch * rows;
-  const gl = createGL(gc);
+export function createViewer(gc, o = {}) {
+  const gl = createGL(gc, {}, { alpha: !!o.alpha });
   if (!gl) throw new Error('no webgl2');
   const K = skinProgram(gl), U = K.u, X = { gen: 1 };
   const yaw = (o.yaw ?? 35) * DEG, pitch = (o.pitch ?? 20) * DEG;
@@ -30,44 +29,43 @@ export function renderSheet(cells, o = {}) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  const tpls = cells.map((c) => unitTemplate(c.u, { lod: !!c.lod })); // builds the face rows before the atlas is uploaded
-  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, gpuAtlas(gl, X, 'face'));
-  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, gpuAtlas(gl, X, 'mat'));
   const bt = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, bt);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONE_TEX_W, 1, 0, gl.RGBA, gl.FLOAT, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.clearColor(0.085, 0.094, 0.11, 1);
   gl.enable(gl.SCISSOR_TEST);
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.CULL_FACE);
   const T2 = GFX.toon, sc = keyRGB(T2.shadeHue), rc = keyRGB(T2.rim), ru = keyRGB(T2.rust);
-  const stats = [];
-  const row = new Float32Array(BONE_TEX_W * 4);
-  cells.forEach((c, n) => {
-    const T = tpls[n];
-    const m = uploadMesh(gl, T.mb);
-    const cx = (n % cols) * cw, cy = Math.floor(n / cols) * ch;
-    gl.viewport(cx, gc.height - cy - ch, cw, ch);
-    gl.scissor(cx, gc.height - cy - ch, cw, ch);
-    gl.clearColor(0.085, 0.094, 0.11, 1);
+  const row = new Float32Array(BONE_TEX_W * 4), meshes = new Map();
+  let atlases = false;
+  const bg = o.bg || [0.085, 0.094, 0.11, 1];
+  /** Face / material atlases go to the GPU once, after the templates are built (they add their face rows). */
+  function bindAtlases() {
+    if (atlases) return;
+    atlases = true;
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, gpuAtlas(gl, X, 'face'));
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, gpuAtlas(gl, X, 'mat'));
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  function draw(T, v) {
+    bindAtlases();
+    let m = meshes.get(T);
+    if (!m) { m = uploadMesh(gl, T.mb); meshes.set(T, m); }
+    const { x, y, w, h } = v;
+    gl.viewport(x, gc.height - y - h, w, h);
+    gl.scissor(x, gc.height - y - h, w, h);
+    gl.clearColor(bg[0], bg[1], bg[2], bg[3]);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const st = animState({ anim: {} }, 'a' + n);
-    st.seed = c.seed ?? ((n * 0.37) % 1);
-    const now = c.time ?? 3;
-    const flags = { walking: !!c.walk, reduceMotion: false, physics: o.physics ?? 1 };
-    if (c.walk) st.walk = c.walk;
-    // warm the springs: a few frames of idle / walk motion
-    for (let k = 0; k < 40; k++) {
-      poseBones(T, st, { dead: false }, now - 0.7 + k * 0.0175, { x: c.walk ? Math.sin(yaw) * k * 0.035 : 0, y: 0, z: c.walk ? Math.cos(yaw) * k * 0.035 : 0, yaw: c.walk ? yaw : (c.yaw ?? 0.5) }, row, 0, flags);
-    }
-    const emo = c.emo || 'neutral';
-    row.set([1, 1, 1, 0, 0.44, 0.63, 0.95, 1, 1.5, T.anime ? faceCol(emo, !!c.blink) / FACE_COLS : 0, 0, 0], NBONES * 12);
+    poseBones(T, v.st, { dead: false }, v.now, v.pos, row, 0, v.flags);
+    row.set([1, 1, 1, 0, 0.44, 0.63, 0.95, 1, 1.5, T.anime ? faceCol(v.emo || 'neutral', !!v.blink) / FACE_COLS : 0, 0, 0], NBONES * 12);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, bt);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONE_TEX_W, 1, gl.RGBA, gl.FLOAT, row);
-    const zoom = c.zoom || 1, top = T.top * T.scale, hh = (ch / cw) * 0.5, H = (top + 0.12) / zoom;
-    const hw = H * 0.5 * (cw / ch), hhh = H * 0.5, ctr = [0, (c.focus ?? top * 0.5), 0];
+    const zoom = v.zoom || 1, top = T.top * T.scale, H = (top + 0.12) / zoom;
+    const hw = H * 0.5 * (w / h), hhh = H * 0.5, ctr = [v.pos.x, v.focus ?? top * 0.5, v.pos.z];
     // ortho view-projection (column-major): x = dot(p - c, r) / hw, y = dot(p - c, up) / hhh, z = dot(p - c, f) / 20
     const VP = new Float32Array([r[0] / hw, up[0] / hhh, f[0] / 20, 0, r[1] / hw, up[1] / hhh, f[1] / 20, 0, r[2] / hw, up[2] / hhh, f[2] / 20, 0,
       -(r[0] * ctr[0] + r[1] * ctr[1] + r[2] * ctr[2]) / hw, -(up[0] * ctr[0] + up[1] * ctr[1] + up[2] * ctr[2]) / hhh, -(f[0] * ctr[0] + f[1] * ctr[1] + f[2] * ctr[2]) / 20, 1]);
@@ -80,7 +78,7 @@ export function renderSheet(cells, o = {}) {
     gl.uniform4f(U.uToon, T2.soft, T2.rimK, T2.hue, T2.outline);
     gl.uniform3f(U.uShadeHue, sc[0], sc[1], sc[2]); gl.uniform3f(U.uRimCol, rc[0], rc[1], rc[2]); gl.uniform3f(U.uRustCol, ru[0], ru[1], ru[2]);
     gl.uniform3f(U.uView, f[0], f[1], f[2]);
-    gl.uniform1f(U.uPxM, hhh * 2 / ch);
+    gl.uniform1f(U.uPxM, hhh * 2 / h);
     gl.uniform1i(U.uFace, 2); gl.uniform1i(U.uMatTex, 3); gl.uniform1i(U.uShadow, 1); gl.uniform1i(U.uBones, 0);
     gl.uniform3f(U.uShadowOn, 0, 1, 0);
     gl.uniform4f(U.uFogPlane, 0, 0, 0, 0); gl.uniform4f(U.uFog, 0, 0, 0, 0); gl.uniform2f(U.uFogRange, 0, 1);
@@ -93,6 +91,33 @@ export function renderSheet(cells, o = {}) {
     gl.cullFace(gl.FRONT); gl.uniform1i(U.uMode, 2);
     gl.drawElementsInstanced(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0, 1);
     gl.cullFace(gl.BACK);
+  }
+  return { gl, draw };
+}
+
+export function renderSheet(cells, o = {}) {
+  const cols = o.cols || 6, cw = o.cw || 220, ch = o.ch || 300, rows = Math.ceil(cells.length / cols);
+  const gc = document.createElement('canvas');
+  gc.width = cw * cols; gc.height = ch * rows;
+  const tpls = cells.map((c) => unitTemplate(c.u, { lod: !!c.lod })); // builds the face rows before the atlas is uploaded
+  const V = createViewer(gc, o), yaw = (o.yaw ?? 35) * DEG;
+  const stats = [];
+  cells.forEach((c, n) => {
+    const T = tpls[n];
+    const st = animState({ anim: {} }, 'a' + n);
+    st.seed = c.seed ?? ((n * 0.37) % 1);
+    const now = c.time ?? 3;
+    const flags = { walking: !!c.walk, reduceMotion: false, physics: o.physics ?? 1, dance: c.dance ?? null };
+    if (c.walk) st.walk = c.walk;
+    const posAt = (k) => ({ x: c.walk ? Math.sin(yaw) * k * 0.035 : 0, y: 0, z: c.walk ? Math.cos(yaw) * k * 0.035 : 0, yaw: c.walk ? yaw : (c.yaw ?? 0.5) });
+    // warm the springs: a few frames of idle / walk / dance motion (the last one is drawn)
+    for (let k = 0; k < 39; k++) {
+      const t = now - 0.7 + k * 0.0175;
+      if (c.dance != null) flags.dance = c.dance - 0.7 + k * 0.0175;
+      poseBones(T, st, { dead: false }, t, posAt(k), new Float32Array(NBONES * 12), 0, flags);
+    }
+    if (c.dance != null) flags.dance = c.dance - 0.7 + 39 * 0.0175;
+    V.draw(T, { x: (n % cols) * cw, y: Math.floor(n / cols) * ch, w: cw, h: ch, st, now: now - 0.7 + 39 * 0.0175, pos: posAt(39), flags, emo: c.emo, blink: c.blink, zoom: c.zoom, focus: c.focus });
     stats.push({ label: c.label, tris: T.mb.i.length / 3, type: T.type, anime: T.anime });
   });
   const out = document.createElement('canvas');

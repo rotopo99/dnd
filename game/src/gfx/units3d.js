@@ -17,6 +17,7 @@ import { ENEMIES } from '../data/index.js';
 import { SPRITES, heroSpriteIds, enemySpriteIds } from '../assets/sprites.js';
 import { buildAvatarMesh, defaultLook, rngOf } from '../ui/avatar3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
+import { hairRamp } from '../ui/look-data.js';
 import { isMeleeWeapon } from '../rules/combat.js';
 import { MeshBuilder, rampRGB } from './mesh.js';
 import { NBONES } from './gl.js';
@@ -262,7 +263,6 @@ function simpleHead(o, C, skinR) {
 
 // ---------------------------------------------------------------- anime humanoid (heroes, companions, people)
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const HAIR_KEYS = { black: ['0', '1', '2'], brown: ['6', '7', '8'], ginger: ['7', '8', 'e'], blond: ['8', 'a', 'b'], grey: ['2', '3', '4'], white: ['3', '4', '5'], green: ['k', 'j', 'j'], pink: ['o', 'n', 'n'], cyan: ['i', 'h', 'h'] };
 
 /** Skin ramp with a warm (reddish) shadow instead of a grey-blue one: the shadow step leans to a ruddy tone, mid/light keep the palette. */
 function warmSkin(r) {
@@ -282,6 +282,8 @@ function humanoidAnime(o) {
   const rCloth = ramp(cloth), rUnder = ramp(col.legs), rDark = ramp('1'), rLeather = ramp('6'), rSkin = warmSkin(M.skin);
   const tights = F && (A === 'cloth' || A === 'light') ? ramp('1') : rUnder;
   const accK = 'a', rPipe = ramp(accK), rGold = ramp('a'); // contrast piping / buttons: gold (palette a)
+  // look.outfit 'crop' (ui/look-data.js OUTFITS): crop top with a bare midriff, bell sleeves, flared trousers, white sneakers; trim — look.accent
+  const crop = hero && look.outfit === 'crop', rAcc = ramp(look.accent || 'c');
   const plate = ramp(pf.faction === 'tinBrotherhood' || A === 'heavy' ? '4' : '3');
   const shY = (F ? 1.105 : 1.13) * hm, hipY = (F ? 0.71 : 0.7) * hm, neckY = shY + 0.05 * hm, kn = hipY * 0.52;
   const sx = (F ? 0.176 : 0.212) * w, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.088 * lm * (F ? 1.04 : 1);
@@ -325,13 +327,28 @@ function humanoidAnime(o) {
   for (const k of keys) { k.rx *= w; }
   const trunkR = A === 'cloth' || A === 'light' ? rCloth : (A === 'mech' ? ramp('2') : rDark);
   mb.setBone(BONE.torso).setMat(1);
-  loft(mb, resample(keys, N), trunkR, { seg, rot: Math.PI / seg });
+  if (crop) { // bare midriff below the top's hem (f 0.42), a trim band on the hem
+    const at = (y) => { // trunk ring interpolated at height y
+      const j = Math.max(1, keys.findIndex((k) => k.y >= y)), a = keys[j - 1], b = keys[j], u = (y - a.y) / (b.y - a.y);
+      return { y, rx: a.rx + (b.rx - a.rx) * u, rz: a.rz + (b.rz - a.rz) * u, z: (a.z || 0) + ((b.z || 0) - (a.z || 0)) * u };
+    };
+    const span = (y0, y1, k = 1) => [at(y0), ...keys.filter((q) => q.y > y0 + 0.005 && q.y < y1 - 0.005), at(y1)].map((q, i) => ({ ...q, rx: q.rx * k, rz: q.rz * k, ao: i ? 0 : q.ao }));
+    const hem = f(0.42), waist = hipY + 0.1;
+    loft(mb, resample(span(keys[0].y, waist), N >> 1), rCloth, { seg, rot: Math.PI / seg, capTop: false }); // trousers' top
+    mb.setMat(0);
+    loft(mb, resample(span(waist - 0.01, hem + 0.01, 0.985), N >> 1), rSkin, { seg, rot: Math.PI / seg, capTop: false, capBot: false });
+    mb.setMat(1);
+    const hi = span(hem, keys[keys.length - 1].y, 1.04);
+    loft(mb, resample(hi, N), trunkR, { seg, rot: Math.PI / seg, capBot: true });
+    const hk = hi[0];
+    loft(mb, [{ y: hk.y - 0.004, rx: hk.rx * 1.08, rz: hk.rz * 1.1, ao: 0 }, { y: hk.y + 0.016, rx: hk.rx * 1.08, rz: hk.rz * 1.1 }], rAcc, { seg, capTop: false, capBot: false });
+  } else loft(mb, resample(keys, N), trunkR, { seg, rot: Math.PI / seg });
   mb.setMat(0);
   mb.cyl(0, shY + 0.0, 0, 0.085 * hm, 0.036, rSkin, { seg: 8, ao: 0 }); // neck shaft (blended torso -> head by the hook)
-  // ---- belt
+  // ---- belt (crop: high-waisted trousers with a plain waistband, no buckle)
   mb.setBone(BONE.pelvis);
-  loft(mb, [{ y: hipY + 0.05, rx: (F ? 0.152 : 0.152) * w, rz: 0.11, ao: 0 }, { y: hipY + 0.105, rx: (F ? 0.148 : 0.152) * w, rz: 0.108 }], rDark, { seg: 12, capTop: false });
-  mb.box(-0.026, hipY + 0.058, 0.104, 0.026, hipY + 0.098, 0.122, ramp('a'), { ao: 0 });
+  loft(mb, [{ y: hipY + 0.05, rx: (F ? 0.152 : 0.152) * w, rz: 0.11, ao: 0 }, { y: hipY + 0.105, rx: (F ? 0.148 : 0.152) * w, rz: 0.108 }], crop ? rCloth : rDark, { seg: 12, capTop: false });
+  if (!crop) mb.box(-0.026, hipY + 0.058, 0.104, 0.026, hipY + 0.098, 0.122, ramp('a'), { ao: 0 });
   // ---- legs: one smooth loft hip -> ankle per side (knee bend by weights), boots on the shin bone
   for (const s of [1, -1]) {
     const x = s * lx, big = pf.race === 'cringegon' ? 1.2 : 1;
@@ -340,9 +357,19 @@ function humanoidAnime(o) {
       { y: 0.06, rx: tl * 0.5, rz: tl * 0.5, x, ao: 0.3 }, { y: 0.2, rx: tl * 0.66, rz: tl * 0.7, x, z: -0.004 }, { y: kn - 0.02, rx: tl * 0.58, rz: tl * 0.6, x, z: 0.004 },
       { y: kn + 0.04, rx: tl * 0.66, rz: tl * 0.66, x, z: 0.004 }, { y: hipY * 0.75, rx: tl * 0.95, rz: tl * 0.95, x: x * 0.97 }, { y: hipY - 0.02, rx: tl * 1.02 * (F ? 1.06 : 1), rz: tl * 1.0, x: x * 0.93 },
     ];
-    loft(mb, resample(lk, lod ? 7 : thin ? 9 : 13), tights, { seg: lod ? 7 : thin ? 8 : 11, rot: Math.PI / 11 });
+    if (crop) { // flared trousers: loose from the knee down, the hem covers the sneaker
+      lk[0] = { y: 0.035, rx: tl * 1.12, rz: tl * 1.18, x, ao: 0.3 }; lk[1] = { y: 0.16, rx: tl * 0.92, rz: tl * 0.96, x, z: -0.002 };
+      lk[2] = { ...lk[2], rx: tl * 0.74, rz: tl * 0.76 }; lk[3] = { ...lk[3], rx: tl * 0.76, rz: tl * 0.76 };
+    }
+    loft(mb, resample(lk, lod ? 7 : thin ? 9 : 13), crop ? rCloth : tights, { seg: lod ? 7 : thin ? 8 : 11, rot: Math.PI / 11, capBot: crop });
     mb.setMat(0);
     mb.setBone(s > 0 ? BONE.shL : BONE.shR);
+    if (crop) { // white sneaker: toe cap + sole, only the front shows under the hem
+      loft(mb, resample([{ y: 0.0, rx: tl * 0.62, rz: 0.11, x, z: 0.05, ao: 0.3 }, { y: 0.04, rx: tl * 0.66, rz: 0.1, x, z: 0.045 }, { y: 0.075, rx: tl * 0.56, rz: 0.06, x, z: 0.02 }], lod ? 4 : 6), ramp('5'), { seg: lod ? 6 : 9, capTop: true, capBot: true });
+      if (!lod) mb.box(x - tl * 0.64, 0.0, -0.06, x + tl * 0.64, 0.016, 0.155, ramp('4'), { ao: 0 });
+      mb.setBone(s > 0 ? BONE.thL : BONE.thR);
+      continue;
+    }
     // boot: toe -> ankle -> shaft
     loft(mb, resample([
       { y: 0.0, rx: tl * 0.62 * big, rz: 0.12 * big, x, z: 0.05, ao: 0.4 }, { y: 0.045, rx: tl * 0.66 * big, rz: 0.108 * big, x, z: 0.046 }, { y: 0.1, rx: tl * 0.58, rz: 0.062, x, z: 0.02 },
@@ -365,7 +392,7 @@ function humanoidAnime(o) {
       { y: ey + 0.08, rx: r * 0.8, rz: r * 0.82, x }, { y: shY - 0.06, rx: r * 0.92, rz: r * 0.92, x, z: 0 }, { y: shY + 0.015, rx: r * 0.9, rz: r * 0.86, x: x * 0.97 },
     ], lod ? 6 : thin ? 8 : 11), sleeve, { seg: lod ? 6 : thin ? 8 : 10, capTop: true, rot: Math.PI / 10 });
     mb.setMat(0);
-    if (!lod && hero && (A === 'cloth' || A === 'light')) { // cuff with a contrast piping; armband (left sleeve) with a white stripe
+    if (!lod && hero && !crop && (A === 'cloth' || A === 'light')) { // cuff with a contrast piping; armband (left sleeve) with a white stripe
       loft(mb, [{ y: cuffY - 0.004, rx: r * 0.74, rz: r * 0.74, x, ao: 0.1 }, { y: cuffY + 0.04, rx: r * 0.8, rz: r * 0.8, x }], rDark, { seg: thin ? 9 : 11, capTop: false });
       loft(mb, [{ y: cuffY + 0.04, rx: r * 0.815, rz: r * 0.815, x }, { y: cuffY + 0.05, rx: r * 0.815, rz: r * 0.815, x }], rPipe, { seg: thin ? 9 : 11, capTop: false, capBot: false });
       if (s > 0 && hero) {
@@ -377,6 +404,13 @@ function humanoidAnime(o) {
     if (bareArm) {
       mb.setBone(fa);
       loft(mb, resample([{ y: wy - 0.005, rx: r * 0.5, rz: r * 0.5, x, ao: 0.1 }, { y: ey - 0.07, rx: r * 0.62, rz: r * 0.64, x, z: 0.004 }, { y: ey - 0.01, rx: r * 0.68, rz: r * 0.7, x }], lod ? 5 : 7), rSkin, { seg: lod ? 6 : 8, capTop: false });
+    }
+    if (crop) { // bell sleeve: elbow -> past the wrist, flaring, open at the end, trim on the edge
+      mb.setBone(fa).setMat(1);
+      const bell = [{ y: wy - 0.03, rx: r * 1.45, rz: r * 1.4, x, z: 0.006, ao: 0 }, { y: wy + 0.06, rx: r * 1.1, rz: r * 1.06, x, z: 0.004 }, { y: ey - 0.04, rx: r * 0.86, rz: r * 0.88, x }, { y: ey + 0.01, rx: r * 0.82, rz: r * 0.84, x }];
+      loft(mb, resample(bell, lod ? 4 : 7), sleeve, { seg: lod ? 7 : 11, capTop: false, capBot: false });
+      mb.setMat(0);
+      loft(mb, [{ y: wy - 0.032, rx: r * 1.49, rz: r * 1.44, x, z: 0.006, ao: 0 }, { y: wy - 0.012, rx: r * 1.38, rz: r * 1.33, x, z: 0.006 }], rAcc, { seg: lod ? 7 : 11, capTop: false, capBot: false });
     }
     mb.setBone(fa);
     const cuff = bareArm ? sleeve : ramp('1');
@@ -395,7 +429,7 @@ function humanoidAnime(o) {
   const y0 = neckY + 0.015 * hm, Hd = headShape({ F, face: look.face || {}, y0, hh: 0.215 * (R.h ? Math.min(1.1, R.h) : 1) });
   const hat = (look.acc || []).includes('hood') || (look.acc || []).includes('helmet') ? 'full' : null;
   buildHead(mb, Hd, rSkin, { look, lod: thin, F, ears: !!R.ears, skinTag: pf.race });
-  const hk = HAIR_KEYS[look.hairColor] || HAIR_KEYS.brown, grad = hairGrad(rampRGB(look.hairColor ? (M.hair ? hk : hk) : hk));
+  const grad = hairGrad(rampRGB(hairRamp(look))); // ui/look-data.js: all named colours (red, blue, violet) + custom 'p:<key>' + tip
   const bones = { c1: BONE.hair1, c2: BONE.hair2, c3: BONE.hair3, sL: BONE.sideL, sR: BONE.sideR };
   let style = look.hair === 'bald' && F ? 'bald' : look.hair;
   const pvH = buildHair(mb, Hd, hat ? 'bald' : style, grad, { F, lod: thin, seed: pf.seed, bones, hat });
@@ -411,7 +445,7 @@ function humanoidAnime(o) {
     const b = s * 0.052 * w;
     loft(mb, [{ y: shY - 0.106, rx: 0.036, rz: 0.03, x: b, z: 0.054, ao: 0.3 }, { y: shY - 0.075, rx: 0.049, rz: 0.044, x: b, z: 0.063 }, { y: shY - 0.045, rx: 0.046, rz: 0.043, x: b, z: 0.06 }, { y: shY - 0.015, rx: 0.026, rz: 0.026, x: b, z: 0.05 }], A === 'medium' || A === 'heavy' ? plate : trunkR, { seg: 10, capTop: true });
   }
-  dressAnime(o, C);
+  if (!crop) dressAnime(o, C);
   raceBody(o, C);
   factionBody(o, C);
   kit(o, C);

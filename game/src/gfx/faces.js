@@ -70,8 +70,8 @@ const shade = (h, k) => { // k > 0 towards white, k < 0 towards black
 
 function drawFace(g, X, Y, look, emo, blink, o) {
   const S = FACE_CELL, F = look.gender === 'f', M = look.gender === 'm';
-  const sk = skinKeys(look.skin), skin = hex(sk[1]), skinD = hex(sk[0]);
-  const eyeKey = EYE[look.eyes] || '8', hairKey = HAIRC[look.hairColor] || '6';
+  const sk = skinRamp(look), skin = hex(sk[1]), skinD = hex(sk[0]);
+  const ek = eyeKey(look), hairKey = hairRamp(look)[1];
   const robot = look.race === 'android' || look.race === 'skeleton';
   g.save();
   g.beginPath(); g.rect(X, Y, S, S); g.clip();
@@ -120,7 +120,7 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     // iris: vertical gradient dark -> light, with a darker rim
     const ir = Math.min(ew * 0.9, h * 0.52) + (F ? 0.8 : 0), ix = cx + s * -0.6, iy = ocy + 0.6;
     const gr = g.createLinearGradient(0, iy - ir, 0, iy + ir);
-    const ec = hex(eyeKey);
+    const ec = hex(ek);
     gr.addColorStop(0, shade(ec, -0.55)); gr.addColorStop(0.55, ec); gr.addColorStop(1, shade(ec, 0.45));
     g.fillStyle = gr; g.beginPath(); g.ellipse(ix, iy, ir * 0.92, ir * 1.04, 0, 0, 7); g.fill();
     g.strokeStyle = shade(ec, -0.7); g.lineWidth = 0.9; g.stroke();
