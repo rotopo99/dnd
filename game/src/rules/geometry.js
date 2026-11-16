@@ -102,7 +102,7 @@ export function linePoly(ox, oy, ex, ey, w, r0 = 0) {
   const L = Math.hypot(ex - ox, ey - oy) || 1, ux = (ex - ox) / L, uy = (ey - oy) / L, nx = -uy * (w / 2), ny = ux * (w / 2);
   const sx = ox + ux * Math.min(r0, L * 0.5), sy = oy + uy * Math.min(r0, L * 0.5);
   const R = (v) => Math.round(v * 1000) / 1000;
-  return [[R(sx + nx), R(sy + ny)], [R(ex + nx), R(ey + ny)], [R(ex - nx), R(ey - ny)], [R(sx - nx), R(sy - ny)]];
+  return [[R(sx - nx), R(sy - ny)], [R(ex - nx), R(ey - ny)], [R(ex + nx), R(ey + ny)], [R(sx + nx), R(sy + ny)]]; // same winding as circles
 }
 /** Cells a polygon spill reaches: touched by the polygon, enterable (or a barrel), in LOS of the origin cell. */
 export function polyTiles(b, pts, ox, oy) {

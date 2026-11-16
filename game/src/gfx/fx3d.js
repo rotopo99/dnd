@@ -8,6 +8,7 @@
 //   particleMesh()                      -> MeshBuilder of the particle (low-poly ball)
 import { GFX } from '../data/gfx.js';
 import { keyRGB, MeshBuilder } from './mesh.js';
+import { inShape } from '../rules/geometry.js';
 
 const F = GFX.fx, TW = Math.PI * 2;
 const frac = (v) => v - Math.floor(v);
