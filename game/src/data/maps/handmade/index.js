@@ -4,8 +4,20 @@ import alphaHarmony from './alpha-harmony.js';
 import raytsentr from './raytsentr.js';
 import dachaBabki from './dacha-babki.js';
 import arenaLis9 from './arena-lis9.js';
+import svalka from './svalka.js';
+import putinlyandiya from './putinlyandiya.js';
+import sokralnya from './sokralnya.js';
+import slavotech from './slavotech.js';
+import betonka from './betonka.js';
+import gidroponika from './gidroponika.js';
+import arenaAiGeneral from './arena-ai-general.js';
+import arenaCyberPriest from './arena-cyber-priest.js';
+import arenaCrgChief from './arena-crg-chief.js';
+import arenaGreatCollector from './arena-great-collector.js';
+import arenaWolf0 from './arena-wolf-0.js';
+import arenaJudgeAvatar from './arena-judge-avatar.js';
 
-export const HANDMADE_LIST = [alphaHarmony, raytsentr, dachaBabki, arenaLis9];
+export const HANDMADE_LIST = [alphaHarmony, raytsentr, dachaBabki, arenaLis9, svalka, putinlyandiya, sokralnya, slavotech, betonka, gidroponika, arenaAiGeneral, arenaCyberPriest, arenaCrgChief, arenaGreatCollector, arenaWolf0, arenaJudgeAvatar];
 export const HANDMADE = Object.fromEntries(HANDMADE_LIST.map((d) => [d.id, d]));
 /** Node id → roam map def. */
 export const HANDMADE_BY_LOC = Object.fromEntries(HANDMADE_LIST.filter((d) => d.kind !== 'arena' && d.loc).map((d) => [d.loc, d]));
