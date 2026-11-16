@@ -3,20 +3,21 @@
 // Profiles (unit.ai): 'melee' closes in; 'ranged' / 'caster' / 'support' keep distance and like cover.
 
 import { avgDice, firstDie, chanceD20 } from './dice.js';
-import { chebyshev, lineOfSight, hasCover, distanceField, tileAt, tileCover, T_HAZARD } from './grid.js';
+import { chebyshev, lineOfSight, hasCover, distanceField, tileAt, tileCover, T_HAZARD, elevAt, inCoverSpot, isPassable, inBounds } from './grid.js';
 import {
   getLegalActions, perform, endTurn, getReachable, abilityTargets, abilityRange, isHostile, isStanding, isAlive, canRevive,
   attackOdds, saveFailChance, damageMultiplier, weaponDamageBonus, spellDamageBonus, weaponAttackBonus,
   spellAttackBonus, getDc, bonusValue, tagOk, weaponRange, isMeleeUnit, statusDef, hasStatus, isStatusImmune,
   abilityUsable, targetValid, canUseWeapon, approachOk, getSpeed, tauntSource, enemyAdjacent, isMeleeAttack, HEARTBREAK_HP_LOSS, itemAbility,
-  isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop, isLeapArea,
+  isMeleeWeapon, weaponDc, weaponAreaAbility, zoneOf, inZone, ownDrop, isLeapArea, unitAt, areaHitsCell,
 } from './combat.js';
-import { surfaceHarm, surfaceOf, surfaceDefs, surfaceKindsAt, cellAt, connected } from './surfaces.js';
+import { surfaceHarm, surfaceOf, surfaceDefs, surfaceKindsAt, cellAt, connected, surfaceEntries, harmParts } from './surfaces.js';
 import { archTargetMul, archAbilityMul, archTileScore, archHarmMul, fleeAction } from './archetypes.js';
-import { objectAt } from './terrain.js';
+import { objectAt, bridgeAt } from './terrain.js';
 import { CELL_M, cm, posM, unitRadius, navField, navFree, navPath, budgetM } from './metric.js';
-import { geoOn, ptOf, gapM, distU, losPts, coverM, areaRadiusM, nearCover } from './metric-geo.js';
-import { METRIC } from '../data/combat.js';
+import { geoOn, exactOn, ptOf, gapM, distU, losPts, coverM, areaRadiusM, nearCover, areaPolyM, itemsNear, coneLenM } from './metric-geo.js';
+import { nearestOnPoly, partHas } from './geometry.js';
+import { METRIC, GEO, AI_METRIC as AM } from '../data/combat.js';
 
 const STATUS_VALUE = {
   stun: 12, root: 4, slow: 3, fear: 5, blind: 5, silence: 4, disarm: 5, curse: 3, prone: 3, poison: 4,
@@ -274,6 +275,11 @@ export function evalAbility(b, u, a, spec) {
   if (sf && sf.kind === 'smoke') v += zoneValue(b, u, a, { size: sf.size, turns: sf.turns, kind: 'smoke' }, spec);
   if (!targets.length && !z && !sf && !effects.some((e) => e.op === 'summon' || e.op === 'extraAction')) return 0;
   if (isLeapArea(a) && spec && spec.x != null) v -= landingHarm(b, u, spec.x, spec.y);
+  if (exactOn(b) && a.area && b.bridges && b.bridges.length) { // stage 4: an area that brings a bridge down under foes
+    let dmg = 0;
+    for (const op of effects) if (op.op === 'damage' && op.dice) dmg += avgDice(op.dice);
+    if (dmg > 0) for (const br of b.bridges) if (!br.down && br.cells.some((i) => areaHitsCell(b, u, a, spec, i % b.grid.w, (i / b.grid.w) | 0))) v += bridgeEV(b, u, br, dmg);
+  }
   const cost = a.cost || 0;
   v -= cost * 0.3;
   if (cost > u.enr) v -= 8; // overcast risk
@@ -315,14 +321,38 @@ function surfaceEV(b, u, a, spec) {
   for (const sp of list) {
     const size = sp.size ?? (a.area ? a.area.size || 1 : 0);
     const k = Math.min(sp.turns ?? 2, 3) / 2;
+    const inSpill = exactOn(b) ? spillTest(b, u, a, sp, spec, size) : null;
     for (const e of b.units) {
-      if (!isStanding(e) || chebyshev(c.x, c.y, e.x, e.y) > size) continue;
+      if (!isStanding(e) || (inSpill ? !inSpill(e) : chebyshev(c.x, c.y, e.x, e.y) > size)) continue;
       const h = kindHarm(b, e, sp.kind);
       v += (isHostile(b, u, e) ? h * 0.5 : -h * 0.8) * k;
     }
     if (HOT[sp.kind]) v += comboEV(b, u, c.x, c.y, size, sp.kind);
   }
   return v;
+}
+
+/** Aim point of a spec in metres (exact point / unit / cell centre / the caster). */
+function specPt(b, u, spec) {
+  if (spec && spec.px != null) return { px: spec.px, py: spec.py, r: 0 };
+  if (spec && spec.unit && b.byId[spec.unit]) return ptOf(b.byId[spec.unit]);
+  if (spec && spec.x != null) return ptOf({ x: spec.x, y: spec.y });
+  return ptOf(u);
+}
+/**
+ * Metric stage 4: who stands in the surface a spill makes (combat.js placeSurfaceOp): a cone / line — its exact
+ * polygon from the caster, else a circle (size N — the area circle, 0 — a pool) round the aim point. → (unit) => bool.
+ */
+function spillTest(b, u, a, sp, spec, size) {
+  const C = specPt(b, u, spec);
+  if (sp.size == null && a.area && (a.area.shape === 'cone' || a.area.shape === 'line') && !(spec && spec.unit && a.target !== 'tile')) {
+    const pts = areaPolyM(b, a.area.shape, a.area.size || 1, ptOf(u), C);
+    if (!pts) return () => false;
+    const part = { pts };
+    return (e) => { const E = ptOf(e); return partHas(part, E.px, E.py); };
+  }
+  const r = size > 0 ? areaRadiusM(size) : GEO.pool;
+  return (e) => { const E = ptOf(e); return Math.hypot(E.px - C.px, E.py - C.py) <= r + 1e-6; };
 }
 
 /** Fire / electricity reaching oil, toxgas or water near (x, y): +4 per hostile in the region, −6 per own unit. */
@@ -346,13 +376,36 @@ function comboEV(b, u, x, y, size, kind) {
   return v;
 }
 
-/** +3 when a push lands the target on a harmful surface. */
+/** +3 when a push lands the target on a harmful surface (stage 4: also + a drop off a bridge / ledge). */
 function pushIntoHarm(b, u, t, tiles) {
+  if (exactOn(b)) return pushValueM(b, u, t, tiles);
   if (!b.surfaces || !b.surfaces.size) return 0;
   const dx = Math.sign(t.x - u.x), dy = Math.sign(t.y - u.y);
   if (!dx && !dy) return 0;
   for (let i = 1; i <= tiles; i++) if (surfaceHarm(b, t, t.x + dx * i, t.y + dy * i) > 0) return 3;
   return 0;
+}
+
+/**
+ * Metric stage 4: the push walked like combat.js pushUnit (cell steps away from u): a drop of N levels (off a bridge
+ * deck / a ledge) +pushFall x N, the landing cell harmful (its real form round the cell centre) +3, a slam +1.
+ */
+function pushValueM(b, u, t, tiles) {
+  const dx = Math.sign(t.x - u.x), dy = Math.sign(t.y - u.y);
+  if (!dx && !dy) return 0;
+  const g = b.grid;
+  let x = t.x, y = t.y, fall = 0, v = 0;
+  for (let i = 0; i < tiles; i++) {
+    const nx = x + dx, ny = y + dy;
+    const up = g.elev ? elevAt(g, nx, ny) - elevAt(g, x, y) : 0;
+    if (!inBounds(g, nx, ny) || !isPassable(g, nx, ny) || unitAt(b, nx, ny) || up > 0) { v += 1; break; }
+    if (up < 0) fall -= up;
+    x = nx; y = ny;
+    if (b.surfaces && b.surfaces.size && surfaceHarm(b, t, x, y) >= 5) break;
+  }
+  if (fall > 0 && !t.tags.includes('fly') && !t.tags.includes('flying')) v += AM.pushFall * fall;
+  if (b.surfaces && b.surfaces.size && (x !== t.x || y !== t.y) && surfaceHarm(b, t, x, y, ptOf({ x, y })) > 0) v += 3;
+  return v;
 }
 
 /**
@@ -410,7 +463,7 @@ function evalAction0(b, u, act) {
     case 'ability': {
       const a = u.abilities.find((x) => x.id === act.ability);
       if (!a) return 0;
-      let spec = act.target ? { unit: act.target } : act.tile ? { x: act.tile.x, y: act.tile.y } : {};
+      let spec = act.target ? { unit: act.target } : act.tile ? { x: act.tile.x, y: act.tile.y, ...(act.tile.px != null ? { px: act.tile.px, py: act.tile.py } : {}) } : {};
       const mv = (a.effects || []).find((e) => e.op === 'move');
       if (mv && a.target === 'self') return 0; // pure repositioning: handled by movement planning
       const v = evalAbility(b, u, a, spec);
@@ -442,6 +495,8 @@ function evalAction0(b, u, act) {
 
 /** Shooting a barrel / generator next to enemies (combat rework §3.2): +4 per enemy, −6 per ally in radius 1. */
 function smashEV(b, u, tile) {
+  const br = tile && exactOn(b) && !objectAt(b, tile.x, tile.y) ? bridgeAt(b, tile.x, tile.y) : null;
+  if (br) return bridgeEV(b, u, br, avgDice(u.weapon.dice) * 1.6 + 2);
   const o = tile && objectAt(b, tile.x, tile.y);
   if (!o || (o.kind !== 'barrel' && o.kind !== 'generator') || o.hp > avgDice(u.weapon.dice) * 1.6 + 2) return 0;
   let v = 0;
@@ -450,6 +505,21 @@ function smashEV(b, u, tile) {
     v += isHostile(b, u, e) ? 4 : e.team === u.team ? -6 : 0;
   }
   return v * 0.65;
+}
+
+/**
+ * Metric stage 4: value of bringing bridge br down with `dmg` damage (only if it breaks): +bridgeFoe per foe on the
+ * deck, bridgeAlly per own unit (the caster included); 0 when nobody hostile stands on it.
+ */
+function bridgeEV(b, u, br, dmg) {
+  if (!br || br.down || br.hp > dmg) return 0;
+  let foes = 0, own = 0;
+  for (const i of br.cells) {
+    const e = unitAt(b, i % b.grid.w, (i / b.grid.w) | 0);
+    if (!e || !isStanding(e) || e.tags.includes('fly') || e.tags.includes('flying')) continue;
+    if (isHostile(b, u, e)) foes++; else if (e.team === u.team) own++;
+  }
+  return foes ? foes * AM.bridgeFoe + own * AM.bridgeAlly : 0;
 }
 
 // ---------------------------------------------------------------- movement planning
@@ -659,9 +729,12 @@ function planPointM(b, u, opts) {
   const span = Math.ceil(budget / CELL_M) + 1;
   const bx0 = Math.max(0, u.x - span), bx1 = Math.min(g.w - 1, u.x + span), by0 = Math.max(0, u.y - span), by1 = Math.min(g.h - 1, u.y + span);
   for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) add((x + 0.5) * CELL_M, (y + 0.5) * CELL_M);
+  const exact = exactOn(b);
+  const EP = enemies.map((e) => ({ e, E: ptOf(e) }));
+  if (exact) coverCands(b, here, budget, EP, add);
   // points at the cover edges (both sides, corners)
   const off = CELL_M / 2 + METRIC.coverGap, offD = CELL_M / 2 + METRIC.coverGap * 0.7;
-  for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
+  if (!exact) for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
     if (tileCoverAt(g, x, y) < 2) continue;
     const cx = (x + 0.5) * CELL_M, cy = (y + 0.5) * CELL_M;
     add(cx + off, cy); add(cx - off, cy); add(cx, cy + off); add(cx, cy - off);
@@ -691,7 +764,8 @@ function planPointM(b, u, opts) {
   const P = { px: 0, py: 0, r: ur };
   const nearAdj = (Q) => enemies.some((e) => gapM(Q, ptOf(e)) <= CELL_M + 1e-6);
   const adjNow = nearAdj({ px: here.px, py: here.py, r: ur });
-  const EP = enemies.map((e) => ({ e, E: ptOf(e) }));
+  const low = exact && u.maxHp > 0 && u.hp / u.maxHp < AM.retreatHp && !u.boss && u.arch !== 'berserk';
+  const hitNow = new Map(); // stage 4: hit modifiers (height, flank) of the current spot per target
   for (const c of cands) {
     P.px = c.px; P.py = c.py;
     const adjHere = c.cur ? adjNow : nearAdj(P);
@@ -708,6 +782,12 @@ function planPointM(b, u, opts) {
           if (d > o.range + 1e-6 || (o.minRange && d <= o.minRange - 1)) continue;
           if (!o.noLos && d > 1 && !losPts(b, P, T)) continue;
           if (o.ranged && !o.arc && d > 1 && coverM(b, P, T, false) >= 2) cv = 0.8;
+          if (exact && !o.selfArea) { // height / flank of this point against the target, relative to where u stands
+            const melee0 = !o.ranged;
+            const k = `${it.t.id}|${melee0 ? 1 : 0}`;
+            if (!hitNow.has(k)) hitNow.set(k, hitAtM(b, ptOf(u), u.x, u.y, it.t, melee0));
+            cv *= Math.max(0.5, 1 + AM.hitStep * (hitAtM(b, P, c.x, c.y, it.t, melee0) - hitNow.get(k)));
+          }
         }
         let v = it.v * cv;
         if (o.ranged) v *= rangedMul;
@@ -724,7 +804,21 @@ function planPointM(b, u, opts) {
       if (melee) s -= wd + near * 0.1;
       else s -= canAct ? Math.abs(near - pref) * 0.7 : Math.max(0, pref - near) * 0.7;
     }
-    if (!melee) {
+    if (exact && (!melee || low)) {
+      // stage 4: cover against each ranged threat that reaches this point (side of the threat), exposure costs
+      let adj = 0, nearN = 0, cov = 0;
+      for (const { e, E } of EP) {
+        const d = gapM(P, E) / CELL_M;
+        if (d <= 1 && isMeleeUnit(e)) adj++;
+        else if (d <= 2) nearN++;
+        if (e.noAttack || isMeleeWeapon(e) || d > weaponRange(e) + 2) continue;
+        const cl = coverM(b, E, P, false);
+        cov += cl >= 3 ? AM.coverFull : cl >= 2 ? AM.coverHalf : -AM.exposed;
+      }
+      if (!melee) s -= adj * 4 + nearN;
+      s += cov * (low ? AM.retreatCover : 1);
+      if (low) s += Math.min(near, AM.retreatFar) * AM.retreatDist;
+    } else if (!melee) {
       let adj = 0, nearN = 0, cover = false;
       for (const { e, E } of EP) {
         const d = gapM(P, E) / CELL_M;
@@ -736,7 +830,7 @@ function planPointM(b, u, opts) {
       if (cover) s += 1.5;
     }
     if (b.surfaces && b.surfaces.size) {
-      const h = surfaceHarm(b, u, c.x, c.y);
+      const h = surfaceHarm(b, u, c.x, c.y, exact ? P : null);
       if (h) s -= h > 0 && harmMul != null ? h * harmMul : h > 0 && melee ? h * 0.5 : h;
     } else if (tileAt(g, c.x, c.y) === T_HAZARD) s -= 6;
     if (u.arch) s += archTileScore(b, u, c.x, c.y, enemies, P);
@@ -747,21 +841,83 @@ function planPointM(b, u, opts) {
   }
   const current = cands[0];
   const order = cands.slice(1).sort((p, q) => q.score - p.score);
-  let best = current;
-  for (let k = 0; k < Math.min(order.length, 6); k++) {
+  let best = current, avoid = false;
+  if (exact) {
+    // stage 4: walk round harmful surfaces by their real form; what the walk still crosses costs pathHarm x harm
+    const parts = b.surfaces && b.surfaces.size ? harmParts(b, u, AM.avoidMin) : [];
+    let bestAdj = current.score, valid = 0;
+    for (let k = 0; k < Math.min(order.length, 8) && valid < 3; k++) {
+      const c = order[k];
+      if (c.score <= bestAdj) break;
+      let np = parts.length ? navPath(b, u, c.px, c.py, { snap: 0, avoid: parts }) : null, av = !!np && np.cost <= budget + 1e-6 && np.len > 0;
+      if (!av) np = navPath(b, u, c.px, c.py, { snap: 0 });
+      if (!np || np.cost > budget + 1e-6 || !(np.len > 0)) continue;
+      valid++;
+      const adj = c.score - pathHarm(b, u, np.pts) * AM.pathHarm;
+      if (adj > bestAdj) { best = c; bestAdj = adj; avoid = av && parts.length > 0; }
+    }
+  } else for (let k = 0; k < Math.min(order.length, 6); k++) {
     const c = order[k];
     if (c.score <= current.score) break;
     const np = navPath(b, u, c.px, c.py, { snap: 0 });
     if (np && np.cost <= budget + 1e-6 && np.len > 0) { best = c; break; }
   }
-  const out = { x: best.x, y: best.y, px: best.px, py: best.py, score: best.score, pot: best.pot };
+  const out = { x: best.x, y: best.y, px: best.px, py: best.py, score: best.score, pot: best.pot, ...(avoid ? { avoid } : {}) };
   out.current = { x: current.x, y: current.y, px: current.px, py: current.py, score: current.score, pot: current.pot };
   return out;
 }
 const tileCoverAt = (g, x, y) => tileCover(tileAt(g, x, y));
+
+/**
+ * Metric stage 4: candidate points behind the cover polygons near u (cover >= half) on the side away from each of the
+ * nearest threats — coverGap m off the polygon edge; small props — through the centre, long runs — at the point
+ * nearest to u and to its shadow.
+ */
+function coverCands(b, here, budget, EP, add) {
+  const thr = EP.slice().sort((p, q) => Math.hypot(p.E.px - here.px, p.E.py - here.py) - Math.hypot(q.E.px - here.px, q.E.py - here.py)).slice(0, 3);
+  if (!thr.length) return;
+  const items = itemsNear(b, here.px, here.py, budget + 1).filter((it) => it.cover >= 2)
+    .map((it) => ({ it, d: Math.hypot((it.x0 + it.x1) / 2 - here.px, (it.y0 + it.y1) / 2 - here.py) })).sort((p, q) => p.d - q.d).slice(0, AM.coverItems);
+  const gap = METRIC.coverGap;
+  for (const { it } of items) {
+    const cx = (it.x0 + it.x1) / 2, cy = (it.y0 + it.y1) / 2, hx = (it.x1 - it.x0) / 2, hy = (it.y1 - it.y0) / 2;
+    for (const { E } of thr) {
+      const dx = cx - E.px, dy = cy - E.py, L = Math.hypot(dx, dy);
+      if (L < 0.5) continue;
+      const ux = dx / L, uy = dy / L;
+      if (hx <= 1.6 && hy <= 1.6) {
+        const t = Math.min(ux ? hx / Math.abs(ux) : Infinity, uy ? hy / Math.abs(uy) : Infinity);
+        add(cx + ux * (t + gap), cy + uy * (t + gap));
+      } else {
+        for (const [sx, sy] of [[here.px, here.py], [cx + ux * (Math.max(hx, hy) + 2), cy + uy * (Math.max(hx, hy) + 2)]]) {
+          const [qx, qy] = nearestOnPoly(sx, sy, it), vx = qx - E.px, vy = qy - E.py, vl = Math.hypot(vx, vy) || 1;
+          add(qx + (vx / vl) * gap, qy + (vy / vl) * gap);
+        }
+      }
+    }
+  }
+}
+/** Metric stage 4: hit modifier of attacking t from point Q (cell qx, qy) — height (ranged only up) and flank. */
+function hitAtM(b, Q, qx, qy, t, melee) {
+  const C = b.data.combat;
+  if (!C) return 0;
+  let h = 0;
+  const d = b.grid.elev ? elevAt(b.grid, qx, qy) - elevAt(b.grid, t.x, t.y) : 0;
+  if (d > 0 && !melee) h += Math.min(d * C.elev.hitPer, C.elev.hitMax);
+  else if (d < 0) h -= Math.min(-d * C.elev.hitPer, C.elev.hitMax);
+  if (inCoverSpot(b.grid, t.x, t.y) && !coverM(b, Q, ptOf(t), melee)) h += C.cover.flankHit ?? 1;
+  return h;
+}
+/** Metric stage 4: harm of the surfaces a walk crosses into (each entry once). */
+function pathHarm(b, u, pts) {
+  if (!b.surfaces || !b.surfaces.size || pts.length < 2) return 0;
+  let h = 0;
+  for (const en of surfaceEntries(b, pts)) for (const s of en.layers) h += Math.max(0, kindHarm(b, u, s.kind)) + (s.charged ? 4 : 0);
+  return h;
+}
 /** Is tile (a planTile result) somewhere else than u stands now? */
 const elsewhere = (u, tile) => (tile.px != null ? Math.hypot(tile.px - tile.current.px, tile.py - tile.current.py) > 0.05 : tile.x !== u.x || tile.y !== u.y);
-const moveTo = (tile) => (tile.px != null ? { px: tile.px, py: tile.py } : { x: tile.x, y: tile.y });
+const moveTo = (tile) => (tile.px != null ? { px: tile.px, py: tile.py, ...(tile.avoid ? { avoid: true } : {}) } : { x: tile.x, y: tile.y });
 
 // ---------------------------------------------------------------- decision
 
@@ -789,6 +945,7 @@ export function chooseAction(b, unitId) {
   if (flee) return flee;
 
   const legal = getLegalActions(b, unitId, { noMoves: true });
+  if (exactOn(b)) aimAreas(b, u, legal);
   let best = null, bestBonus = null;
   for (const act of legal) {
     if (act.type !== 'attack' && act.type !== 'ability' && act.type !== 'endStatus' && act.type !== 'burst' && act.type !== 'useItem' && act.type !== 'throw' && act.type !== 'smash') continue;
@@ -838,6 +995,45 @@ export function chooseAction(b, unitId) {
     }
   }
   return end;
+}
+
+/**
+ * Metric stage 4: cones / lines aimed by their exact form — for every such ability among the legal tile actions try
+ * aimDirs directions plus toward each foe in reach (+-aimSpread); the aim point sits next to the caster (any distance
+ * gives the direction), the best valid aim joins the legal list (evalAbility counts foes in the polygon and own units
+ * in the spilled surface, so the aim keeps allies out).
+ */
+function aimAreas(b, u, legal) {
+  const done = new Set();
+  for (const act of legal.slice()) {
+    if (act.type !== 'ability' || !act.tile || done.has(act.ability)) continue;
+    const a = u.abilities.find((x) => x.id === act.ability);
+    if (!a || !a.area || a.target !== 'tile' || (a.area.shape !== 'cone' && a.area.shape !== 'line') || isLeapArea(a)) continue;
+    done.add(a.id);
+    const O = ptOf(u), reach = coneLenM(a.area.size || 1) + 2;
+    const angs = [];
+    for (let k = 0; k < AM.aimDirs; k++) angs.push((2 * Math.PI * k) / AM.aimDirs);
+    for (const e of b.units) {
+      if (!isStanding(e) || !isHostile(b, u, e)) continue;
+      const E = ptOf(e);
+      if (Math.hypot(E.px - O.px, E.py - O.py) > reach + E.r) continue;
+      const a0 = Math.atan2(E.py - O.py, E.px - O.px);
+      angs.push(a0, a0 - AM.aimSpread, a0 + AM.aimSpread);
+    }
+    let bestV = 0.5, bestT = null;
+    for (const ang of angs) {
+      for (const d0 of [O.r * 0.5, O.r + 0.6]) {
+        const px = cm(O.px + Math.cos(ang) * d0), py = cm(O.py + Math.sin(ang) * d0);
+        const spec = { x: Math.floor(px / CELL_M), y: Math.floor(py / CELL_M), px, py };
+        if (!inBounds(b.grid, spec.x, spec.y) || !targetValid(b, u, a, spec)) continue;
+        let v = evalAbility(b, u, a, spec);
+        if (u.arch) v *= archAbilityMul(b, u, a, null);
+        if (v > bestV) { bestV = v; bestT = spec; }
+        break;
+      }
+    }
+    if (bestT) legal.push({ type: 'ability', unit: u.id, ability: a.id, tile: bestT });
+  }
 }
 
 function top0(best, bestBonus, end) {

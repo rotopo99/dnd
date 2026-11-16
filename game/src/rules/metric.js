@@ -11,6 +11,7 @@
 //   subPolyline(pts, s0, s1) · polyLen(pts)
 import { METRIC } from '../data/combat.js';
 import { blocksMove, stepCost, T_RUBBLE } from './grid.js';
+import { partHas } from './geometry.js';
 
 export const CELL_M = METRIC.cell;
 const K = Math.round(METRIC.cell / METRIC.nav); // nav cells per cell side
@@ -79,6 +80,7 @@ function freeAt(X, px, py) {
 function othersFree(X, px, py) {
   const o = X.others;
   for (let k = 0; k < o.length; k += 3) { const dx = px - o[k], dy = py - o[k + 1]; if (dx * dx + dy * dy < o[k + 2] - 1e-9) return false; }
+  if (X.avoid) for (const k of X.avoid) if (partHas(k, px, py)) return false; // stage 4: harmful surfaces to walk round
   return true;
 }
 const tileIdx = (g, px, py) => Math.floor(py / CELL_M) * g.w + Math.floor(px / CELL_M);
@@ -247,11 +249,16 @@ function snapFree(X, px, py, snap) {
  * Path of unit u from its position to the point (px, py) in metres. The end point may not lie in a cell held by
  * another unit (cell rules stay unique) nor inside another unit's circle. Returns
  * { pts: [{px, py}] (start included), len (m), cost (m, with rubble / steps up), to: {px, py, x, y} } or null.
+ * `avoid` (stage 4) — shape parts the centre must not enter (harmful surfaces; surfaces.js harmParts): null when no such way.
  */
-export function navPath(b, u, px, py, { snap = METRIC.snap } = {}) {
+export function navPath(b, u, px, py, { snap = METRIC.snap, avoid = null } = {}) {
   const g = b.grid;
   if (!(px >= 0 && py >= 0 && px < g.w * CELL_M && py < g.h * CELL_M)) return null;
   const X = navCtx(b, u);
+  if (avoid && avoid.length) { // metric stage 4: surface parts (circles / polygons) the path walks round (not the ones at the ends)
+    const s0 = posM(u), keep = avoid.filter((k) => !partHas(k, s0.px, s0.py) && !partHas(k, px, py));
+    if (keep.length) X.avoid = keep;
+  }
   const end = snapFree(X, px, py, snap);
   if (!end) return null;
   const ex = cm(end[0]), ey = cm(end[1]), ec = cellOf(ex, ey);

@@ -7,44 +7,31 @@
 //   avatarToPortrait(look, size, opts)    -> cached offscreen canvas (HUD / dialogues)
 //   isLook3d(look)                        -> true for the new object format (old hero.look is a palette key string)
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
+import { OPT, DARKER, LIGHTER, KIND, kindOf, skinRamp, hairRamp, eyeKey, migrateLook } from './look-data.js';
 
 export const MAX_FACES = 600;
 const pc = (k) => PALETTE[PALETTE_KEYS.indexOf(k)];
 
 // ---------------------------------------------------------------- options
 export const LOOK_OPTIONS = {
-  gender: [{ id: 'm', name: 'Мужской' }, { id: 'f', name: 'Женский' }, { id: 'x', name: 'Не указан' }],
-  skin: [{ id: 0, name: 'Светлая' }, { id: 1, name: 'Загар' }, { id: 2, name: 'Смуглая' }, { id: 3, name: 'Тёмная' }, { id: 4, name: 'Очень тёмная' }, { id: 5, name: 'Бледная' }],
+  gender: OPT.gender, skin: [{ id: 0, name: 'Светлая' }, { id: 1, name: 'Загар' }, { id: 2, name: 'Смуглая' }, { id: 3, name: 'Тёмная' }, { id: 4, name: 'Очень тёмная' }, { id: 5, name: 'Бледная' }],
   face: [{ id: 'w', name: 'Ширина лица' }, { id: 'j', name: 'Челюсть' }, { id: 'h', name: 'Высота лица' }],
-  hair: [{ id: 'bald', name: 'Лысый' }, { id: 'crop', name: 'Ёжик' }, { id: 'short', name: 'Короткая' }, { id: 'fringe', name: 'Чёлка' }, { id: 'long', name: 'Длинные' },
-    { id: 'tail', name: 'Хвост' }, { id: 'bun', name: 'Пучок' }, { id: 'mohawk', name: 'Ирокез' }, { id: 'spiky', name: 'Колючая' }, { id: 'dreads', name: 'Дреды' }, { id: 'afro', name: 'Кудри' }],
-  hairColor: [{ id: 'black', name: 'Чёрный' }, { id: 'brown', name: 'Каштан' }, { id: 'ginger', name: 'Рыжий' }, { id: 'blond', name: 'Блонд' }, { id: 'grey', name: 'Седой' },
+  hair: OPT.hair, hairColor: [{ id: 'black', name: 'Чёрный' }, { id: 'brown', name: 'Каштан' }, { id: 'ginger', name: 'Рыжий' }, { id: 'blond', name: 'Блонд' }, { id: 'grey', name: 'Седой' },
     { id: 'white', name: 'Белый' }, { id: 'green', name: 'Ядовито-зелёный' }, { id: 'pink', name: 'Кринж-розовый' }, { id: 'cyan', name: 'Кибер-циан' }],
-  beard: [{ id: 'none', name: 'Нет' }, { id: 'stubble', name: 'Щетина' }, { id: 'mustache', name: 'Усы' }, { id: 'goatee', name: 'Эспаньолка' }, { id: 'full', name: 'Борода' }],
-  eyes: [{ id: 'brown', name: 'Карие' }, { id: 'blue', name: 'Синие' }, { id: 'green', name: 'Зелёные' }, { id: 'grey', name: 'Серые' }, { id: 'amber', name: 'Янтарные' }, { id: 'red', name: 'Красные' }, { id: 'cyan', name: 'Циановые' }],
-  acc: [{ id: 'scarEye', name: 'Шрам через глаз' }, { id: 'scarCheek', name: 'Шрам на щеке' }, { id: 'cyberEye', name: 'Кибер-глаз' }, { id: 'plate', name: 'Пластина на виске' },
-    { id: 'antenna', name: 'Антенна' }, { id: 'jawImp', name: 'Имплант челюсти' }, { id: 'gasmask', name: 'Противогаз' }, { id: 'respirator', name: 'Респиратор' },
-    { id: 'hood', name: 'Капюшон' }, { id: 'helmet', name: 'Каска' }, { id: 'goggles', name: 'Очки-гогглы' }, { id: 'eyepatch', name: 'Повязка на глазу' }, { id: 'bandana', name: 'Бандана' }],
+  beard: OPT.beard, eyes: [{ id: 'brown', name: 'Карие' }, { id: 'blue', name: 'Синие' }, { id: 'green', name: 'Зелёные' }, { id: 'grey', name: 'Серые' }, { id: 'amber', name: 'Янтарные' }, { id: 'red', name: 'Красные' }, { id: 'cyan', name: 'Циановые' }],
+  acc: OPT.acc,
 };
 const HAT_ACC = ['hood', 'helmet', 'bandana'];
 const FACE_ACC = ['gasmask', 'respirator', 'goggles', 'eyepatch', 'cyberEye'];
 
-const HAIR_RAMP = { black: ['0', '1', '2'], brown: ['6', '7', '8'], ginger: ['7', '8', 'e'], blond: ['8', 'a', 'b'], grey: ['2', '3', '4'], white: ['3', '4', '5'], green: ['k', 'j', 'j'], pink: ['o', 'n', 'n'], cyan: ['i', 'h', 'h'] };
-const EYE_RAMP = { brown: '8', blue: 'f', green: 'j', grey: '4', amber: 'a', red: 'c', cyan: 'h' };
-const SKIN_RAMP = [['8', '9', 'p'], ['7', '8', '9'], ['6', '7', '8'], ['1', '6', '7'], ['1', '6', '6'], ['3', 'p', '5']];
-const DARKER = { c: 'd', a: '8', j: 'k', b: 'a', n: 'o', f: 'g', e: 'c', 4: '3', o: '1', h: 'i', 3: '2', 2: '1', 1: '0', 0: '0', 5: '4', 8: '7', 7: '6', 9: '8', l: 'k', m: 'l', g: '1', i: '1', k: '1', d: '6', p: 'm', 6: '1' };
-const LIGHTER = { c: 'e', a: 'b', j: 'h', n: 'p', f: 'h', e: 'a', 4: '5', 3: '4', 2: '3', 1: '2', 0: '1', 8: '9', 7: '8', 9: 'p', l: 'm', m: 'p', k: 'j', g: 'f', i: 'h', 6: '7', o: 'n', d: 'c' };
-
-// race id -> body kind of the avatar (unknown -> human)
-const KIND = { human: 'human', skeleton: 'skeleton', android: 'android', 'mutant-beast': 'beast', 'mutant-plant': 'plant', tekhonok: 'tekhonok', cringegon: 'cringe', skrilet: 'beast' };
-const kindOf = (race) => KIND[race] || 'human';
+void KIND;
 
 // ---------------------------------------------------------------- rng / defaults
 export function rngOf(seed) {
   let s = (typeof seed === 'string' ? [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7) : (seed | 0)) + 0x9e3779b9;
   return () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-export function isLook3d(look) { return !!look && typeof look === 'object' && look.v === 1; }
+export function isLook3d(look) { return !!look && typeof look === 'object' && (look.v === 1 || look.v === 2); }
 
 export function defaultLook(race = 'human', gender = 'x', seed = 1) {
   const r = rngOf(`${race}|${gender}|${seed}`);
@@ -61,7 +48,7 @@ export function defaultLook(race = 'human', gender = 'x', seed = 1) {
   if (kind === 'beast') { look.eyes = 'amber'; look.skin = 2; }
   if (kind === 'plant') look.eyes = 'amber';
   if (kind === 'cringe') { look.hairColor = 'pink'; look.skin = 5; }
-  return look;
+  return migrateLook(look, race);
 }
 
 // ---------------------------------------------------------------- geometry
@@ -205,16 +192,10 @@ export function buildAvatarMesh(lookIn, st = {}) {
   const mats = {};
   const ramp = (a) => a.map(pc);
   const robot = kind === 'skeleton' || kind === 'android';
-  let skin = SKIN_RAMP[Math.max(0, Math.min(5, look.skin | 0))];
-  if (kind === 'skeleton') skin = ['3', '4', '5'];
-  else if (kind === 'android') skin = ['2', '3', '4'];
-  else if (kind === 'beast') skin = ['6', '7', '8'];
-  else if (kind === 'plant') skin = ['k', 'j', 'j'];
-  else if (kind === 'cringe') skin = SKIN_RAMP[5];
+  const skin = skinRamp(look);
   mats.skin = ramp(skin);
   mats.stub = ramp([skin[0], skin[0], skin[1]]);
-  mats.hair = ramp(HAIR_RAMP[look.hairColor] || HAIR_RAMP.brown);
-  if (kind === 'plant') mats.hair = ramp(['k', 'j', 'j']);
+  mats.hair = ramp(hairRamp(look));
   const cl = look.cloth && PALETTE_KEYS.includes(look.cloth) ? look.cloth : '3';
   mats.cloth = ramp([DARKER[cl] || '0', cl, LIGHTER[cl] || cl]);
   mats.clothD = ramp(['0', DARKER[cl] || '1', cl]);
@@ -222,7 +203,7 @@ export function buildAvatarMesh(lookIn, st = {}) {
   mats.metal = ramp(['1', '2', '3']);
   mats.metalL = ramp(['2', '3', '4']);
   mats.white = ramp(['4', '5', '5']);
-  mats.eye = ramp([EYE_RAMP[look.eyes] || '8', EYE_RAMP[look.eyes] || '8', EYE_RAMP[look.eyes] || '8']); mats.eye.glow = true;
+  const ek = eyeKey(look); mats.eye = ramp([ek, ek, ek]); mats.eye.glow = true;
   mats.glow = ramp(['h', 'h', 'h']); mats.glow.glow = true;
   mats.amber = ramp(['a', 'a', 'b']); mats.amber.glow = true;
   mats.red = ramp(['c', 'c', 'c']); mats.red.glow = true;

@@ -6,21 +6,18 @@
 // Faces: big eyes (iris gradient, two highlights, lashes), brows, nose stroke, mouth, blush; emotions change eyes / brows /
 // mouth, the blink is the second column of each emotion. Palette colours only (shading comes from the toon shader).
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
+import { skinRamp, hairRamp, eyeKey } from '../ui/look-data.js';
 
-export const FACE_CELL = 64, FACE_COLS = 16, FACE_ROWS = 24;
+export const FACE_CELL = 64, FACE_COLS = 16, FACE_ROWS = 48; // the last row is the editor's («pin»)
 export const FACE_EMOS = ['neutral', 'happy', 'angry', 'sad', 'scared', 'smug', 'surprised', 'cringe'];
 export const faceCol = (emo, blink) => Math.max(0, FACE_EMOS.indexOf(emo)) * 2 + (blink ? 1 : 0);
 // patch of the face on the head: horizontal half angle (rad) and vertical range of the head profile (0 chin .. 1 crown)
 export const FACE_PATCH = { half: 1.0, t0: 0.03, t1: 0.86 };
 const hex = (k) => PALETTE[PALETTE_KEYS.indexOf(k)] || '#d8a27a';
-const SKIN = [['8', '9', 'p'], ['7', '8', '9'], ['6', '7', '8'], ['1', '6', '7'], ['1', '6', '6'], ['3', 'p', '5']];
-const EYE = { brown: '8', blue: 'f', green: 'j', grey: '4', amber: 'a', red: 'c', cyan: 'h' };
-const HAIRC = { black: '1', brown: '6', ginger: '7', blond: '8', grey: '3', white: '4', green: 'k', pink: 'o', cyan: 'i' };
-export const skinKeys = (i) => SKIN[(i | 0) % 6] || SKIN[1];
-
 const rows = new Map();
 let nextRow = 0;
-export const faceAtlas = { canvas: null, dirty: null, w: FACE_CELL * FACE_COLS, h: FACE_CELL * FACE_ROWS, rows };
+export const faceAtlas = { canvas: null, dirty: null, ver: 0, w: FACE_CELL * FACE_COLS, h: FACE_CELL * FACE_ROWS, rows };
+let pinSig = null;
 const matCanvas = { canvas: null, dirty: true };
 export const matAtlas = matCanvas;
 
@@ -32,20 +29,33 @@ function ensureCanvas() {
   return c;
 }
 
-/** Row of the face for a look (race, gender, skin ...); draws all 16 expression cells once. */
+/** Everything the face texture depends on (one atlas row per unique signature). */
+const sigOf = (l, o) => JSON.stringify([l.race, l.gender, l.skin, l.eyes, l.hairColor, l.hairTip, l.beard, l.acc, l.face, l.eyeShape, l.brows, l.mouth, l.nose, l.freckles, l.scar, l.tattoo, l.makeup, o.skin || '']);
+/**
+ * Row of the face for a look (race, gender, skin, eyes, brows ...); draws all 16 expression cells once.
+ * o.pin — the editor's own row (the last one, redrawn on every change): sliders do not eat the shared rows.
+ */
 export function faceRow(look, o = {}) {
   const l = look || {};
-  const key = [l.race, l.gender, l.skin, l.eyes, l.hairColor, l.beard, (l.acc || []).join('+'), l.face?.w, l.face?.h, o.skin || '', o.eyes || ''].join('|');
-  let r = rows.get(key);
-  if (r !== undefined) return r;
-  r = nextRow++ % FACE_ROWS;
-  rows.set(key, r);
-  if (nextRow > FACE_ROWS) for (const [k, v] of rows) if (v === r && k !== key) rows.delete(k); // recycled row
+  const key = sigOf(l, o);
+  let r;
+  if (o.pin) {
+    r = FACE_ROWS - 1;
+    if (pinSig === key) return r;
+    pinSig = key;
+  } else {
+    r = rows.get(key);
+    if (r !== undefined) return r;
+    r = nextRow++ % (FACE_ROWS - 1);
+    rows.set(key, r);
+    if (nextRow > FACE_ROWS - 1) for (const [k, v] of rows) if (v === r && k !== key) rows.delete(k); // recycled row
+  }
   const cv = ensureCanvas();
   if (cv) {
     const g = cv.getContext('2d');
     for (let col = 0; col < FACE_COLS; col++) drawFace(g, col * FACE_CELL, r * FACE_CELL, l, FACE_EMOS[col >> 1], col & 1, o);
     faceAtlas.dirty = faceAtlas.dirty ? [Math.min(faceAtlas.dirty[0], r), Math.max(faceAtlas.dirty[1], r)] : [r, r];
+    faceAtlas.ver++;
   }
   return r;
 }

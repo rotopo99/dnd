@@ -711,7 +711,7 @@ export function surfaceEnterPreview(b, u, x, y) {
  * AI penalty for standing on / walking through (x, y) (spec §7). 0 — harmless for this unit.
  * Ignores damage under safe passage; fire is "not worse" for a burning unit; water is attractive while burning.
  */
-export function surfaceHarm(b, u, x, y) {
+export function surfaceHarm(b, u, x, y, P = null) {
   const c = cellAt(b, x, y);
   if (!c) return 0;
   const defs = surfaceDefs(b);
@@ -721,6 +721,7 @@ export function surfaceHarm(b, u, x, y) {
   for (const layer of LAYERS) {
     const s = c[layer];
     if (!s) continue;
+    if (P && s.shape && shapedOn(b) && !inShape(s.shape, P.px, P.py)) continue; // metric stage 4: by the real form
     const def = defs[s.kind];
     if (!def || (u.immuneSurface && u.immuneSurface.includes(s.kind))) continue;
     let v = s.hazard ? (R.hazardAi ?? 6) : def.ai || 0;
@@ -739,6 +740,28 @@ export function surfaceHarm(b, u, x, y) {
     h += v;
   }
   return h;
+}
+/**
+ * Metric stage 4: shape parts of the surfaces harmful to u (harm >= min) — circles / polygons; a layer without a shape
+ * gives its cell square. For navPath `avoid` (the AI walks round fire, acid, gas by their real form).
+ */
+export function harmParts(b, u, min = 3) {
+  const out = [], seen = new Set();
+  if (!surfacesOn(b) || !b.surfaces || !b.surfaces.size) return out;
+  for (const [k, c] of b.surfaces) {
+    const [x, y] = k.split(',').map(Number);
+    if (surfaceHarm(b, u, x, y) < min) continue;
+    for (const layer of LAYERS) {
+      const s = c[layer];
+      if (!s) continue;
+      if (!s.shape) { out.push({ pts: [[x * CELL_M, y * CELL_M], [(x + 1) * CELL_M, y * CELL_M], [(x + 1) * CELL_M, (y + 1) * CELL_M], [x * CELL_M, (y + 1) * CELL_M]] }); continue; }
+      for (const part of s.shape) {
+        const key = part.pts ? JSON.stringify(part.pts) : `${part.cx},${part.cy},${part.r}`;
+        if (!seen.has(key)) { seen.add(key); out.push(part); }
+      }
+    }
+  }
+  return out;
 }
 function fireNear(b, x, y) {
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (floorAt(b, x + dx, y + dy)?.kind === 'fire') return true;

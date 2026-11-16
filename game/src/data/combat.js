@@ -83,7 +83,17 @@ export const PACE = { aiStep: 0.30, turnGap: 0.15, moveStep: 0.08, walk: 12, fas
 // metric-combat.md: stage of the move to metres (0 — classic cells; 1 — positions / movement / path in metres, ranges,
 // LOS and AI still by the nearest cell; 2 — ranges / areas / LOS / cover / opportunity attacks / AI positions in metres,
 // rules/metric-geo.js). The settings toggle «Бой: по метрам / по клеткам» picks 0 for one player.
-export const RULES = { metric: 3 };
+export const RULES = { metric: 4 };
+// metric-combat.md stage 4 (b.metric >= 4, rules/ai.js + metric-geo.js exactOn): cones / lines hit and spill by their
+// exact form (polygons), and the AI plans by metric geometry. AI weights: candidate points behind the nearest
+// `coverItems` cover polygons on the side away from each threat; per ranged foe in reach of the point — full / half
+// cover +coverFull / +coverHalf, exposed -exposed; hit modifiers of the point (height, flank) x hitStep per +1 hit;
+// below retreatHp of max HP (not bosses / berserks) cover counts x retreatCover and every cell from the nearest foe
+// +retreatDist (up to retreatFar cells); cone / line aim: aimDirs directions + toward each foe +-aimSpread rad;
+// surfaces crossed by the walk cost pathHarm x harm, the walk goes round harm >= avoidMin; smashing a bridge with foes
+// on it: +bridgeFoe per foe, bridgeAlly per own unit; a push that drops the target: +pushFall per level.
+export const AI_METRIC = { coverItems: 24, coverFull: 1.3, coverHalf: 0.9, exposed: 0.4, hitStep: 0.08, retreatHp: 0.3, retreatCover: 2,
+  retreatDist: 0.6, retreatFar: 6, aimDirs: 16, aimSpread: 0.2, pathHarm: 0.7, avoidMin: 3, bridgeFoe: 6, bridgeAlly: -10, pushFall: 4 };
 // metric-combat.md stage 3 (b.metric >= 3, rules/geometry.js): cover / walls are rectangles and polygons in metres
 // (props by their real footprint `propSize` [along x, along y] m, else the cells minus `inset` per side; barrel tiles —
 // propSize.barrel), surfaces are circles: a one-cell pool `pool` m, a spill of size N — the area circle (areaRadiusM),

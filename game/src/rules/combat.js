@@ -78,7 +78,7 @@
 import { createRng } from './rng.js';
 import { CELL_M, cm, posM, cellCenterM, navPath, pathCellsM, subPolyline, pullCells, budgetM, unitRadius } from './metric.js';
 import { geoOn, exactOn, ptOf, fromPt, gapM, distU, losU, inAreaM, inRadiusU, zocExits, leavesZoc, rectGapM, areaPolyM } from './metric-geo.js';
-import { METRIC } from '../data/combat.js';
+import { METRIC, AI_METRIC } from '../data/combat.js';
 import { rollDice, d20, firstDie, chanceD20 } from './dice.js';
 import { mod, normalizeData, buildCreature, buildEnemy, TIER_BONUS } from './character.js';
 import { UNARMED } from './equipment.js';
@@ -87,14 +87,14 @@ import {
   tileAt, isPassable, inBounds, nearestFree, DIRS8, T_HAZARD, T_EXIT, T_WALL, pathCost, elevAt, inCoverSpot,
 } from './grid.js';
 import {
-  initTerrain, coverBonus, terrainHit, elevRange, meleeElevOk, objectAt, damageObject, damageObjectsIn, terrainOn,
+  initTerrain, coverBonus, terrainHit, elevRange, meleeElevOk, objectAt, damageObject, damageObjectsIn, terrainOn, bridgeAt, damageBridge,
 } from './terrain.js';
 import { initObjectives, objectiveEvent, interact as objInteract, retreatWhy } from './objectives.js';
 import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath, archHit, archDmg, archKb } from './archetypes.js';
 import {
   initSurfaces, tickSurfaces, surfaceEffect, createSurface, radiusTiles, elementHit, surfacesOn, clearSurfaces,
   gasBetween, surfaceHitBonus, surfaceHarm, surfaceKindsAt, battleLevel, tierFor, breakBarrelsIn, floorAt, cellAt,
-  spillAt, spillPoly, surfaceEntries,
+  spillAt, spillPoly, surfaceEntries, harmParts,
 } from './surfaces.js';
 import { shapedOn, partHitsCell } from './geometry.js';
 
@@ -1348,7 +1348,7 @@ function areaWeaponAttack(b, att, center) {
   const targets = abilityTargets(b, att, weaponAreaAbility(att), center);
   emit(b, { type: 'weaponArea', actor: att.id, x: center.x, y: center.y, shape: w.area.shape, size: w.area.size || 1, targets: targets.map((t) => t.id) });
   if (b.barrels && b.barrels.length) breakBarrelsIn(b, (x, y) => inArea(b, att, weaponAreaAbility(att), center, { x, y }) || (x === center.x && y === center.y), att);
-  if (b.objects && b.objects.size) damageObjectsIn(b, (x, y) => inArea(b, att, weaponAreaAbility(att), center, { x, y }), rollDice(b.rng, w.dice), att, w.dmgType);
+  if ((b.objects && b.objects.size) || (b.bridges && b.bridges.length)) damageObjectsIn(b, (x, y) => inArea(b, att, weaponAreaAbility(att), center, { x, y }), rollDice(b.rng, w.dice), att, w.dmgType);
   for (const t of targets) {
     if (!isAlive(t)) continue;
     const half = rollSave(b, t, save, dc, att, 'weapon:' + (w.id || w.name));
@@ -1763,7 +1763,8 @@ function smashObject(b, u, o) {
   emit(b, { type: 'smash', actor: u.id, x: o.x, y: o.y, kind: o.kind, roll: { natural: r.natural, total }, kb: o.armor, hit, crit });
   if (!hit) return;
   const amt = rollDice(b.rng, w.dice, crit) + mod(effStat(b, u, w.stat || 'str')) + (w.dmg || 0) + (u.dmgBonus.all || 0);
-  damageObject(b, o.x, o.y, Math.max(1, amt), u, w.dmgType);
+  if (o.bridge) damageBridge(b, o.bridge, Math.max(1, amt), u); // metric stage 4: a bridge deck is a destructible object
+  else damageObject(b, o.x, o.y, Math.max(1, amt), u, w.dmgType);
 }
 
 /** Push tgt away from a point { id, x, y } (gas explosions). */
@@ -1924,6 +1925,11 @@ function inArea(b, u, a, center, t) {
   });
   if (!hit && !blocked && t.x === ex && t.y === ey) hit = true;
   return hit;
+}
+
+/** Does the area of ability a aimed at spec touch cell (x, y)? (objects / bridges; AI valuation) */
+export function areaHitsCell(b, u, a, spec, x, y) {
+  return !!a.area && inArea(b, u, a, abilityCenter(b, u, a, spec), { x, y });
 }
 
 /** Units affected by an ability given a target spec (v1.1 sides: enemy/tile -> enemies, self/ally -> own). */
@@ -2475,7 +2481,7 @@ function resolveAbility(b, u, a, spec, asReaction) {
     if (ctx.thorns) applyThorns(b, u, t);
   }
   if (zoneOf(a)) placeZone(b, u, a, abilityCenter(b, u, a, spec));
-  if (a.area && b.objects && b.objects.size) {
+  if (a.area && ((b.objects && b.objects.size) || (b.bridges && b.bridges.length))) {
     // combat rework §3.2: area damage hits objects in the area (rolled once)
     let amt = 0;
     for (const op of effects) if (op.op === 'damage' && op.dice) amt += rollDice(b.rng, op.dice);
@@ -2629,13 +2635,15 @@ function canAttack(b, u, e, range) {
 
 /** combat rework §3.2: a deliberate weapon attack on an object (melee — adjacent / reach, ranged — range + LOS). */
 export function smashOk(b, u, x, y) {
-  if (!u.weapon || !objectAt(b, x, y)) return false;
+  if (!u.weapon || !(objectAt(b, x, y) || (exactOn(b) && bridgeAt(b, x, y)))) return false;
   if (x === u.x && y === u.y) return false;
   const d = geoOn(b) ? rectGapM(ptOf(u), x, y) / CELL_M : chebyshev(u.x, u.y, x, y); // metric: to the object's cell edge
   if (d < 1 && !geoOn(b)) return false;
   if (isMeleeWeapon(u)) return d <= Math.max(1, weaponRange(u)) + 1e-6;
   return d <= weaponRange(u) + 1e-6 && (d <= 1 || !!u.weapon.arc || losU(b, u, { x, y }));
 }
+/** A bridge deck cell as a smash target ({kind: 'bridge', x, y, armor, hp, bridge}). */
+const bridgeObj = (br, x, y) => ({ kind: 'bridge', x, y, armor: br.armor, hp: br.hp, maxHp: br.maxHp, bridge: br });
 /** Objects u can smash now. */
 export function smashTargets(b, u) {
   const out = [];
@@ -2645,6 +2653,11 @@ export function smashTargets(b, u) {
     if (at != null) out.push(at === o.y * b.grid.w + o.x ? o : { ...o, x: at % b.grid.w, y: (at / b.grid.w) | 0 });
   }
   for (const br of b.barrels || []) if (br.hp != null && smashOk(b, u, br.x, br.y)) out.push(br);
+  if (exactOn(b)) for (const br of b.bridges || []) { // stage 4: bridges — the nearest deck cell in reach
+    if (br.down) continue;
+    const at = br.cells.find((i) => !objectAt(b, i % b.grid.w, (i / b.grid.w) | 0) && smashOk(b, u, i % b.grid.w, (i / b.grid.w) | 0));
+    if (at != null) out.push(bridgeObj(br, at % b.grid.w, (at / b.grid.w) | 0));
+  }
   return out;
 }
 
@@ -2755,7 +2768,9 @@ export function perform(b, action) {
   switch (action.type) {
     case 'move': {
       if (b.metric && action.to && action.to.px != null) { // metric-combat.md stage 1: a point in metres
-        const np = navPath(b, u, action.to.px, action.to.py, { snap: 0 });
+        // stage 4: the AI asks to walk round harmful surfaces (`avoid`); no such way — the plain path
+        let np = action.to.avoid && exactOn(b) ? navPath(b, u, action.to.px, action.to.py, { snap: 0, avoid: harmParts(b, u, AI_METRIC.avoidMin) }) : null;
+        if (!np || np.cost > budgetM(b) + 1e-6) np = navPath(b, u, action.to.px, action.to.py, { snap: 0 });
         if (!np) return fail(b, start, 'unreachable');
         if (np.cost > budgetM(b) + 1e-6) return fail(b, start, 'unreachable');
         if (!approachOk(b, u, np.to.x, np.to.y)) return fail(b, start, 'fear');
@@ -2828,7 +2843,8 @@ export function perform(b, action) {
     case 'smash': {
       if (t.actions <= 0) return fail(b, start, 'noAction');
       if (!canUseWeapon(b, u)) return fail(b, start, weaponBlocked(b, u) || 'noWeapon');
-      const o = action.tile ? objectAt(b, action.tile.x, action.tile.y) : null;
+      const br = action.tile && exactOn(b) && !objectAt(b, action.tile.x, action.tile.y) ? bridgeAt(b, action.tile.x, action.tile.y) : null;
+      const o = br ? bridgeObj(br, action.tile.x, action.tile.y) : action.tile ? objectAt(b, action.tile.x, action.tile.y) : null;
       if (!o || !smashOk(b, u, o.x, o.y)) return fail(b, start, 'badTarget');
       t.actions--;
       t.acted = true;
