@@ -217,16 +217,18 @@ try {
   // 7. second battle: the guest drops mid-battle → the host AI plays his hero to the end
   check(await startEncounter(A) === 'battle' && await until(B, () => !!window.__net.battle()), 'second battle');
   const t2 = Date.now();
-  let dropped = false;
+  let dropped = false, hostActs = 0;
   while (Date.now() - t2 < 240000) {
     const sa = await battleState(A);
     if (!sa || sa.result) break;
-    await play(A);
-    // a network drop on the guest side: the channel dies (the host sees onclose, the guest — failed)
-    if (!dropped) { if (await play(B)) { await B.waitForTimeout(400); await B.evaluate(() => { const p = window.__net.session().pending; p.close(); p.onClose?.(); }); dropped = true; } }
+    if (await play(A)) hostActs++;
+    // a network drop on the guest side: the channel dies (the host sees onclose, the guest — failed); after the guest's
+    // first action, or after two host actions when the guest's turn has not come (fast battles)
+    if (!dropped) { if ((await play(B)) || hostActs >= 2) { await B.waitForTimeout(400); await B.evaluate(() => { const p = window.__net.session().pending; p.close(); p.onClose?.(); }); dropped = true; } }
     await A.waitForTimeout(100);
   }
   const f2 = await battleState(A);
+  if (!dropped) console.log('debug guest', JSON.stringify(await B.evaluate(() => { const g = window.__game, S = g.scene.S; return { scene: g.scene.id, modals: g.modals.map((m) => m.title), pt: S?.playerTurn, banner: S?.banner, res: S?.result, turn: S?.b?.turn?.unitId, heroId: S?.heroId }; })));
   check(dropped && f2?.winner, `battle ended with the guest gone (${f2?.winner})`);
   check(await A.evaluate(() => window.__net.session().player(1)?.connected === false), 'host: guest disconnected, slot kept');
   await B.waitForTimeout(300);

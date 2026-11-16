@@ -11,6 +11,8 @@ export const GFX = {
   lostTimeout: 2, // s without `webglcontextrestored` -> 2D
   idleFps: 15, // render on demand: nothing moves -> redraw at 15 fps
   chunk: 8, // static world chunks 8x8 cells
+  meshIdle: 8, // cached model meshes (unit templates / props) kept on the GPU without a live 3D state using them
+  soft: { scale: 0.75, idleFps: 6 }, // software GL (SwiftShader / llvmpipe): GL layer resolution (no MSAA), idle refresh — fill rate bound
   // metric-combat.md «Обзор»: walls between the camera and the active unit / cursor (cells in a box cutLen cells long
   // toward the camera, cutW cells half wide) sink to cutH over fade s and get a dark lid (palette `lid`); obstacles in
   // front of the active unit / cursor / target are dithered to seeAlpha within seeR m (screen); X-ray: every obstacle

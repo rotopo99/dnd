@@ -15,6 +15,7 @@ import { defaultLook } from './ui/avatar3d.js';
 import { normalizeRomance } from './world/romance.js';
 import { normClashes } from './world/clashes.js';
 import { normCoop } from './world/coop.js';
+import { isAllowed } from './rules/character.js';
 
 export const SAVE_KEY = 'ruslania-save-v1'; // the autosave slot (also the single save of older versions)
 export const SAVE_VERSION = 1;
@@ -73,7 +74,7 @@ const uniq = (a) => [...new Set(a)];
 export function normalizeSave(s, data) {
   if (!s || typeof s !== 'object' || !s.hero || typeof s.hero !== 'object') return null;
   const h = s.hero;
-  if (!data?.RACES?.[h.race] || !data?.CLASSES?.[h.cls]) return null;
+  if (heroProblem(s, data)) return null; // unknown race / class or a forbidden pair: save-ui offers a fix (fixHero)
   const out = { ...s, version: SAVE_VERSION };
   out.day = Math.max(1, num(s.day, 1));
   out.seed = num(s.seed, 1);
@@ -167,6 +168,44 @@ function normEquipment(e, cls, path) {
   }
   return { weapon: ok(e.weapon, 'weapon'), armor: ok(e.armor, 'armor'), offhand: ok(e.offhand, 'offhand'), pack: ok(e.pack, 'pack'),
     mods: uniq(arr(e.mods).filter((m) => ok(m, 'mod'))), inst: obj(e.inst) };
+}
+
+/**
+ * Race / class of the save's hero: null when valid, else { race, cls, bad: 'race' | 'class' | 'pair', fix: 'race' | 'cls',
+ * options: [ids] } — what can be picked to repair it (allowed classes of the race, or playable races of the class).
+ */
+export function heroProblem(s, data) {
+  const h = s?.hero;
+  if (!h || typeof h !== 'object' || !data?.RACES || !data?.CLASSES) return null;
+  const race = data.RACES[h.race], cls = data.CLASSES[h.cls];
+  if (race && cls && isAllowed(h.race, cls)) return null;
+  const bad = !race ? 'race' : !cls ? 'class' : 'pair';
+  if (race) return { race: h.race, cls: h.cls, bad, fix: 'cls', options: (data.CLASS_ORDER || Object.keys(data.CLASSES)).filter((c) => data.CLASSES[c] && isAllowed(h.race, data.CLASSES[c])) };
+  if (cls) return { race: h.race, cls: h.cls, bad, fix: 'race', options: Object.keys(data.RACES).filter((r) => data.RACES[r].playable && isAllowed(r, cls)) };
+  return { race: h.race, cls: h.cls, bad, fix: null, options: [] };
+}
+/** Repairs the hero of a raw save in place: another class (path / starter gear of it) or race. */
+export function fixHero(s, data, { race, cls } = {}) {
+  const h = s.hero;
+  if (race) { h.race = race; if (h.avatar) h.avatar = null; }
+  if (cls && cls !== h.cls) {
+    h.cls = cls;
+    const paths = data.CLASSES[cls].paths || [];
+    if (!paths.some((x) => x.id === h.path)) h.path = paths[0]?.id || null;
+    h.equipment = null; // starter kit of the new class (normEquipment)
+    h.activeCombat = [];
+  }
+  return s;
+}
+/** Parsed raw save of a slot (right version) or null — for the repair dialog. */
+export function readSave(slot = 'auto') {
+  try {
+    const raw = readRaw(slot);
+    const s = raw ? JSON.parse(raw) : null;
+    return s && s.version === SAVE_VERSION && s.hero && typeof s.hero === 'object' ? s : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Returns the normalised save of a slot (default — autosave) or null (missing / corrupted / other version). */

@@ -497,12 +497,13 @@ export function createRoamScene(rawId, opts = {}) {
   function interact(game, ent) {
     writePos(game);
     play('uiClick');
-    if (ent.kind === 'npc') return npcMenu(game, NPCS[ent.n.id]);
     if (ent.kind === 'post') return game.toast(t('roam.guardSub'), '4');
     if (ent.kind === 'hostile') return game.toast(t('roam.hostileSub'), 'c');
     if (ent.kind === 'corpse') return game.toast(t('roam.corpseSub'), '4');
-    // multiplayer.md stage 3: a co-op guest asks the host; the result (windows) comes to everybody
+    // multiplayer.md stage 3: a co-op guest asks the host (NPCs too: a guest's own windows are suppressed); the result
+    // (windows) comes to everybody
     if (game.coop?.guest) { const ld = S.party[0]; return game.coop.request(game, { kind: 'roam', ent: entKey(ent), x: ld.cx, y: ld.cy }); }
+    if (ent.kind === 'npc') return npcMenu(game, NPCS[ent.n.id]);
     if (ent.kind === 'skill') return openSkillAction(game, locId, ent.p.s, (g) => { syncSkills(g); L.refresh(g); });
     const o = ent.o;
     const sv = game.save;
@@ -959,7 +960,10 @@ export function createRoamScene(rawId, opts = {}) {
     writePos(game);
     if (id === 'menuView') return toMenu(game);
     if (id === 'skills') return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
-    if (id === 'map') return confirmLeave(game);
+    if (id === 'map') { // M / «Карта»: straight to the world map like the node menu, unless leaving is blocked now
+      if (S.alarm) return game.toast(t(S.alarm.fight ? 'roam.leaveFight' : 'roam.leaveAlarm'), 'c');
+      return L.toMap(game);
+    }
     if (id === 'fine') return payAlarm(game);
     if (id === 'mode') return setMode(game, S.mode === 'free' ? 'chain' : 'free');
     if (id.startsWith('sel:')) { const q = S.party[+id.slice(4)]; return q && selectMembers(game, [q.key], game.input.isDown('ShiftLeft') || game.input.isDown('ShiftRight')); }

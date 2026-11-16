@@ -5,6 +5,8 @@ export const ROAM_TEXT = {
   'roam.leaveTitle': 'Покинуть узел?',
   'roam.leaveText': 'Партия выйдет на глобальную карту.',
   'roam.leave': 'Выйти',
+  'roam.leaveAlarm': 'Тревога: на карту мира — только пешком через выход узла (или заплати штраф).',
+  'roam.leaveFight': 'Охрана атакует — с узла сейчас не уйти.',
   'roam.stay': 'Остаться',
   'roam.exit': 'Выход',
   'roam.exitWorld': 'Выход на карту',

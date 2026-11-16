@@ -21,7 +21,7 @@ import { PROPS } from '../assets/props.js';
 import { liveChar } from '../ui/battle-terrain.js';
 import { fieldBiome, propCells } from '../ui/field-view.js';
 import { visionOf, lightSources } from '../world/battlefields.js';
-import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, BONE_TEX_W, NBONES } from './gl.js';
+import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, softwareGL, BONE_TEX_W, NBONES } from './gl.js';
 import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, uploadInstanced, resetInstanced, keyRGB, rampRGB, cssRGBA } from './mesh.js';
 import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis, panCamera, centerCamera } from './camera.js';
 import { ramp, propModel, propTop } from './models.js';
@@ -37,7 +37,12 @@ const G = GFX.geo;
 export function createGfx(canvas, game) {
   const X = {
     canvas, gl: null, P: null, O: null, gen: 0, used: false, lost: false, lostAt: 0, failed: false,
-    gpu: new Map(), // model key -> uploaded mesh (per context generation)
+    scale: 1, w: canvas.width, h: canvas.height, // render scale of the GL layer (software GL: GFX.soft.scale) / logical size
+    gpu: new Map(), // model key -> uploaded mesh (per context generation), shared by all 3D states
+    refs: new Map(), // model key -> number of live 3D states using it (0 -> X.idle, freed beyond GFX.meshIdle)
+    idle: new Set(), // unreferenced cached meshes, oldest first
+    live: new Set(), // holders (S of a battle / roam adapter) with a 3D state (S.v3) on this context
+    stale: null, // holders to free at the end of the frame unless drawn in it (scene switch: game.setScene / resume)
     ok() {
       if (X.failed) return false;
       if (X.gl && !X.lost) return true;
@@ -45,8 +50,8 @@ export function createGfx(canvas, game) {
       try {
         X.gl = createGL(canvas, {
           onLost: () => { X.lost = true; X.lostAt = performance.now(); },
-          onRestored: () => { X.lost = false; X.P = null; X.gen++; X.gpu.clear(); X.sh = null; X.bt = null; resetOverlays(X.gl); resetInstanced(X.gl); X.init(); },
-        });
+          onRestored: () => { X.lost = false; X.P = null; X.gen++; X.gpu.clear(); X.refs.clear(); X.idle.clear(); X.live.clear(); X.sh = null; X.bt = null; resetOverlays(X.gl); resetInstanced(X.gl); X.init(); },
+        }, { antialias: !softwareGL() });
         if (!X.gl) throw new Error('no webgl2');
         X.init();
         return true;
@@ -60,6 +65,11 @@ export function createGfx(canvas, game) {
       const gl = X.gl;
       X.P = worldProgram(gl); X.O = overlayProgram(gl); X.K = skinProgram(gl); X.PT = particleProgram(gl);
       X.D = depthProgram(gl, false); X.DK = depthProgram(gl, true);
+      // software rasteriser (SwiftShader / llvmpipe, only with an explicit 3D choice): fill rate is the bottleneck —
+      // no MSAA and a lower-resolution GL layer (CSS scales it up; the 2D UI stays sharp)
+      X.soft = softwareGL();
+      const sc = X.soft ? GFX.soft.scale : 1;
+      if (sc !== X.scale) { X.scale = sc; X.resize(X.w, X.h, canvas.style.width, canvas.style.height); }
     },
     fail() {
       X.failed = true; X.gl = null;
@@ -67,20 +77,38 @@ export function createGfx(canvas, game) {
       game.toast(t('gfx.unavailable'), 'c');
     },
     resize(w, h, cw, ch) {
-      canvas.width = w; canvas.height = h;
+      X.w = w; X.h = h;
+      canvas.width = Math.max(1, Math.round(w * X.scale)); canvas.height = Math.max(1, Math.round(h * X.scale));
       canvas.style.width = cw; canvas.style.height = ch;
     },
     use() { X.used = true; },
     endFrame() {
       if (X.lost && !X.failed && performance.now() - X.lostAt > GFX.lostTimeout * 1000) X.fail();
+      if (X.stale) { for (const S of X.stale) dropBattle3d(game, S); X.stale = null; }
       const show = X.used && !X.failed;
       if (canvas.style.visibility !== (show ? 'visible' : 'hidden')) canvas.style.visibility = show ? 'visible' : 'hidden';
       X.used = false;
     },
-    mesh(key, build) {
+    /** Scene switch: 3D states not drawn by the next frame are freed (chunks, edges, floor texture, mesh refs). */
+    leaveScene() { if (X.live.size) X.stale = new Set(X.live); },
+    /** Cached GPU mesh of a model; `V` (a 3D state) takes a reference (released by dropBattle3d). */
+    mesh(key, build, V = null) {
       let m = X.gpu.get(key);
       if (m === undefined) { m = uploadMesh(X.gl, build()); X.gpu.set(key, m); }
+      if (V && !V.meshes.has(key)) { V.meshes.add(key); X.refs.set(key, (X.refs.get(key) || 0) + 1); X.idle.delete(key); }
       return m;
+    },
+    release(V) {
+      for (const key of V.meshes) {
+        const n = (X.refs.get(key) || 1) - 1;
+        if (n > 0) { X.refs.set(key, n); continue; }
+        X.refs.delete(key); X.idle.delete(key); X.idle.add(key);
+      }
+      V.meshes.clear();
+      for (const key of X.idle) {
+        if (X.idle.size <= GFX.meshIdle) break;
+        X.idle.delete(key); freeMesh(X.gl, X.gpu.get(key)); X.gpu.delete(key);
+      }
     },
   };
   return X;
@@ -288,7 +316,11 @@ export function battle3d(game, S) {
     if (S.v3) dropBattle3d(game, S);
     return null;
   }
-  if (!S.v3 || S.v3.gen !== game.gfx.gen) S.v3 = { cam: S.v3?.cam || createCamera(), chunks: new Map(), gen: game.gfx.gen, face: {}, hgt: {}, anim: {}, impact: {}, fx: [], lastSig: '', lastDraw: -1, gv: -1, world: null };
+  if (!S.v3 || S.v3.gen !== game.gfx.gen) {
+    S.v3 = { cam: S.v3?.cam || createCamera(), chunks: new Map(), meshes: new Set(), gen: game.gfx.gen, face: {}, hgt: {}, anim: {}, impact: {}, fx: [], lastSig: '', lastDraw: -1, gv: -1, world: null };
+    game.gfx.live.add(S);
+  }
+  game.gfx.stale?.delete(S);
   const V = S.v3, b = S.b;
   const gv = `${b.gridVersion || 0}|${b.objects?.size || 0}`;
   if (V.gv !== gv) {
@@ -302,13 +334,19 @@ export function battle3d(game, S) {
   if (L) fitCamera(V.cam, L.camArea || { x: L.area.x, y: L.area.y + 30, w: L.area.w, h: L.area.h - 54 }, b.grid.w, b.grid.h, G.wall + 0.5);
   return V;
 }
-function dropBattle3d(game, S) {
-  const gl = game.gfx?.gl;
-  if (gl && S.v3.gen === game.gfx.gen) {
-    for (const c of S.v3.chunks.values()) freeMesh(gl, c.mesh);
-    for (const e of S.v3.edges || []) { freeMesh(gl, e.full); freeMesh(gl, e.low); }
-    if (S.v3.floorTex) gl.deleteTexture(S.v3.floorTex);
+/** Frees the GPU resources of a 3D state (chunks, border walls, floor texture; mesh refs back to the shared cache). */
+export function dropBattle3d(game, S) {
+  const X = game.gfx, V = S.v3;
+  X?.live.delete(S);
+  if (!V) return;
+  const gl = X?.gl;
+  if (gl && V.gen === X.gen) {
+    for (const c of V.chunks.values()) freeMesh(gl, c.mesh);
+    for (const e of V.edges || []) { freeMesh(gl, e.full); freeMesh(gl, e.low); }
+    if (V.floorTex) gl.deleteTexture(V.floorTex);
+    X.release(V);
   }
+  V.chunks.clear(); V.edges = null; V.floorTex = null; V.world = null;
   S.v3 = null;
 }
 
@@ -454,9 +492,9 @@ export function panInput3d(game, V, { keys = true } = {}) {
   return used;
 }
 const inR = (r, m) => m.x >= r.x && m.y >= r.y && m.x < r.x + r.w && m.y < r.y + r.h;
-export function cameraInput3d(game, S) {
+export function cameraInput3d(game, S, { keysOnly = false } = {}) {
   const inp = game.input, m = inp.mouse;
-  const btns = camButtons(S, game);
+  const btns = keysOnly ? [] : camButtons(S, game); // keysOnly: under a turn banner (it takes the clicks) — keys / wheel
   S.camHover = btns.find((bt) => inR(bt, m)) || null;
   let act = m.clicked && S.camHover ? S.camHover.id : null;
   if (inp.wasPressed('BracketLeft')) act = 'rotL';
@@ -567,6 +605,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   const X = game.gfx, gl = X.gl, V = S.v3;
   if (!gl || !V?.world || X.lost) return;
   X.use();
+  X.stale?.delete(S);
   const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam, now = S.time;
   const dt = Math.min(GFX.camera.maxDt, V.lastT == null ? 0 : S.time - V.lastT);
   V.lastT = S.time;
@@ -612,7 +651,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   cutLids(V, view, ob);
   const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving || view.moving;
   const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
-  if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / GFX.idleFps) return;
+  if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / (X.soft ? GFX.soft.idleFps : GFX.idleFps)) return;
   V.lastSig = sig; V.lastDraw = S.time;
 
   // chunks: signatures only when the world changed (gridVersion / objects); a changed chunk is rebuilt alone
@@ -649,7 +688,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     const u = it.u, d = it.d;
     if (it.cull && offScreen(d)) continue;
     const T = unitTemplate(u, { simple, lod: cam.zoomIdx === 0 || units.length > 10 });
-    const m = X.mesh(`tpl:${T.key}`, () => T.mb);
+    const m = X.mesh(`tpl:${T.key}`, () => T.mb, V);
     if (!m) continue;
     // facing: the target of the current action, else movement direction, else towards the other side
     const fz = V.face[u.id] || (V.face[u.id] = { x: d.x, y: d.y, a: null });
@@ -706,7 +745,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.drawElementsInstanced(gl.TRIANGLES, g.m.count, gl.UNSIGNED_INT, 0, n);
   };
 
-  const W = gl.canvas.width, H = gl.canvas.height;
+  const rs = X.scale, W = gl.canvas.width / rs, H = gl.canvas.height / rs; // logical px (GL layer may be scaled down)
   const { r, f } = basis(cam), Ld = GFX.light.dir;
   const lv = [r[0] * Ld[0] - f[0] * Ld[2], Ld[1], r[2] * Ld[0] - f[2] * Ld[2]];
   const ll = Math.hypot(...lv);
@@ -749,7 +788,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  gl.viewport(0, 0, W, H);
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
   const bg = keyRGB(GFX.sky[Wd.biome] || GFX.sky.default);
   gl.clearColor(bg[0], bg[1], bg[2], 1);
   gl.disable(gl.SCISSOR_TEST);
@@ -758,7 +797,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   // the world only inside the map area (UI panels around it stay clean)
   const A = cam.area;
   gl.enable(gl.SCISSOR_TEST);
-  gl.scissor(A.x, H - (S.L.area.y + S.L.area.h), A.w, S.L.area.h);
+  gl.scissor(Math.floor(A.x * rs), Math.floor((H - (S.L.area.y + S.L.area.h)) * rs), Math.ceil(A.w * rs), Math.ceil(S.L.area.h * rs));
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.enable(gl.CULL_FACE);
@@ -841,7 +880,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     view.pts.forEach(([x, y, z], i) => {
       const cw = VP[3] * x + VP[7] * y + VP[11] * z + VP[15];
       const nx = (VP[0] * x + VP[4] * y + VP[8] * z + VP[12]) / cw, ny = (VP[1] * x + VP[5] * y + VP[9] * z + VP[13]) / cw, nz = (VP[2] * x + VP[6] * y + VP[10] * z + VP[14]) / cw;
-      see.set([(nx * 0.5 + 0.5) * W, (ny * 0.5 + 0.5) * H, VW.seeR * ppmPx, nz * 0.5 + 0.5], i * 4);
+      see.set([(nx * 0.5 + 0.5) * W * rs, (ny * 0.5 + 0.5) * H * rs, VW.seeR * ppmPx * rs, nz * 0.5 + 0.5], i * 4);
     });
     if (U.uSee) gl.uniform4fv(U.uSee, see);
     gl.uniform1i(U.uNumSee, view.pts.length);
@@ -855,7 +894,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   }
   // barrels (break mid-battle)
   for (const br of b.barrels || []) {
-    const id = br.kind === 'toxgas' ? 'barrel-toxic' : 'barrel', m = X.mesh(`prop:${id}`, () => propModel(id));
+    const id = br.kind === 'toxgas' ? 'barrel-toxic' : 'barrel', m = X.mesh(`prop:${id}`, () => propModel(id), V);
     if (!m) continue;
     gl.uniformMatrix4fv(U.uModel, false, modelMat(br.x, Wd.floor[br.y * Wd.w + br.x] || 0, br.y, 0));
     gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0);

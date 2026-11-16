@@ -37,6 +37,7 @@ const game = {
   modals: [], // modal stack (ui/modal.js); while not empty the scene does not get update()
   toasts: [],
   setScene(scene) {
+    this.gfx?.leaveScene(); // 3D states the new scene does not draw are freed at the end of the frame
     this.scene = scene;
     this.modals.length = 0;
     scene.enter?.(this);
@@ -45,6 +46,7 @@ const game = {
   },
   /** Return to an already entered scene without resetting it. */
   resume(scene) {
+    if (scene !== this.scene) this.gfx?.leaveScene();
     this.scene = scene;
     scene.resume?.(this);
     syncMusic(this);

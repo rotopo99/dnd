@@ -24,8 +24,8 @@ function probeGL() {
 export const hasWebGL2 = () => probeGL().ok;
 export const softwareGL = () => /swiftshader|llvmpipe|software/i.test(probeGL().renderer);
 
-export function createGL(canvas, { onLost, onRestored } = {}) {
-  const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, depth: true, stencil: true, premultipliedAlpha: false, preserveDrawingBuffer: false });
+export function createGL(canvas, { onLost, onRestored } = {}, { antialias = true } = {}) {
+  const gl = canvas.getContext('webgl2', { antialias, alpha: false, depth: true, stencil: true, premultipliedAlpha: false, preserveDrawingBuffer: false });
   if (!gl) return null;
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); onLost?.(); });
   canvas.addEventListener('webglcontextrestored', () => onRestored?.());

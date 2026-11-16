@@ -5303,5 +5303,27 @@ console.log('metric combat stage 3 (circle surfaces, cover polygons, bridges) + 
     assert.ok(tried.has('sy'), 'one roll per secret per visit');
   });
 }
+{ // QA v34: a save with a forbidden race / class pair -> heroProblem + fixHero (save-ui repair dialog)
+  const st = await import('../game/src/world/state.js');
+  const SV = await import('../game/src/save.js');
+  const { CLASS_ORDER } = await import('../game/src/data/index.js');
+  const D = { ...GAME_DATA, CLASS_ORDER };
+  test('save: forbidden race / class pair is reported and repaired by picking an allowed class', () => {
+    const s = JSON.parse(JSON.stringify(st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] })));
+    assert.equal(SV.heroProblem(s, D), null);
+    s.hero.race = 'android'; s.hero.cls = 'mutant';
+    const pr = SV.heroProblem(s, D);
+    assert.equal(pr.bad, 'pair'); assert.equal(pr.fix, 'cls');
+    assert.ok(pr.options.length && !pr.options.includes('mutant') && pr.options.includes('ranger'), pr.options.join(','));
+    assert.equal(SV.normalizeSave(s, D), null, 'forbidden pair is not loaded silently');
+    const fixed = SV.normalizeSave(SV.fixHero(s, D, { cls: 'ranger' }), D);
+    assert.ok(fixed && fixed.hero.cls === 'ranger' && fixed.hero.race === 'android');
+    assert.ok(GAME_DATA.CLASSES.ranger.paths.some((x) => x.id === fixed.hero.path), 'path of the new class');
+    const r = { hero: { race: 'mutant', cls: 'mutant' } };
+    const p2 = SV.heroProblem(r, D);
+    assert.equal(p2.bad, 'race'); assert.equal(p2.fix, 'race');
+    assert.ok(p2.options.length && p2.options.every((id) => GAME_DATA.RACES[id].playable && id !== 'android'), p2.options.join(','));
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

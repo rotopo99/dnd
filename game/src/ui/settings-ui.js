@@ -44,7 +44,7 @@ export function openSettings(game) {
       const can3d = hasWebGL2() && !gfxBroken();
       const modeLabel = `${t(`settings.mode.${p.mode}`)}${p.mode === 'auto' ? ` (${gfxMode().toUpperCase()})` : ''}`;
       return {
-        lines: [t('settings.hint'), ...(can3d ? [] : [{ text: t('settings.no3d'), color: 'c' }])],
+        lines: [...(can3d && gfxMode() === '3d' ? [t('settings.hint')] : []), ...(can3d ? [] : [{ text: t('settings.no3d'), color: 'c' }])], // camera keys: 3D only
         options: [
           { label: `${t('settings.mode')}: ${modeLabel}`, keep: true, disabled: !can3d, run: () => setGfxPref('mode', MODES[(MODES.indexOf(p.mode) + 1) % MODES.length]) },
           { label: `${t('settings.reduceFx')}: ${onOff(p.reduceFx)}`, keep: true, run: () => setGfxPref('reduceFx', !p.reduceFx) },

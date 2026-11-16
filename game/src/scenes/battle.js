@@ -1044,6 +1044,7 @@ export function createBattleScene(opts) {
       return;
     }
     if (S.banner) {
+      cameraInput3d(game, S, { keysOnly: true }); // [ ] / wheel / arrows are not lost under the turn banner
       if (m.clicked || inp.wasPressed('Space') || inp.wasPressed('Enter') || inp.wasPressed('Escape')) { S.banner = false; play('uiClick'); }
       return;
     }

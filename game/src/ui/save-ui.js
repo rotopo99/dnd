@@ -5,7 +5,9 @@
 //   startFromSave(game, save) — go to the save's location (or back into an unfinished Cyberspace episode)
 import { t } from '../data/text/index.js';
 import { LOCATIONS } from '../world/data.js';
-import { listSlots, loadGame, saveToSlot, latestSlot } from '../save.js';
+import { listSlots, loadGame, saveToSlot, latestSlot, readSave, heroProblem, fixHero, normalizeSave } from '../save.js';
+import { CLASS_ORDER } from '../data/index.js';
+import { tf } from '../world/state.js';
 
 const slotName = (slot) => (slot === 'auto' ? t('save.auto') : `${t('save.slot')} ${slot}`);
 
@@ -33,13 +35,44 @@ export function startFromSave(game, save) {
   else import('../scenes/roam.js').then((m) => game.setScene(m.createNodeScene(save.location)));
 }
 
+/**
+ * Load a slot and start it. A hero with an unknown race / class or a forbidden pair (hand-edited / old save) — a window
+ * with the reason and the allowed classes (or races) to pick; the pick repairs the slot and starts the game.
+ * Returns false when the slot has nothing loadable.
+ */
+export function loadSlot(game, slot, onCancel) {
+  const save = loadGame(game.data, slot);
+  if (save) { startFromSave(game, save); return true; }
+  const raw = readSave(slot);
+  const data = { ...game.data, CLASS_ORDER };
+  const pr = raw && heroProblem(raw, data);
+  if (!pr) return false;
+  const name = (id, cat) => game.data[cat]?.[id]?.name || String(id ?? '—');
+  const vars = { race: name(pr.race, 'RACES'), cls: name(pr.cls, 'CLASSES') };
+  game.openModal({
+    title: t('save.fixTitle'), width: 640,
+    lines: [{ text: pr.options.length ? tf(`save.fix.${pr.bad}`, vars) : t('save.fixNone'), color: 'c' }],
+    onCancel: (g) => onCancel?.(g),
+    options: [
+      ...pr.options.map((id) => ({
+        label: name(id, pr.fix === 'cls' ? 'CLASSES' : 'RACES'),
+        run: (g) => {
+          const fixed = normalizeSave(fixHero(raw, data, { [pr.fix]: id }), data);
+          if (!fixed) { g.toast(t('save.broken'), 'c'); return; }
+          saveToSlot(fixed, slot);
+          startFromSave(g, fixed);
+        },
+      })),
+      { label: t('loc.close'), run: (g) => onCancel?.(g) },
+    ],
+  });
+  return true;
+}
+
 /** Load the most recent slot («Продолжить»). Returns false if there is nothing to load. */
 export function continueLatest(game) {
   const slot = latestSlot();
-  const save = slot != null ? loadGame(game.data, slot) : null;
-  if (!save) return false;
-  startFromSave(game, save);
-  return true;
+  return slot != null && loadSlot(game, slot);
 }
 
 export function openLoadMenu(game, onCancel) {
@@ -50,11 +83,7 @@ export function openLoadMenu(game, onCancel) {
     options: [
       ...slots.map((x) => ({
         label: slotName(x.slot), sub: slotSummary(x), disabled: x.empty || x.broken,
-        run: (g) => {
-          const save = loadGame(g.data, x.slot);
-          if (!save) { g.toast(t('save.broken'), 'c'); return; }
-          startFromSave(g, save);
-        },
+        run: (g) => { if (!loadSlot(g, x.slot, onCancel)) g.toast(t('save.broken'), 'c'); },
       })),
       { label: t('loc.close'), run: (g) => onCancel?.(g) },
     ],
