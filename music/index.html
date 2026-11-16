@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вольная Волна</title>
+<style>
+:root {
+  --bg: #f5f3ee; --panel: #ffffff; --text: #1d1b18; --muted: #6b665d;
+  --line: #e2ddd2; --accent: #c2410c; --accent-text: #fff; --hover: #f0ece3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14130f; --panel: #1e1c18; --text: #ece8df; --muted: #9c968a;
+    --line: #2f2c26; --accent: #fb923c; --accent-text: #1a1206; --hover: #27241f;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14130f; --panel: #1e1c18; --text: #ece8df; --muted: #9c968a;
+  --line: #2f2c26; --accent: #fb923c; --accent-text: #1a1206; --hover: #27241f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding-bottom: 150px; }
+header { max-width: 860px; margin: 0 auto; padding: 20px 16px 8px; }
+h1 { margin: 0 0 4px; font-size: 22px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+form { display: flex; gap: 8px; flex-wrap: wrap; }
+input[type=search] { flex: 1 1 220px; min-width: 0; padding: 10px 12px; font: inherit;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+button, select { font: inherit; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; cursor: pointer; }
+button:hover { background: var(--hover); }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.tabs { display: flex; gap: 6px; margin: 12px 0 0; flex-wrap: wrap; }
+.tabs button[aria-pressed=true] { background: var(--text); color: var(--bg); border-color: var(--text); }
+main { max-width: 860px; margin: 0 auto; padding: 8px 16px; }
+.status { color: var(--muted); font-size: 13px; min-height: 20px; margin: 6px 0; }
+ul.list { list-style: none; margin: 0; padding: 0; }
+.row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; border-bottom: 1px solid var(--line); }
+.row:hover { background: var(--hover); }
+.row.playing { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); }
+.cover { width: 44px; height: 44px; border-radius: 6px; flex: none; object-fit: cover; background: var(--line); }
+.meta { flex: 1; min-width: 0; }
+.t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.a { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.a a { color: inherit; }
+.acts { display: flex; gap: 4px; flex: none; }
+.acts button { padding: 6px 9px; }
+.more { display: block; margin: 12px auto; }
+.album-head { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+footer.player { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel);
+  border-top: 1px solid var(--line); padding: 10px 16px 12px; }
+.pin { max-width: 860px; margin: 0 auto; }
+.now { display: flex; align-items: center; gap: 10px; }
+.now .meta { min-width: 0; }
+.ctrl { display: flex; gap: 6px; align-items: center; flex: none; }
+.ctrl button { width: 42px; height: 42px; padding: 0; border-radius: 50%; }
+.seek { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.seek input { flex: 1; accent-color: var(--accent); }
+.vol { width: 80px; accent-color: var(--accent); }
+@media (max-width: 520px) { .vol { display: none; } .cover { width: 38px; height: 38px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Вольная Волна</h1>
+  <p class="sub">Слушай и качай музыку под свободными лицензиями (Creative Commons, public domain): Openverse (Jamendo, Freesound, Wikimedia) и Internet Archive.</p>
+  <form id="f">
+    <input type="search" id="q" placeholder="Жанр, исполнитель, настроение… например: synthwave" autocomplete="off">
+    <select id="src" aria-label="Источник">
+      <option value="ov">Openverse</option>
+      <option value="ia">Internet Archive</option>
+    </select>
+    <button class="primary" type="submit">Найти</button>
+  </form>
+  <div class="tabs">
+    <button type="button" id="tabSearch" aria-pressed="true">Поиск</button>
+    <button type="button" id="tabFav" aria-pressed="false">Избранное</button>
+    <button type="button" id="tabQueue" aria-pressed="false">Очередь</button>
+  </div>
+</header>
+<main>
+  <div class="status" id="status"></div>
+  <div id="view"></div>
+</main>
+<footer class="player">
+  <div class="pin">
+    <div class="now">
+      <img class="cover" id="pCover" alt="">
+      <div class="meta"><div class="t" id="pTitle">Ничего не играет</div><div class="a" id="pArtist"></div></div>
+      <div class="ctrl">
+        <button id="bPrev" title="Назад" aria-label="Назад">⏮</button>
+        <button id="bPlay" class="primary" title="Играть" aria-label="Играть">▶</button>
+        <button id="bNext" title="Дальше" aria-label="Дальше">⏭</button>
+        <input class="vol" id="vol" type="range" min="0" max="1" step="0.01" value="0.9" aria-label="Громкость">
+      </div>
+    </div>
+    <div class="seek"><span id="cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Перемотка"><span id="dur">0:00</span></div>
+  </div>
+  <audio id="audio" preload="none"></audio>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const audio = $('audio');
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const state = {
+  tab: 'search', results: [], page: 1, query: '', source: 'ov', album: null,
+  queue: [], idx: -1, fav: store.get('vv-fav', []),
+};
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (s) => { if (!isFinite(s)) return '0:00'; s = Math.floor(s); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const status = (t) => { $('status').textContent = t; };
+const first = (v) => Array.isArray(v) ? v[0] : v;
+
+// ---------- sources ----------
+async function searchOpenverse(q, page) {
+  const u = `https://api.openverse.org/v1/audio/?q=${encodeURIComponent(q)}&page=${page}&page_size=20`;
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('Openverse: HTTP ' + r.status);
+  const j = await r.json();
+  return {
+    more: page < (j.page_count || 0),
+    items: (j.results || []).filter((x) => x.url).map((x) => ({
+      kind: 'track', id: 'ov:' + x.id, title: x.title || 'Без названия', artist: x.creator || 'Неизвестен',
+      url: x.url, cover: x.thumbnail || '', page: x.foreign_landing_url,
+      license: (x.license || '').toUpperCase() + (x.license_version ? ' ' + x.license_version : ''),
+      origin: x.source, ext: x.filetype || 'mp3',
+    })),
+  };
+}
+
+async function searchArchive(q, page) {
+  const query = `(${q}) AND mediatype:audio AND (licenseurl:*creativecommons* OR licenseurl:*publicdomain*)`;
+  const params = new URLSearchParams({ q: query, rows: '20', page: String(page), output: 'json', 'sort[]': 'downloads desc' });
+  for (const f of ['identifier', 'title', 'creator', 'licenseurl']) params.append('fl[]', f);
+  const r = await fetch('https://archive.org/advancedsearch.php?' + params);
+  if (!r.ok) throw new Error('Internet Archive: HTTP ' + r.status);
+  const j = await r.json();
+  const total = j.response?.numFound || 0;
+  return {
+    more: page * 20 < total,
+    items: (j.response?.docs || []).map((d) => ({
+      kind: 'album', id: 'ia:' + d.identifier, ident: d.identifier,
+      title: first(d.title) || d.identifier, artist: first(d.creator) || 'Неизвестен',
+      cover: `https://archive.org/services/img/${d.identifier}`,
+      page: `https://archive.org/details/${d.identifier}`, license: licName(first(d.licenseurl)),
+    })),
+  };
+}
+
+function licName(url) {
+  if (!url) return '';
+  if (/publicdomain/.test(url)) return 'Public Domain';
+  const m = url.match(/licenses\/([a-z-]+)\/([\d.]+)/);
+  return m ? 'CC ' + m[1].toUpperCase() + ' ' + m[2] : 'CC';
+}
+
+async function loadAlbum(al) {
+  const r = await fetch('https://archive.org/metadata/' + encodeURIComponent(al.ident));
+  if (!r.ok) throw new Error('Internet Archive: HTTP ' + r.status);
+  const j = await r.json();
+  const files = (j.files || []).filter((f) => /mp3/i.test(f.format || '') || /\.mp3$/i.test(f.name));
+  // Prefer VBR MP3 originals; drop duplicates of the same track in other bitrates.
+  const seen = new Set();
+  const out = [];
+  files.sort((a, b) => (/VBR/i.test(b.format) - /VBR/i.test(a.format)) || String(a.track || a.name).localeCompare(String(b.track || b.name), undefined, { numeric: true }));
+  for (const f of files) {
+    const base = f.name.replace(/(_64kb|_128kb|_vbr)?\.mp3$/i, '');
+    if (seen.has(base)) continue;
+    seen.add(base);
+    out.push({
+      kind: 'track', id: `ia:${al.ident}/${f.name}`, title: f.title || base.split('/').pop(),
+      artist: f.artist || f.creator || al.artist, cover: al.cover, page: al.page, license: al.license,
+      url: `https://archive.org/download/${al.ident}/${f.name.split('/').map(encodeURIComponent).join('/')}`,
+      origin: 'archive.org', ext: 'mp3',
+    });
+  }
+  out.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+  return out;
+}
+
+// ---------- search ----------
+async function runSearch(append) {
+  const q = state.query;
+  if (!q) return;
+  status(append ? 'Гружу ещё…' : 'Ищу…');
+  try {
+    const fn = state.source === 'ov' ? searchOpenverse : searchArchive;
+    const res = await fn(q, state.page);
+    state.results = append ? state.results.concat(res.items) : res.items;
+    state.more = res.more;
+    state.album = null;
+    status(state.results.length ? `Найдено: ${state.results.length}${res.more ? '+' : ''}` : 'Ничего не нашлось. Попробуй по-английски: ambient, jazz, rock…');
+  } catch (e) {
+    status('Ошибка: ' + e.message + '. Проверь интернет или смени источник.');
+  }
+  render();
+}
+
+$('f').addEventListener('submit', (e) => {
+  e.preventDefault();
+  state.query = $('q').value.trim();
+  state.source = $('src').value;
+  state.page = 1;
+  setTab('search');
+  runSearch(false);
+});
+
+// ---------- views ----------
+function setTab(t) {
+  state.tab = t;
+  for (const [id, name] of [['tabSearch', 'search'], ['tabFav', 'fav'], ['tabQueue', 'queue']]) $(id).setAttribute('aria-pressed', String(t === name));
+  if (t !== 'search') status('');
+  render();
+}
+$('tabSearch').onclick = () => setTab('search');
+$('tabFav').onclick = () => setTab('fav');
+$('tabQueue').onclick = () => setTab('queue');
+
+const isFav = (id) => state.fav.some((x) => x.id === id);
+const current = () => state.queue[state.idx];
+
+function rowHtml(it, i) {
+  const playing = current()?.id === it.id;
+  const sub = [esc(it.artist), it.license && esc(it.license), it.origin && esc(it.origin)].filter(Boolean).join(' · ');
+  const btns = it.kind === 'album'
+    ? `<button data-a="open" data-i="${i}">Открыть</button>`
+    : `<button data-a="play" data-i="${i}" title="Играть">${playing && !audio.paused ? '⏸' : '▶'}</button>
+       <button data-a="fav" data-i="${i}" title="В избранное">${isFav(it.id) ? '★' : '☆'}</button>
+       <button data-a="dl" data-i="${i}" title="Скачать">⬇</button>`;
+  return `<li class="row${playing ? ' playing' : ''}">
+    ${it.cover ? `<img class="cover" loading="lazy" src="${esc(it.cover)}" alt="" onerror="this.style.visibility='hidden'">` : '<div class="cover"></div>'}
+    <div class="meta"><div class="t" title="${esc(it.title)}">${esc(it.title)}</div>
+      <div class="a">${sub}${it.page ? ` · <a href="${esc(it.page)}" target="_blank" rel="noopener">источник</a>` : ''}</div></div>
+    <div class="acts">${btns}</div></li>`;
+}
+
+function visibleList() {
+  if (state.tab === 'fav') return state.fav;
+  if (state.tab === 'queue') return state.queue;
+  return state.album ? state.album.tracks : state.results;
+}
+
+function render() {
+  const list = visibleList();
+  let html = '';
+  if (state.tab === 'search' && state.album) {
+    html += `<div class="album-head"><button data-a="back">← Назад</button><b>${esc(state.album.title)}</b>
+      <button data-a="playall">▶ Всё</button></div>`;
+  }
+  if (!list.length) {
+    const empty = { fav: 'Здесь будут треки со звёздочкой.', queue: 'Очередь пуста — запусти любой трек.', search: state.query ? '' : 'Введи запрос и жми «Найти».' }[state.tab];
+    html += `<p class="status">${empty}</p>`;
+  }
+  html += `<ul class="list">${list.map(rowHtml).join('')}</ul>`;
+  if (state.tab === 'search' && !state.album && state.more) html += '<button class="more" data-a="more">Показать ещё</button>';
+  $('view').innerHTML = html;
+}
+
+$('view').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-a]');
+  if (!b) return;
+  const list = visibleList();
+  const it = list[+b.dataset.i];
+  switch (b.dataset.a) {
+    case 'more': state.page++; runSearch(true); break;
+    case 'back': state.album = null; status(''); render(); break;
+    case 'playall': playList(state.album.tracks, 0); break;
+    case 'open':
+      status('Открываю альбом…');
+      try {
+        const tracks = await loadAlbum(it);
+        state.album = { title: it.title, tracks };
+        status(tracks.length ? `Треков: ${tracks.length}` : 'В этом архиве нет MP3.');
+      } catch (err) { status('Ошибка: ' + err.message); }
+      render();
+      break;
+    case 'play':
+      if (current()?.id === it.id) togglePlay();
+      else if (state.tab === 'queue') playAt(+b.dataset.i);
+      else playList(list.filter((x) => x.kind === 'track'), list.filter((x) => x.kind === 'track').indexOf(it));
+      break;
+    case 'fav':
+      state.fav = isFav(it.id) ? state.fav.filter((x) => x.id !== it.id) : state.fav.concat([it]);
+      store.set('vv-fav', state.fav);
+      render();
+      break;
+    case 'dl': download(it, b); break;
+  }
+});
+
+// ---------- player ----------
+function playList(list, i) { state.queue = list.slice(); playAt(i); }
+function playAt(i) {
+  if (i < 0 || i >= state.queue.length) return;
+  state.idx = i;
+  const t = current();
+  audio.src = t.url;
+  audio.play().catch(() => status('Не удалось воспроизвести этот файл — попробуй другой.'));
+  $('pTitle').textContent = t.title;
+  $('pArtist').textContent = t.artist + (t.license ? ' · ' + t.license : '');
+  $('pCover').src = t.cover || '';
+  $('pCover').style.visibility = t.cover ? 'visible' : 'hidden';
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, artwork: t.cover ? [{ src: t.cover }] : [] });
+  }
+  render();
+}
+function togglePlay() {
+  if (!current()) return;
+  audio.paused ? audio.play() : audio.pause();
+}
+$('bPlay').onclick = togglePlay;
+$('bNext').onclick = () => playAt(state.idx + 1);
+$('bPrev').onclick = () => (audio.currentTime > 3 ? (audio.currentTime = 0) : playAt(state.idx - 1));
+$('vol').oninput = (e) => { audio.volume = +e.target.value; store.set('vv-vol', audio.volume); };
+audio.volume = store.get('vv-vol', 0.9); $('vol').value = audio.volume;
+audio.onplay = audio.onpause = () => { $('bPlay').textContent = audio.paused ? '▶' : '⏸'; render(); };
+audio.onended = () => playAt(state.idx + 1);
+audio.onerror = () => { if (audio.src) { status('Файл недоступен, перехожу к следующему.'); playAt(state.idx + 1); } };
+let seeking = false;
+$('seek').oninput = () => { seeking = true; $('cur').textContent = fmt($('seek').value / 1000 * audio.duration); };
+$('seek').onchange = () => { audio.currentTime = $('seek').value / 1000 * (audio.duration || 0); seeking = false; };
+audio.ontimeupdate = () => {
+  $('dur').textContent = fmt(audio.duration);
+  if (seeking) return;
+  $('cur').textContent = fmt(audio.currentTime);
+  $('seek').value = audio.duration ? audio.currentTime / audio.duration * 1000 : 0;
+};
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('nexttrack', () => playAt(state.idx + 1));
+  navigator.mediaSession.setActionHandler('previoustrack', () => playAt(state.idx - 1));
+}
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+});
+
+// ---------- download ----------
+async function download(it, btn) {
+  const name = `${it.artist} - ${it.title}`.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120) + '.' + (it.ext || 'mp3');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    // Cross-origin <a download> is ignored by browsers, so fetch into a blob first.
+    const r = await fetch(it.url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const url = URL.createObjectURL(await r.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    status('Скачано: ' + name);
+  } catch {
+    // Server forbids CORS — fall back to opening the file directly (save via browser menu).
+    window.open(it.url, '_blank', 'noopener');
+    status('Файл открыт в новой вкладке — сохрани его через меню браузера.');
+  }
+  btn.disabled = false; btn.textContent = '⬇';
+}
+
+render();
+</script>
+</body>
+</html>
