@@ -244,9 +244,12 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
     case 'afro': {
       const A = resample([
         { y: y0 + hh * 0.62, rx: 0.12, rz: 0.118, z: -0.014 }, { y: y0 + hh * 0.78, rx: 0.146, rz: 0.142, z: -0.016 }, { y: y0 + hh * 1.0, rx: 0.15, rz: 0.146, z: -0.014 },
-        { y: y0 + hh * 1.2, rx: 0.12, rz: 0.12, z: -0.012 }, { y: y0 + hh * 1.34, rx: 0.06, rz: 0.06, z: -0.01 }, { y: y0 + hh * 1.38, rx: 0, rz: 0, z: -0.01 },
+        { y: y0 + hh * 1.2, rx: 0.12, rz: 0.12, z: -0.012 }, { y: y0 + hh * 1.32, rx: 0.07, rz: 0.07, z: -0.01 }, { y: y0 + hh * 1.37, rx: 0.025, rz: 0.025, z: -0.01 }, { y: y0 + hh * 1.38, rx: 0, rz: 0, z: -0.01 },
       ], 24);
-      surfGrid(mb, (u, v) => { const q = v * 23, i = Math.min(22, Math.floor(q)), f = q - i, a = TAU * u; return [Math.cos(a) * lerp(A[i].rx, A[i + 1].rx, f), lerp(A[i].y, A[i + 1].y, f), lerp(A[i].z, A[i + 1].z, f) + Math.sin(a) * lerp(A[i].rz, A[i + 1].rz, f)]; }, Math.round(16 * Q), Math.round(10 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.2 + 0.5 * v), { closed: true, center: (p) => [0, p[1], -0.014] });
+      surfGrid(mb, (u, v) => { const q = v * 23, i = Math.min(22, Math.floor(q)), f = q - i, a = TAU * u; return [Math.cos(a) * Math.max(0, lerp(A[i].rx, A[i + 1].rx, f)), lerp(A[i].y, A[i + 1].y, f), lerp(A[i].z, A[i + 1].z, f) + Math.sin(a) * Math.max(0, lerp(A[i].rz, A[i + 1].rz, f))]; }, Math.round(16 * Q), Math.round(10 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.2 + 0.5 * v), { closed: true, center: (p) => [0, p[1], -0.014] });
+      // plug under the apex: the rings converge into one point there and the rasterizer may leave a see-through pixel
+      const pc = [0, y0 + hh * 1.33, -0.01];
+      surfGrid(mb, (u, v) => { const a = TAU * u, th = Math.PI * v * 0.5; return [Math.cos(a) * Math.sin(th) * 0.045, pc[1] + Math.cos(th) * 0.008, pc[2] + Math.sin(a) * Math.sin(th) * 0.045]; }, 8, 3, () => lerpRamp(grad.root, grad.tip, 0.7), { closed: true, center: [0, pc[1] - 0.02, pc[2]] });
       break;
     }
     case 'bun':

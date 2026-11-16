@@ -2,7 +2,7 @@
 // every class x every playable race x path x levels 1, 5, 10, 15, 20 (levels-20.md; ASI 'auto') vs ENCOUNTERS.standard1/5
 // (×2/×3/×4 on 10/15/20), N battles each; data check of `upgrades` (unknown ability / never applied);
 // story maps; every v3 weapon (items/weapons.js) on a hero vs ENCOUNTERS_V3 (counts v3.1 item-property events).
-// Usage: node tools/smoke-rules.mjs [--n 20] [--seed 1] [--metric 0|1|2]   (exit code 1 on exceptions)
+// Usage: node tools/smoke-rules.mjs [--n 20] [--seed 1] [--metric 0|1|2|3]   (exit code 1 on exceptions)
 import fs from 'node:fs';
 import { RACES } from '../game/src/data/races.js';
 import { STATUSES, VEIL_TABLE, PROXY_STORM_TABLE } from '../game/src/data/effects.js';

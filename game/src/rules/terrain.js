@@ -12,7 +12,7 @@
 //    level (max −2), melee across a difference of 2 is impossible. Height ≥ 1 above the target ignores half cover.
 //  - Flank: the target stands next to half/full cover but none of it covers it from the attacker -> +1 hit.
 
-import { T_RUBBLE, T_FLOOR, T_WATER, T_BLOCK, tileCover, coverLevel, inCoverSpot, elevAt, inBounds, chebyshev, isPassable, nearestFree } from './grid.js';
+import { T_RUBBLE, T_FLOOR, T_WATER, T_BLOCK, tileCover, coverLevel, inCoverSpot, elevAt, inBounds, chebyshev, isPassable } from './grid.js';
 import { emitEvent, unitAt, isAlive, dealDamage, rollSave, applyStatus, placeUnitAt, damageMultiplier } from './combat.js';
 import { rollDice } from './dice.js';
 import { geoOn, coverM, ptOf, fromPt } from './metric-geo.js';
@@ -134,11 +134,27 @@ export function collapseBridge(b, br, src) {
   for (const { u, h } of fallers) {
     bridgeFall(b, src, u, h);
     if (isAlive(u) && !isPassable(g, u.x, u.y)) {
-      const to = nearestFree(g, u.x, u.y, b.occ);
+      const to = shoreCell(g, u.x, u.y, b.occ);
       if (to) placeUnitAt(b, u, to.x, to.y);
     }
   }
   return fallers.map((f) => f.u);
+}
+
+/** Nearest passable free cell by rings around (x, y) (out of the water). */
+function shoreCell(g, x, y, occ) {
+  for (let r = 1; r < Math.max(g.w, g.h); r++) {
+    let best = null, bd = Infinity;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const nx = x + dx, ny = y + dy;
+      if (!inBounds(g, nx, ny) || !isPassable(g, nx, ny) || (occ && occ[ny * g.w + nx])) continue;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = { x: nx, y: ny }; }
+    }
+    if (best) return best;
+  }
+  return null;
 }
 
 /** Fall of h metres: fallDie per GEO.bridge.fallPer m (>= 1), DEX save — half, prone; never lethal (>= 1 hp left). */
