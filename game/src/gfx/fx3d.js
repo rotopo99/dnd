@@ -52,9 +52,12 @@ export function buildFx(S, V, now, prefs, ob, P) {
     if (x < 0 || y < 0 || x >= Wd.w || y >= Wd.h) continue;
     const f = fl(x, y) + GFX.geo.overlay, ph = hash(x, y);
     const fd = cell.floor && !cell.floor.hazard ? b.data.surfaces?.[cell.floor.kind] : null;
-    if (fd) floorDecal(ob, P, fd, x, y, f, tt, ph, parts, prefs);
+    // metric stage 3: shaped layers (circles in metres) — decal polygons of circle ∩ cell, details where the cell centre is inside
+    if (fd && cell.floor.shape) shapedDecal(ob, P, fd, x, y, f, tt, ph, parts, prefs, cell.floor.shape, 0.33);
+    else if (fd) floorDecal(ob, P, fd, x, y, f, tt, ph, parts, prefs);
     const gd = cell.gas ? b.data.surfaces?.[cell.gas.kind] : null;
-    if (gd) gas(ob, P, gd.color, x, y, f, tt, ph, parts, gd.id === 'smoke' ? 0.34 : 0.26);
+    if (gd && cell.gas.shape) { const k = rgb(gd.color); for (const pl of shapePolys(cell.gas.shape, x, y)) ob.poly(pl, f + 0.003, [k[0], k[1], k[2], 0.16]); if (centreIn(cell.gas.shape, x, y)) gas(null, P, gd.color, x, y, f, tt, ph, parts, gd.id === 'smoke' ? 0.34 : 0.26); }
+    else if (gd) gas(ob, P, gd.color, x, y, f, tt, ph, parts, gd.id === 'smoke' ? 0.34 : 0.26);
   }
   for (const z of b.zones || []) {
     const R = z.size || 1;
@@ -79,10 +82,12 @@ export function buildFx(S, V, now, prefs, ob, P) {
   return active;
 }
 
-function floorDecal(ob, P, d, x, y, f, t, ph, parts, prefs) {
+/** Cell decal; base === null (shaped layers) — only the details, drawn into `detail`. */
+function floorDecal(base0, P, d, x, y, f, t, ph, parts, prefs, detail) {
   const c = rgb(d.color || '5'), core = rgb(d.core || d.color || '5');
   const base = d.id === 'cringe' ? 0.3 + 0.08 * Math.sin(TW * 0.5 * t + ph * TW) : d.id === 'ice' ? 0.42 : 0.33;
-  ob.rect(x, y, x + 1, y + 1, f, [c[0], c[1], c[2], base]).frame(x, y, x + 1, y + 1, f + 0.001, 0.05, [c[0], c[1], c[2], 0.72]);
+  const ob = base0 || detail;
+  if (base0) ob.rect(x, y, x + 1, y + 1, f, [c[0], c[1], c[2], base]).frame(x, y, x + 1, y + 1, f + 0.001, 0.05, [c[0], c[1], c[2], 0.72]);
   const g = f + 0.002;
   switch (d.id) {
     case 'fire': {
@@ -129,6 +134,45 @@ function floorDecal(ob, P, d, x, y, f, t, ph, parts, prefs) {
   }
 }
 
+// ---- shaped layers (metric stage 3): circle {cx, cy, r} in metres, the 3D world is in cells (1.5 m)
+const SEG = 20;
+/** Convex polygons [[x, z]…] (cells) of every circle of the shape clipped to cell (x, y). */
+function shapePolys(shape, x, y) {
+  const out = [];
+  for (const k of shape) {
+    let pts = [];
+    for (let i = 0; i < SEG; i++) { const a = (i / SEG) * TW; pts.push([(k.cx + Math.cos(a) * k.r) / 1.5, (k.cy + Math.sin(a) * k.r) / 1.5]); }
+    for (const [axis, v, keep] of [[0, x, 1], [0, x + 1, -1], [1, y, 1], [1, y + 1, -1]]) pts = clipHalf(pts, axis, v, keep);
+    if (pts.length >= 3) out.push(pts);
+  }
+  return out;
+}
+/** Sutherland–Hodgman against one axis-aligned half-plane (keep > 0: coord >= v, else coord <= v). */
+function clipHalf(pts, axis, v, keep) {
+  const out = [], inside = (p) => (keep > 0 ? p[axis] >= v - 1e-9 : p[axis] <= v + 1e-9);
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], c = pts[(i + 1) % pts.length], ia = inside(a), ic = inside(c);
+    if (ia) out.push(a);
+    if (ia !== ic) { const t = (v - a[axis]) / (c[axis] - a[axis]); out.push([a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t]); }
+  }
+  return out;
+}
+const centreIn = (shape, x, y) => shape.some((k) => ((x + 0.5) * 1.5 - k.cx) ** 2 + ((y + 0.5) * 1.5 - k.cy) ** 2 <= k.r * k.r);
+function shapedDecal(ob, P, d, x, y, f, t, ph, parts, prefs, shape, base0) {
+  const c = rgb(d.color || '5');
+  const base = d.id === 'cringe' ? 0.3 + 0.08 * Math.sin(TW * 0.5 * t + ph * TW) : d.id === 'ice' ? 0.42 : base0;
+  for (const pl of shapePolys(shape, x, y)) {
+    ob.poly(pl, f, [c[0], c[1], c[2], base]);
+    // rim: polygon edges that are not on the cell border
+    for (let i = 0; i < pl.length; i++) {
+      const a = pl[i], e = pl[(i + 1) % pl.length];
+      const onBorder = (Math.abs(a[0] - e[0]) < 1e-6 && (Math.abs(a[0] - x) < 1e-6 || Math.abs(a[0] - x - 1) < 1e-6)) || (Math.abs(a[1] - e[1]) < 1e-6 && (Math.abs(a[1] - y) < 1e-6 || Math.abs(a[1] - y - 1) < 1e-6));
+      if (!onBorder) seg(ob, a, e, f + 0.001, 0.05, [c[0], c[1], c[2], 0.72]);
+    }
+  }
+  if (centreIn(shape, x, y)) floorDecal(null, P, d, x, y, f, t, ph, parts, prefs, ob);
+}
+
 /** Two flame tongues (outer + core) slowly changing height (0.8 Hz) and a rising ember. */
 function flames(P, x, y, f, t, ph) {
   const e = rgb('e'), cb = rgb('b'), a = rgb('a');
@@ -145,8 +189,8 @@ function flames(P, x, y, f, t, ph) {
 /** Gas / smoke: soft puffs slowly circling over the cell; flat haze without particles. */
 function gas(ob, P, key, x, y, f, t, ph, parts, alpha) {
   const c = rgb(key);
-  if (!parts) { ob.rect(x, y, x + 1, y + 1, f + 0.6, [c[0], c[1], c[2], alpha * 0.8]); return; }
-  ob.rect(x, y, x + 1, y + 1, f + 0.003, [c[0], c[1], c[2], alpha * 0.45]);
+  if (!parts) { if (ob) ob.rect(x, y, x + 1, y + 1, f + 0.6, [c[0], c[1], c[2], alpha * 0.8]); return; }
+  if (ob) ob.rect(x, y, x + 1, y + 1, f + 0.003, [c[0], c[1], c[2], alpha * 0.45]);
   for (let i = 0; i < 3; i++) {
     const a = TW * (t / F.puffT + ph + i / 3), r = 0.17;
     const s = 0.34 + 0.06 * Math.sin(TW * (t / F.puffT) * 1.3 + i + ph * 5);

@@ -12,10 +12,13 @@
 //    level (max −2), melee across a difference of 2 is impossible. Height ≥ 1 above the target ignores half cover.
 //  - Flank: the target stands next to half/full cover but none of it covers it from the attacker -> +1 hit.
 
-import { T_RUBBLE, T_FLOOR, tileCover, coverLevel, inCoverSpot, elevAt, inBounds, chebyshev } from './grid.js';
-import { emitEvent } from './combat.js';
+import { T_RUBBLE, T_FLOOR, T_WATER, T_BLOCK, tileCover, coverLevel, inCoverSpot, elevAt, inBounds, chebyshev, isPassable, nearestFree } from './grid.js';
+import { emitEvent, unitAt, isAlive, dealDamage, rollSave, applyStatus, placeUnitAt, damageMultiplier } from './combat.js';
+import { rollDice } from './dice.js';
 import { geoOn, coverM, ptOf, fromPt } from './metric-geo.js';
-import { createSurface, radiusTiles, destroyBarrel, barrelAt, battleLevel } from './surfaces.js';
+import { createSurface, destroyBarrel, barrelAt, battleLevel, spillAt } from './surfaces.js';
+import { shapedOn } from './geometry.js';
+import { GEO } from '../data/combat.js';
 
 const cfg = (b) => (b.data && b.data.combat) || null;
 export const terrainOn = (b) => !!cfg(b);
@@ -54,6 +57,105 @@ export function initTerrain(b) {
   }
   const bd = C.objects.barrel;
   if (bd) for (const br of b.barrels || []) { br.maxHp = br.hp = objectHp(bd, L); br.armor = bd.armor ?? 6; }
+  initBridges(b, L);
+}
+
+// ---------------------------------------------------------------- bridges (level-design.md §7.5: collapse, falls)
+
+/**
+ * Bridges: 4-connected '=' deck cells of the map def next to water ('W' deep / 'w' shallow) → b.bridges
+ * [{id, cells (indices), hp, maxHp, armor, under (tile after the collapse), low (height of what is under)}].
+ * Area hits damage them (damageObjectsIn); collapseBridge (trigger op `collapse`, hp 0) drops the deck.
+ */
+function initBridges(b, L) {
+  b.bridges = [];
+  const g = b.grid, rows = g.def?.grid;
+  if (!rows) return;
+  const B = GEO.bridge, ch = (x, y) => rows[y]?.[x], seen = new Uint8Array(g.w * g.h);
+  const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+    if (ch(x, y) !== '=' || seen[y * g.w + x]) continue;
+    const cells = [], q = [[x, y]];
+    seen[y * g.w + x] = 1;
+    let deep = 0, wet = 0, low = Infinity;
+    while (q.length) {
+      const [cx, cy] = q.pop();
+      cells.push(cy * g.w + cx);
+      for (const [dx, dy] of D4) {
+        const nx = cx + dx, ny = cy + dy, c = ch(nx, ny);
+        if (!inBounds(g, nx, ny)) continue;
+        if (c === '=') { if (!seen[ny * g.w + nx]) { seen[ny * g.w + nx] = 1; q.push([nx, ny]); } continue; }
+        if (c === 'W') deep++; else if (c === 'w') wet++;
+        if (c === 'W' || c === 'w') low = Math.min(low, elevAt(g, nx, ny));
+      }
+    }
+    if (!deep && !wet) continue;
+    const hp = Math.max(1, Math.round(B.hp[0] + B.hp[1] * L));
+    b.bridges.push({ id: `bridge${b.bridges.length + 1}`, x: cells[0] % g.w, y: (cells[0] / g.w) | 0, cells, hp, maxHp: hp, armor: B.armor, under: deep ? T_BLOCK : T_WATER, low: low === Infinity ? 0 : low });
+  }
+}
+
+/** Standing bridge holding cell (x, y), or null. */
+export const bridgeAt = (b, x, y) => (b.bridges && inBounds(b.grid, x, y) ? b.bridges.find((r) => !r.down && r.cells.includes(y * b.grid.w + x)) || null : null);
+
+/** Damage a bridge; at 0 hp it collapses. Returns true if it fell. */
+export function damageBridge(b, br, amount, src) {
+  if (!br || br.down) return false;
+  const amt = Math.max(0, Math.floor(amount));
+  br.hp -= amt;
+  emitEvent(b, { type: 'objectHit', actor: src ? src.id : null, x: br.x, y: br.y, kind: 'bridge', amount: amt, value: Math.max(0, br.hp) });
+  if (br.hp <= 0) { collapseBridge(b, br, src); return true; }
+  return false;
+}
+
+/**
+ * The deck falls: its cells become what is under it (deep water — no passage, shallow — water), heights drop to the
+ * water level (navigation sees it via gridVersion). Units on it fall (bridgeFall) and swim out of deep water to the
+ * nearest free cell. Event geoCollapse {id, x, y, cells}.
+ */
+export function collapseBridge(b, br, src) {
+  if (!br || br.down) return [];
+  br.down = true;
+  br.hp = 0;
+  const g = b.grid, fallers = [];
+  for (const i of br.cells) {
+    const x = i % g.w, y = (i / g.w) | 0, u = unitAt(b, x, y);
+    if (u && isAlive(u)) fallers.push({ u, h: Math.max(0, elevAt(g, x, y) - br.low) * 0.5 + GEO.bridge.deck });
+    g.tiles[i] = br.under;
+    g.collapsed = (g.collapsed || new Set()).add(i);
+    if (g.elev) g.elev[i] = br.low;
+  }
+  g.costly = true;
+  b.gridVersion = (b.gridVersion || 0) + 1;
+  b.occVersion++;
+  b.reachCache = null;
+  b.navCache = null;
+  emitEvent(b, { type: 'geoCollapse', actor: src ? src.id : null, id: br.id, x: br.x, y: br.y, cells: br.cells.length });
+  for (const { u, h } of fallers) {
+    bridgeFall(b, src, u, h);
+    if (isAlive(u) && !isPassable(g, u.x, u.y)) {
+      const to = nearestFree(g, u.x, u.y, b.occ);
+      if (to) placeUnitAt(b, u, to.x, to.y);
+    }
+  }
+  return fallers.map((f) => f.u);
+}
+
+/** Fall of h metres: fallDie per GEO.bridge.fallPer m (>= 1), DEX save — half, prone; never lethal (>= 1 hp left). */
+export function bridgeFall(b, src, u, h) {
+  const C = cfg(b), B = GEO.bridge;
+  if (!isAlive(u) || u.tags.includes('fly') || u.tags.includes('flying')) return 0;
+  const L = battleLevel(b), n = Math.max(1, Math.round(h / B.fallPer));
+  let amt = 0;
+  for (let k = 0; k < n; k++) amt += rollDice(b.rng, B.fallDie);
+  const half = rollSave(b, u, 'dex', ((C && C.elev.acroDc) ?? 10) + Math.floor(L / 2), src, 'fall');
+  if (half) amt = Math.floor(amt / 2);
+  const m = Math.max(0.01, damageMultiplier(b, u, 'blunt').mult);
+  if (amt * m >= u.hp) amt = Math.max(0, Math.floor((u.hp - 1) / m));
+  emitEvent(b, { type: 'fall', target: u.id, levels: n, metres: Math.round(h * 10) / 10, amount: amt, half, bridge: true });
+  if (amt > 0) dealDamage(b, null, u, amt, 'blunt');
+  if (isAlive(u)) applyStatus(b, u, 'prone', 1, null);
+  return amt;
 }
 
 /** Object on a tile: { kind, x, y, hp, maxHp, armor, cover, barrel? } or null. */
@@ -100,9 +202,14 @@ export function breakObject(b, o, src) {
   b.occVersion++;
   b.reachCache = null;
   emitEvent(b, { type: 'objectBreak', actor: src ? src.id : null, x: o.x, y: o.y, kind: o.kind });
-  if (o.debris && b.data.surfaces) createSurface(b, o.debris, cells.map((i) => ({ x: i % g.w, y: (i / g.w) | 0 })), src, { turns: def.turns });
-  if (def.surface && b.data.surfaces) createSurface(b, def.surface.kind, radiusTiles(b, o.x, o.y, def.surface.r || 1), src, { turns: def.surface.turns });
-  if (def.fireLeaves && o.burnt && b.data.surfaces) createSurface(b, def.fireLeaves, [{ x: o.x, y: o.y }], src, {});
+  // metric stage 3: the debris lies as a circle over the footprint (half-diagonal x GEO.debrisK), the rest — circle spills
+  const n = cells.length, mid = shapedOn(b) ? { px: (o.x + n / 2) * 1.5, py: (o.y + 0.5) * 1.5 } : null;
+  if (o.debris && b.data.surfaces) {
+    if (mid) spillAt(b, o.debris, mid, 0, src, { turns: def.turns, r: Math.hypot(n * 1.5, 1.5) / 2 * GEO.debrisK });
+    else createSurface(b, o.debris, cells.map((i) => ({ x: i % g.w, y: (i / g.w) | 0 })), src, { turns: def.turns });
+  }
+  if (def.surface && b.data.surfaces) spillAt(b, def.surface.kind, mid || { x: o.x, y: o.y }, def.surface.r || 1, src, { turns: def.surface.turns });
+  if (def.fireLeaves && o.burnt && b.data.surfaces) spillAt(b, def.fireLeaves, mid || { x: o.x, y: o.y }, 0, src, {});
   if (def.junk && b.rng() < def.junk) {
     b.junk = (b.junk || 0) + 1;
     emitEvent(b, { type: 'objectLoot', x: o.x, y: o.y, kind: o.kind });
@@ -111,8 +218,9 @@ export function breakObject(b, o, src) {
 
 /** Area damage to objects (not barrels — surfaces.js breaks those on any area hit). test(x, y) -> in area. */
 export function damageObjectsIn(b, test, amount, src, dmgType) {
-  if (!terrainOn(b) || !b.objects.size || amount <= 0) return;
+  if (!terrainOn(b) || (!b.objects.size && !(b.bridges && b.bridges.length)) || amount <= 0) return;
   const amt = amount * (cfg(b).areaObjectMul ?? 1);
+  for (const br of b.bridges || []) if (!br.down && br.cells.some((i) => test(i % b.grid.w, (i / b.grid.w) | 0))) damageBridge(b, br, amt, src);
   for (const o of new Set(b.objects.values())) if (o.hp > 0 && (o.cells ? o.cells.some((i) => test(i % b.grid.w, (i / b.grid.w) | 0)) : test(o.x, o.y))) damageObject(b, o.x, o.y, amt, src, dmgType);
 }
 

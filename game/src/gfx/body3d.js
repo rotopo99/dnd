@@ -165,9 +165,12 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
   mb.setMat(6);
   const rampAt = (s) => lerpRamp(grad.root, grad.tip, s);
   const outH = (a, t) => { const v = Hd.out(a, t); return v; };
+  // the head normal turns sideways at the crown (rx -> 0): the cap's offset there would leave a see-through hole
+  // («шов» on short cuts) — near the top it blends to straight up, the last ring closes into one point
+  const capDir = (a, t) => { const k = smooth(0.88, 1, t); return k <= 0 ? outH(a, t) : unit(add(mul(outH(a, t), 1 - k), [0, k, 0])); };
   // cap: from the hairline up; tb(a) — hairline height by angle
   const tbf = (front, side, back) => (a) => { const f = Math.cos(a - Math.PI / 2); return f > 0 ? lerp(side, front, Math.pow(f, 1.3)) : lerp(side, back, Math.pow(-f, 0.8)); };
-  const cap = (tb, th, nu = 24) => surfGrid(mb, (u, v) => { const a = TAU * u, t0 = tb(a), t = t0 + v * (1 - t0); return add(Hd.S(a, t), mul(outH(a, t), th * (0.6 + 0.4 * Math.sin(Math.min(1, 0.25 + v) * Math.PI * 0.5)) + 0.007 + 0.006 * Math.sin(v * Math.PI))); }, Math.round(nu * Q), Math.round(6 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.15 + 0.2 * v), { closed: true, center: (p) => [0, p[1], -0.005] });
+  const cap = (tb, th, nu = 24) => surfGrid(mb, (u, v) => { const a = TAU * u, t0 = tb(a), t = t0 + v * (1 - t0); return add(t >= 1 ? [Hd.cx, Hd.S(a, 1)[1], Hd.ring(1).z] : Hd.S(a, t), mul(capDir(a, t), th * (0.6 + 0.4 * Math.sin(Math.min(1, 0.25 + v) * Math.PI * 0.5)) + 0.007 + 0.006 * Math.sin(v * Math.PI))); }, Math.round(nu * Q), Math.round(6 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.15 + 0.2 * v), { closed: true, center: (p) => [0, p[1], -0.005] });
   // a lock: wedge with a lens section (full in the middle, a point at the tip), a soft bend, a random twist; follows the skull,
   // then hangs (ext) with a sway along the tangent and a flick of the tip. width = full width of the root.
   const strand = (a, t0, t1, ext, width, p = {}) => {
@@ -241,7 +244,7 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
     case 'afro': {
       const A = resample([
         { y: y0 + hh * 0.62, rx: 0.12, rz: 0.118, z: -0.014 }, { y: y0 + hh * 0.78, rx: 0.146, rz: 0.142, z: -0.016 }, { y: y0 + hh * 1.0, rx: 0.15, rz: 0.146, z: -0.014 },
-        { y: y0 + hh * 1.2, rx: 0.12, rz: 0.12, z: -0.012 }, { y: y0 + hh * 1.34, rx: 0.06, rz: 0.06, z: -0.01 }, { y: y0 + hh * 1.38, rx: 0.003, rz: 0.003, z: -0.01 },
+        { y: y0 + hh * 1.2, rx: 0.12, rz: 0.12, z: -0.012 }, { y: y0 + hh * 1.34, rx: 0.06, rz: 0.06, z: -0.01 }, { y: y0 + hh * 1.38, rx: 0, rz: 0, z: -0.01 },
       ], 24);
       surfGrid(mb, (u, v) => { const q = v * 23, i = Math.min(22, Math.floor(q)), f = q - i, a = TAU * u; return [Math.cos(a) * lerp(A[i].rx, A[i + 1].rx, f), lerp(A[i].y, A[i + 1].y, f), lerp(A[i].z, A[i + 1].z, f) + Math.sin(a) * lerp(A[i].rz, A[i + 1].rz, f)]; }, Math.round(16 * Q), Math.round(10 * Q), (u, v) => lerpRamp(grad.root, grad.tip, 0.2 + 0.5 * v), { closed: true, center: (p) => [0, p[1], -0.014] });
       break;

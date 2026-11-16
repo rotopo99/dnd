@@ -55,7 +55,7 @@ function objs3(objs) {
       else if (o.cells?.length) { const c = o.cells[0]; out.push({ x: c[0], y: c[1], mb: gateModel(o.cells), sig: `g${o.cells.length}` }); }
       continue;
     }
-    if (o.type === 'secret' && o.opened) continue;
+    if (o.type === 'secret' && (o.opened || o.hidden)) continue;
     const v = (o.type === 'stash' || o.type === 'door' || o.type === 'hatch' || o.type === 'lever' || o.type === 'note') && o.opened ? 'open' : '';
     out.push({ x: o.x, y: o.y, mb: roamObjModel(o.hatch ? 'hatch' : o.type, o.hatch ? 'open' : v), sig: `${o.type[0]}${v ? 1 : 0}` });
   }
@@ -77,7 +77,7 @@ export function roam3d(game, R) {
   }
   A.L.area = R.area; A.L.camArea = R.camArea;
   A.b.map.tod = R.wx.tod; A.b.map.weather = R.wx.weather;
-  const sig = S.objs.map((o) => `${o.type}${o.opened ? 1 : 0}${o.x},${o.y}`).join(';');
+  const sig = S.objs.map((o) => `${o.type}${o.opened ? 1 : 0}${o.hidden ? 'h' : ''}${o.x},${o.y}`).join(';');
   if (sig !== A.objSig) { A.objSig = sig; A.b.map.objs3 = objs3(S.objs); A.b.gridVersion++; }
   const fresh = !A.v3;
   const V = battle3d(game, A);

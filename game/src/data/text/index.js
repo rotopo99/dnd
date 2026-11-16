@@ -722,7 +722,7 @@ const ru = {
   'pin.abilities': 'Способности', 'pin.statuses': 'Статусы', 'pin.none': 'нет', 'pin.weapon': 'Оружие', 'pin.phase': 'Фаза', 'pin.level': 'ур.',
   'battle.help': 'ПКМ по юниту — меню (атака, карточка) · Tab — закрепить карточку · F — ускорить врагов · Enter — пропустить ход врагов',
   'battle.fastOn': 'Ускорение ×2 (F)', 'battle.skipping': 'Пропуск хода врагов…',
-  'log.objectBreak': 'разрушен', 'log.smash': 'бьёт', 'log.fall': 'падает', 'log.slam': 'врезается',
+  'log.objectBreak': 'разрушен', 'log.smash': 'бьёт', 'log.fall': 'падает', 'log.collapse': 'Мост рушится!', 'obj.bridge': 'Мост', 'log.slam': 'врезается',
   'log.phase': 'Фаза {n}!', 'log.flee': 'сбегает с поля боя', 'log.fleeStart': 'пытается сбежать', 'log.rage': 'впадает в ярость',
   'log.holdPos': 'занял позицию (+1 КБ)', 'log.archSummon': 'зовёт подмогу', 'log.objectLoot': 'В обломках — хлам',
   // ---------- v4: location lore, skill usefulness, companion gear ----------

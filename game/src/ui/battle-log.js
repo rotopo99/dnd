@@ -146,6 +146,7 @@ export function formatEvent(S, e) {
     case 'objectBreak': return [[t(`obj.${e.kind}`), C.a], g(` ${t('log.objectBreak')}`)];
     case 'smash': return [a(A), g(` ${t('log.smash')} `), [t(`obj.${e.kind}`), C.a], g(`: ${rollStr(e.roll)} ${t('battle.vs')} ${t('res.kb')} ${e.kb} — `), e.hit ? [t('battle.hit'), C['5']] : [t('battle.miss'), C['4']]];
     case 'objectLoot': return [g(t('log.objectLoot'))];
+    case 'geoCollapse': return [[t('log.collapse'), C.c]];
     case 'fall': return [a(T), g(` ${t('log.fall')} (${e.levels}): `), [String(e.amount), C.c]];
     case 'slam': return [a(T), g(` ${t('log.slam')}: ${e.amount}`)];
     case 'phase': return [a(A), g(': '), [t('log.phase').replace('{n}', e.n) + (e.say ? ` ${e.say}` : ''), C.c]];
@@ -239,7 +240,7 @@ export function eventSound(S, e) {
     case 'surfaceCreate': play({ fire: 'fire', electric: 'electric', acid: 'toxin', toxgas: 'toxin', cringe: 'cringe', proxy: 'proxy' }[e.kind] || 'debuff'); break;
     case 'glitchFail': play('cyber'); break;
     case 'objectBreak': play('crit'); break;
-    case 'fall': case 'slam': play('hit', { dmgType: 'blunt' }); break;
+    case 'fall': case 'slam': case 'geoCollapse': play('hit', { dmgType: 'blunt' }); break;
     case 'phase': play('enemyTurn'); break;
     case 'objective': if (e.state === 'done') play('victory'); break;
     case 'chestTrap': play('crit'); break;

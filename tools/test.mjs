@@ -5184,5 +5184,124 @@ console.log('metric combat stage 2 (ranges, areas, LOS, cover, zone of control, 
     assert.ok(r.dist[6 * g.w + 11] >= 0, 'the tower is reachable by the stairs');
   });
 }
+
+console.log('metric combat stage 3 (circle surfaces, cover polygons, bridges) + hidden secrets');
+{
+  const { COMBAT } = await import('../game/src/data/combat.js');
+  const SU = await import('../game/src/rules/surfaces.js');
+  const GE = await import('../game/src/rules/geometry.js');
+  const G2 = await import('../game/src/rules/metric-geo.js');
+  const TR = await import('../game/src/rules/terrain.js');
+  const M = await import('../game/src/rules/metric.js');
+  const HM = await import('../game/src/world/handmade.js');
+  const D3 = { ...D31, SURFACES, SURFACE_RULES, COMBAT, STATUSES: { ...D31.STATUSES, ...GAME_DATA.STATUSES } };
+  const put = (b, u, px, py) => {
+    const g = b.grid, x = Math.floor(px / 1.5), y = Math.floor(py / 1.5);
+    if (u.x >= 0) b.occ[u.y * g.w + u.x] = 0;
+    u.x = x; u.y = y; u.px = px; u.py = py; b.occ[y * g.w + x] = b.units.indexOf(u) + 1; b.occVersion++;
+  };
+  const mk3 = (map, enemies = ['thug', 'thug'], metric = 3) => {
+    const b = createBattle({ map: { id: 'm3', win: 'killAll', ...map }, heroes: [buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data: D3 })], enemies, data: D3, seed: 4, autoReactions: false, metric });
+    for (const u of b.units) u.maxHp = u.hp = 300;
+    return { b, H: b.units.find((u) => u.team === 'heroes'), E: b.units.filter((u) => u.team === 'enemies') };
+  };
+  const OPEN = ['##############', '#P...........#', '#............#', '#............#', '#............#', '#...........E#', '#...........E#', '##############'];
+  test('metric 3: a circle surface reaches a unit by metres (centre inside), not by its cell', () => {
+    const { b, E } = mk3({ grid: OPEN });
+    put(b, E[0], 6.0 + 2.0, 4.5); // 2.0 m from the centre: inside r 2.25
+    put(b, E[1], 6.0, 4.5 + 2.6); // 2.6 m: outside, though its cell (4, 4) touches the circle
+    SU.spillAt(b, 'fire', { px: 6.0, py: 4.5 }, 1, null, { r: 2.25 });
+    const f1 = SU.floorAt(b, E[1].x, E[1].y);
+    assert.ok(f1 && f1.kind === 'fire' && f1.shape, 'the cell of E1 holds a shaped fire layer');
+    assert.ok(SU.onLayer(b, E[0], SU.floorAt(b, E[0].x, E[0].y)) && !SU.onLayer(b, E[1], f1));
+    const hp0 = E[0].hp, hp1 = E[1].hp;
+    SU.surfaceEffect(b, E[0], 'turn'); SU.surfaceEffect(b, E[1], 'turn');
+    assert.ok(E[0].hp < hp0, 'inside burns'); assert.equal(E[1].hp, hp1, 'outside is untouched');
+    const E1 = mk3({ grid: OPEN }, ['thug'], 2); // stage 2: the same spill is whole cells
+    SU.spillAt(E1.b, 'fire', { x: 4, y: 3 }, 1, null, {});
+    assert.ok(!SU.floorAt(E1.b, 4, 4).shape);
+  });
+  test('metric 3: walking into a circle — damage at the crossing, once', () => {
+    const { b, H } = mk3({ grid: OPEN });
+    put(b, H, 2.25, 4.5); forceTurn(b, H);
+    SU.spillAt(b, 'fire', { px: 9.0, py: 4.5 }, 0, null, { r: 1.2 });
+    const ents = SU.surfaceEntries(b, [{ px: 2.25, py: 4.5 }, { px: 12, py: 4.5 }]);
+    assert.equal(ents.length, 1, 'one puddle over several cells — one entry');
+    assert.ok(Math.abs(ents[0].px - 7.8) < 0.11, 'entered at the circle edge');
+    const hp = H.hp;
+    const np = M.navPath(b, H, 10.5, 4.5);
+    perform(b, { type: 'move', unit: H.id, to: { x: 7, y: 3, px: 10.5, py: 4.5 } });
+    assert.ok(H.hp < hp && np.ok !== false);
+  });
+  test('metric 3: water circle + current — only units inside the water are shocked', () => {
+    const { b, E } = mk3({ grid: OPEN });
+    SU.spillAt(b, 'water', { px: 9.0, py: 4.5 }, 0, null, { r: 2.0, turns: 5 });
+    put(b, E[0], 9.0 + 1.5, 4.5); put(b, E[1], 9.0, 4.5 + 2.4);
+    assert.equal(SU.floorAt(b, E[1].x, E[1].y)?.kind, 'water');
+    const h0 = E[0].hp, h1 = E[1].hp;
+    SU.spillAt(b, 'electric', { px: 8.6, py: 4.4 }, 0, null, {});
+    assert.ok(SU.floorAt(b, 6, 3)?.charged, 'the puddle carries current');
+    assert.ok(E[0].hp < h0 && E[0].statuses.some((s) => s.id === 'shocked'));
+    assert.equal(E[1].hp, h1); assert.ok(!E[1].statuses.some((s) => s.id === 'shocked'));
+  });
+  test('metric 3: cover from the prop rectangle (bench 1.3 x 0.5 m), not from its cell', () => {
+    const grid = ['###############', '#.............#', '#P.....c.....E#', '#.............#', '###############'];
+    const { b, H, E } = mk3({ grid, props: [{ id: 'bench', x: 7, y: 2, w: 1, h: 1, cover: 'half', blocks: true }] }, ['thug']);
+    const G = GE.geoOf(b);
+    const it = G.items.find((x) => x.prop === 'bench');
+    assert.ok(it && Math.abs(it.x1 - it.x0 - 1.3) < 1e-9 && Math.abs(it.y1 - it.y0 - 0.5) < 1e-9);
+    put(b, H, 2.25, 3.75); put(b, E[0], 13.0, 3.75); // straight through the bench
+    assert.equal(G2.coverM(b, G2.ptOf(H), G2.ptOf(E[0]), false), 2);
+    put(b, H, 2.25, 3.75 - 0.68); put(b, E[0], 13.0, 3.75 - 0.68); // through the bench cell, past the rectangle
+    assert.equal(G2.coverM(b, G2.ptOf(H), G2.ptOf(E[0]), false), 0);
+    b.metric = 2; // stage 2: the cell still covers
+    assert.equal(G2.coverM(b, G2.ptOf(H), G2.ptOf(E[0]), false), 2);
+    b.metric = 3;
+    // a broken prop drops its polygon and leaves its debris as a circle
+    const C2 = mk3({ grid, props: [{ id: 'crate', x: 7, y: 2, w: 1, h: 1, cover: 'half', blocks: true, destructible: true, hp: 1, debris: 'oil' }] }, ['thug']);
+    assert.ok(GE.geoOf(C2.b).items.some((x) => x.prop === 'crate'));
+    TR.damageObject(C2.b, 7, 2, 999, null, 'blunt');
+    assert.ok(!GE.geoOf(C2.b).items.some((x) => x.prop === 'crate'), 'geometry rebuilt');
+    assert.ok(SU.floorAt(C2.b, 7, 2)?.kind === 'oil' && SU.floorAt(C2.b, 7, 2).shape);
+  });
+  test('metric 3: bridge collapse — the deck is gone from navigation, units fall (>= 1 hp), swim out', () => {
+    const grid = ['##########', '#P.......#', '#WWWW=WWW#', '#WWWW=WWW#', '#WWWW=WWW#', '#.......E#', '##########'];
+    const { b, H, E } = mk3({ grid }, ['thug']);
+    assert.equal(b.bridges.length, 1);
+    const br = TR.bridgeAt(b, 5, 3);
+    assert.ok(br && br.cells.length === 3);
+    const before = M.navPath(b, E[0], 8.25, 2.25);
+    assert.ok(before && before.pts?.length, 'path over the bridge');
+    put(b, H, 5 * 1.5 + 0.75, 3 * 1.5 + 0.75);
+    H.hp = 3;
+    TR.collapseBridge(b, br, null);
+    assert.ok(br.down && !TR.bridgeAt(b, 5, 3));
+    assert.ok(H.hp >= 1 && H.hp <= 3 && !H.dead, 'never lethal');
+    assert.ok(b.log.some((e) => e.type === 'fall' && e.target === H.id && e.bridge));
+    assert.ok(b.log.some((e) => e.type === 'geoCollapse'));
+    assert.ok(!(H.x === 5 && H.y === 3), 'out of the deep water');
+    const after = M.navPath(b, E[0], 8.25, 2.25);
+    assert.ok(!after || !after.pts?.length || after.ok === false, 'no way across');
+    // area damage breaks a bridge too
+    const B2 = mk3({ grid }, ['thug']);
+    TR.damageObjectsIn(B2.b, (x, y) => x === 5 && y === 3, 999, null, 'fire');
+    assert.ok(B2.b.bridges[0].down);
+  });
+  test('hand maps: a secret is hidden until Perception (passive on approach / active search)', () => {
+    const save = { flags: {}, caches: [], codex: { flags: [] } };
+    const objs = HM.liveHand([{ id: 'sx', type: 'secret', x: 10, y: 10, check: { skill: 'lockpicking', dc: 12 }, loot: [] }, { id: 'sy', type: 'secret', x: 10, y: 10, spot: { dc: 40 }, loot: [] }], 'loc', save);
+    assert.ok(objs.every((o) => o.hidden), 'hidden at first');
+    const m = { key: 'hero', name: 'H', unit: buildCreature({ race: 'human', cls: 'zabivnoy', level: 1, data: GAME_DATA }) };
+    assert.deepEqual(HM.spotSecrets(objs, [m], { x: 30, y: 30 }), [], 'too far');
+    objs[0].spot = { dc: 1 };
+    const f = HM.spotSecrets(objs, [m], { x: 11, y: 10 });
+    assert.deepEqual(f.map((x) => x.o.id), ['sx'], 'passive finds the easy one, not DC 40');
+    save.flags[HM.seenKey('loc', 'sx')] = true; objs[0].hidden = false;
+    assert.ok(!HM.liveHand([{ id: 'sx', type: 'secret', x: 1, y: 1 }], 'loc', save)[0].hidden, 'spotted stays visible');
+    const tried = new Set();
+    assert.deepEqual(HM.spotSecrets(objs, [m], { x: 12, y: 12 }, { active: true, tried }), []);
+    assert.ok(tried.has('sy'), 'one roll per secret per visit');
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

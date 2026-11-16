@@ -884,6 +884,7 @@ export function createBattleScene(opts) {
       case 'objectBreak': tilePop(e.x, e.y, t(`obj.${e.kind}`), C.a); S.shake = 0.15; break;
       case 'smash': actPop(A, t(`obj.${e.kind}`)); if (!e.hit) tilePop(e.x, e.y, t('battle.miss'), C['4']); break;
       case 'fall': if (T) popup(T, t('log.fall'), C.c); break;
+      case 'geoCollapse': tilePop(e.x, e.y, t('log.collapse'), C.c); S.shake = 0.3; break;
       case 'phase': if (A) { popup(A, t('log.phase').replace('{n}', e.n), C.c); S.shake = 0.25; } break;
       case 'flee': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('log.flee'), C['4']); } break;
       case 'rage': if (A) popup(A, t('log.rage'), C.c); break;

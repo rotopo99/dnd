@@ -32,6 +32,7 @@ export const ROAM_TEXT = {
   'roam.theftBehind': 'Со спины, вне взгляда: СЛ {n}',
   'roam.theftSub': 'со спины: СЛ {n}',
   'roam.sneakOn': 'Крадёмся (C)',
+  'roam.secretSpotted': '{name}: здесь что-то спрятано!', 'roam.searchNone': 'Осмотрелись (Q) — ничего подозрительного.',
   'roam.sneakOff': 'Идём открыто',
   'roam.notice': 'Заметность',
   'roam.seen': 'Вас видят',

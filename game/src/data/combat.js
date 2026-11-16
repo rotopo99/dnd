@@ -83,7 +83,24 @@ export const PACE = { aiStep: 0.30, turnGap: 0.15, moveStep: 0.08, walk: 12, fas
 // metric-combat.md: stage of the move to metres (0 — classic cells; 1 — positions / movement / path in metres, ranges,
 // LOS and AI still by the nearest cell; 2 — ranges / areas / LOS / cover / opportunity attacks / AI positions in metres,
 // rules/metric-geo.js). The settings toggle «Бой: по метрам / по клеткам» picks 0 for one player.
-export const RULES = { metric: 2 };
+export const RULES = { metric: 3 };
+// metric-combat.md stage 3 (b.metric >= 3, rules/geometry.js): cover / walls are rectangles and polygons in metres
+// (props by their real footprint `propSize` [along x, along y] m, else the cells minus `inset` per side; barrel tiles —
+// propSize.barrel), surfaces are circles: a one-cell pool `pool` m, a spill of size N — the area circle (areaRadiusM),
+// a barrel `barrelR` m, a prop's debris — its footprint half-diagonal x `debrisK`. Bridges (`=` over water / a drop):
+// destructible objects (hp = bridge.hp base + perL x L), the deck drops `deck` m above what is under it; falling
+// damage — fallDie per `fallPer` m of the drop (>= 1 die), never lethal (the unit keeps >= 1 hp).
+export const GEO = {
+  inset: 0.1, pool: 0.8, barrelR: 2.25, debrisK: 0.9,
+  propSize: {
+    barrel: [0.8, 0.8], 'barrel-toxic': [0.8, 0.8], crate: [1.1, 1.1], 'crate-stack': [1.2, 1.2], sandbags: [1.4, 0.8],
+    'concrete-block': [1.3, 1.0], tower: [1.2, 1.2], transformer: [1.3, 1.2], campfire: [0.9, 0.9], 'monument-stump': [1.0, 1.0],
+    kiosk: [1.3, 1.3], buoy: [0.8, 0.8], bollard: [0.5, 0.5], server: [0.9, 0.9], 'glitch-cube': [1.1, 1.1], 'tire-pile': [1.1, 1.1],
+    'dead-tree': [0.5, 0.5], lamp: [0.3, 0.3], bench: [1.3, 0.5], slab: [1.4, 0.6], generator: [1.2, 0.9], dumpster: [1.3, 0.9],
+    'ice-block': [1.2, 1.2], antenna: [0.5, 0.5], 'hologram-pillar': [0.7, 0.7], 'data-pylon': [0.9, 0.9], 'pallet-stack': [1.2, 1.1],
+  },
+  bridge: { hp: [12, 2], armor: 8, deck: 1.5, fallPer: 1.5, fallDie: '1d6' },
+};
 // 1 cell = 1.5 m (speed 6 -> 9 m). Nav grid 0.5 m (3x3 per cell), unit circles r (boss — large), the rest of a budget
 // under `burn` m is lost, footstep sound every `stepM` m, segments are traced every `sample` m, a click within `snap`
 // nav cells of a wall snaps to the nearest free point.

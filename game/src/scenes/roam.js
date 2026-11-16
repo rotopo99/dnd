@@ -20,7 +20,7 @@ import { openSkillAction, openSkillActions, drawSkillBadge, drawHintBadges } fro
 import { skillName } from '../world/checks.js';
 import { T_RUBBLE, T_EXIT, isPassable, chebyshev, stepCost } from '../rules/grid.js';
 import { openCheck } from '../ui/checks-ui.js';
-import { applyDoors, triggersAt, battleOf, battleRegion, handKey, noteKey } from '../world/handmade.js';
+import { applyDoors, triggersAt, battleOf, battleRegion, handKey, noteKey, seenKey, secretHidden, spotSecrets } from '../world/handmade.js';
 import { codexOf } from '../world/codex.js';
 import { visit, openHidden } from '../world/state.js';
 import { rollDice } from '../rules/dice.js';
@@ -137,7 +137,7 @@ export function createRoamScene(rawId, opts = {}) {
       if (o.type === 'door' || o.type === 'hatch') { o.opened = !!flags[handKey(locId, o.id)]; o.solid = !o.opened; }
       else if (o.type === 'lever') o.opened = !!flags[handKey(locId, o.id)];
       else if (o.type === 'note') o.opened = notes.includes(noteKey(o.id));
-      else if (o.type === 'secret') o.opened = (sv.caches || []).includes(o.cache?.id);
+      else if (o.type === 'secret') { o.opened = (sv.caches || []).includes(o.cache?.id); o.hidden = secretHidden(o, locId, sv); sig += o.hidden ? 'h' : ''; }
       else continue;
       sig += o.opened ? '1' : '0';
     }
@@ -145,6 +145,35 @@ export function createRoamScene(rawId, opts = {}) {
     if (sig !== S.handSig) S.layer = null;
     S.handSig = sig;
     applyDoors(grid, map, S.objs);
+  }
+  /**
+   * level-design.md: hidden secrets — passive Perception when a member comes within LEVEL_RULES.spotR cells (checked
+   * twice a second), active «Осмотреться» (Q): the best member rolls once per secret per visit.
+   */
+  function spotTick(game, dt) {
+    if (!map.hand || game.coop?.guest) return;
+    S.spotT = (S.spotT || 0) - dt;
+    if (S.spotT > 0) return;
+    S.spotT = 0.5;
+    if (!S.objs.some((o) => o.type === 'secret' && o.hidden)) return;
+    const ms = members(game.save, game.data);
+    for (const q of S.party) for (const f of spotSecrets(S.objs, ms, { x: q.cx, y: q.cy })) markSpotted(game, f);
+  }
+  function markSpotted(game, f) {
+    game.save.flags[seenKey(locId, f.o.id)] = true;
+    f.o.hidden = false;
+    S.layer = null;
+    handSync(game, true);
+    game.toast(tf('roam.secretSpotted', { name: f.member.name || '' }), 'n');
+    play('uiClick');
+  }
+  function lookAround(game) {
+    if (!map.hand) { game.toast(t('roam.searchNone'), '4'); return; }
+    const ld = S.party[0], ms = members(game.save, game.data);
+    S.tried = S.tried || new Set();
+    const found = spotSecrets(S.objs, ms, { x: ld.cx, y: ld.cy }, { active: true, tried: S.tried });
+    for (const f of found) markSpotted(game, f);
+    if (!found.length) game.toast(t('roam.searchNone'), '4');
   }
   /** Read a note: a short window + a record in the codex («Записки»). */
   function readNote(game, o) {
@@ -435,7 +464,7 @@ export function createRoamScene(rawId, opts = {}) {
   }
   const entities = () => [
     ...S.npcs.map((n) => ({ kind: 'npc', n, x: n.fx, y: n.fy })),
-    ...S.objs.map((o) => ({ kind: 'obj', o, x: o.x, y: o.y })),
+    ...S.objs.filter((o) => !o.hidden).map((o) => ({ kind: 'obj', o, x: o.x, y: o.y })),
     ...(S.skills || []).map((p) => ({ kind: 'skill', p, x: p.x, y: p.y })),
     ...S.posts.map((p) => ({ kind: 'post', p, x: p.x, y: p.y })),
     ...S.hostiles.map((h) => ({ kind: 'hostile', h, x: h.fx, y: h.fy })),
@@ -1041,7 +1070,7 @@ export function createRoamScene(rawId, opts = {}) {
       case 'well': R(C['3'], 2, 4, 12, 11); R(C['0'], 4, 6, 8, 7); R(C['8'], 1, 2, 14, 2); break;
       case 'transit': R(C['6'], 7, 3, 2, 13); R(C.b, 1, 2, 14, 5); R(C['0'], 3, 4, 10, 1); R(C['7'], 0, 14, 16, 1); R(C['7'], 2, 12, 1, 3); R(C['7'], 13, 12, 1, 3); break;
       case 'note': if (!o.opened) { R(C['5'], 5, 9, 7, 5); R(C['3'], 6, 10, 5, 1); R(C['3'], 6, 12, 4, 1); } else R(rgba(C['5'], 0.4), 5, 9, 7, 5); break;
-      case 'secret': if (!o.opened) { R(rgba(C.n, 0.55), 4, 4, 8, 8); R(C.n, 7, 5, 2, 4); R(C.n, 7, 10, 2, 1); } break;
+      case 'secret': if (!o.opened && !o.hidden) { R(rgba(C.n, 0.55), 4, 4, 8, 8); R(C.n, 7, 5, 2, 4); R(C.n, 7, 10, 2, 1); } break;
       case 'lever': R(C['3'], 4, 10, 8, 5); R(C['6'], o.opened ? 9 : 5, 3, 2, 8); R(o.opened ? C.j : C.c, o.opened ? 9 : 4, 2, 3, 3); break;
       case 'door': case 'hatch':
         if (o.type === 'hatch') { R(o.opened ? C['0'] : C['7'], 2, 2, 12, 12); if (!o.opened) { R(C['6'], 2, 7, 12, 1); R(C['6'], 7, 2, 1, 12); } }
@@ -1088,7 +1117,7 @@ export function createRoamScene(rawId, opts = {}) {
     ctxFor: (game, ent, mem, at) => ctxFor(game, ent, mem, at), openCtx: (game, m) => openCtx(game, m), pickCtx: (game, id, c) => pickCtx(game, id, c),
     select: (game, keys, add) => selectMembers(game, keys, add), setMode: (game, md) => setMode(game, md), attackEnt: (game, e) => attackEnt(game, e), goCell: (game, x, y) => goTo(game, null, false, { x, y }),
     raiseAlarm: (game) => raiseAlarm(game), spawnRaid: (game, enemies, name) => spawnRaid(game, enemies, name), watchers, provider,
-    entities, interact: (game, ent) => interact(game, ent), npcMenu: (game, id) => npcMenu(game, NPCS[id]), grid, map,
+    entities, lookAround: (game) => lookAround(game), interact: (game, ent) => interact(game, ent), npcMenu: (game, id) => npcMenu(game, NPCS[id]), grid, map,
     // multiplayer.md stage 3 (host): a guest's interaction request — the entity by key, within reach of the guest's cell
     remoteInteract(game, req) {
       const e = entities().find((x) => entKey(x) === req.ent);
@@ -1103,6 +1132,7 @@ export function createRoamScene(rawId, opts = {}) {
     update(game, dt) {
       S.time += dt;
       handSync(game); // doors / notes / secrets change in modals (checks, cache search)
+      spotTick(game, dt);
       if (L.pump(game)) return;
       const inp = game.input;
       // camera / hover
@@ -1172,6 +1202,7 @@ export function createRoamScene(rawId, opts = {}) {
       else if (inp.wasPressed('KeyH')) return toBase(game);
       else if (inp.wasPressed('KeyN')) { game.mapNight = !game.mapNight; game.toast(t(game.mapNight ? 'roam.nightOn' : 'roam.nightOff'), 'b'); }
       else if (inp.wasPressed('KeyF') && S.alarm) return payAlarm(game);
+      else if (inp.wasPressed('KeyQ') && !game.coop?.guest) lookAround(game);
       // controls-divinity.md: F2 — chain / free, 1–4 — a member, Ctrl+A — everybody (host only in co-op)
       if (!game.coop?.guest && S.party.length > 1) {
         if (inp.wasPressed('F2')) setMode(game, S.mode === 'free' ? 'chain' : 'free');

@@ -14,6 +14,7 @@
 import { METRIC } from '../data/combat.js';
 import { CELL_M, posM, unitRadius, cellCenterM } from './metric.js';
 import { T_WALL, T_FULL, tileCover, chebyshev, lineOfSight, elevAt } from './grid.js';
+import { shapedOn, itemsOnSegment, segPolyT, ptPolyDist, ptInPoly, nearestOnPoly, geoOf } from './geometry.js';
 
 export const geoOn = (b) => !!b && (b.metric || 0) >= 2;
 const EPS = 1e-6;
@@ -64,6 +65,11 @@ export function rayFree(g, ax, ay, bx, by) {
   const sx = Math.floor(ax / CELL_M), sy = Math.floor(ay / CELL_M), ex = Math.floor(bx / CELL_M), ey = Math.floor(by / CELL_M);
   return !traceCells(g, ax, ay, bx, by, (x, y) => !((x === sx && y === sy) || (x === ex && y === ey)) && sightBlock(g, x, y));
 }
+/** Stage 3 (shapedOn): the segment misses every sight-blocking polygon of b.geo (polygons holding an end skipped). */
+export function rayFreeB(b, ax, ay, bx, by) {
+  if (!shapedOn(b)) return rayFree(b.grid, ax, ay, bx, by);
+  return !itemsOnSegment(b, ax, ay, bx, by, (it) => it.sight && !ptInPoly(ax, ay, it) && !ptInPoly(bx, by, it) && segPolyT(ax, ay, bx, by, it) <= 1, () => true);
+}
 /** The three parallel rays A -> T: [[ax, ay, bx, by] x3] (centre first). */
 export function raysOf(A, T) {
   const dx = T.px - A.px, dy = T.py - A.py, L = Math.hypot(dx, dy) || 1;
@@ -76,7 +82,7 @@ export function raysOf(A, T) {
 export function raysFree(b, A, T) {
   const R = raysOf(A, T);
   let n = 0;
-  for (const r of R) if (rayFree(b.grid, r[0], r[1], r[2], r[3])) n++;
+  for (const r of R) if (rayFreeB(b, r[0], r[1], r[2], r[3])) n++;
   return R.length === 1 ? n * 3 : n;
 }
 /** Line of sight a -> t: metric — at least one ray free; cells — Bresenham. */
@@ -104,11 +110,12 @@ export function coverM(b, A, T, melee) {
   if (Math.hypot(T.px - A.px, T.py - A.py) < EPS) return 0;
   const R = raysOf(A, T);
   let free = 0;
-  for (const r of R) if (rayFree(g, r[0], r[1], r[2], r[3])) free++;
+  for (const r of R) if (rayFreeB(b, r[0], r[1], r[2], r[3])) free++;
   if (R.length === 1) free *= 3;
   if (!free) return 3;
   if (melee) return free === 1 ? 3 : 0;
   let lvl = free === 1 ? 2 : 0;
+  if (shapedOn(b)) return coverGeo(b, A, T, R, lvl);
   const ac = [Math.floor(A.px / CELL_M), Math.floor(A.py / CELL_M)], tc = [Math.floor(T.px / CELL_M), Math.floor(T.py / CELL_M)];
   const near = METRIC.coverNear + T.r;
   for (const r of R) {
@@ -135,6 +142,42 @@ export function coverM(b, A, T, melee) {
   return lvl;
 }
 
+/**
+ * Stage 3 cover: polygons of b.geo (props by their real footprint) crossed by a ray within coverNear m of the target's
+ * edge, or hugged by the target (edge within hug m, the nearest point within hugDeg of the attack direction).
+ */
+function coverGeo(b, A, T, R, lvl) {
+  const g = b.grid, near = METRIC.coverNear + T.r;
+  const own = (it) => ptInPoly(A.px, A.py, it) || ptInPoly(T.px, T.py, it);
+  for (const r of R) {
+    if (lvl === 3) break;
+    itemsOnSegment(b, r[0], r[1], r[2], r[3], (it) => {
+      if (it.cover > lvl && !own(it) && segPolyT(r[0], r[1], r[2], r[3], it) <= 1 && ptPolyDist(T.px, T.py, it) <= near + EPS) lvl = it.cover;
+      return lvl === 3;
+    });
+  }
+  if (lvl < 3) {
+    const L = Math.hypot(A.px - T.px, A.py - T.py), ux = (A.px - T.px) / L, uy = (A.py - T.py) / L, cosMax = Math.cos((METRIC.hugDeg * Math.PI) / 180);
+    for (const it of itemsNear(b, T.px, T.py, T.r + METRIC.hug)) {
+      if (it.cover <= lvl || own(it) || ptPolyDist(T.px, T.py, it) > T.r + METRIC.hug + EPS) continue;
+      const [qx, qy] = nearestOnPoly(T.px, T.py, it), vx = qx - T.px, vy = qy - T.py, vl = Math.hypot(vx, vy) || 1;
+      if ((vx * ux + vy * uy) / vl >= cosMax) lvl = it.cover;
+    }
+  }
+  const ac = [Math.floor(A.px / CELL_M), Math.floor(A.py / CELL_M)], tc = [Math.floor(T.px / CELL_M), Math.floor(T.py / CELL_M)];
+  if (lvl && lvl < 3 && g.elev && elevAt(g, ac[0], ac[1]) > elevAt(g, tc[0], tc[1])) lvl = 0;
+  return lvl;
+}
+/** Geometry items whose bounding box is within lim m of the point. */
+export function itemsNear(b, px, py, lim) {
+  const G = geoOf(b), g = b.grid, out = new Set();
+  for (let y = Math.floor((py - lim) / CELL_M); y <= Math.floor((py + lim) / CELL_M); y++) for (let x = Math.floor((px - lim) / CELL_M); x <= Math.floor((px + lim) / CELL_M); x++) {
+    if (x < 0 || y < 0 || x >= g.w || y >= g.h) continue;
+    for (const it of G.cells[y * g.w + x] || []) out.add(it);
+  }
+  return [...out];
+}
+
 // ---------------------------------------------------------------- areas
 
 /** Circle radius in metres of an area of `size` cells (R x 1.5 x areaK — the circle vs the Chebyshev square). */
@@ -149,6 +192,11 @@ export function lineEndM(b, O, C, size) {
   const len = coneLenM(size), fx = O.px + (dx / L) * len, fy = O.py + (dy / L) * len;
   let tEnd = 1;
   const g = b.grid;
+  if (shapedOn(b)) {
+    itemsOnSegment(b, O.px, O.py, fx, fy, (it) => { if (it.wall) tEnd = Math.min(tEnd, segPolyT(O.px, O.py, fx, fy, it)); return false; });
+    if (fx < 0 || fy < 0 || fx > g.w * CELL_M || fy > g.h * CELL_M) traceCells(g, O.px, O.py, fx, fy, (x, y, t) => { if (x < 0 || y < 0 || x >= g.w || y >= g.h) { tEnd = Math.min(tEnd, t); return true; } return false; });
+    return { px: O.px + (fx - O.px) * tEnd, py: O.py + (fy - O.py) * tEnd, len: len * tEnd };
+  }
   traceCells(g, O.px, O.py, fx, fy, (x, y, t) => {
     if (x < 0 || y < 0 || x >= g.w || y >= g.h || g.tiles[y * g.w + x] === T_WALL) { tEnd = t; return true; }
     return false;
@@ -235,6 +283,7 @@ export function inRadiusU(b, c, t, size) {
 /** Metric «in a cover spot»: a half / full cover cell within r + 0.7 m of the point (the cell rule: a neighbour cell). */
 export function nearCover(b, P) {
   const g = b.grid, lim = P.r + 0.7;
+  if (shapedOn(b)) return itemsNear(b, P.px, P.py, lim).some((it) => it.cover >= 2 && ptPolyDist(P.px, P.py, it) <= lim);
   const x0 = Math.floor((P.px - lim) / CELL_M), x1 = Math.floor((P.px + lim) / CELL_M);
   const y0 = Math.floor((P.py - lim) / CELL_M), y1 = Math.floor((P.py + lim) / CELL_M);
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {

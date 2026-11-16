@@ -10,8 +10,17 @@
 //    (tick ×1.5 and overload on entry); permanent map surfaces (T_HAZARD fire, T_WATER) are never removed;
 //  - fire/electric damage to a unit standing on oil / toxgas / water also hits its tile (spark, blaze, electrify);
 //  - surface damage hits a unit at most once per turn per damage type (statuses still refresh).
+// Metric stage 3 (rules/geometry.js shapedOn, b.metric >= 3): a layer may carry `shape` — circles {cx, cy, r} in metres
+// (the union; none = the whole cell). The cell map stays the index (combinations, ticks, spreading by 1.5 m steps work
+// per cell), but a unit is ON a layer only if its centre is inside the shape: effects, shocks, blazes and explosions
+// check it. Spills are circles (spillAt): a pool GEO.pool m, size N — the area circle, a barrel GEO.barrelR m. Same kind
+// on a cell — shapes unite; a transformed layer (melt, freeze, shatter…) keeps the old shape, a replacing one brings the
+// new. Walking: surfaceEntries(b, u, pts) — points where a path crosses into a layer (damage once per crossing).
 
 import { rollDice, avgDice } from './dice.js';
+import { GEO, METRIC } from '../data/combat.js';
+import { shapedOn, inShape, cellShape, unionShape, circleTiles } from './geometry.js';
+import { posM, cellCenterM, CELL_M } from './metric.js';
 import { damageObjectsIn } from './terrain.js';
 import { chebyshev, lineOfSight, inBounds, isPassable, walkLine, DIRS8, T_HAZARD, T_WATER, T_BARREL, T_FLOOR } from './grid.js';
 import {
@@ -92,6 +101,18 @@ export function surfaceKindsAt(b, x, y) {
   return out;
 }
 
+/** Unit u stands on layer s (metric stage 3: its centre inside the shape; else — it is on the cell). */
+export const onLayer = (b, u, s, P) => !!s && (!s.shape || !shapedOn(b) || (() => { const p = P || posM(u); return inShape(s.shape, p.px, p.py); })());
+/** Layers {floor, gas} under a point in metres (shape-aware). */
+export function layersAtPt(b, px, py) {
+  const c = cellAt(b, Math.floor(px / CELL_M), Math.floor(py / CELL_M));
+  if (!c) return null;
+  const f = c.floor && inShape(c.floor.shape, px, py) ? c.floor : null, g = c.gas && inShape(c.gas.shape, px, py) ? c.gas : null;
+  return f || g ? { floor: f, gas: g } : null;
+}
+/** Unit on cell (x, y) standing on layer s. */
+const unitOn = (b, x, y, s) => { const u = unitAt(b, x, y); return u && isAlive(u) && onLayer(b, u, s) ? u : null; };
+
 function setLayer(b, x, y, layer, obj) {
   const k = `${x},${y}`;
   let c = b.surfaces.get(k);
@@ -162,7 +183,8 @@ export function createSurface(b, kind, tiles, src, o = {}) {
   for (const p of tiles) {
     if (barrelAt(b, p.x, p.y)) { if (HOT[kind]) queue.push({ type: 'barrel', x: p.x, y: p.y }); continue; }
     if (!inBounds(b.grid, p.x, p.y) || !isPassable(b.grid, p.x, p.y)) continue;
-    if (addSurface(b, p.x, p.y, kind, { turns, src, level: L, noIgnite: o.noIgnite }, queue)) placed.push(p);
+    const shape = o.shape && shapedOn(b) ? cellShape(o.shape, p.x, p.y) : null;
+    if (addSurface(b, p.x, p.y, kind, { turns, src, level: L, noIgnite: o.noIgnite, shape }, queue)) placed.push(p);
   }
   if (placed.length) {
     const c = tiles[0];
@@ -170,9 +192,9 @@ export function createSurface(b, kind, tiles, src, o = {}) {
   }
   resolveQueue(b, queue, src, L);
   for (const p of placed) {
-    const u = unitAt(b, p.x, p.y);
     const s = cellAt(b, p.x, p.y)?.[def.layer];
-    if (u && isAlive(u) && s && s.kind === kind) applyKind(b, u, s, 'create');
+    const u = s && s.kind === kind ? unitOn(b, p.x, p.y, s) : null;
+    if (u) applyKind(b, u, s, 'create');
   }
   b.surfDepth--;
   return placed.filter((p) => cellAt(b, p.x, p.y)?.[def.layer]?.kind === kind);
@@ -190,13 +212,15 @@ function addSurface(b, x, y, kind, o, queue) {
   const c = cellAt(b, x, y);
   const f = c ? c.floor : null;
   const gs = c ? c.gas : null;
-  const mk = (k, turns, extra) => ({ kind: k, turns: turns === undefined ? defs[k].turns : turns, src: o.src ? o.src.id : null, team: o.src ? o.src.team : null, level: o.level, ...extra });
-  const put = (layer, s) => setLayer(b, x, y, layer, s);
+  const inc = o.shape || null, old = f ? f.shape || null : null;
+  const mk = (k, turns, extra) => ({ kind: k, turns: turns === undefined ? defs[k].turns : turns, src: o.src ? o.src.id : null, team: o.src ? o.src.team : null, level: o.level, ...(inc ? { shape: inc } : {}), ...extra });
+  const put = (layer, s) => { if (s && !s.shape) delete s.shape; setLayer(b, x, y, layer, s); };
   const putGas = (k, turns, extra) => { if (!(gs && gs.perm)) put('gas', mk(k, turns, extra)); };
-  const unitHere = () => { const u = unitAt(b, x, y); return u && isAlive(u) ? u : null; };
+  const OLD = { shape: old }; // a transformed floor keeps its own area
+  const unitHere = (shape = inc) => { const u = unitAt(b, x, y); return u && isAlive(u) && onLayer(b, u, { shape }) ? u : null; };
 
   if (def.layer === 'gas') {
-    if (gs && gs.kind === kind) { gs.turns = maxTurns(gs.turns, o.turns); return true; }
+    if (gs && gs.kind === kind) { gs.turns = maxTurns(gs.turns, o.turns); gs.shape = unionShape(gs.shape, inc); if (!gs.shape) delete gs.shape; b.surfaceVersion++; return true; }
     if (gs && gs.perm) return false;
     put('gas', mk(kind, o.turns));
     if (kind === 'toxgas' && !o.noIgnite && f && (f.kind === 'fire' || f.kind === 'electric' || f.charged)) {
@@ -210,7 +234,7 @@ function addSurface(b, x, y, kind, o, queue) {
     put('floor', mk(kind, t));
     return true;
   }
-  if (f.kind === kind) { f.turns = maxTurns(f.turns, o.turns); return true; }
+  if (f.kind === kind) { f.turns = maxTurns(f.turns, o.turns); f.shape = unionShape(f.shape, inc); if (!f.shape) delete f.shape; b.surfaceVersion++; return true; }
   const action = (COMBO[f.kind] && COMBO[f.kind][kind]) || (kind === 'blood' ? 'keep' : 'replace');
   switch (action) {
     case 'keep':
@@ -222,23 +246,23 @@ function addSurface(b, x, y, kind, o, queue) {
       return true;
     case 'steam':
       clearLayer(b, x, y, 'floor');
-      putGas('steam', R.steamTurns ?? 2);
+      putGas('steam', R.steamTurns ?? 2, { shape: inc || old });
       combo(b, f.kind, kind, 'steam', x, y);
       return false;
     case 'melt':
-      if (!f.perm) put('floor', mk('water', R.meltTurns ?? defs.water.turns));
+      if (!f.perm) put('floor', mk('water', R.meltTurns ?? defs.water.turns, OLD));
       combo(b, f.kind, kind, 'melt', x, y);
       return false;
     case 'freeze': {
-      if (!f.perm) put('floor', mk('ice', R.freezeTurns ?? 6));
-      const u = unitHere();
+      if (!f.perm) put('floor', mk('ice', R.freezeTurns ?? 6, OLD));
+      const u = unitHere(old);
       if (u) applyStatus(b, u, 'frozen', R.frozenTurns ?? 1, o.src || null);
       combo(b, f.kind, kind, 'freeze', x, y);
       return !f.perm;
     }
     case 'dissolve':
       if (f.kind === 'water') f.acidic = R.acidicTurns ?? 2;
-      else put('floor', mk('water', undefined, { acidic: R.acidicTurns ?? 2 }));
+      else put('floor', mk('water', undefined, { acidic: R.acidicTurns ?? 2, shape: old }));
       combo(b, f.kind, kind, 'dissolve', x, y);
       return kind === 'water';
     case 'electrify':
@@ -259,7 +283,7 @@ function addSurface(b, x, y, kind, o, queue) {
       return false;
     case 'oilAcid':
       clearLayer(b, x, y, 'floor');
-      if (!gs) putGas('smoke', R.smokeOutTurns ?? 1);
+      if (!gs) putGas('smoke', R.smokeOutTurns ?? 1, OLD);
       combo(b, f.kind, kind, 'smoke', x, y);
       return false;
     case 'smokeOut':
@@ -270,7 +294,7 @@ function addSurface(b, x, y, kind, o, queue) {
       return true;
     case 'pinkIce':
       if (f.kind === 'ice') { f.scent = true; return false; }
-      put('floor', mk('ice', o.turns, { scent: true }));
+      put('floor', mk('ice', o.turns, { scent: true, shape: old }));
       return true;
     case 'burnout': {
       const u = unitHere();
@@ -281,18 +305,18 @@ function addSurface(b, x, y, kind, o, queue) {
     }
     case 'cringeProxy':
       if (f.kind === 'cringe') { f.proxied = true; f.turns = maxTurns(f.turns, o.turns); }
-      else put('floor', mk('cringe', o.turns, { proxied: true }));
+      else put('floor', mk('cringe', o.turns, { proxied: true, shape: old }));
       combo(b, f.kind, kind, 'cringeProxy', x, y);
       return kind === 'cringe';
     case 'overvolt':
       queue.push({ type: 'electrify', x, y, kind: 'proxy' });
       return false;
     case 'shatter':
-      if (!f.perm) put('floor', mk('water', R.shatterTurns ?? 3));
+      if (!f.perm) put('floor', mk('water', R.shatterTurns ?? 3, OLD));
       combo(b, f.kind, kind, 'shatter', x, y);
       return false;
     case 'slick': {
-      const u = unitHere();
+      const u = unitHere(old);
       if (u) applyStatus(b, u, 'slick', R.slickTurns ?? 3, o.src || null);
       if (kind === 'oil' && !f.perm) { put('floor', mk('oil', o.turns)); return true; }
       return false;
@@ -320,12 +344,12 @@ function explode(b, x, y, src, L, by) {
   const R = rules(b).explosion || { dice: '2d6', save: 'dex', push: 1, fireTurns: 2 };
   const lvl = L ?? g.level ?? battleLevel(b);
   const region = connected(b, x, y, 'gas', ['toxgas']);
+  const hit = region.map((p) => unitOn(b, p.x, p.y, gasAt(b, p.x, p.y)));
   for (const p of region) setLayer(b, p.x, p.y, 'gas', null);
   combo(b, 'toxgas', by || 'fire', 'explosion', x, y, region.length);
   const dc = surfaceDc(b, lvl);
   const tier = tierFor(b, lvl);
-  for (const p of region) {
-    const u = unitAt(b, p.x, p.y);
+  for (const u of hit) {
     if (!u || !isAlive(u)) continue;
     const half = rollSave(b, u, R.save || 'dex', dc, src, 'surface:explosion');
     let amt = rollDice(b.rng, R.dice) * tier;
@@ -335,7 +359,7 @@ function explode(b, x, y, src, L, by) {
   }
   for (const br of b.barrels.slice()) if (region.some((p) => chebyshev(p.x, p.y, br.x, br.y) <= 1)) destroyBarrel(b, br.x, br.y, src);
   damageObjectsIn(b, (ox, oy) => region.some((p) => chebyshev(p.x, p.y, ox, oy) <= 1), rollDice(b.rng, R.dice) * tier, src, 'fire');
-  createSurface(b, 'fire', [{ x, y }], src, { turns: R.fireTurns ?? 2, level: lvl });
+  spillAt(b, 'fire', { x, y }, 0, src, { turns: R.fireTurns ?? 2, level: lvl });
 }
 
 /** Oil fire: the connected oil (up to chainCap tiles) turns into fire, units in it burn. */
@@ -356,11 +380,11 @@ function igniteTiles(b, tiles, src, lvl, B) {
   for (const p of tiles) {
     const cur = floorAt(b, p.x, p.y);
     if (!cur || cur.kind !== 'oil') continue;
-    setLayer(b, p.x, p.y, 'floor', { kind: 'fire', turns: B.fireTurns, src: src ? src.id : null, team: src ? src.team : null, level: lvl, fromOil: true });
+    setLayer(b, p.x, p.y, 'floor', { kind: 'fire', turns: B.fireTurns, src: src ? src.id : null, team: src ? src.team : null, level: lvl, fromOil: true, ...(cur.shape ? { shape: cur.shape } : {}) });
   }
   for (const p of tiles) {
-    const u = unitAt(b, p.x, p.y);
-    if (!u || !isAlive(u)) continue;
+    const u = unitOn(b, p.x, p.y, floorAt(b, p.x, p.y));
+    if (!u) continue;
     dealDamage(b, src && isAlive(src) ? src : null, u, rollDice(b.rng, B.dice) * tier, 'fire', { surface: true });
     if (isAlive(u)) applyStatus(b, u, 'burn', B.burnTurns ?? 3, src || null);
   }
@@ -384,8 +408,8 @@ function electrify(b, x, y, src, L, kind) {
   b.surfaceVersion++;
   combo(b, kind, 'electric', kind === 'proxy' ? 'overvolt' : 'electrify', x, y, region.length);
   for (const p of region) {
-    const u = unitAt(b, p.x, p.y);
-    if (u && isAlive(u)) shockUnit(b, u, kind, lvl, src, false);
+    const u = unitOn(b, p.x, p.y, floorAt(b, p.x, p.y));
+    if (u) shockUnit(b, u, kind, lvl, src, false);
   }
 }
 
@@ -442,7 +466,22 @@ export function destroyBarrel(b, x, y, src) {
   b.occVersion++;
   b.reachCache = null;
   emitEvent(b, { type: 'barrelBreak', actor: src ? src.id : null, x, y, kind: br.kind });
-  createSurface(b, br.kind, radiusTiles(b, x, y, 1), src, {});
+  spillAt(b, br.kind, { x, y }, 1, src, { r: GEO.barrelR });
+}
+
+/**
+ * Spill a surface at a point: cells — radius `size` around the cell (old rules); metric stage 3 — a circle at the point
+ * ({px, py} or the centre of {x, y}): o.r m, else size 0 — a pool GEO.pool m, size N — the area circle (R x 1.5 x areaK).
+ */
+export function spillAt(b, kind, at, size, src, o = {}) {
+  if (!shapedOn(b)) {
+    const x = at.x ?? Math.floor(at.px / CELL_M), y = at.y ?? Math.floor(at.py / CELL_M);
+    return createSurface(b, kind, size > 0 ? radiusTiles(b, x, y, size) : [{ x, y }], src, o);
+  }
+  const P = at.px != null ? at : cellCenterM(at.x, at.y);
+  const r = o.r ?? (size > 0 ? size * CELL_M * METRIC.areaK : GEO.pool);
+  const cx = Math.round(P.px * 100) / 100, cy = Math.round(P.py * 100) / 100;
+  return createSurface(b, kind, circleTiles(b, cx, cy, r), src, { ...o, shape: [{ cx, cy, r }] });
 }
 /** Barrels touched by an area (predicate over tiles). */
 export function breakBarrelsIn(b, test, src) {
@@ -461,13 +500,36 @@ function hitThisTurn(b, u, dmgType) {
 }
 
 /** Effects of the unit's tile. mode: 'enter' (step, push, teleport) | 'turn' (start of its turn) | 'create'. */
-export function surfaceEffect(b, u, mode = 'enter') {
+export function surfaceEffect(b, u, mode = 'enter', o = {}) {
   if (!surfacesOn(b) || !isAlive(u) || u.x < 0) return;
   const c = cellAt(b, u.x, u.y);
   if (!c) return;
-  const f = c.floor, g = c.gas;
-  if (f) applyKind(b, u, f, mode);
-  if (g && isAlive(u) && cellAt(b, u.x, u.y)?.gas === g) applyKind(b, u, g, mode);
+  const f = c.floor, g = c.gas, P = o.pt || null;
+  const want = (s) => onLayer(b, u, s, P) && (!o.only || o.only.includes(s));
+  if (f && want(f)) applyKind(b, u, f, mode);
+  if (g && isAlive(u) && cellAt(b, u.x, u.y)?.gas === g && want(g)) applyKind(b, u, g, mode);
+}
+
+/**
+ * Metric stage 3: where a path (points in metres) crosses into surface layers — [{s, px, py, layers}] in order
+ * (sampled every METRIC.sample m; layers the walker already stands in at the start do not count).
+ */
+export function surfaceEntries(b, pts) {
+  const out = [];
+  if (!shapedOn(b) || !b.surfaces || !b.surfaces.size || pts.length < 2) return out;
+  const at = (px, py) => { const L = layersAtPt(b, px, py); return L ? [L.floor, L.gas].filter(Boolean) : []; };
+  let prev = at(pts[0].px, pts[0].py), s0 = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const a = pts[k - 1], c = pts[k], len = Math.hypot(c.px - a.px, c.py - a.py), n = Math.max(1, Math.ceil(len / METRIC.sample));
+    for (let q = 1; q <= n; q++) {
+      const px = a.px + ((c.px - a.px) * q) / n, py = a.py + ((c.py - a.py) * q) / n, cur = at(px, py);
+      const fresh = cur.filter((s) => !prev.some((p) => p.kind === s.kind)); // one puddle over many cells — one entry
+      if (fresh.length) out.push({ s: s0 + (len * q) / n, px, py, layers: fresh });
+      prev = cur;
+    }
+    s0 += len;
+  }
+  return out;
 }
 
 function applyKind(b, u, s, mode) {
@@ -540,7 +602,7 @@ export function tickSurfaces(b) {
     setLayer(b, x, y, e.layer, null);
     (byKind[e.s.kind] || (byKind[e.s.kind] = [])).push({ x, y });
     if (e.s.kind === 'fire' && e.s.fromOil && !gasAt(b, x, y) && surfaceDefs(b).smoke) {
-      setLayer(b, x, y, 'gas', { kind: 'smoke', turns: R.blaze?.smokeTurns ?? 2, src: null, team: null, level: e.s.level });
+      setLayer(b, x, y, 'gas', { kind: 'smoke', turns: R.blaze?.smokeTurns ?? 2, src: null, team: null, level: e.s.level, ...(e.s.shape ? { shape: e.s.shape } : {}) });
     }
   }
   for (const [kind, tiles] of Object.entries(byKind)) emitEvent(b, { type: 'surfaceEnd', kind, x: tiles[0].x, y: tiles[0].y, tiles: tiles.length });
@@ -597,7 +659,7 @@ export function clearSurfaces(b, kinds, cx, cy, size, src) {
 
 /** +1 to attack rolls: techonki on proxy, rappers / cringegons on cringe. */
 export function surfaceHitBonus(b, u) {
-  const f = floorAt(b, u.x, u.y);
+  const f0 = floorAt(b, u.x, u.y), f = f0 && onLayer(b, u, f0) ? f0 : null;
   if (!f) return 0;
   const v = rules(b).nativeHit ?? 1;
   if (f.kind === 'proxy' && u.tags.includes('proxy')) return v;

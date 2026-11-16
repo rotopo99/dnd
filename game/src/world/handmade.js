@@ -4,6 +4,9 @@
 // Pure: no DOM. Data — data/maps/handmade/*.js; checks — world/handmade-check.js; editor — game/editor.html.
 import { PROPS } from '../assets/props.js';
 import { MARKERS } from './roam-gen.js';
+import { LEVEL_RULES } from '../data/world/level-design.js';
+import { checkInfo, rollCheck } from './checks.js';
+import { bestFor } from './skill-uses.js';
 
 /** Default `solid` of hand-made object types (doors / hatches — while closed). */
 export const OBJ_SOLID = { note: false, secret: false, lever: true, door: true, hatch: true, sign: true };
@@ -127,9 +130,50 @@ export function liveHand(objs, locId, save) {
     if (o.type === 'door' || o.type === 'hatch') { o.opened = !!flags[handKey(locId, o.id)]; o.solid = !o.opened; }
     else if (o.type === 'lever') o.opened = !!flags[handKey(locId, o.id)];
     else if (o.type === 'note') o.opened = notes.includes(noteKey(o.id));
-    else if (o.type === 'secret') { o.cache = secretCache(o); o.opened = (save?.caches || []).includes(o.cache.id); }
+    else if (o.type === 'secret') { o.cache = secretCache(o); o.opened = (save?.caches || []).includes(o.cache.id); o.hidden = secretHidden(o, locId, save); }
   }
   return objs;
+}
+
+// ---------------------------------------------------------------- secrets: hidden until Perception (level-design.md UI)
+
+/** Flag of a spotted secret in save.flags. */
+export const seenKey = (locId, id) => handKey(locId, `seen:${id}`);
+/** A secret stays invisible (not drawn, not interactive) until spotted; opened / `visible: true` ones are never hidden. */
+export const secretHidden = (o, locId, save) => !o.opened && !o.visible && !save?.flags?.[seenKey(locId, o.id)];
+/** DC to notice a secret: `spot.dc`, its own Perception check, else LEVEL_RULES.spotDc. */
+export const spotDc = (o) => o.spot?.dc ?? (o.check?.skill === 'perception' ? o.check.dc : LEVEL_RULES.spotDc);
+/** Passive Perception of a member: 10 + check total (advantage +5, disadvantage −5). */
+export function passivePerception(m) {
+  const i = checkInfo(m, 'perception');
+  return 10 + i.total + (i.mode === 'adv' ? 5 : i.mode === 'dis' ? -5 : 0);
+}
+
+/**
+ * Notice hidden secrets near a point (cells). Passive (on approach): within LEVEL_RULES.spotR, best passive
+ * Perception >= DC, no roll. Active («Осмотреться»): within LEVEL_RULES.searchR, the best member rolls Perception once
+ * per secret (`tried` — ids already rolled this visit, filled in). → [{ o, member, roll? }] — the caller sets
+ * seenKey, clears o.hidden and toasts.
+ */
+export function spotSecrets(objs, members, at, { active = false, tried = null } = {}) {
+  const out = [];
+  if (!members?.length) return out;
+  const R = active ? LEVEL_RULES.searchR : LEVEL_RULES.spotR;
+  for (const o of objs) {
+    if (o.type !== 'secret' || !o.hidden || Math.hypot(o.x - at.x, o.y - at.y) > R) continue;
+    const dc = spotDc(o);
+    if (!active) {
+      const m = members.reduce((best, q) => (!best || passivePerception(q) > passivePerception(best) ? q : best), null);
+      if (passivePerception(m) >= dc) out.push({ o, member: m });
+      continue;
+    }
+    if (tried?.has(o.id)) continue;
+    tried?.add(o.id);
+    const bf = bestFor(members, ['perception'], dc);
+    const roll = rollCheck(bf.member, bf.info, dc);
+    if (roll.success) out.push({ o, member: bf.member, roll });
+  }
+  return out;
 }
 
 /** Write door state into a walkable grid (roamGrid): a closed door blocks like cover, an open one is floor. */

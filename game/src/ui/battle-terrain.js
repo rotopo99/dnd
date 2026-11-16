@@ -5,7 +5,7 @@ import { cellScreen, unitScreen } from '../gfx/scene3d.js';
 import { t } from '../data/text/index.js';
 import { C, FONT, FONT_B, LINE, text, fit, panel, bar } from './draw.js';
 import { hotspot } from './tooltip.js';
-import { T_COVER, T_FULL, T_RUBBLE, T_BARREL, OBJECT_CHARS, elevAt } from '../rules/grid.js';
+import { T_COVER, T_FULL, T_RUBBLE, T_BARREL, T_WATER, OBJECT_CHARS, elevAt } from '../rules/grid.js';
 import { objectAt } from '../rules/terrain.js';
 import { intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
@@ -21,6 +21,7 @@ const rgba = (hex, a) => {
 export function liveChar(b, ch, x, y) {
   const tl = b.grid.tiles[y * b.grid.w + x];
   if ((OBJECT_CHARS[ch] || ch === 'b' || ch === 'g') && tl !== T_COVER && tl !== T_FULL && tl !== T_BARREL) return '.';
+  if (ch === '=' && b.grid.collapsed?.has(y * b.grid.w + x)) return tl === T_WATER ? 'w' : 'W'; // a fallen bridge (terrain.js)
   return ch;
 }
 

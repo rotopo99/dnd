@@ -94,7 +94,9 @@ import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath
 import {
   initSurfaces, tickSurfaces, surfaceEffect, createSurface, radiusTiles, elementHit, surfacesOn, clearSurfaces,
   gasBetween, surfaceHitBonus, surfaceHarm, surfaceKindsAt, battleLevel, tierFor, breakBarrelsIn, floorAt, cellAt,
+  spillAt, surfaceEntries,
 } from './surfaces.js';
+import { shapedOn } from './geometry.js';
 
 export const STATUS_FALLBACK = {
   stun: { kind: 'debuff', skipTurn: true },
@@ -467,6 +469,9 @@ function setPos(b, u, x, y, pm) {
   if (b.metric) { const c = pm || cellCenterM(x, y); u.px = c.px; u.py = c.py; }
 }
 
+/** Put a unit on a cell (terrain.js: out of the water after a bridge collapse). */
+export const placeUnitAt = (b, u, x, y, pm) => setPos(b, u, x, y, pm);
+
 function clearPos(b, u) {
   if (u.x >= 0) b.occ[u.y * b.grid.w + u.x] = 0;
   b.occVersion++;
@@ -652,7 +657,7 @@ function beginTurn(b, u) {
       if (d.bleedSurface && isAlive(u) && (u.tags.includes('organic') || u.tags.includes('hybrid'))) {
         s.bleedN = (s.bleedN || 0) + 1;
         const every = b.data.surfaceRules?.bleedEvery ?? 2;
-        if (s.bleedN % every === 0) createSurface(b, 'blood', [{ x: u.x, y: u.y }], src === u ? null : src, {});
+        if (s.bleedN % every === 0) spillAt(b, 'blood', ptAt(u), 0, src === u ? null : src, {});
       }
     }
   }
@@ -801,8 +806,9 @@ function kill(b, u, reason) {
   emit(b, { type: 'death', target: u.id, reason });
   if (surfacesOn(b) && x >= 0 && u.kind !== 'summon') {
     const SR = b.data.surfaceRules || {};
-    if (burning) createSurface(b, 'fire', [{ x, y }], null, { turns: SR.burnDeathFire ?? 2 });
-    else if (u.tags.includes('organic') && !floorAt(b, x, y)) createSurface(b, 'blood', [{ x, y }], null, { turns: SR.deathBlood ?? 6 });
+    const at = { x, y, ...(shapedOn(b) && u.px != null ? { px: u.px, py: u.py } : {}) };
+    if (burning) spillAt(b, 'fire', at, 0, null, { turns: SR.burnDeathFire ?? 2 });
+    else if (u.tags.includes('organic') && !floorAt(b, x, y)) spillAt(b, 'blood', at, 0, null, { turns: SR.deathBlood ?? 6 });
   }
   if (!u.deathFired) { u.deathFired = true; deathEffects(b, u, x, y); }
   if (u.arch || terrainOn(b)) archOnDeath(b, u);
@@ -1245,7 +1251,7 @@ function weaponSurface(b, att, tgt, w, crit) {
   if (!surfacesOn(b) || tgt.x < 0) return;
   for (const so of w.surfaceOnHit) {
     if (!so || !so.kind || (so.on === 'crit' && !crit)) continue;
-    createSurface(b, so.kind, radiusTiles(b, tgt.x, tgt.y, Math.max(0, (so.size || 1) - 1)), att.id, { turns: so.turns });
+    spillAt(b, so.kind, ptAt(tgt), Math.max(0, (so.size || 1) - 1), att.id, { turns: so.turns });
   }
 }
 
@@ -1395,7 +1401,7 @@ function placeZone(b, u, a, center) {
   const z = zoneOf(a);
   if ((z.kind || 'smoke') === 'smoke' && surfacesOn(b) && b.data.surfaces.smoke) {
     const size = z.size ?? (a.area ? a.area.size || 1 : 1);
-    createSurface(b, 'smoke', radiusTiles(b, center.x, center.y, size), u, { turns: z.turns, size });
+    spillAt(b, 'smoke', center, size, u, { turns: z.turns, size });
     return null;
   }
   const zone = {
@@ -1432,6 +1438,7 @@ export function smokeBetween(b, ax, ay, tx, ty) {
 /** Tiles a surface spec covers: op.size → radius around the centre; null size → the ability area; else 1 tile. */
 function surfaceTiles(b, u, a, op, center) {
   if (op.size != null) return radiusTiles(b, center.x, center.y, op.size);
+  if (a && a.area && a.area.shape === 'radius' && shapedOn(b)) return null; // stage 3: a circle (placeSurfaceOp)
   if (a && a.area) {
     const out = [];
     const sz = a.area.size || 1;
@@ -1449,13 +1456,18 @@ function surfaceTiles(b, u, a, op, center) {
 function placeSurfaceOp(b, u, a, op, center, tgt) {
   if (!surfacesOn(b) || !op || !op.kind) return;
   if (op.ifSurface && !surfaceKindsAt(b, center.x, center.y).some((k) => [].concat(op.ifSurface).includes(k))) return;
-  createSurface(b, op.kind, surfaceTiles(b, u, tgt ? null : a, op, center), u, { turns: op.turns ?? undefined, size: op.size ?? (a && a.area ? a.area.size : 0) });
+  const o = { turns: op.turns ?? undefined, size: op.size ?? (a && a.area ? a.area.size : 0) };
+  if (shapedOn(b) && (op.size != null || (!tgt && a && a.area && a.area.shape === 'radius'))) { spillAt(b, op.kind, center, op.size ?? (a.area.size || 1), u, o); return; }
+  if (shapedOn(b) && (tgt || !a || !a.area)) { spillAt(b, op.kind, center, 0, u, o); return; }
+  createSurface(b, op.kind, surfaceTiles(b, u, tgt ? null : a, op, center), u, o);
 }
 /** Center of an ability's area (self / target unit / tile). */
 function abilityCenter(b, u, a, spec) {
-  return isSelfCentered(u, a, spec) ? { x: u.x, y: u.y } : spec && spec.unit && b.byId[spec.unit] ? { x: b.byId[spec.unit].x, y: b.byId[spec.unit].y }
-    : spec && spec.x != null ? { x: spec.x, y: spec.y } : { x: u.x, y: u.y };
+  return isSelfCentered(u, a, spec) ? ptAt(u) : spec && spec.unit && b.byId[spec.unit] ? ptAt(b.byId[spec.unit])
+    : spec && spec.x != null ? { x: spec.x, y: spec.y, ...(shapedOn(b) && spec.px != null && Math.floor(spec.px / CELL_M) === spec.x && Math.floor(spec.py / CELL_M) === spec.y ? { px: spec.px, py: spec.py } : {}) } : ptAt(u);
 }
+/** Cell of a unit (+ its point in metres in a stage-3 battle — circle spills centre there). */
+const ptAt = (u) => (u.px != null && u.x >= 0 ? { x: u.x, y: u.y, px: u.px, py: u.py } : { x: u.x, y: u.y });
 /** Path of a move to `to` (index) that avoids harmful surfaces if a detour costs ≤ 3 extra steps. */
 export function movePath(b, u, to) {
   const reach = getReachable(b, u.id);
@@ -1614,9 +1626,22 @@ function walkM(b, u, np, noProvoke) {
     }
     return false;
   };
+  // stage 3: surfaces are circles — effects where the path crosses into them, not per cell
+  const shaped = shapedOn(b) && surfacesOn(b), ents = shaped ? surfaceEntries(b, pts) : [];
+  const enterUpTo = (s) => {
+    while (ents.length && ents[0].s < s - 1e-9) {
+      const e = ents.shift();
+      if (Math.floor(e.px / CELL_M) === u.x && Math.floor(e.py / CELL_M) === u.y) { sAt = Math.max(s0, e.s); setPos(b, u, u.x, u.y, { px: cm(e.px), py: cm(e.py) }); }
+      flush();
+      surfaceEffect(b, u, 'enter', { pt: e, only: e.layers });
+      if (!isStanding(u) || b.winner) return true;
+    }
+    return false;
+  };
   for (const step of cells) {
     if (!isStanding(u) || b.winner) { stopped = true; break; }
     if (exits.length && provokeUpTo(step.s - 1e-6)) { stopped = true; break; }
+    if (ents.length && enterUpTo(step.s)) { stopped = true; break; }
     const holder = unitAt(b, step.x, step.y);
     if (holder && holder !== u) continue; // brushing past a corner of an occupied cell
     if (!geo && !noProvoke && !b.reactionDepth) {
@@ -1638,10 +1663,11 @@ function walkM(b, u, np, noProvoke) {
     setPos(b, u, step.x, step.y, { px: step.px, py: step.py });
     sAt = step.s;
     seg.push({ x: step.x, y: step.y });
-    if (b.surfaces.size ? cellAt(b, u.x, u.y) : tileAt(b.grid, u.x, u.y) === T_HAZARD) { flush(); hazardEnter(b, u); }
+    if (!shaped && (b.surfaces.size ? cellAt(b, u.x, u.y) : tileAt(b.grid, u.x, u.y) === T_HAZARD)) { flush(); hazardEnter(b, u); }
     if (b.traps.length && trapAt(b, u.x, u.y, u)) { flush(); trapCheck(b, u); }
     if (b.drops.length) pickUpCheck(b, u);
   }
+  if (!stopped && ents.length && isStanding(u) && !b.winner && enterUpTo(np.len + 1e-6)) stopped = true;
   if (!stopped && exits.length && isStanding(u) && !b.winner && provokeUpTo(np.len)) stopped = true;
   if (!stopped && isStanding(u) && !b.winner && u.x === np.to.x && u.y === np.to.y) {
     setPos(b, u, u.x, u.y, { px: np.to.px, py: np.to.py });

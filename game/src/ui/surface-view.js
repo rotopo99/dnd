@@ -31,18 +31,25 @@ export function drawSurfaces(ctx, S, tms, layer) {
     const px = L.mapX + x * c, py = L.mapY + y * c;
     const col = C[d.color] || C['5'], core = C[d.core] || col;
     const h = hash(x, y);
-    if (layer === 'gas') { drawFog(ctx, px, py, c, col, tms, x, y, s.kind === 'toxgas' ? 0.4 : 0.32); continue; }
-    if (s.hazard) continue; // the map sprite already shows permanent fire
+    // metric stage 3: a layer with `shape` (circles in metres) is drawn only inside the circles, clipped to its cell
+    const shaped = s.shape && clipShape(ctx, L, px, py, c, s.shape);
+    if (layer === 'gas') { drawFog(ctx, px, py, c, col, tms, x, y, s.kind === 'toxgas' ? 0.4 : 0.32); if (shaped) ctx.restore(); continue; }
+    if (s.hazard) { if (shaped) ctx.restore(); continue; } // the map sprite already shows permanent fire
     let alpha = 0.35;
     if (d.anim === 'pulse') alpha = 0.25 + 0.15 * Math.sin(tms / 260 + x + y);
     ctx.fillStyle = rgba(col, alpha);
     ctx.fillRect(px, py, c, c);
-    // 2 px border on the puddle edge
+    // 2 px border on the puddle edge (shaped: the circle outlines)
     ctx.fillStyle = rgba(col, 0.85);
-    if (!sameKind(b, x, y - 1, layer, s.kind)) ctx.fillRect(px, py, c, 2);
-    if (!sameKind(b, x, y + 1, layer, s.kind)) ctx.fillRect(px, py + c - 2, c, 2);
-    if (!sameKind(b, x - 1, y, layer, s.kind)) ctx.fillRect(px, py, 2, c);
-    if (!sameKind(b, x + 1, y, layer, s.kind)) ctx.fillRect(px + c - 2, py, 2, c);
+    if (shaped) {
+      ctx.strokeStyle = rgba(col, 0.85); ctx.lineWidth = 4;
+      for (const k of s.shape) { ctx.beginPath(); ctx.arc(L.mapX + (k.cx / 1.5) * c, L.mapY + (k.cy / 1.5) * c, (k.r / 1.5) * c, 0, Math.PI * 2); ctx.stroke(); }
+    } else {
+      if (!sameKind(b, x, y - 1, layer, s.kind)) ctx.fillRect(px, py, c, 2);
+      if (!sameKind(b, x, y + 1, layer, s.kind)) ctx.fillRect(px, py + c - 2, c, 2);
+      if (!sameKind(b, x - 1, y, layer, s.kind)) ctx.fillRect(px, py, 2, c);
+      if (!sameKind(b, x + 1, y, layer, s.kind)) ctx.fillRect(px + c - 2, py, 2, c);
+    }
     switch (d.anim) {
       case 'flicker': {
         for (let i = 0; i < 3; i++) {
@@ -88,7 +95,18 @@ export function drawSurfaces(ctx, S, tms, layer) {
       default:
     }
     if (s.charged && s.kind !== 'electric') drawArc(ctx, px, py, c, C.h, C['5'], tms, h);
+    if (shaped) ctx.restore();
   }
+}
+
+/** Clip to cell rect ∩ union of the shape's circles (metres → screen); the caller restores. */
+function clipShape(ctx, L, px, py, c, shape) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(px, py, c, c); ctx.clip();
+  ctx.beginPath();
+  for (const k of shape) { const X = L.mapX + (k.cx / 1.5) * c, Y = L.mapY + (k.cy / 1.5) * c; ctx.moveTo(X + (k.r / 1.5) * c, Y); ctx.arc(X, Y, (k.r / 1.5) * c, 0, Math.PI * 2); }
+  ctx.clip();
+  return true;
 }
 
 function drawArc(ctx, px, py, c, col, core, tms, h) {

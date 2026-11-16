@@ -15,4 +15,7 @@ export const LEVEL_RULES = {
   battles: [1, 2], // embedded battles per roam map
   textMax: 140, // characters of a note / toast / secret text
   maxElevStep: 1, // walkable neighbours differ by ≤ 1 level (higher — a cliff)
+  // secrets are hidden until noticed: passive Perception (10 + total) within spotR cells, active «Осмотреться» (Q) rolls
+  // within searchR cells; DC — the secret's spot.dc / its Perception check / spotDc
+  spotR: 3, searchR: 5, spotDc: 12,
 };
