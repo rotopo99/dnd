@@ -45,7 +45,7 @@ def body_shapekeys(o, P, sex):
     base = [v.co.copy() for v in o.data.vertices]; nrm = [v.normal.copy() for v in o.data.vertices]
     g = lambda d, s: math.exp(-d * d / (2 * s * s))
     def key(name, fn, lo=0.0, hi=1.0):
-        k = o.shape_key_add(name=name, from_mix=False); k.slider_min, k.slider_max = lo, hi
+        k = o.shape_key_add(name=name, from_mix=False); k.slider_min, k.slider_max = lo, hi; k.value = 0.0
         for i, co in enumerate(base):
             d = fn(co, nrm[i])
             if d is not None: k.data[i].co = co + d

@@ -122,7 +122,8 @@ const gradient = () => {
 };
 /** Unit body: toon steps on vertex colours, glow vertices (visors) emissive, hit flash through `emissive`. */
 function unitMaterial() {
-  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: gradient(), emissive: 0xffffff, emissiveIntensity: 0 });
+  // double-sided: some template loft caps face inwards (the old renderer hid them behind its body pass the same way)
+  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: gradient(), emissive: 0xffffff, emissiveIntensity: 0, side: THREE.DoubleSide });
   const k = { value: GFX.three.unit.glow };
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uGlow = k;

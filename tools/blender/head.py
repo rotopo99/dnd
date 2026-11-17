@@ -95,7 +95,7 @@ def add_expressions(o, P, zchin, y0, lo, hi):
             if v.co.y > y0 + 0.002: continue
             d = fn(v.co.x, v.co.z - zchin, v.co)
             if d: k.data[i].co = v.co + Vector(d)
-        k.slider_min, k.slider_max = 0, 1
+        k.slider_min, k.slider_max = 0, 1; k.value = 0.0
     ex, ez, er = fl['eye_x'] * hs, fl['eye_z'] * hs, 0.026 * hs
     def eyes(x, z):  # weight 0..1 at the eye region, vertical offset from the eye line
         return gauss((abs(x) - ex) ** 2, 0.024 * hs) * gauss((z - ez) ** 2, 0.020 * hs), z - ez

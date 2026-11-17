@@ -129,7 +129,7 @@ def transfer_shapekeys(src, dst):
     if not dst.data.shape_keys: dst.shape_key_add(name='Basis')
     for k in src.data.shape_keys.key_blocks[1:]:
         nk = dst.shape_key_add(name=k.name, from_mix=False)
-        nk.slider_min, nk.slider_max = k.slider_min, k.slider_max
+        nk.slider_min, nk.slider_max = k.slider_min, k.slider_max; nk.value = 0.0
         base = src.data.shape_keys.key_blocks[0].data
         for i, v in enumerate(dst.data.vertices):
             j = idx[i]
