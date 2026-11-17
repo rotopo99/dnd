@@ -24,7 +24,7 @@ import { visionOf, lightSources } from '../world/battlefields.js';
 import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, softwareGL, BONE_TEX_W, NBONES } from './gl.js';
 import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, uploadInstanced, resetInstanced, keyRGB, rampRGB, cssRGBA } from './mesh.js';
 import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis, panCamera, centerCamera } from './camera.js';
-export { worldOf, buildChunk, buildEdges, nearMask, cutCells, topAt, TEAM };
+export { worldOf, buildChunk, buildEdges, nearMask, cutCells, topAt, TEAM, chunkSig, inView };
 import { ramp, propModel, propTop } from './models.js';
 import { unitTemplate } from './units3d.js';
 import { gpuAtlas, faceCol, FACE_COLS } from './faces.js';

@@ -2,8 +2,9 @@
 from common import *
 from skeleton import joints
 
-HH = 0.215          # head height at hs = 1 (m)
-FW = 0.20           # atlas width in metres (u 0..1)
+K = 1.09            # anime head scale
+HH = 0.215 * K      # head height at hs = 1 (m)
+FW = 0.20 * K           # atlas width in metres (u 0..1)
 KEYS = [  # t, rx, rz (depth half), z (forward shift)
     (0, 0.012, 0.022, 0.07), (0.04, 0.03, 0.046, 0.062), (0.12, 0.056, 0.07, 0.036), (0.26, 0.08, 0.09, 0.014), (0.42, 0.092, 0.099, 0.004),
     (0.6, 0.097, 0.1, 0), (0.78, 0.092, 0.098, -0.004), (0.9, 0.072, 0.084, -0.006), (0.97, 0.042, 0.052, -0.006), (1, 0.003, 0.004, -0.006)]
@@ -11,6 +12,9 @@ KEYS = [  # t, rx, rz (depth half), z (forward shift)
 
 def _cr(p0, p1, p2, p3, f):
     return 0.5 * (2 * p1 + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f + (-p0 + 3 * p1 - 3 * p2 + p3) * f ** 3)
+
+
+KEYS = [(t, rx * K, rz * K, z * K) for t, rx, rz, z in KEYS]
 
 
 def ring(t):
@@ -25,12 +29,13 @@ def gauss(d2, s): return math.exp(-d2 / (2 * s * s))
 
 def feature_layout(hs=1.0):
     """Metric layout of the face features (m, relative to head centre line x=0 and chin z=0) shared with face_atlas.py."""
-    return dict(eye_x=0.036, eye_z=0.094, eye_rx=0.0215, eye_rz=0.0165, brow_z=0.127, nose_z=0.060, mouth_z=0.037, blush_x=0.05, blush_z=0.066)
+    d = dict(eye_x=0.036, eye_z=0.094, eye_rx=0.0215, eye_rz=0.0165, brow_z=0.127, nose_z=0.060, mouth_z=0.037, blush_x=0.05, blush_z=0.066)
+    return {k: v * K for k, v in d.items()}
 
 
 def build_head(P, sex):
     hs = P['hs']; J = joints(P); hh = HH * hs
-    y0 = J['head'][1]; zchin0 = J['head'][2] + 0.012 * hs
+    y0 = J['head'][1]; zchin0 = J['head'][2] + 0.0
     SEG, RINGS = 44, 32
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=SEG, v_segments=RINGS, radius=1.0)
@@ -57,10 +62,10 @@ def build_head(P, sex):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     # ears
     for sx in (1, -1):
-        ez = zchin + 0.088 * hs
+        ez = zchin + 0.088 * K * hs
         r = bmesh.ops.create_uvsphere(bm, u_segments=10, v_segments=7, radius=1.0)
         for v in r['verts']:
-            v.co = Vector((sx * (0.095 + v.co.x * 0.006), y0 + v.co.y * 0.019 + 0.004, ez + v.co.z * 0.026))
+            v.co = Vector((sx * (0.095 * K + v.co.x * 0.006), y0 + v.co.y * 0.019 + 0.004, ez + v.co.z * 0.026))
     me = bpy.data.meshes.new('Head'); bm.to_mesh(me)
     # --- UV (planar front projection; back loops clamped to the texture border)
     uv = me.uv_layers.new(name='UVMap')

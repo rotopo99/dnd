@@ -16,7 +16,7 @@ def joints(P):
     J = {}
     z = lambda v: v * hs
     J['hips'] = (0, 0, z(0.92)); J['spine'] = (0, 0, z(1.02)); J['chest'] = (0, 0, z(1.17))
-    J['upperChest'] = (0, 0, z(1.32)); J['neck'] = (0, 0.005, z(1.45)); J['head'] = (0, 0.012, z(1.55)); J['headTop'] = (0, 0.012, z(1.78))
+    J['upperChest'] = (0, 0, z(1.32)); J['neck'] = (0, 0.005, z(1.45)); J['head'] = (0, 0.012, z(1.55)); J['headTop'] = (0, 0.012, z(1.79))
     az = z(1.435)
     J['shoulder'] = (0.035, 0, az); J['upperArm'] = (sw, 0, az); J['lowerArm'] = (sw + 0.27 * hs, 0, az)
     J['hand'] = (sw + 0.52 * hs, 0, az); J['handEnd'] = (sw + 0.595 * hs, 0, az)
