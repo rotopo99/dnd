@@ -5426,7 +5426,6 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   const CR = await import('../game/src/world/check-run.js');
   const { RADIO } = await import('../game/src/data/world/radio.js');
   const { CHECK_SCENES } = await import('../game/src/data/world/check-scenes.js');
-  const { normalizeSave } = await import('../game/src/save.js').then((m) => ({ normalizeSave: m.normalizeSave || null }));
   const mk = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; return s; };
   const turnin = (s, qid, outcome, path = [outcome]) => { s.quests[qid] = { state: 'done', stage: 'back', opt: null, subs: {}, path, outcome, turnin: true }; return qs.claimTurnin(s, qid, GAME_DATA); };
   const slot = (s, qid, pred = () => true) => qs.slots(s, qid).find(pred);
