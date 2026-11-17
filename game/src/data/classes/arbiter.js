@@ -50,9 +50,9 @@ export default {
   passives: [
     // BAL-BEGIN (docs/qa/BALANCE-metric.md)
     { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
-      desc: 'Баланс метрических боёв: +55 ЗДР, +2 КБ, +4 урона.', op: { maxHp: 55, kb: 2, dmg: 4 } },
+      desc: 'Баланс метрических боёв: +70 ЗДР, +2 КБ, +5 урона.', op: { maxHp: 70, kb: 2, dmg: 5 } },
     { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
-      desc: 'Баланс метрических боёв: -100 ЗДР, -2 КБ, -7 урона.', op: { maxHp: -100, kb: -2, dmg: -7 } },
+      desc: 'Баланс метрических боёв: -115 ЗДР, -2 КБ, -8 урона.', op: { maxHp: -115, kb: -2, dmg: -8 } },
     // BAL-END
     { id: 'avenger-mastery', name: 'Мастерство оружия', level: 5, path: 'avenger',
       desc: 'Ступень владения «мастерство» (канон): +1 к атаке в ближнем бою.', op: { hit: 1 } },

@@ -31,7 +31,9 @@ export default {
     { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
       desc: 'Баланс метрических боёв: +12 ЗДР, +1 урона.', op: { maxHp: 12, dmg: 1 } },
     { id: 'field-tuning-15', name: 'Полевая подгонка (ур. 15)', level: 15, path: null,
-      desc: 'Баланс метрических боёв: +40 ЗДР, +3 урона.', op: { maxHp: 40, dmg: 3 } },
+      desc: 'Баланс метрических боёв: +60 ЗДР, +10 урона.', op: { maxHp: 60, dmg: 10 } },
+    { id: 'field-tuning-20', name: 'Полевая подгонка (ур. 20)', level: 20, path: null,
+      desc: 'Баланс метрических боёв: -20 ЗДР, -7 урона.', op: { maxHp: -20, dmg: -7 } },
     // BAL-END
     { id: 'loud-sound', name: 'Громкий звук', level: 1, path: 'techno-musician',
       desc: 'Техно-музыкант выкручивает громкость: +3 к урону способностей.', op: { dmg: { spell: 3 } } },
