@@ -52,7 +52,7 @@ import { enterNet } from './cyberspace.js';
 import { rescuesAt, freeCaptive, unseenResults } from '../world/expeditions.js';
 import { openExpeditions, openExpResults } from '../ui/expedition-ui.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
-import { openRadio, radioBadge } from './radio.js';
+import { openRadio as openAir, radioBadge } from './radio.js'; // (openRadio below is the quest radio call)
 import { openFind } from './finds.js';
 import { radioFresh, radioEnterChance, radioRestChance } from '../world/radio.js';
 import { nodeFinds, findsAt } from '../world/lore.js';
@@ -725,7 +725,7 @@ export function createLocationScene(rawId, opts = {}) {
     if (id === 'toMenu') { persist(game); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
     if (id === 'menu') return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') });
     if (id === 'save') { persist(game); return openSaveMenu(game); }
-    if (id === 'radio') return openRadio(game, { source: 'handset', onDone: (g) => refresh(g) });
+    if (id === 'radio') return openAir(game, { source: 'handset', onDone: (g) => refresh(g) });
     return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: home(), canSwap: !!S.canSwap || nodeServices(game.save, locId).includes('rest') })));
   }
 
@@ -745,7 +745,7 @@ export function createLocationScene(rawId, opts = {}) {
     if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return true; }
     // content-wave1.md: queued lore finds, then the receiver of the node / the tavern
     if (V(game).gate && !game.modals.length && (save(game).pendingFinds || []).length && openFind(game, (g) => refresh(g))) return true;
-    if (V(game).gate && !game.modals.length && V(game).radio) { const src = V(game).radio; V(game).radio = null; openRadio(game, { source: src, onDone: (g) => refresh(g) }); return true; }
+    if (V(game).gate && !game.modals.length && V(game).radio) { const src = V(game).radio; V(game).radio = null; openAir(game, { source: src, onDone: (g) => refresh(g) }); return true; }
     if (V(game).gate && !game.modals.length) { const back = unseenResults(save(game), locId); if (back.length) { openExpResults(game, back, (g) => refresh(g)); return true; } }
     return !!(V(game).gate && pendingEpilogue(game));
   }
