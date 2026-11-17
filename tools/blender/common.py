@@ -1,6 +1,6 @@
 """Shared helpers of the Blender pipeline (run via tools/blender/run.sh, headless bpy)."""
 import bpy, bmesh, math, os, json, sys
-from mathutils import Vector, Quaternion, Matrix, kdtree
+from mathutils import Vector, Quaternion, Matrix, Euler, kdtree
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 MODELS = os.path.join(ROOT, 'game', 'assets', 'models')

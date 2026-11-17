@@ -143,7 +143,7 @@ def build_outfit(kind, body, arm, P, sex):
     assign_mats(jk, jm); parts.append(jk)
     # --- lower body
     if kind == 'uniform' and sex == 'female':
-        bm = pleated_skirt(P, 1.0 * hs, 0.60 * hs, 0.085)
+        bm = pleated_skirt(P, 1.0 * hs, 0.60 * hs, 0.05)
         sk = to_object(bm, 'Skirt')
         sk.data.materials.append(mat_toon('Skirt', srgb(C['pants']))); sk.data.materials.append(mat_toon('SkirtTrim', srgb(C['pants_trim'])))
         assign_mats(sk, lambda c: 1 if c.z < 0.60 * hs + 0.025 else 0); parts.append(sk)
