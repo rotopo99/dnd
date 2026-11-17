@@ -14,6 +14,9 @@ const GIVERS = {
   'd-tatami': 'dq-ucheniza', 'd-konsul': 'dq-shtamp', 'd-dublon': 'dq-klyuch-kazny',
   'd-lopukh': 'dq-gorshok', 'd-vechevoy': 'dq-kolokol', 'd-listva': 'dq-koren', 'd-sluh': 'dq-podval',
   'd-evrika': 'dq-tom', 'd-poslushnik': 'dq-zapiska',
+  // контент-волна 1 (quests-wave1.js WAVE1_GIVERS)
+  'd-ogorod': 'w1-filters', 'd-arlekin': 'w1-circus', 'd-prichal': 'w1-flood', 'd-kambuz': 'w1-cauldron',
+  'd-kolobok': 'w1-hearing', 'd-flazhok': 'w1-medbox', 'd-trup': 'w1-hunter', 'd-rasp': 'w1-station',
 };
 
 export const DENSITY_NPCS = [

@@ -79,7 +79,7 @@ class HairBuilder:
         tx, ty = math.sin(phi) * Rs, hf.y0 - math.cos(phi) * Ds
         for i in range(1, nf + 1):
             f = i / nf; z = p1.z + (z_end - p1.z) * f
-            k = sm(0.0, 0.9, f)
+            k = sm(0.0, 0.9, f) if (Rs or Ds) else 0.0
             x = p1.x + (tx - p1.x) * k * 0.8 + math.sin(f * 5 + sway_phase) * wave * f
             y = p1.y + (ty - p1.y) * k * 0.8 - 0.004 * math.sin(f * 3.1)
             x *= 1 - inward * f

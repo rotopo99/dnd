@@ -492,6 +492,8 @@ export function drawBattleThree(E, game, S, opts) {
   T.fill.intensity = prefs.reduceFx ? 0 : T3.fill * dim;
   const nc = colorOf(WEATHER.tod[tod]?.overlay?.[0] || '0');
   T.hemi.color.copy(colorOf(T3.hemi.sky)).lerp(nc, amount * 0.6);
+  T.hemi.groundColor.copy(colorOf(T3.hemi.ground));
+  T.key.color.copy(colorOf(T3.keyColor));
   const ls = amount && vis.dark ? (S.lights3 || lightSources(b)).slice(0, NT.max) : [];
   if (ls.length && !T.points.length) for (let k = 0; k < NT.max; k++) { const pl = new THREE.PointLight(colorOf(NT.warm), 0, 1, 2); T.scene.add(pl); T.points.push(pl); }
   T.points.forEach((pl, k) => {
