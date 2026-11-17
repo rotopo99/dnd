@@ -23,6 +23,7 @@ import { unitTemplate } from '../gfx/units3d.js';
 import { NBONES } from '../gfx/gl.js';
 import { visionOf, lightSources } from '../world/battlefields.js';
 import { gfxPrefs } from '../gfx/settings.js';
+import { unitUniforms, syncUnitUniforms, unitMaterial, hullMaterial } from './units.js';
 
 const G = GFX.geo;
 const DIST = 100; // camera distance behind the view target (orthographic: only depth precision depends on it)
@@ -51,6 +52,19 @@ export function geoFromMB(mb, skin = false) {
   g.setAttribute('glow', new THREE.BufferAttribute(glow, 1));
   g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(mb.i, 1) : new THREE.Uint16BufferAttribute(mb.i, 1));
   if (skin && mb.b) {
+    // toon port (three/units.js): ramps in sRGB (base ramp -> colour without AO), ao + glow, uv + material kind
+    const rs = new Float32Array(n * 3), rl = new Float32Array(n * 3), ax = new Float32Array(n * 2);
+    for (let k = 0; k < n; k++) {
+      const o = k * 17;
+      rs[k * 3] = v[o + 6]; rs[k * 3 + 1] = v[o + 7]; rs[k * 3 + 2] = v[o + 8];
+      col[k * 3] = v[o + 9]; col[k * 3 + 1] = v[o + 10]; col[k * 3 + 2] = v[o + 11];
+      rl[k * 3] = v[o + 12]; rl[k * 3 + 1] = v[o + 13]; rl[k * 3 + 2] = v[o + 14];
+      ax[k * 2] = v[o + 15]; ax[k * 2 + 1] = v[o + 16];
+    }
+    g.setAttribute('rampS', new THREE.BufferAttribute(rs, 3));
+    g.setAttribute('rampL', new THREE.BufferAttribute(rl, 3));
+    g.setAttribute('aox', new THREE.BufferAttribute(ax, 2));
+    g.setAttribute('uvk', new THREE.BufferAttribute(new Float32Array(mb.x || n * 3), 3));
     const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
     for (let k = 0; k < n; k++) {
       const w = mb.b[k * 3 + 2];
@@ -89,6 +103,29 @@ void cutTest(vec3 wp) {
   }
 }`;
 
+// night / dusk tint with static light holes (as the old renderer, linear colours; point lights add the warm light) and
+// height fog (low ground towards the fog colour, GFX.hfog x biome)
+const ATMO_PARS = `
+uniform vec4 uNightW;
+uniform vec4 uLightColW;
+uniform vec3 uLightsW[8];
+uniform int uNumLightsW;
+uniform vec4 uHFogW;
+uniform vec4 uHFogCW;`;
+const ATMO_GLSL = `
+if (uNightW.a > 0.0) {
+  float lit = 0.0, glw = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uNumLightsW) break;
+    float r = uLightsW[i].z, dd = length(vWP.xz - uLightsW[i].xy);
+    lit = max(lit, 1.0 - smoothstep(r * 0.6, r, dd));
+    glw = max(glw, 1.0 - smoothstep(0.0, r * 0.9, dd));
+  }
+  outgoingLight = mix(outgoingLight, uNightW.rgb, uNightW.a * (1.0 - lit));
+  outgoingLight = mix(outgoingLight, uLightColW.rgb, uLightColW.a * glw * glw);
+}
+if (uHFogCW.a > 0.0) outgoingLight = mix(outgoingLight, uHFogCW.rgb, (1.0 - smoothstep(uHFogW.x, uHFogW.y, vWP.y)) * uHFogCW.a);`;
+
 /** World material: PBR (MeshStandard) on vertex colours, value noise on albedo / roughness, glow vertices emissive,
  *  cut-away (uniforms U shared by every world mesh of the battle). */
 function worldMaterial(U) {
@@ -100,50 +137,14 @@ function worldMaterial(U) {
       .replace('#include <common>', '#include <common>\nattribute float glow;\nvarying float vGlow;\nvarying vec3 vWP;')
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvGlow = glow;\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying float vGlow;\nvarying vec3 vWP;\nuniform float uNoise;\nuniform vec2 uNS;\nuniform float uGlow;\n${NOISE_GLSL}\n${CUT_GLSL}`)
+      .replace('#include <common>', `#include <common>\nvarying float vGlow;\nvarying vec3 vWP;\nuniform float uNoise;\nuniform vec2 uNS;\nuniform float uGlow;\n${ATMO_PARS}\n${NOISE_GLSL}\n${CUT_GLSL}`)
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\ncutTest(vWP);')
       .replace('#include <color_fragment>', '#include <color_fragment>\nfloat nz = wnoise(vWP, uNS);\ndiffuseColor.rgb *= 1.0 + (nz - 0.5) * uNoise;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor + (nz - 0.5) * 0.2, 0.35, 1.0);')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vGlow * uGlow;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vGlow * uGlow;')
+      .replace('#include <opaque_fragment>', `${ATMO_GLSL}\n#include <opaque_fragment>`);
   };
   m.customProgramCacheKey = () => 'dnd-world';
-  return m;
-}
-
-let gradTex = null;
-const gradient = () => {
-  if (gradTex) return gradTex;
-  const st = GFX.three.unit.steps, d = new Uint8Array(st.length * 4);
-  st.forEach((s, i) => d.set([s * 255, s * 255, s * 255, 255], i * 4));
-  gradTex = new THREE.DataTexture(d, st.length, 1, THREE.RGBAFormat);
-  gradTex.minFilter = gradTex.magFilter = THREE.NearestFilter;
-  gradTex.needsUpdate = true;
-  return gradTex;
-};
-/** Unit body: toon steps on vertex colours, glow vertices (visors) emissive, hit flash through `emissive`. */
-function unitMaterial() {
-  // double-sided: some template loft caps face inwards (the old renderer hid them behind its body pass the same way)
-  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: gradient(), emissive: 0xffffff, emissiveIntensity: 0, side: THREE.DoubleSide });
-  const k = { value: GFX.three.unit.glow };
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uGlow = k;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float glow;\nvarying float vGlow;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvGlow = glow;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vGlow;\nuniform float uGlow;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vGlow * uGlow;');
-  };
-  m.customProgramCacheKey = () => 'dnd-unit';
-  return m;
-}
-/** Outline hull: back faces grown along the skinned normal by uGrow metres, flat team colour. */
-function hullMaterial() {
-  const m = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, fog: false });
-  m.userData.grow = { value: 0.02 };
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uGrow = m.userData.grow;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uGrow;')
-      .replace('#include <skinning_vertex>', '#include <skinning_vertex>\ntransformed += normalize(objectNormal) * uGrow;');
-  };
-  m.customProgramCacheKey = () => 'dnd-hull';
   return m;
 }
 
@@ -191,6 +192,8 @@ function createState(E, V) {
   const U = {
     uCutP: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uNumCut: { value: 0 }, uCutDir: { value: new THREE.Vector2(1, 0) },
     uCutH: { value: 6 }, uFloorT: { value: null }, uFloorN: { value: new THREE.Vector2(1, 1) },
+    uNightW: { value: new THREE.Vector4() }, uLightColW: { value: new THREE.Vector4() }, uLightsW: { value: Array.from({ length: 8 }, () => new THREE.Vector3()) }, uNumLightsW: { value: 0 },
+    uHFogW: { value: new THREE.Vector4() }, uHFogCW: { value: new THREE.Vector4() },
     uNoise: { value: GFX.three.world.noise }, uNS: { value: new THREE.Vector2(...GFX.three.world.noiseScale) }, uGlow: { value: GFX.three.world.glow },
   };
   const world = worldMaterial(U);
@@ -214,7 +217,7 @@ function createState(E, V) {
   parts.frustumCulled = false; parts.renderOrder = 6; parts.userData.noAO = true; parts.visible = false;
   scene.add(parts);
   const T = {
-    scene, cam3, U, world, hemi, key, fill, overlay, parts, ovCap: 0, ptCap: 0,
+    scene, cam3, U, UU: unitUniforms(), world, hemi, key, fill, overlay, parts, ovCap: 0, ptCap: 0,
     chunks: new Map(), edges: [], backdrop: null, backKey: '', barrels: [], units: new Map(), points: [], props: new Map(),
     pickMesh: null, pickCells: null, proxies: new Map(), ray: new THREE.Raycaster(), gv: -1, shadowSize: -1,
   };
@@ -340,9 +343,9 @@ function makeUnit(E, T, tpl) {
     if (this.boneTexture) this.boneTexture.needsUpdate = true;
   };
   const mk = (mat) => { const m = new THREE.SkinnedMesh(geo, mat); m.bind(skel, IDENT); m.frustumCulled = false; return m; };
-  const body = mk(unitMaterial());
+  const body = mk(unitMaterial(T.UU));
   body.castShadow = true; body.receiveShadow = true;
-  const hull = mk(hullMaterial());
+  const hull = mk(hullMaterial(T.UU));
   hull.userData.noAO = true;
   // x-ray: drawn in the opaque list after the world and before the bodies (renderOrder 1 < 2), against the world depth
   // only — the same-depth test against its own body is unreliable across programs; custom blending works with
@@ -437,10 +440,12 @@ export function drawBattleThree(E, game, S, opts) {
     o.body.material.opacity = p.alpha;
     o.body.material.transparent = p.trans;
     o.body.material.depthWrite = !p.trans;
-    o.body.material.emissiveIntensity = p.flash * GFX.three.unit.flash;
+    const bu = o.body.material.userData.u;
+    bu.uTint.value.set(o.pose[NBONES * 12], o.pose[NBONES * 12 + 1], o.pose[NBONES * 12 + 2], o.pose[NBONES * 12 + 3]);
+    bu.uFaceU.value = o.pose[NBONES * 12 + 9];
     o.body.castShadow = !p.trans;
     o.hull.visible = !p.trans;
-    o.hull.material.color.setRGB(tc[0] * 0.8, tc[1] * 0.8, tc[2] * 0.8);
+    o.hull.material.userData.u.uTeam.value.set(team[0] * 0.8, team[1] * 0.8, team[2] * 0.8);
     o.hull.material.userData.grow.value = p.grow / ppm;
     o.xray.visible = !p.trans && !p.dead;
     o.xray.material.color.setRGB(tc[0], tc[1], tc[2]);
@@ -492,9 +497,10 @@ export function drawBattleThree(E, game, S, opts) {
   T.key.intensity = T3.key * dim;
   T.fill.intensity = prefs.reduceFx ? 0 : T3.fill * dim;
   const nc = colorOf(WEATHER.tod[tod]?.overlay?.[0] || '0');
-  T.hemi.color.copy(colorOf(T3.hemi.sky)).lerp(nc, amount * 0.6);
+  const moon = vis.dark ? amount / NT.amount : 0; // night: cold moonlight key, blue sky
+  T.hemi.color.copy(colorOf(T3.hemi.sky)).lerp(vis.dark ? colorOf(T3.night.sky) : nc, vis.dark ? moon * 0.8 : amount * 0.6);
   T.hemi.groundColor.copy(colorOf(T3.hemi.ground));
-  T.key.color.copy(colorOf(T3.keyColor));
+  T.key.color.copy(colorOf(T3.keyColor)).lerp(colorOf(T3.night.moon), moon * 0.7);
   const ls = amount && vis.dark ? (S.lights3 || lightSources(b)).slice(0, NT.max) : [];
   if (ls.length && !T.points.length) for (let k = 0; k < NT.max; k++) { const pl = new THREE.PointLight(colorOf(NT.warm), 0, 1, 2); T.scene.add(pl); T.points.push(pl); }
   T.points.forEach((pl, k) => {
@@ -505,6 +511,17 @@ export function drawBattleThree(E, game, S, opts) {
     pl.distance = (rad + 0.5) * NT.radiusMul * T3.night.dist;
     pl.intensity = T3.night.point * amount / NT.amount;
   });
+  // night: tint towards deep blue (GFX.three.night.tint) outside the light holes; dusk: the dusk overlay colour
+  const tintKey = vis.dark ? T3.night.tint : WEATHER.tod[tod]?.overlay?.[0] || '0', tintA = amount * (vis.dark ? T3.night.tintK : 1);
+  syncUnitUniforms(T.UU, { r: rr, f, reduceFx: !!prefs.reduceFx, night: { rgb: keyRGB(tintKey), amount: tintA }, lights: ls, shadow: shSize });
+  const tl = linRGB(keyRGB(tintKey)), wl = linRGB(keyRGB(NT.warm));
+  T.U.uNightW.value.set(tl[0], tl[1], tl[2], tintA);
+  T.U.uLightColW.value.set(wl[0], wl[1], wl[2], amount ? NT.warmAmt * T3.night.warmK * amount / NT.amount : 0);
+  ls.forEach(([x, y, rr2], k) => T.U.uLightsW.value[k].set(x + 0.5, y + 0.5, (rr2 + 0.5) * NT.radiusMul));
+  T.U.uNumLightsW.value = ls.length;
+  const HF = GFX.hfog, hk = GFX.env.hfog[Wd.biome] || [1, 1], hc = linRGB(keyRGB(GFX.fogColor[Wd.biome] || GFX.fogColor.default));
+  T.U.uHFogW.value.set(HF.y0, HF.y1 * hk[1], 0, 0);
+  T.U.uHFogCW.value.set(hc[0], hc[1], hc[2], prefs.reduceFx ? 0 : HF.amount * hk[0]);
   // background, fog (linear; old max share reached at the old far distance)
   const bg = colorOf(GFX.sky[Wd.biome] || GFX.sky.default);
   T.scene.background = bg;
@@ -529,6 +546,7 @@ export function drawBattleThree(E, game, S, opts) {
     Gd.uBal.value.set(bal[0], bal[1], bal[2]);
     Gd.uVig.value.set(gr.vignette, gr.start);
     Gd.uMax.value = gr.max;
+    Gd.uSat.value = gr.sat;
     P.comp.render();
   }
   V.stats = { units: inst.length, groups: new Set(inst.map((p) => p.T.key)).size, particles: np, shadow: shSize, busy, chunks: shownN, chunksAll: T.chunks.size, lights: ls.length, glow: lampsN, ambient: ambN, weather: wxActive, post: !prefs.reduceFx, msaa: E.soft ? 0 : T3.msaa, three: true, calls: r.info.render.calls, tris: r.info.render.triangles };

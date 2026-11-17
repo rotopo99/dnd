@@ -1,0 +1,184 @@
+{
+ "name": "hair_ponytail_f.glb",
+ "sex": "female",
+ "height_m": 1.674,
+ "up": "Y",
+ "front": "+Z",
+ "bones_vrm_humanoid": [
+  "hips",
+  "spine",
+  "chest",
+  "upperChest",
+  "neck",
+  "head",
+  "leftShoulder",
+  "leftUpperArm",
+  "leftLowerArm",
+  "leftHand",
+  "leftUpperLeg",
+  "leftLowerLeg",
+  "leftFoot",
+  "leftToes",
+  "leftIndexProximal",
+  "leftIndexIntermediate",
+  "leftIndexDistal",
+  "leftMiddleProximal",
+  "leftMiddleIntermediate",
+  "leftMiddleDistal",
+  "leftRingProximal",
+  "leftRingIntermediate",
+  "leftRingDistal",
+  "leftLittleProximal",
+  "leftLittleIntermediate",
+  "leftLittleDistal",
+  "leftThumbMetacarpal",
+  "leftThumbProximal",
+  "leftThumbDistal",
+  "rightShoulder",
+  "rightUpperArm",
+  "rightLowerArm",
+  "rightHand",
+  "rightUpperLeg",
+  "rightLowerLeg",
+  "rightFoot",
+  "rightToes",
+  "rightIndexProximal",
+  "rightIndexIntermediate",
+  "rightIndexDistal",
+  "rightMiddleProximal",
+  "rightMiddleIntermediate",
+  "rightMiddleDistal",
+  "rightRingProximal",
+  "rightRingIntermediate",
+  "rightRingDistal",
+  "rightLittleProximal",
+  "rightLittleIntermediate",
+  "rightLittleDistal",
+  "rightThumbMetacarpal",
+  "rightThumbProximal",
+  "rightThumbDistal"
+ ],
+ "expressions": [
+  "blink",
+  "happy",
+  "angry",
+  "sad",
+  "surprised"
+ ],
+ "body_shape_keys": [
+  "bust",
+  "hips",
+  "shoulders",
+  "build",
+  "legs_long",
+  "height"
+ ],
+ "parts": [
+  "Hair_ponytail"
+ ],
+ "animations": [],
+ "springBones": [
+  {
+   "name": "F0",
+   "bones": [
+    "hair_F0_0",
+    "hair_F0_1"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F1",
+   "bones": [
+    "hair_F1_0",
+    "hair_F1_1"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F2",
+   "bones": [
+    "hair_F2_0",
+    "hair_F2_1"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "SL",
+   "bones": [
+    "hair_SL_0",
+    "hair_SL_1",
+    "hair_SL_2"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "SR",
+   "bones": [
+    "hair_SR_0",
+    "hair_SR_1",
+    "hair_SR_2"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "T",
+   "bones": [
+    "hair_T_0",
+    "hair_T_1",
+    "hair_T_2",
+    "hair_T_3",
+    "hair_T_4"
+   ],
+   "stiffness": 0.55,
+   "gravityPower": 0.08,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.35,
+   "hitRadius": 0.02
+  }
+ ],
+ "triangles": 2292
+}

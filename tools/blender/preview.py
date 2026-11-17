@@ -99,7 +99,7 @@ def render_views(objs, path, views=('front', 'side', 'back', 'three'), size=(480
     L = bpy.data.objects.get('PLight')
     if not L:
         L = link(bpy.data.objects.new('PLight', bpy.data.lights.new('PLight', 'SUN')))
-    L.rotation_euler = Vector((0.45, 0.75, -0.55)).to_track_quat('-Z', 'Y').to_euler(); L.data.energy = 3
+    L.rotation_euler = Vector((0.75, 0.55, -0.55)).to_track_quat('-Z', 'Y').to_euler(); L.data.energy = 3
     d = 7.0; c = Vector(center)
     dirs = {'front': (0, -1, 0.05), 'side': (1, 0, 0.05), 'back': (0, 1, 0.05), 'three': (0.7, -0.7, 0.12), 'face': (0.15, -1, 0.0), 'faceside': (0.8, -0.6, 0.0)}
     imgs = []

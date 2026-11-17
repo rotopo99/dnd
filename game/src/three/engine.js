@@ -17,17 +17,18 @@ import { markGfxBroken } from '../gfx/settings.js';
 import { t } from '../data/text/index.js';
 import { drawBattleThree, dropBattleThree } from './battle.js';
 
-// final grade (after tonemap + sRGB): vignette over the map area, biome colour balance, brightest pixel cap (3d.md §7)
+// final grade (after tonemap + sRGB): vignette over the map area, biome colour balance, saturation, brightest pixel cap (3d.md §7)
 const GradeShader = {
   name: 'GradeShader',
-  uniforms: { tDiffuse: { value: null }, uArea: { value: new THREE.Vector4(0, 0, 1, 1) }, uBal: { value: new THREE.Vector3(1, 1, 1) }, uVig: { value: new THREE.Vector2(0.2, 0.55) }, uMax: { value: 0.92 } },
+  uniforms: { tDiffuse: { value: null }, uArea: { value: new THREE.Vector4(0, 0, 1, 1) }, uBal: { value: new THREE.Vector3(1, 1, 1) }, uVig: { value: new THREE.Vector2(0.2, 0.55) }, uMax: { value: 0.92 }, uSat: { value: 1 } },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform vec4 uArea; uniform vec3 uBal; uniform vec2 uVig; uniform float uMax; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec4 uArea; uniform vec3 uBal; uniform vec2 uVig; uniform float uMax; uniform float uSat; varying vec2 vUv;
 void main() {
   vec4 c = texture2D(tDiffuse, vUv);
   vec2 q = (vUv - uArea.xy) / uArea.zw * 2.0 - 1.0;
   float v = smoothstep(uVig.y, 1.45, length(q));
   vec3 col = c.rgb * uBal * (1.0 - uVig.x * v);
+  col = mix(vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), col, uSat); // saturation (PBR light x albedo runs hotter than the old ramps)
   gl_FragColor = vec4(min(col, vec3(uMax)), c.a);
 }`,
 };

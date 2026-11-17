@@ -9,7 +9,7 @@ from skeleton import MALE, FEMALE
 ap = argparse.ArgumentParser(); ap.add_argument('--only', default='all'); ap.add_argument('--sex', default='both'); ap.add_argument('--no-preview', action='store_true')
 args = ap.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:])
 SEXES = ['female', 'male'] if args.sex == 'both' else [args.sex]
-STYLES = ['long', 'bob', 'short']; OUTFITS = ['field', 'uniform']
+STYLES = hair.STYLES; OUTFITS = ['field', 'uniform']
 PRESETS = [('hero_f_uniform', 'female', 'long', 'uniform', 'silver', 'light'), ('hero_f_field', 'female', 'bob', 'field', 'brown', 'tan'),
            ('hero_m_field', 'male', 'short', 'field', 'black', 'light'), ('hero_m_uniform', 'male', 'short', 'uniform', 'brown', 'tan')]
 sx = lambda s: 'f' if s == 'female' else 'm'
@@ -67,11 +67,11 @@ for sex in SEXES:
     if args.only in ('all', 'hair'):
         for st in STYLES:
             load_blend('base_' + sex); arm = bpy.data.objects['Armature']; body = bpy.data.objects['Body']
-            o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS['brown'])
+            o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS['brown'], hair.HAIR_TIPS['brown'])
             p = os.path.join(MODELS, 'hair_%s_%s.glb' % (st, sx(sex))); export.glb(p, [arm, o], animations=False)
             export.meta(p, arm, P, sex, [o.name], [], sp, dict(triangles=tri_count(o)))
             log('hair', st, sex, kb(p), 'tris', tri_count(o))
-            if sex == 'female' or st == 'short': done_preview('hair-%s-%s' % (st, sx(sex)), [body, o], views=('front', 'three', 'back'))
+            if True: done_preview('hair-%s-%s' % (st, sx(sex)), [body, o], views=('front', 'three', 'back'))
     if args.only in ('all', 'outfit'):
         for k in OUTFITS:
             load_blend('base_' + sex); arm = bpy.data.objects['Armature']; body = bpy.data.objects['Body']
@@ -84,7 +84,7 @@ if args.only in ('all', 'preset'):
     for name, sex, st, k, hc, skin in PRESETS:
         if sex not in SEXES: continue
         P, arm, body, names = base_scene(sex, hair.HAIR_COLORS[hc], skin)
-        o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS[hc]); parts = clothes.build_outfit(k, body, arm, P, sex)
+        o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS[hc], hair.HAIR_TIPS[hc]); parts = clothes.build_outfit(k, body, arm, P, sex)
         p = os.path.join(MODELS, name + '.glb'); objs = [arm, body, o] + parts
         export.glb(p, objs)
         tris = sum(tri_count(x) for x in objs[1:])

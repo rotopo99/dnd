@@ -2,6 +2,7 @@
 from common import *
 from skeleton import *
 from bodymesh import build_skin
+from sculpt import sculpt_body
 from head import build_head, add_expressions, HH
 import face_atlas
 
@@ -30,6 +31,12 @@ def nearest_bone_fallback(mesh, arm):
         if not any(g.weight > 1e-4 for g in v.groups):
             best = min(segs, key=lambda s: d(v.co, s[0], s[1])); mesh.vertex_groups[best[2]].add([v.index], 1.0, 'REPLACE'); fixed += 1
     return fixed
+
+
+def smooth_weights(mesh, repeat=4):
+    bpy.context.view_layer.objects.active = mesh; mode('OBJECT', mesh)
+    try: bpy.ops.object.vertex_group_smooth(group_select_mode='ALL', factor=0.5, repeat=repeat, expand=0.0)
+    except Exception as e: print('weight smooth skipped', e)
 
 
 def limit_and_normalize(mesh, maxinf=4):
@@ -89,7 +96,7 @@ def body_shapekeys(o, P, sex):
 def build_body(sex='female', skin='light', hair_rgb=(0.3, 0.2, 0.17), iris=(0.25, 0.62, 0.75), mat_prefix=''):
     P = FEMALE if sex == 'female' else MALE
     arm = build_armature(P, 'Armature')
-    body = build_skin(P, 2, 'body'); hands = build_skin(P, 1, 'hands'); head = build_head(P, sex)
+    body = build_skin(P, 2, 'body'); sculpt_body(body, P, sex); hands = build_skin(P, 1, 'hands'); head = build_head(P, sex)
     mats = bpy.data.materials
     skin_mat = mat_toon(mat_prefix + 'Skin', srgb(SKIN_RGB[skin]))
     # face atlas
@@ -102,6 +109,7 @@ def build_body(sex='female', skin='light', hair_rgb=(0.3, 0.2, 0.17), iris=(0.25
     # weights for body / hands (automatic), head rigid
     for o in (body, hands):
         auto_weights(o, arm)
+        smooth_weights(o)
     for n in bones_of(arm): head.vertex_groups.new(name=n)
     head.vertex_groups['head'].add(list(range(len(head.data.vertices))), 1.0, 'REPLACE')
     head.parent = arm; md = head.modifiers.new('Armature', 'ARMATURE'); md.object = arm
