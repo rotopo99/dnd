@@ -147,8 +147,8 @@ export const GFX = {
   // blend), bloom of HDR > threshold (emissive only); grade: vignette [strength, start], brightest pixel; night: ambient x,
   // point lights (intensity, distance x light radius)
   three: {
-    exposure: 1.0, maxDpr: 1.5, msaa: 4,
-    key: 2.4, fill: 0.55, hemi: { sky: '4', ground: '6', k: 1.1 }, keyColor: '5',
+    exposure: 1.15, maxDpr: 1.5, msaa: 4,
+    key: 3.0, fill: 0.75, hemi: { sky: '5', ground: '3', k: 1.8 }, keyColor: '5',
     shadow: { high: 2048, low: 1024, bias: -0.0006, normalBias: 0.025, radius: 3 },
     world: { rough: 0.86, noise: 0.16, noiseScale: [2.3, 9.0], ao: 0.55, glow: 2.6, cutPad: 0.01 },
     unit: { steps: [0.42, 0.72, 1.0], glow: 2.2, flash: 1.6 },
