@@ -56,7 +56,7 @@ for (const [bi, biome] of biomes.entries()) {
   await wait(900);
   ok(await heroTurn(), `${biome}: hero turn`);
   const st = await page.evaluate(() => {
-    const S = window.__game.scene.S, gl = document.getElementById('gl');
+    const S = window.__game.scene.S, gl = document.getElementById(S.v3?.engine === 'three' ? 'gl3' : 'gl');
     return { v3: !!S.v3, chunks: S.v3?.chunks.size || 0, vis: getComputedStyle(gl).visibility, biome: S.b.map.biome, w: S.b.grid.w, h: S.b.grid.h };
   });
   ok(st.v3 && st.chunks > 0 && st.vis === 'visible', `${biome}: 3D on (biome ${st.biome}, ${st.w}x${st.h}, ${st.chunks} chunks, gl ${st.vis})`);
@@ -177,7 +177,7 @@ for (const [bi, biome] of biomes.entries()) {
     // 3D -> 2D -> 3D with the top bar button
     const g = await page.evaluate(async () => { const m = await import('/game/src/gfx/scene3d.js'); return m.camButtons(window.__game.scene.S, window.__game).find((b) => b.id === 'gfx'); });
     await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await wait(300);
-    const v2 = await page.evaluate(() => ({ v3: !!window.__game.scene.S.v3, vis: getComputedStyle(document.getElementById('gl')).visibility }));
+    const v2 = await page.evaluate(() => ({ v3: !!window.__game.scene.S.v3, vis: ['gl', 'gl3'].every((id) => getComputedStyle(document.getElementById(id)).visibility === 'hidden') ? 'hidden' : 'visible' }));
     ok(!v2.v3 && v2.vis === 'hidden', `toggle -> 2D (gl ${v2.vis})`);
     await shot('gfx3d-2d');
     await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await wait(300);
@@ -198,7 +198,7 @@ await key('Escape');
 await startBattle(biomes[0]);
 await wait(900);
 await heroTurn();
-await page.evaluate(() => { document.getElementById('gl').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(); });
+await page.evaluate(() => { const three = window.__game.scene.S.v3?.engine === 'three'; const c = document.getElementById(three ? 'gl3' : 'gl'); (three ? window.__game.gfx.three.renderer.getContext() : c.getContext('webgl2')).getExtension('WEBGL_lose_context').loseContext(); });
 await wait(2600);
 const lost = await page.evaluate(() => ({ v3: !!window.__game.scene.S.v3, toast: window.__game.toasts.map((x) => x.text).join(' | ') }));
 ok(!lost.v3 && /3D недоступно/.test(lost.toast), `context lost -> 2D (${lost.toast})`);

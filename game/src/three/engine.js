@@ -13,6 +13,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GFX } from '../data/gfx.js';
 import { softwareGL } from '../gfx/gl.js';
+import { markGfxBroken } from '../gfx/settings.js';
+import { t } from '../data/text/index.js';
 import { drawBattleThree, dropBattleThree } from './battle.js';
 
 // final grade (after tonemap + sRGB): vignette over the map area, biome colour balance, brightest pixel cap (3d.md §7)
@@ -35,6 +37,9 @@ export function createThree(canvas, game) {
     canvas, gen: 0, renderer: null, failed: false, lost: false, used: false, soft: softwareGL(), w: canvas.width, h: canvas.height,
     cw: '', ch: '', scale: 1, geos: new Map(), post: null, clip: '',
     ok() {
+      if (E.lost && !E.failed && performance.now() - E.lostAt > GFX.lostTimeout * 1000) { // 3d.md: lost for good -> 2D + toast
+        E.failed = true; markGfxBroken(); game.toast(t('gfx.unavailable'), 'c');
+      }
       if (E.failed || E.lost) return false;
       if (E.renderer) return true;
       try {
@@ -48,7 +53,7 @@ export function createThree(canvas, game) {
         E.scale = E.soft ? GFX.soft.scale : Math.min(globalThis.devicePixelRatio || 1, GFX.three.maxDpr);
         r.setPixelRatio(E.scale);
         r.setSize(E.w, E.h, false);
-        canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); E.lost = true; });
+        canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); E.lost = true; E.lostAt = performance.now(); });
         canvas.addEventListener('webglcontextrestored', () => { E.lost = false; E.gen++; E.geos.clear(); E.disposePost(); });
         E.renderer = r;
         return true;
@@ -66,6 +71,7 @@ export function createThree(canvas, game) {
     },
     use() { E.used = true; },
     endFrame() {
+      if (E.lost) E.ok(); // runs the lost-context timeout
       const show = E.used && !E.failed;
       if (canvas.style.visibility !== (show ? 'visible' : 'hidden')) canvas.style.visibility = show ? 'visible' : 'hidden';
       E.used = false;
@@ -103,6 +109,7 @@ export function createThree(canvas, game) {
       const out = new OutputPass();
       const grade = new ShaderPass(GradeShader);
       bloom.enabled = !(E.lite && !T3.soft.bloom);
+      gtao.enabled = !(E.lite && !T3.soft.gtao);
       for (const p of [render, gtao, bloom, out, grade]) comp.addPass(p);
       E.post = { scene, comp, render, gtao, bloom, grade, setSize: (w, h) => comp.setSize(w, h) };
       return E.post;

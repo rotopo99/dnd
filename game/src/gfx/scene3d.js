@@ -48,7 +48,7 @@ export function createGfx(canvas, game) {
     stale: null, // holders to free at the end of the frame unless drawn in it (scene switch: game.setScene / resume)
     three: null, // threejs-migration.md: Three.js backend (three/engine.js createThree), set by main.js once Three.js loaded
     /** Three.js draws the battle: engine setting 'three' and the backend is up (else the old renderer). */
-    threeOn() { return gfxEngine() === 'three' && !!X.three && X.three.ok(); },
+    threeOn() { const E = X.three; return gfxEngine() === 'three' && !!E && !E.failed && (E.lost || E.ok()); }, // lost: wait (2D after GFX.lostTimeout)
     ok() {
       if (X.failed) return false;
       if (X.gl && !X.lost) return true;

@@ -45,6 +45,8 @@ def to_object(bm, name, ratio=None):
     if ratio:
         md = o.modifiers.new('Dec', 'DECIMATE'); md.ratio = ratio; md.use_collapse_triangulate = False
         mode('OBJECT', o); apply_modifiers(o)
+    o.vertex_groups.clear()
+    if o.data.shape_keys: o.shape_key_clear()
     smooth_shade(o)
     return o
 

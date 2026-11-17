@@ -1,0 +1,257 @@
+{
+ "name": "hair_long_f.glb",
+ "sex": "female",
+ "height_m": 1.674,
+ "up": "Y",
+ "front": "+Z",
+ "bones_vrm_humanoid": [
+  "hips",
+  "spine",
+  "chest",
+  "upperChest",
+  "neck",
+  "head",
+  "leftShoulder",
+  "leftUpperArm",
+  "leftLowerArm",
+  "leftHand",
+  "leftUpperLeg",
+  "leftLowerLeg",
+  "leftFoot",
+  "leftToes",
+  "leftIndexProximal",
+  "leftIndexIntermediate",
+  "leftIndexDistal",
+  "leftMiddleProximal",
+  "leftMiddleIntermediate",
+  "leftMiddleDistal",
+  "leftRingProximal",
+  "leftRingIntermediate",
+  "leftRingDistal",
+  "leftLittleProximal",
+  "leftLittleIntermediate",
+  "leftLittleDistal",
+  "leftThumbMetacarpal",
+  "leftThumbProximal",
+  "leftThumbDistal",
+  "rightShoulder",
+  "rightUpperArm",
+  "rightLowerArm",
+  "rightHand",
+  "rightUpperLeg",
+  "rightLowerLeg",
+  "rightFoot",
+  "rightToes",
+  "rightIndexProximal",
+  "rightIndexIntermediate",
+  "rightIndexDistal",
+  "rightMiddleProximal",
+  "rightMiddleIntermediate",
+  "rightMiddleDistal",
+  "rightRingProximal",
+  "rightRingIntermediate",
+  "rightRingDistal",
+  "rightLittleProximal",
+  "rightLittleIntermediate",
+  "rightLittleDistal",
+  "rightThumbMetacarpal",
+  "rightThumbProximal",
+  "rightThumbDistal"
+ ],
+ "expressions": [
+  "blink",
+  "happy",
+  "angry",
+  "sad",
+  "surprised"
+ ],
+ "body_shape_keys": [
+  "bust",
+  "hips",
+  "shoulders",
+  "build",
+  "legs_long",
+  "height"
+ ],
+ "parts": [
+  "Hair_long"
+ ],
+ "animations": [],
+ "springBones": [
+  {
+   "name": "L0",
+   "bones": [
+    "hair_L0_0",
+    "hair_L0_1",
+    "hair_L0_2",
+    "hair_L0_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L1",
+   "bones": [
+    "hair_L1_0",
+    "hair_L1_1",
+    "hair_L1_2",
+    "hair_L1_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L2",
+   "bones": [
+    "hair_L2_0",
+    "hair_L2_1",
+    "hair_L2_2",
+    "hair_L2_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L3",
+   "bones": [
+    "hair_L3_0",
+    "hair_L3_1",
+    "hair_L3_2",
+    "hair_L3_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L4",
+   "bones": [
+    "hair_L4_0",
+    "hair_L4_1",
+    "hair_L4_2",
+    "hair_L4_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F0",
+   "bones": [
+    "hair_F0_0",
+    "hair_F0_1"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F1",
+   "bones": [
+    "hair_F1_0",
+    "hair_F1_1"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F2",
+   "bones": [
+    "hair_F2_0",
+    "hair_F2_1"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "SL",
+   "bones": [
+    "hair_SL_0",
+    "hair_SL_1",
+    "hair_SL_2",
+    "hair_SL_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "SR",
+   "bones": [
+    "hair_SR_0",
+    "hair_SR_1",
+    "hair_SR_2",
+    "hair_SR_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  }
+ ],
+ "triangles": 2784
+}

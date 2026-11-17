@@ -476,7 +476,7 @@ export function drawBattleThree(E, game, S, opts) {
   T.key.position.copy(ctr).addScaledVector(kd, 60); T.key.target.position.copy(ctr);
   T.fill.position.copy(ctr).addScaledVector(rel(GFX.fill.dir), 60); T.fill.target.position.copy(ctr);
   T.key.target.updateMatrixWorld(); T.fill.target.updateMatrixWorld();
-  const shSize = prefs.reduceFx || prefs.shadows === 'off' ? 0 : E.lite ? T3.soft.shadow : T3.shadow[prefs.shadows] || T3.shadow.high;
+  const shSize = prefs.reduceFx || prefs.shadows === 'off' ? 0 : (T3.shadow[prefs.shadows] || T3.shadow.high) * (E.lite ? T3.soft.shadow : 1);
   T.key.castShadow = shSize > 0;
   if (shSize && shSize !== T.shadowSize) {
     T.shadowSize = shSize;
@@ -531,7 +531,7 @@ export function drawBattleThree(E, game, S, opts) {
     Gd.uMax.value = gr.max;
     P.comp.render();
   }
-  V.stats = { units: inst.length, particles: np, shadow: shSize, busy, chunks: shownN, chunksAll: T.chunks.size, lights: ls.length, glow: lampsN, ambient: ambN, weather: wxActive, post: !prefs.reduceFx, msaa: E.soft ? 0 : T3.msaa, three: true, calls: r.info.render.calls, tris: r.info.render.triangles };
+  V.stats = { units: inst.length, groups: new Set(inst.map((p) => p.T.key)).size, particles: np, shadow: shSize, busy, chunks: shownN, chunksAll: T.chunks.size, lights: ls.length, glow: lampsN, ambient: ambN, weather: wxActive, post: !prefs.reduceFx, msaa: E.soft ? 0 : T3.msaa, three: true, calls: r.info.render.calls, tris: r.info.render.triangles };
 }
 
 export function dropBattleThree(E, V) {
