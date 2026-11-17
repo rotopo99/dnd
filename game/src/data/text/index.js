@@ -14,6 +14,7 @@ import { CARDS_TEXT } from './cards.js';
 import { NET_TEXT } from './net.js';
 import { GFX_TEXT } from './gfx.js';
 import { RUN_TEXT } from './run.js';
+import { WAVE1_TEXT } from './wave1-ui.js';
 
 const ru = {
   title: 'Руслания Лайт',
@@ -840,5 +841,6 @@ Object.assign(ru, CARDS_TEXT); // cards-casino.md
 Object.assign(ru, NET_TEXT); // multiplayer.md
 Object.assign(ru, GFX_TEXT); // 3d.md
 Object.assign(ru, RUN_TEXT); // roguelike.md
+Object.assign(ru, WAVE1_TEXT); // content-wave1.md: radio, finds, secrets, delayed news, timers
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

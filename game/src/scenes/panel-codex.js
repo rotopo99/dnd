@@ -2,6 +2,7 @@
 // list on the left (scroll.js), the card on the right (details.js); enemy records open by level (world/codex.js).
 // Used by scenes/panels.js: layoutCodex / clickCodex / updateCodex / renderCodex; codexEntries — tests.
 import { t } from '../data/text/index.js';
+import { tf } from '../world/state.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
 import { NPCS } from '../data/npcs.js';
 import { STATUSES } from '../data/effects.js';
@@ -17,6 +18,7 @@ import { VENDORS } from '../world/vendors.js';
 import { codexOf, codexLevel, enemyKey, enemyName, enemyFinds, factionFinds, KNOWN_KILLS } from '../world/codex.js';
 import { enemySubject } from '../ui/portrait-of.js';
 import { HANDMADE_NOTES } from '../data/maps/handmade/index.js';
+import { NOTES, SECRET_IDS, secretTitle, secretInfo, secretProgress, notesOfSecret, noteFound, readNotes } from '../world/lore.js';
 import { drawPortrait } from '../assets/sprites.js';
 import { abilityTip } from '../ui/tips.js';
 import { C, FONT, FONT_B, LINE, text, fit, panel } from '../ui/draw.js';
@@ -59,6 +61,20 @@ export function codexEntries(save, section) {
       const place = LOCATIONS[n.loc]?.name || n.map;
       if (place !== head) { out.push({ head: place }); head = place; }
       out.push({ id, open: true, label: n.title || id });
+    }
+    // content-wave1.md: lore notes (world/lore.js; codex flag 'lore:<id>'), grouped by place / quest
+    head = null;
+    for (const n of readNotes(save)) {
+      const place = LOCATIONS[n.loc]?.name || t('find.title');
+      if (place !== head) { out.push({ head: place }); head = place; }
+      out.push({ id: `lore:${n.id}`, open: true, label: n.title });
+    }
+  } else if (section === 'secrets') {
+    // content-wave1.md: «Тайны мира» — secrets with at least one note found, progress n/3
+    for (const id of SECRET_IDS) {
+      const p = secretProgress(save, id);
+      if (!p.found) continue;
+      out.push({ id, open: true, label: `${secretTitle(id)} — ${p.n}/${p.steps}`, color: p.n >= p.steps ? C.j : p.n >= 2 ? C.h : C['5'] });
     }
   } else if (section === 'terms') {
     const terms = codexOf(save).terms;
@@ -127,6 +143,26 @@ export function codexCard(save, section, id) {
     const finds = factionFinds(save, id);
     if (finds.length) { lines.push({ text: '' }, { text: t('codex.finds'), color: 'f', font: FONT_B }); for (const x of finds) lines.push(x.text); }
     return { title: factionName(id), lines };
+  }
+  if (section === 'notes' && String(id).startsWith('lore:')) {
+    const n = NOTES[String(id).slice(5)];
+    if (!n) return { title: CODEX_UNKNOWN, lines: [] };
+    const head = [t(`find.kind.${n.kind || 'note'}`), LOCATIONS[n.loc]?.name, n.layer ? t(`find.layer.${n.layer}`) : null].filter(Boolean).join(' · ');
+    return { title: n.title, lines: [{ text: head, color: '4' }, ...n.text, { text: '' }, ...n.reveals.map((s) => ({ text: `${secretTitle(s)}: ${secretProgress(save, s).n}/${secretProgress(save, s).steps}`, color: 'f' }))] };
+  }
+  if (section === 'secrets') {
+    const p = secretProgress(save, id), info = secretInfo(id);
+    const lines = [{ text: tf('secrets.progress', { n: p.n }), color: p.n >= p.steps ? 'j' : 'h' }];
+    if (info && p.n >= p.steps) lines.push({ text: '' }, { text: t('secrets.truth'), color: 'a', font: FONT_B }, info.text, ...(info.invented ? [{ text: t('secrets.invented'), color: '3' }] : []));
+    lines.push({ text: '' }, { text: t('secrets.found'), color: 'f', font: FONT_B });
+    const list = notesOfSecret(id).filter((n) => noteFound(save, n.id)).sort((a, b) => (a.layer || 0) - (b.layer || 0));
+    for (const n of list) {
+      lines.push({ text: `${n.layer ? `${t(`find.layer.${n.layer}`).split(':')[0]} · ` : ''}${n.title}`, color: '5', font: FONT_B });
+      for (const l of n.text) lines.push({ text: `  ${l}`, color: '4' });
+    }
+    const miss = p.total - p.found;
+    if (miss > 0) lines.push({ text: '' }, { text: tf('secrets.missing', { n: miss }), color: '3' });
+    return { title: secretTitle(id), lines };
   }
   if (section === 'notes') {
     const n = HANDMADE_NOTES[id];
@@ -225,7 +261,7 @@ export function renderCodex(game, S) {
     if (sub) { panel(ctx, R.head.x + 10, R.head.y + 10, 52, 52, C['0'], C['2']); drawPortrait(ctx, sel, R.head.x + 12, R.head.y + 12, 1, { native: true }); }
     text(ctx, fit(ctx, CODEX_SECTIONS[S.cx.section], 600, FONT_B), R.head.x + (sub ? 80 : 14), R.head.y + 26, C['4'], FONT_B);
   }
-  drawDetails(ctx, S.cx.det, R.card, sel ? codexCard(sv, S.cx.section, sel) : { title: CODEX_SECTIONS[S.cx.section], lines: [t('codex.empty')] }, `${S.cx.section}:${sel}`);
+  drawDetails(ctx, S.cx.det, R.card, sel ? codexCard(sv, S.cx.section, sel) : { title: CODEX_SECTIONS[S.cx.section], lines: [t(S.cx.section === 'secrets' ? 'secrets.empty' : 'codex.empty')] }, `${S.cx.section}:${sel}`);
 }
 
 export { enemyKey };

@@ -21,4 +21,6 @@ export const WORLD_RULES = {
   finale: { encounter: 'w-cc-finale', minParty: 3 },
   talentFallbackCredits: 100, // quest talentChoice with nothing allowed for the hero → credits instead
   blackMarket: ['rare-parts', 'lockpick-set', 'grenade', 'servo-parts'],
+  // content-wave1.md: radio «partyDown» window (days), lore finds shown per node entry, secret progress steps («1/3…3/3»)
+  wave1: { radioDownDays: 3, findsPerEntry: 1, secretSteps: 3, radioMaxPerOpen: 6 },
 };

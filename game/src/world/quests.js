@@ -15,6 +15,11 @@
 //     (location scene: the NPC is on the node / in the party). NPC nowhere to be found → reward at once + short line.
 //   'radio': reward at once, qid queued in save.pendingRadio (the location scene shows the radio modal).
 //   Failed quest with lines.failed: same delivery, no reward. Quests without an entry — as before.
+// Quest timer (content-wave1.md §5.3): quest.timer { days, stage, onExpire } — entering `stage` sets st.due = day + days;
+//   questTimerTick (passDays → delayed.js dayTick) at day >= due: enough subgoals done (all.min) → the next stage; else
+//   onExpire — a stage id (onFail branch) or an outcome key (tracked in st.path, then the next stage; outcomeBy falls back
+//   to it). While the timer runs an 'all' stage waits for every subgoal; once `min` succeeded a «that's enough» decision appears.
+// Lore finds: entering a stage queues notes `stage:<qid>/<stage>` (world/lore.js).
 import { dropItem } from './inventory.js';
 import { QUESTS, sameLocation, QUEST_TURNIN, npcHome, resolveLocation } from './data.js';
 import { t } from '../data/text/index.js';
@@ -31,6 +36,7 @@ import { applyConsequences, markFinale } from './consequences.js';
 import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
+import { findsAt } from './lore.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -138,9 +144,27 @@ export function questsOffered(save, npcId) {
 export function startQuest(save, id) {
   const q = QUESTS[id];
   save.quests[id] = { state: 'active', stage: q.stages[0].id, opt: null, subs: {}, fails: {}, failedOpts: {} };
+  enterStage(save, id, q.stages[0].id);
   journal(save, tf('q.new', { name: q.name }));
   return [{ text: tf('q.new', { name: q.name }), color: 'h' }];
 }
+
+/** Stage entered: lore finds of the stage, the quest timer starts on its stage. */
+function enterStage(save, qid, stageId) {
+  const q = QUESTS[qid], st = save.quests[qid];
+  findsAt(save, `stage:${qid}/${stageId}`);
+  if (q.timer && q.timer.stage === stageId && st.due == null) st.due = save.day + q.timer.days;
+}
+/** Timer of an active quest on its stage: days left (≥ 0) or null. */
+export function timerLeft(save, qid) {
+  const q = QUESTS[qid], st = save.quests[qid];
+  if (!q?.timer || st?.state !== 'active' || st.stage !== q.timer.stage || st.due == null) return null;
+  return Math.max(0, st.due - save.day);
+}
+const timed = (save, qid, stage) => QUESTS[qid]?.timer?.stage === stage.id && save.quests[qid]?.due != null;
+const subOk = (save, st, sg, i) => st.subs[i] === true || (sg.doneFlag && !!save.flags[sg.doneFlag]);
+/** Subgoals an 'all' stage needs before it moves on by itself: a running timer waits for all of them. */
+const needNow = (save, qid, stage) => (timed(save, qid, stage) && stage.goal.min ? stage.goal.goals.length : allNeed(save, stage.goal));
 
 const optionsOf = (save, goal) => (goal.options || []).filter((o) => requiresOk(save, o.requires));
 
@@ -182,6 +206,11 @@ function openSlots(save, qid) {
       if (sg.kind === 'choice') fromChoice(sg, typeof st.subs[i] === 'string' && st.subs[i].startsWith('opt:') ? st.subs[i].slice(4) : null, i);
       else out.push({ qid, stage, goal: sg, sub: i });
     });
+    // timed stage: `min` subgoals succeeded → the player may stop early
+    if (timed(save, qid, stage) && g.min && out.length && g.goals.filter((sg, i) => subOk(save, st, sg, i)).length >= g.min) {
+      const choice = { kind: 'choice', options: [{ id: 'timer-enough', text: t('timer.enough') }] };
+      out.push({ qid, stage, goal: choice, choice, kind: 'choice' });
+    }
   } else out.push({ qid, stage, goal: g });
   return out;
 }
@@ -289,6 +318,7 @@ function toStage(save, qid, next, data) {
   if (!next || !stageDef(q, next)) return finish(save, qid, stage?.end || 'done', data);
   st.stage = next; st.opt = null; st.subs = {};
   track(st, next);
+  enterStage(save, qid, next);
   journal(save, tf('q.stage', { name: q.name, text: stageDef(q, next).text }));
   return q.personal ? personalStage(save, q) : [];
 }
@@ -309,7 +339,8 @@ export function completeSlot(save, slot, data) {
   if (st?.state !== 'active' || st.stage !== slot.stage.id) return [];
   if (slot.option?.gateRisk) return applyEffects(save, slot.option.effects, data, q.key);
   if (slot.locked && stageLocked(save, slot.stage)) return [];
-  if (slot.sub !== undefined && subDone(save, st, slot.stage.goal.goals[slot.sub], slot.sub)) return [];
+  // (a doneFlag set by the check scene's fx just before does not count as «already done»)
+  if (slot.sub !== undefined && (st.subs[slot.sub] === true || st.subs[slot.sub] === 'failed')) return [];
   const out = applyEffects(save, slot.option?.effects, data, q.key);
   track(st, slot.option?.id);
   if (slot.sub !== undefined) {
@@ -318,7 +349,7 @@ export function completeSlot(save, slot, data) {
     if (sg?.doneFlag) save.flags[sg.doneFlag] = true; // the subgoal's flag is the world's memory of it (mq3-fall: saved-*)
     const g = slot.stage.goal;
     const done = g.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
-    if (done >= allNeed(save, g)) {
+    if (done >= needNow(save, slot.qid, slot.stage)) {
       out.push(...applyEffects(save, slot.stage.effects, data, q.key));
       out.push(...toStage(save, slot.qid, slot.stage.next, data));
     }
@@ -373,7 +404,7 @@ export function failSlot(save, slot, data) {
       st.subs[slot.sub] = 'failed';
       const g = slot.stage.goal;
       const out = [{ text: t('q.goalFailed'), color: 'c' }];
-      if (g.goals.filter((sg, i) => subDone(save, st, sg, i)).length >= allNeed(save, g)) out.push(...toStage(save, slot.qid, slot.stage.next, data));
+      if (g.goals.filter((sg, i) => subDone(save, st, sg, i)).length >= needNow(save, slot.qid, slot.stage)) out.push(...toStage(save, slot.qid, slot.stage.next, data));
       return out;
     }
     return finish(save, slot.qid, 'failed', data);
@@ -425,10 +456,35 @@ export function autoProgress(save, data) {
     if (s.goal.kind === 'item') dropItem(save, s.goal.item, s.goal.n || 1);
     out.push(...completeSlot(save, s, data));
   }
-  // 'all' stages whose subgoals are done by flags
+  // 'all' stages whose subgoals are done by flags (also flags set by check-scene fx: enough of them → the next stage)
   for (const id of Object.keys(save.quests)) {
     const stage = stageOf(save, id);
-    if (stage?.goal.kind === 'all' && !slots(save, id).length) out.push(...toStage(save, id, stage.next, data));
+    if (stage?.goal.kind !== 'all' || stageLocked(save, stage)) continue;
+    const st = save.quests[id];
+    const done = stage.goal.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
+    if (!slots(save, id).length || done >= needNow(save, id, stage)) out.push(...toStage(save, id, stage.next, data));
+  }
+  return out;
+}
+
+/** Days passed: expired quest timers (see the header). → toasts. */
+export function questTimerTick(save, data) {
+  const out = [];
+  for (const [qid, st] of Object.entries(save.quests || {})) {
+    const q = QUESTS[qid];
+    if (!q?.timer || st.state !== 'active' || st.due == null || st.stage !== q.timer.stage || save.day < st.due) continue;
+    const stage = stageOf(save, qid);
+    delete st.due;
+    st.expired = true;
+    journal(save, tf('timer.expired', { name: q.name }));
+    out.push({ text: tf('timer.expired', { name: q.name }), color: 'c' });
+    const g = stage.goal;
+    const ok = g.kind === 'all' ? g.goals.filter((sg, i) => subOk(save, st, sg, i)).length : 0;
+    if (g.kind === 'all' && ok >= (g.min || g.goals.length)) { out.push(...toStage(save, qid, stage.next, data)); continue; }
+    const target = q.timer.onExpire;
+    if (target && stageDef(q, target)) { out.push(...toStage(save, qid, target, data)); continue; }
+    track(st, target);
+    out.push(...toStage(save, qid, stage.next, data));
   }
   return out;
 }
@@ -442,5 +498,7 @@ export function currentGoalText(save, id) {
   const lock = stageLocked(save, s);
   if (lock) text += ` (${lock})`;
   if (id === EXODUS.quest && exodusActive(save)) text += ` · ${tf('exodus.left', { n: Math.max(0, exodusLeft(save)) })}`;
+  const tl = timerLeft(save, id);
+  if (tl != null) text += ` · ${tf('timer.left', { n: tl })}`;
   return text;
 }

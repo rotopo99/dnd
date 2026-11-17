@@ -6,6 +6,7 @@
 // vendors-bestiary.md part 1: `vendor: npcId` — the NPC's own shelf (world/vendors.js vendorStock: staples, signature,
 // editions, rotation by save.day, rare goods), his markup/greed and what he buys (sell rate, loves ×1.25); without it — the
 // old `stock` list. Seen rotation period — save.flags `vstock:<npcId>` (toast «Новый товар» after a change).
+import { priceZoneMult } from '../world/consequences.js';
 import { t } from '../data/text/index.js';
 import { priceMult as exodusPrice } from '../world/exodus.js';
 import { THANKS } from '../data/world/skirmishes.js';
@@ -47,6 +48,7 @@ export function shopPrices(game, tier, faction, key = null) {
   buy *= cha.buy * (st.haggle === 'ok' ? 1 - T.haggle.discount : 1);
   buy *= ritualDiscount(ms, faction); // world-consequences.md ч.5: Religion «Знаток обрядов» (tekhonki)
   buy *= exodusPrice(game.save); // third-exodus.md: marks 3+ raise prices
+  buy *= priceZoneMult(game.save, game.save.location); // content-wave1.md: a repaired / broken node changes its prices
   // cyberspace-v2.md §5: prices hacked from the Relay — ×0.85 on this node, the wanted surcharge is ignored
   if (hackActive(game.save, 'prices', game.save.location)) buy *= HACK_EFFECTS.prices.mult;
   else buy *= wantedPriceMult(game.save, faction); // world-consequences.md §2: wanted levels raise prices

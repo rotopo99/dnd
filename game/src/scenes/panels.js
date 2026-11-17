@@ -35,6 +35,8 @@ import { heatOf, wantedOf, wantedLevel } from '../world/crime.js';
 import { openEpilogue } from './epilogue.js';
 import { peekRomance, partnerOf, stageFor, nextHint, isRomanceable } from '../world/romance.js';
 import { ROMANCE_RULES } from '../data/romance.js';
+import { openRadio } from './radio.js';
+import { radioFresh } from '../world/radio.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const TABS = ['party', 'stats', 'gear', 'rep', 'journal', 'codex', 'cards'];
@@ -119,6 +121,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (S.tab === 'codex') layoutCodex(game, S, b);
     if (S.tab === 'cards') layoutCards(game, S, b);
     if (S.tab === 'journal') b.push({ kind: 'epilogue', label: t('journal.epilogue'), x: ox + BASE_W - 184, y: oy + 70, w: 160, h: 32, font: FONT }); // world-consequences.md
+    if (S.tab === 'journal') { const n = radioFresh(sv); b.push({ kind: 'radio', label: `${t('radio.button')}${n ? ' ●' : ''}`, key: t('radio.key'), x: ox + BASE_W - 360, y: oy + 70, w: 168, h: 32, font: FONT, selected: n > 0 }); } // content-wave1.md
     if (S.tab === 'stats') {
       const ms = statMembers(sv);
       if (!ms.some((m) => m.key === S.sel)) S.sel = S.statKey = S.gearKey = 'hero';
@@ -136,6 +139,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
     if (b.kind === 'statMember' || b.kind === 'card') { select(game, b.id); return; }
     if (b.kind === 'back') { game.resume(back); return; }
     if (b.kind === 'epilogue') { openEpilogue(game, { onDone: (g) => g.resume(self) }); return; }
+    if (b.kind === 'radio') { openRadio(game, { source: 'handset', onDone: (g) => layout(g) }); return; }
     if (clickCodex(game, S, b)) { layout(game); return; }
     if (S.tab === 'cards' && clickCards(game, S, b)) { layout(game); return; }
     if (b.kind === 'best' || b.kind === 'bestAll') return bestGear(game, b.kind === 'bestAll');
@@ -660,6 +664,7 @@ export function createPanelsScene({ tab = 'party', back, canSwap = false, gearKe
       else if (inp.wasPressed('KeyJ')) { S.tab = 'journal'; layout(game); }
       else if (inp.wasPressed('KeyB')) { S.tab = 'codex'; layout(game); }
       else if (inp.wasPressed('KeyK')) { S.tab = 'cards'; layout(game); }
+      else if (inp.wasPressed('KeyV')) openRadio(game, { source: 'handset', onDone: (g) => layout(g) }); // content-wave1.md: «Эфир»
     },
     render(game) {
       const { ctx, width: W, height: H } = game;

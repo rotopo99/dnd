@@ -13,6 +13,7 @@
     body { display: grid; place-items: center; }
     canvas { image-rendering: pixelated; display: block; grid-area: 1 / 1; }
     #gl, #gl3 { image-rendering: auto; pointer-events: none; visibility: hidden; }
+    #game { position: relative; z-index: 1; } /* #gl3's clip-path makes a stacking context: keep the 2D UI on top */
   </style>
 </head>
 <body>

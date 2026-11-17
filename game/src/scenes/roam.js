@@ -1201,6 +1201,7 @@ export function createRoamScene(rawId, opts = {}) {
       else if (inp.wasPressed('KeyJ')) return nav(game, 'journal');
       else if (inp.wasPressed('KeyG')) return nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) return nav(game, 'codex');
+      else if (inp.wasPressed('KeyV')) return nav(game, 'radio'); // content-wave1.md: «Эфир»
       else if (inp.wasPressed('Escape')) return nav(game, 'menu');
       else if (inp.wasPressed('KeyC')) { S.sneak = !S.sneak; play('step', { surface: 'grass', sneak: true }); game.toast(t(S.sneak ? 'roam.sneakOn' : 'roam.sneakOff'), S.sneak ? 'j' : '4'); }
       else if (inp.wasPressed('KeyZ')) { if (canCampAt(locId)) { writePos(game); return L.restAction(game).run(game); } game.toast(t('rest.notHere'), 'c'); }

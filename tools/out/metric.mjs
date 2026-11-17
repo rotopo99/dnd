@@ -74,8 +74,10 @@ if (goal) {
   const hp = await page.evaluate(() => { const h = window.__game.scene.S.hoverPath; return h && { ok: h.ok, len: h.len, cost: h.cost, n: h.pts.length }; });
   ok(hp && hp.ok === 'move', `hover path: ${JSON.stringify(hp)}`);
   await shot(`metric-${tag}-1-path`);
+  const pre = await page.evaluate(() => { const S = window.__game.scene.S, h = S.b.byId[S.heroId]; return `${h.px},${h.py}`; });
   await page.mouse.click(p.x, p.y);
-  await wait(60);
+  // slow SwiftShader frames (Three ~300 ms): the click is processed on the next logic step — wait for the walk to start
+  for (let i = 0; i < 40; i++) { if (await page.evaluate((pre) => { const S = window.__game.scene.S, h = S.b.byId[S.heroId]; return `${h.px},${h.py}` !== pre || S.queue.length > 0 || !S.playerTurn; }, pre)) break; await wait(100); }
   console.log('    after click:', JSON.stringify(await page.evaluate(() => { const S = window.__game.scene.S; return { msg: S.message?.text, q: S.queue.length, hp: S.hoverPath && { ok: S.hoverPath.ok, to: S.hoverPath.to } }; })));
   for (let i = 0; i < 40; i++) { const q = await page.evaluate(() => window.__game.scene.S.queue.length + Object.values(window.__game.scene.S.disp).filter((d) => d.path.length).length); if (!q) break; await wait(100); }
   const after = await page.evaluate(() => { const S = window.__game.scene.S, b = S.b, h = b.byId[S.heroId]; return { px: h.px, py: h.py, move: b.turn?.move, unit: b.turn?.unitId, id: h.id }; });

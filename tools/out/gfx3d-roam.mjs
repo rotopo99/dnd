@@ -4,8 +4,11 @@
 // node tools/out/gfx3d-roam.mjs — exit code 1 on failures or console errors.
 import { open } from './v3-harness.mjs';
 
-const T = await open({ query: '?gfx=3d', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const { page, errors, wait, shot, key } = T;
+// --engine three|old (default: the settings default, three): screenshots get a -<engine> suffix when given
+const argv = process.argv.slice(2), engine = argv.includes('--engine') ? argv[argv.indexOf('--engine') + 1] : '';
+const T = await open({ query: `?gfx=3d${engine ? `&engine=${engine}` : ''}`, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { page, errors, wait, key } = T;
+const shot = (name) => T.shot(engine ? `${name}-${engine}` : name);
 let fails = 0;
 const ok = (c, m) => { console.log(c ? 'ok  ' : 'FAIL', m); if (!c) fails++; };
 
@@ -27,7 +30,7 @@ const enter = async (loc) => {
 const st = () => page.evaluate(() => {
   const S = window.__game.scene.S, V = S?.r3?.v3;
   return { id: window.__game.scene.id, v3: !!V, stats: V?.stats || null, lead: S?.party?.[0] ? [S.party[0].cx, S.party[0].cy] : null,
-    cam: V ? { cx: V.cam.cx, cz: V.cam.cz, px: V.cam.px, pz: V.cam.pz, zoom: V.cam.zoomIdx } : null, vis: getComputedStyle(document.getElementById('gl')).visibility };
+    cam: V ? { cx: V.cam.cx, cz: V.cam.cz, px: V.cam.px, pz: V.cam.pz, zoom: V.cam.zoomIdx } : null, vis: getComputedStyle(document.getElementById(V?.engine === 'three' ? 'gl3' : 'gl')).visibility };
 });
 const force = (wx) => page.evaluate((wx) => { const S = window.__game.scene.S; S.wxForce = wx; if (S.r3?.v3) S.r3.v3.lastSig = ''; }, wx);
 
@@ -102,7 +105,8 @@ for (const w of ['rain', 'snow', 'fog']) {
 const red = await page.evaluate(async () => {
   const m = await import('/game/src/gfx/settings.js'), S = window.__game.scene.S;
   m.setGfxPref('reduceFx', true); S.r3.v3.lastSig = '';
-  await new Promise((r) => setTimeout(r, 400));
+  // slow SwiftShader frames: wait for a frame drawn with the new prefs
+  for (let t = 0; t < 40 && (S.r3.v3.stats.post || S.r3.v3.stats.particles); t++) { S.r3.v3.lastSig = ''; await new Promise((r) => setTimeout(r, 100)); }
   const a = { ...S.r3.v3.stats };
   m.setGfxPref('reduceFx', false);
   return a;
@@ -149,7 +153,8 @@ if (bid === 'battle') {
   const pan = await page.evaluate(() => { const c = window.__game.scene.S.v3.cam; return Math.hypot(c.px, c.pz); });
   ok(pan > 0.5, `arrows pan the battle camera (${pan.toFixed(2)})`);
   await shot('gfx3d-roam-battle');
-  await key('Home'); await wait(500);
+  await key('Home');
+  for (let t = 0; t < 60; t++) { if (await page.evaluate(() => { const V = window.__game.scene.S.v3; return V.focusPt && Math.hypot(V.cam.cx - V.focusPt.x, V.cam.cz - V.focusPt.z) < 0.6; })) break; await wait(100); }
   const foc = await page.evaluate(() => { const S = window.__game.scene.S, V = S.v3; return V.focusPt ? Math.hypot(V.cam.cx - V.focusPt.x, V.cam.cz - V.focusPt.z) : -1; });
   ok(foc >= 0 && foc < 0.6, `Home: battle camera on the active unit (${foc.toFixed(2)})`);
 }

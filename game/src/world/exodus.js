@@ -5,6 +5,7 @@ import { EXODUS as X } from '../data/world/exodus.js';
 import { t } from '../data/text/index.js';
 import { journal, tf } from './state.js';
 import { clashTick } from './clashes.js';
+import { dayTick } from './delayed.js';
 import { EXODUS_RADIO, EXODUS_RUMORS, EXODUS_NPC } from '../data/text/exodus.js';
 
 /** Timer stopped for good (mq-exodus closed / node destroyed). */
@@ -86,6 +87,7 @@ export function passDays(save, n = 1) {
   const r = exodusSync(save);
   r.out.push(...clashTick(save, n)); // skirmishes.md: markers appear / resolve with the days
   r.out.push(...expTick(save)); // expeditions.md: errands of the reserve come back
+  r.out.push(...dayTick(save)); // content-wave1.md: delayed consequences, quest timers
   return r;
 }
 

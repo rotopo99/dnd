@@ -3,6 +3,7 @@
 // dead companion → Cyberspace state; dead hero / lost battle → Cyberspace episode (scenes/cyberspace.js).
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
+import { radioBattle } from '../world/radio.js';
 import { applyWithdrawal } from '../rules/aftermath.js';
 import { t } from '../data/text/index.js';
 import { battleXp } from '../rules/progression.js';
@@ -426,6 +427,7 @@ function writeBack(game, S, won, o, { retreat = false } = {}) {
   out.push(...restAfterBattle(save, b.byId, won && !retreat, game.data)); // rest: ENR / «за отдых» persist, breather after a win
   // Cyberspace is decided right here (synchronously): a reload before the next scene still sends the hero there
   if (!retreat && (!won || hu?.dead)) save.cyberspace = save.cyberspace || { reason: won ? 'hero' : 'wipe', helped: !!won, pending: true };
+  radioBattle(save, { won, retreat, down: b.units.some((u) => (u.id === 'hero' || String(u.id).startsWith('c-')) && (u.down || u.dead)) }); // content-wave1.md: radio counters
   if (won) {
     out.push(...battleLoyalty(save, b.units, S.revived)); // companions-scenes.md: downed / raised / clean wins
     out.push(...gainXp(save, Math.round(battleXp(b, game.data) * (o.xpMul ?? 1)), game.data)); // skirmishes.md: choice XP multiplier

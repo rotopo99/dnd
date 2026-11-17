@@ -5413,5 +5413,200 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(b.bridges.length >= 2 && b.triggers.length === 1);
   });
 }
+
+// ---------------------------------------------------------------- content-wave1.md: delayed effects, quest timer, radio, lore finds, debates, accusation
+{
+  const st = await import('../game/src/world/state.js');
+  const qs = await import('../game/src/world/quests.js');
+  const ex = await import('../game/src/world/exodus.js');
+  const D = await import('../game/src/world/data.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const RD = await import('../game/src/world/radio.js');
+  const LO = await import('../game/src/world/lore.js');
+  const CR = await import('../game/src/world/check-run.js');
+  const { RADIO } = await import('../game/src/data/world/radio.js');
+  const { CHECK_SCENES } = await import('../game/src/data/world/check-scenes.js');
+  const { normalizeSave } = await import('../game/src/save.js').then((m) => ({ normalizeSave: m.normalizeSave || null }));
+  const mk = () => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); s.flags['prologue-done'] = true; return s; };
+  const turnin = (s, qid, outcome, path = [outcome]) => { s.quests[qid] = { state: 'done', stage: 'back', opt: null, subs: {}, path, outcome, turnin: true }; return qs.claimTurnin(s, qid, GAME_DATA); };
+  const slot = (s, qid, pred = () => true) => qs.slots(s, qid).find(pred);
+
+  test('wave1: quests, turn-ins, consequences and check scenes are registered (subgoal keys shifted to 0-based)', () => {
+    for (const id of ['w1-filters', 'w1-circus', 'w1-flood', 'w1-cauldron', 'w1-hearing', 'w1-medbox', 'w1-hunter', 'w1-station']) {
+      assert.ok(D.QUESTS[id] && D.QUEST_TURNIN[id] && CQ.cqOutcome, id);
+      assert.ok(qs.questsOffered(mk(), D.QUESTS[id].giver).some((q) => q.id === id), `${id} offered by its giver`);
+    }
+    assert.ok(CHECK_SCENES['w1-flood/race#s0o:barge-tech'] && CHECK_SCENES['w1-cauldron/clues#s3'] && !CHECK_SCENES['w1-cauldron/clues#s4']);
+    const s = mk(); qs.startQuest(s, 'w1-cauldron'); qs.onTalk(s, 'd-kambuz', GAME_DATA);
+    const sl = slot(s, 'w1-cauldron', (x) => x.sub === 0);
+    assert.equal(CR.questScene(sl).key, 'w1-cauldron/clues#s0');
+    assert.ok(!CR.questScene(sl).scene.auto, 'explicit scene');
+  });
+
+  test('wave1: a delayed consequence fires after N days (once, flag dl:, journal «Пришли новости», fx)', () => {
+    const s = mk();
+    turnin(s, 'w1-filters', 'villages');
+    assert.equal(s.delayed.length, 1);
+    assert.equal(s.delayed[0].due, s.day + 6);
+    const c0 = s.hero.credits;
+    ex.passDays(s, 5);
+    assert.ok(!s.flags['dl:w1-filters:thirst'] && s.hero.credits === c0, 'not yet');
+    const r = ex.passDays(s, 1);
+    assert.ok(s.flags['dl:w1-filters:thirst'] && s.hero.credits === c0 + 60, 'fired with fx');
+    assert.ok(r.out.some((x) => /Пришли новости/.test(x.text)) && s.journal.some((j) => /Пришли новости/.test(j.text)));
+    assert.equal(s.delayed.length, 0);
+    ex.passDays(s, 3);
+    assert.equal(s.hero.credits, c0 + 60, 'once');
+    // radio id of a delayed entry goes first
+    const s2 = mk(); turnin(s2, 'w1-cauldron', 'yakor'); ex.passDays(s2, 3);
+    assert.ok(s2.flags['dl:w1-cauldron:second']);
+    assert.equal(RD.radioQueue(s2)[0].id, 'rd-w1-cauldron-wrong');
+    assert.ok((s2.deeds.lie || 0) >= 1, 'consequence deeds');
+  });
+
+  test('wave1: quest timer — shown in the journal, expiry → onExpire outcome (late), early stop after min', () => {
+    const s = mk();
+    qs.startQuest(s, 'w1-flood'); qs.onTalk(s, 'd-prichal', GAME_DATA);
+    assert.equal(s.quests['w1-flood'].stage, 'race');
+    assert.equal(qs.timerLeft(s, 'w1-flood'), 3);
+    assert.match(qs.currentGoalText(s, 'w1-flood'), /Осталось 3 дн\./);
+    ex.passDays(s, 2);
+    assert.equal(qs.timerLeft(s, 'w1-flood'), 1);
+    const r = ex.passDays(s, 1);
+    assert.ok(r.out.some((x) => /Время вышло/.test(x.text)));
+    assert.equal(s.quests['w1-flood'].stage, 'back');
+    qs.onTalk(s, 'd-prichal', GAME_DATA);
+    assert.equal(s.quests['w1-flood'].outcome, 'late');
+    qs.claimTurnin(s, 'w1-flood', GAME_DATA);
+    assert.ok(s.flags['cq:w1-flood:late']);
+    // barge saved (the scene fx sets the flag first): the stage waits for the second goal, «enough» ends it early
+    const b = mk();
+    qs.startQuest(b, 'w1-flood'); qs.onTalk(b, 'd-prichal', GAME_DATA);
+    const ch = slot(b, 'w1-flood', (x) => x.sub === 0);
+    qs.chooseOption(b, ch, 'barge-tech', GAME_DATA);
+    const bs = slot(b, 'w1-flood', (x) => x.sub === 0 && x.option);
+    b.flags['w1-barge-saved'] = true;
+    qs.completeSlot(b, bs, GAME_DATA);
+    assert.equal(b.quests['w1-flood'].stage, 'race', 'waits while the timer runs');
+    const enough = slot(b, 'w1-flood', (x) => x.choice?.options?.[0]?.id === 'timer-enough');
+    assert.ok(enough);
+    qs.chooseOption(b, enough, 'timer-enough', GAME_DATA);
+    assert.equal(b.quests['w1-flood'].stage, 'back');
+    qs.onTalk(b, 'd-prichal', GAME_DATA);
+    assert.equal(b.quests['w1-flood'].outcome, 'barge');
+    // one goal done and the time is out → the next stage, not «late»
+    const c = mk();
+    qs.startQuest(c, 'w1-flood'); qs.onTalk(c, 'd-prichal', GAME_DATA);
+    const cs = slot(c, 'w1-flood', (x) => x.sub === 1); c.flags['w1-seeds-saved'] = true; qs.completeSlot(c, cs, GAME_DATA);
+    ex.passDays(c, 3);
+    qs.onTalk(c, 'd-prichal', GAME_DATA);
+    assert.equal(c.quests['w1-flood'].outcome, 'seeds');
+  });
+
+  test('wave1: radio — DSL keys known, news by flag / wanted, once not repeated, base summary 3 different, comms raise the hub chance', () => {
+    const keys = new Set();
+    const walk = (w) => { for (const [k, v] of Object.entries(w || {})) { keys.add(k); if (k === 'any') v.forEach(walk); if (k === 'not') walk(v); } };
+    RADIO.news.forEach((n) => walk(n.when));
+    for (const k of keys) assert.ok(RD.RADIO_KEYS.includes(k), k);
+    const s = mk();
+    s.wanted = { aiParty: { heat: 1, since: s.day, bounty: 0 } };
+    const heard = [];
+    for (let i = 0; i < 12; i++) heard.push(...RD.radioPick(s, { n: 1, rng: () => 0.9 }).map((g) => g.news.id));
+    assert.ok(heard.includes('rd-crime-1') && !heard.includes('rd-crime-2'));
+    assert.equal(new Set(heard).size, heard.length, 'no repeats within the cooldown');
+    const f = mk(); f.flags['dl:w1-medbox:exposed'] = true;
+    assert.ok(RD.radioQueue(f).some((n) => n.id === 'rd-w1-medbox-exposed'));
+    assert.ok(RD.radioFresh(f) > 0);
+    const once = RADIO.news.find((n) => n.once);
+    if (once) { const o = mk(); RD.radioOf(o).heard[once.id] = 1; o.day = 500; assert.ok(!RD.radioEligible(o).includes(once)); }
+    const base = RD.radioPick(mk(), { n: RD.RADIO_INFO.perBase });
+    assert.equal(base.length, 3); assert.equal(new Set(base.map((g) => g.news.id)).size, 3);
+    const h = mk();
+    const hub = Object.values(D.LOCATIONS).find((l) => l.kind === 'hub');
+    const before = RD.radioEnterChance(h, hub.id);
+    h.flags['cq:w1-station:comms'] = true;
+    assert.ok(RD.radioEnterChance(h, hub.id) > before && before > 0);
+    assert.ok(RD.radioEnterChance(h, 'ostanovka') > 0);
+  });
+
+  test('wave1: lore finds — stage / cq / scene / node notes, codex «Записки», secret layers 1/3 → 3/3', () => {
+    const s = mk();
+    qs.startQuest(s, 'w1-filters');
+    assert.deepEqual(s.pendingFinds, ['ln-filters-1']);
+    const f = LO.takeFind(s);
+    assert.equal(f.note.id, 'ln-filters-1');
+    assert.ok(s.codex.flags.includes('lore:ln-filters-1'));
+    assert.equal(f.secrets[0].id, 'water-war'); assert.equal(f.secrets[0].n, 1);
+    assert.equal(LO.takeFind(s), null);
+    turnin(s, 'w1-filters', 'half');
+    assert.ok(s.pendingFinds.includes('ln-filters-2'));
+    LO.findsAt(s, 'scene:w1-flood/race#s0o:barge-tech');
+    assert.ok(s.pendingFinds.includes('ln-flood-1'), 'scene keys are 0-based');
+    // node notes: one per entry, three notes of one secret open it fully
+    const n = mk();
+    const kr = LO.notesOfSecret('kringe-origin').filter((x) => x.loc);
+    for (let i = 0; i < 3; i++) { LO.nodeFinds(n, kr[i].loc); while (LO.takeFind(n)); }
+    const p = LO.secretProgress(n, 'kringe-origin');
+    assert.equal(p.n, 3); assert.ok(p.found >= 3);
+    const one = mk(); LO.nodeFinds(one, 'dungeons-m14'); LO.nodeFinds(one, 'dungeons-m14');
+    assert.equal(one.pendingFinds.length, 1, 'one note per entry');
+  });
+
+  test('wave1: debates (challenge onFail → choice stage), onFail inside all, fx doneFlag counts once', () => {
+    const s = mk();
+    qs.startQuest(s, 'w1-hearing'); qs.onTalk(s, 'd-kolobok', GAME_DATA);
+    qs.chooseOption(s, slot(s, 'w1-hearing'), 'debate', GAME_DATA);
+    const ch = slot(s, 'w1-hearing');
+    assert.equal(ch.goal.kind, 'challenge'); assert.equal(ch.goal.successes, 4); assert.equal(ch.goal.failures, 3);
+    qs.failSlot(s, ch, GAME_DATA);
+    assert.equal(s.quests['w1-hearing'].stage, 'defeat');
+    assert.deepEqual(qs.availableOptions(s, slot(s, 'w1-hearing')).map((o) => o.id), ['handover', 'breakout']);
+    qs.chooseOption(s, slot(s, 'w1-hearing'), 'handover', GAME_DATA);
+    qs.onTalk(s, 'd-kolobok', GAME_DATA);
+    assert.equal(s.quests['w1-hearing'].outcome, 'handover');
+    const w = mk(); qs.startQuest(w, 'w1-hearing'); qs.onTalk(w, 'd-kolobok', GAME_DATA);
+    qs.chooseOption(w, slot(w, 'w1-hearing'), 'debate', GAME_DATA);
+    qs.completeSlot(w, slot(w, 'w1-hearing'), GAME_DATA);
+    qs.onTalk(w, 'd-kolobok', GAME_DATA);
+    assert.equal(w.quests['w1-hearing'].outcome, 'debate');
+    // onFail inside an 'all' subgoal → another stage
+    D.QUESTS['t-allfail'] = { id: 't-allfail', name: 'T', stages: [
+      { id: 'a', text: 'a', goal: { kind: 'all', goals: [{ kind: 'check', skills: ['analysis'], dc: 10, onFail: 'b' }, { kind: 'check', skills: ['tech'], dc: 10 }] }, next: 'c' },
+      { id: 'b', text: 'b', goal: { kind: 'pay', credits: 1 }, next: 'c' }, { id: 'c', text: 'c', goal: { kind: 'pay', credits: 1 }, end: 'done' }], rewards: {} };
+    const a = mk(); qs.startQuest(a, 't-allfail');
+    qs.failSlot(a, slot(a, 't-allfail', (x) => x.sub === 0), GAME_DATA);
+    assert.equal(a.quests['t-allfail'].stage, 'b');
+    delete D.QUESTS['t-allfail'];
+  });
+
+  test('wave1: accusation — evidence flags open the true culprit, outcome and delayed revenge follow', () => {
+    const s = mk();
+    qs.startQuest(s, 'w1-cauldron'); qs.onTalk(s, 'd-kambuz', GAME_DATA);
+    for (const [i, f] of [[0, 'w1-clue-mold'], [2, 'w1-clue-log'], [3, 'w1-clue-debt']]) {
+      const sl = slot(s, 'w1-cauldron', (x) => x.sub === i);
+      s.flags[f] = true; // check-scene fx set the clue before completeSlot
+      qs.completeSlot(s, sl, GAME_DATA);
+    }
+    assert.equal(s.quests['w1-cauldron'].stage, 'accuse');
+    const ids = qs.availableOptions(s, slot(s, 'w1-cauldron')).map((o) => o.id);
+    assert.ok(ids.includes('parus-proof') && !ids.includes('yakor') && ids.includes('kambuz'));
+    qs.chooseOption(s, slot(s, 'w1-cauldron'), 'parus-proof', GAME_DATA);
+    qs.onTalk(s, 'd-kambuz', GAME_DATA);
+    assert.equal(s.quests['w1-cauldron'].outcome, 'parus-proof');
+    qs.claimTurnin(s, 'w1-cauldron', GAME_DATA);
+    assert.ok(s.flags['cq:w1-cauldron:parus-proof'] && s.delayed.some((d) => d.id === 'revenge'));
+    assert.ok(!D.npcsAt('raytsentr', s).includes('d-parus'), 'the culprit is gone');
+  });
+
+  test('wave1: node services and price zone after the station repair', () => {
+    const s = mk();
+    assert.ok(!CQ.nodeServices(s, 'ostanovka').includes('heal'));
+    turnin(s, 'w1-station', 'water');
+    assert.ok(CQ.nodeServices(s, 'ostanovka').includes('heal'));
+    const l = mk(); turnin(l, 'w1-station', 'light');
+    assert.equal(CQ.priceZoneMult(l, 'ostanovka'), 0.92);
+    assert.equal(CQ.priceZoneMult(l, 'svalka'), 1);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

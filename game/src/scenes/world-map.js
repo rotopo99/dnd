@@ -2,6 +2,7 @@
 // with nodes at `px`, fog of the unknown, routes styled by kind (road / trail / wild / sea / lake / tunnel / district),
 // pan (drag, WASD / arrows) and zoom (wheel, +/− buttons). Travel along known routes: days, sea fare, `route.rolls`
 // encounter rolls per hop (d20 ≤ 3 × danger + mod, shown in the map log), ambush, encounters, hidden nodes by Perception.
+import { openRadio } from './radio.js';
 import { baseOpen, BASE_LOC, modFx as baseFx } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
@@ -27,7 +28,7 @@ import { roadUses } from '../world/skill-uses.js';
 import { EXODUS_UI } from '../data/text/exodus.js';
 import { hotspot } from '../ui/tooltip.js';
 import { openPauseMenu } from '../ui/save-ui.js';
-import { nodeMark, closedLoc, TONE_COLOR } from '../world/consequences.js';
+import { nodeMark, closedLoc, TONE_COLOR, nodeServices } from '../world/consequences.js';
 import { hunterEncounter, hunterBonus } from '../world/crime.js';
 import { openRestMenu, canCampAt } from './rest.js';
 import { restState, provisionCount } from '../world/rest.js';
@@ -692,7 +693,7 @@ export function createWorldMapScene() {
       ...(l.terminal && (sv.visited.includes(id) || S.pflags.has('terminal-scan')) ? [{ text: `${t('map.terminal')}: ${t(`term.${sv.terminals[l.terminal.id]}`)}`, color: C.n }] : []),
       ...(S.pflags.has('scout-node') && l.battles?.length ? [{ text: `${t('map.scout')}: ${l.battles.filter((b) => !(b.once && sv.battlesDone.includes(b.id))).map((b) => encounterName(b.encounter)).join(', ') || '—'}`, color: C.c }] : []),
       ...(S.pflags.has('map-memory') && sv.visited.includes(id) && l.caches?.some((c) => !sv.caches.includes(c.id)) ? [{ text: t('map.cacheHere'), color: C.a }] : []),
-      ...(l.services.length ? [{ text: l.services.map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
+      ...(nodeServices(sv, l.id).length ? [{ text: nodeServices(sv, l.id).map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
     ];
     // v4: the node description (locations-lore.js desc, else locations.js desc), up to CARD_DESC_LINES lines
     const mark = nodeMark(sv, id); // world-consequences.md: the latest change replaces the description
@@ -810,6 +811,7 @@ export function createWorldMapScene() {
       else if (inp.wasPressed('KeyJ')) nav(game, 'journal');
       else if (inp.wasPressed('KeyG')) nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) nav(game, 'codex');
+      else if (inp.wasPressed('KeyV')) openRadio(game, { source: 'handset', onDone: (g) => layout(g) }); // content-wave1.md: «Эфир»
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },
     render(game) {

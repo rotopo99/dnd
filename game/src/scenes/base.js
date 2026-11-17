@@ -25,6 +25,8 @@ import { openRestMenu } from './rest.js';
 import { talkCandidates } from '../world/romance.js';
 import { openPrivateTalk } from './romance-scene.js';
 import { restState, provisionCount } from '../world/rest.js';
+import { openRadio } from './radio.js';
+import { RADIO_INFO, radioOf } from '../world/radio.js';
 
 const BASE_W = 1280, BASE_H = 720;
 const SMALL = '12px monospace';
@@ -310,7 +312,12 @@ export function createBaseScene(back = null) {
   self = {
     id: 'base',
     S,
-    enter(game) { toastAll(game, baseTick(game.save)); persist(game); layout(game); },
+    enter(game) {
+      toastAll(game, baseTick(game.save)); persist(game); layout(game);
+      // content-wave1.md: the radio room — the day's summary (RADIO.rules.perBaseVisit news) on the first entry of the day
+      const sv = game.save;
+      if (modFx(sv, 'radio') && radioOf(sv).baseDay !== sv.day) { radioOf(sv).baseDay = sv.day; openRadio(game, { source: 'radio-room', n: RADIO_INFO.perBase, onDone: (g) => layout(g) }); }
+    },
     resume(game) { layout(game); },
     resize(game) { layout(game); },
     update(game, dt) {

@@ -4,12 +4,16 @@
 // applied at once; everything else is derived from save.cq on the fly (old saves / data edits stay consistent):
 //   vendorMods (prices ×mult 0.7–1.5, add/remove stock, closed), npcs (data.js npcPlacement), access (closedLoc),
 //   nodeMarks (description + map glyph, the latest entry for a node wins), worldRumors, consequenceLog, epilogue.
+// content-wave1.md: `deeds` [tag] — state.deed at once; `delayed` — queued (world/delayed.js); `services` { loc: { add, remove } }
+//   and `priceZone` { locs, mult } — derived (nodeServices, priceZoneMult); lore notes `cq:<qid>:<outcome>` are queued.
 import { CONSEQUENCES, CQ_FLAG, EPILOGUE } from '../data/world/consequences.js';
 import { NPCS } from '../data/npcs.js';
 import { LOCATIONS, resolveLocation, ROUTES, QUESTS } from './data.js';
 import { applyRep, factionName } from './reputation.js';
-import { journal, tf, repToasts } from './state.js';
+import { journal, tf, repToasts, deed } from './state.js';
 import { romanceEpilogue } from './romance.js';
+import { scheduleDelayed } from './delayed.js';
+import { findsAt } from './lore.js';
 
 export { CQ_FLAG };
 export const EPI_MAX = 12;           // spec: no more than 12 slides by prio (intro and outro always)
@@ -86,6 +90,9 @@ export function applyConsequences(save, qid) {
   save.cq = [...(save.cq || []), { qid, o, day: save.day }];
   const out = [];
   for (const [f, d] of Object.entries(e.rep || {})) if (d) out.push(...repToasts(applyRep(save, f, d)));
+  for (const tag of e.deeds || []) out.push(...deed(save, tag));
+  scheduleDelayed(save, qid, o, e);
+  findsAt(save, `cq:${qid}:${o}`);
   // access.open: the place and its hidden routes become known (as state.openHidden)
   for (const raw of e.access?.open || []) {
     const id = resolveLocation(raw);
@@ -120,6 +127,26 @@ export function vendorMods(save, npcId) {
   return { mult: Math.max(VENDOR_MULT[0], Math.min(VENDOR_MULT[1], mult)), add, remove, closed };
 }
 export const shopClosed = (save, npcId) => vendorMods(save, npcId).closed;
+
+/** Services of a node now: LOCATIONS[id].services + consequence `services[loc].add` − `remove` (in save.cq order). */
+export function nodeServices(save, raw) {
+  const id = resolveLocation(raw);
+  const list = [...(LOCATIONS[id]?.services || [])];
+  for (const { e } of entries(save)) for (const [l, ch] of Object.entries(e.services || {})) {
+    if (resolveLocation(l) !== id) continue;
+    for (const x of ch.add || []) if (!list.includes(x)) list.push(x);
+    for (const x of ch.remove || []) { const i = list.indexOf(x); if (i >= 0) list.splice(i, 1); }
+  }
+  return list;
+}
+
+/** Price multiplier of every shop on a node (consequence `priceZone`), clamped to VENDOR_MULT. */
+export function priceZoneMult(save, raw) {
+  const id = resolveLocation(raw);
+  let m = 1;
+  for (const { e } of entries(save)) if (e.priceZone && (e.priceZone.locs || []).some((l) => resolveLocation(l) === id)) m *= e.priceZone.mult || 1;
+  return Math.max(VENDOR_MULT[0], Math.min(VENDOR_MULT[1], m));
+}
 
 /** Access state of a place: 'closed' | 'open' | null (no change); the latest consequence wins. */
 export function accessOf(save, raw) {

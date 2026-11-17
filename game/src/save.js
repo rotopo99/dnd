@@ -147,6 +147,12 @@ export function normalizeSave(s, data) {
   out.roam = rm && typeof rm.loc === 'string' && Number.isInteger(rm.x) && Number.isInteger(rm.y)
     ? { loc: rm.loc, x: rm.x, y: rm.y, party: arr(rm.party).filter((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isInteger)) } : null;
   out.pendingRadio = arr(s.pendingRadio).filter((id) => QUESTS[id]); // quest radio calls not shown yet (world/quests.js)
+  // content-wave1.md: delayed consequences, queued lore finds, radio memory and battle counters (old saves — empty)
+  out.delayed = arr(s.delayed).filter((d) => d && QUESTS[d.qid] && typeof d.id === 'string' && typeof d.o === 'string').map((d) => ({ id: d.id, qid: d.qid, o: d.o, due: num(d.due, out.day) }));
+  out.pendingFinds = uniq(arr(s.pendingFinds).filter((x) => typeof x === 'string'));
+  out.radioPush = uniq(arr(s.radioPush).filter((x) => typeof x === 'string'));
+  out.radio = { heard: obj(obj(s.radio).heard), log: arr(obj(s.radio).log).filter((x) => x && typeof x.id === 'string').slice(-50), baseDay: num(obj(s.radio).baseDay, -1) };
+  out.stats = { battlesWon: 0, fled: 0, downDay: null, ...obj(s.stats) };
   out.coop = normCoop(s.coop, data); // multiplayer.md stage 4: guests' heroes of a co-op party (relinked by name on join)
   out.clashes = normClashes(s.clashes); // skirmishes.md: active map markers (broken template / enemy ids dropped)
   // third-exodus.md: the Exodus timer; old saves after the prologue start it now (full T0)

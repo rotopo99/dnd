@@ -38,6 +38,8 @@ const cellPt = (x, y) => page.evaluate(async ({ x, y }) => {
   return { x: p.x + S.L.cell / 2, y: p.y + S.L.cell / 2 };
 }, { x, y });
 /** Wait until the camera tweens (turn / zoom / follow) are done: slow SwiftShader frames must not race fixed waits. */
+/** Poll a page predicate (slow SwiftShader frames: an input is processed on the next logic step, not within a fixed wait). */
+const until = async (fn, arg, ms = 4000) => { for (let t = 0; t < ms; t += 50) { if (await page.evaluate(fn, arg)) return true; await wait(50); } return false; };
 const settle = async (ms = 4000) => {
   for (let t = 0; t < ms; t += 50) {
     if (await page.evaluate(() => { const c = window.__game.scene.S.v3?.cam; return !c || (c.tw >= 1 && !c.moving); })) return;
@@ -119,7 +121,7 @@ for (const [bi, biome] of biomes.entries()) {
     }
     // rotate the camera: ] and the on-screen button
     const yaw0 = await page.evaluate(() => window.__game.scene.S.v3.cam.yawTo);
-    await key('BracketRight'); await wait(100); await settle();
+    await key('BracketRight'); await until((y) => window.__game.scene.S.v3.cam.yawTo !== y, yaw0); await settle();
     const yaw1 = await page.evaluate(() => window.__game.scene.S.v3.cam.yaw);
     ok(Math.abs(yaw1 - yaw0 - 90) < 0.01, `rotate ] : yaw ${yaw0} -> ${yaw1}`);
     await shot('gfx3d-rotated');
@@ -127,12 +129,13 @@ for (const [bi, biome] of biomes.entries()) {
     // a turn banner eats the next click by design: dismiss it first
     for (let i = 0; i < 20 && (await page.evaluate(() => !!window.__game.scene.S.banner)); i++) { await key('Enter'); await wait(150); }
     const pre = await page.evaluate(() => { const S = window.__game.scene.S; return { banner: !!S.banner, modal: !!window.__game.modals?.length, msg: S.message?.text || null, res: !!S.result }; });
-    await page.mouse.click(btn.x + btn.w / 2, btn.y + btn.h / 2); await wait(100); await settle();
+    await page.mouse.click(btn.x + btn.w / 2, btn.y + btn.h / 2);
+    await until((y) => window.__game.scene.S.v3.cam.yawTo !== y, yaw1); await settle();
     if (Math.abs((await page.evaluate(() => window.__game.scene.S.v3.cam.yaw)) - yaw0) >= 0.01) console.log('    before the click:', JSON.stringify(pre));
     const yaw2 = await page.evaluate(() => window.__game.scene.S.v3.cam.yaw);
     ok(Math.abs(yaw2 - yaw0) < 0.01, `rotate button ⟲ : yaw ${yaw2}`);
     // picking still lands on the right cell after a turn
-    await key('BracketLeft'); await wait(100); await settle();
+    await key('BracketLeft'); await until((y) => window.__game.scene.S.v3.cam.yawTo !== y, yaw2); await settle();
     const hc = await page.evaluate(() => { const S = window.__game.scene.S, h = S.b.byId[S.heroId]; return { x: h.x, y: h.y }; });
     // the hero's body (chest height): a unit pick
     const pp = await page.evaluate(async () => {
@@ -176,11 +179,11 @@ for (const [bi, biome] of biomes.entries()) {
     ok(red.a.shadow === 0 && red.c.shadow === 512, `reduce effects: shadow ${red.a.shadow}, particles ${red.a.particles}; low shadows ${red.c.shadow}`);
     // 3D -> 2D -> 3D with the top bar button
     const g = await page.evaluate(async () => { const m = await import('/game/src/gfx/scene3d.js'); return m.camButtons(window.__game.scene.S, window.__game).find((b) => b.id === 'gfx'); });
-    await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await wait(300);
+    await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await until(() => !window.__game.scene.S.v3); await wait(300);
     const v2 = await page.evaluate(() => ({ v3: !!window.__game.scene.S.v3, vis: ['gl', 'gl3'].every((id) => getComputedStyle(document.getElementById(id)).visibility === 'hidden') ? 'hidden' : 'visible' }));
     ok(!v2.v3 && v2.vis === 'hidden', `toggle -> 2D (gl ${v2.vis})`);
     await shot('gfx3d-2d');
-    await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await wait(300);
+    await page.mouse.click(g.x + g.w / 2, g.y + g.h / 2); await until(() => !!window.__game.scene.S.v3);
     ok(await page.evaluate(() => !!window.__game.scene.S.v3), 'toggle -> 3D');
   }
 }
@@ -188,7 +191,7 @@ for (const [bi, biome] of biomes.entries()) {
 // settings window from the main menu
 await page.evaluate(async () => { const m = await import('/game/src/scenes/menu.js'); window.__game.setScene(m.menuScene); });
 await wait(200);
-await key('KeyO'); await wait(200);
+await key('KeyO'); await until(() => window.__game.modals.length > 0);
 const md = await page.evaluate(() => window.__game.modals.at(-1)?.title || '');
 ok(md === 'Настройки', `settings modal «${md}»`);
 await shot('gfx3d-settings');
@@ -199,7 +202,7 @@ await startBattle(biomes[0]);
 await wait(900);
 await heroTurn();
 await page.evaluate(() => { const three = window.__game.scene.S.v3?.engine === 'three'; const c = document.getElementById(three ? 'gl3' : 'gl'); (three ? window.__game.gfx.three.renderer.getContext() : c.getContext('webgl2')).getExtension('WEBGL_lose_context').loseContext(); });
-await wait(2600);
+await until(() => !window.__game.scene.S.v3 && window.__game.toasts.length > 0, null, 6000);
 const lost = await page.evaluate(() => ({ v3: !!window.__game.scene.S.v3, toast: window.__game.toasts.map((x) => x.text).join(' | ') }));
 ok(!lost.v3 && /3D недоступно/.test(lost.toast), `context lost -> 2D (${lost.toast})`);
 

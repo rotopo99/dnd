@@ -39,7 +39,7 @@ import { openCheckScene } from './check-scene.js';
 import { questScene, stageXp } from '../world/check-run.js';
 import { waitingLoyalty, giftOptions, giveGift, lovedTypes, companionRequest, refuseRequest, acceptRequest } from '../world/companions.js';
 import { syncBase, baseTick, atBase, modActive as baseModActive, radioTurnin } from '../world/base.js';
-import { nodeMark, worldRumors, closedLoc, TONE_COLOR, isDispute } from '../world/consequences.js';
+import { nodeMark, worldRumors, closedLoc, TONE_COLOR, isDispute, nodeServices } from '../world/consequences.js';
 import { openEpilogue } from './epilogue.js';
 import { npcFaction, wantedTick, entryThreat, entryCheckOf, guardEnemies, bribeInfo, applyBribe, heatOf, crimeRumors, isOfficial, amnestiesAt, amnestyInfo, applyAmnesty, amnestyFailed } from '../world/crime.js';
 import { CRIME_RULES } from '../data/world/crime.js';
@@ -52,6 +52,10 @@ import { enterNet } from './cyberspace.js';
 import { rescuesAt, freeCaptive, unseenResults } from '../world/expeditions.js';
 import { openExpeditions, openExpResults } from '../ui/expedition-ui.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
+import { openRadio, radioBadge } from './radio.js';
+import { openFind } from './finds.js';
+import { radioFresh, radioEnterChance, radioRestChance } from '../world/radio.js';
+import { nodeFinds, findsAt } from '../world/lore.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
@@ -94,6 +98,11 @@ export function createLocationScene(rawId, opts = {}) {
     toastAll(g, autoProgress(save(g), g.data)); // e.g. a 'reach' goal of this very node
     persist(g);
     layout(g);
+    if (!v.enterFinds) {
+      v.enterFinds = true;
+      nodeFinds(save(g), locId); // content-wave1.md: lore notes of the node — the «Находка» window from pump
+      if (Math.random() < radioEnterChance(save(g), locId, nodeServices(save(g), locId))) v.radio = 'hub';
+    }
     if (!v.enterEvents) {
       v.enterEvents = true;
       const ev = eventsFor(save(g), locId, 'enter')[0];
@@ -184,11 +193,19 @@ export function createLocationScene(rawId, opts = {}) {
     const failed = (g) => { toastAll(g, failSlot(sv, s, g.data)); refresh(g); };
     if (s.locked) return { label: `${s.goal.kind === 'battle' ? t('loc.fight') : t('loc.decide')}: ${q.name}`, sub: s.locked, disabled: true, reason: s.locked };
     if (s.kind === 'choice') {
+      // content-wave1.md §5.5 (accusation): options gated by evidence flags stay in the list, greyed, with the missing clues
+      const avail = availableOptions(sv, s);
+      const clueName = (f) => (t(`flag.${f}`) === `flag.${f}` ? null : t(`flag.${f}`)); // only flags named in text (clues) count
+      const isClue = (o) => o.requires?.flags?.length && o.requires.flags.every(clueName);
+      const opts = s.choice.options.filter((o) => avail.includes(o) || (isClue(o) && !(sv.quests[s.qid].failedOpts?.[`${s.stage.id}:${s.sub ?? '-'}`] || []).includes(o.id)));
+      const clues = [...new Set(s.choice.options.filter(isClue).flatMap((o) => o.requires.flags))];
+      const evidence = clues.length ? [{ text: clues.some((f) => sv.flags[f]) ? tf('accuse.clues', { list: clues.filter((f) => sv.flags[f]).map(clueName).filter(Boolean).join(', ') }) : t('accuse.noClues'), color: 'f' }] : [];
       return { label: `${t('loc.decide')}: ${q.name}`, sub: s.gate || s.stage.text, run: (g) => g.openModal({
-        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
-        options: [...availableOptions(sv, s).map((o) => {
-          const ok = !o.requires || requires(g, o.requires);
-          return { label: o.text, disabled: !ok, sub: ok ? null : t('loc.notAvailable'), run: (g2) => { toastAll(g2, chooseOption(sv, s, o.id, g2.data)); refresh(g2); } };
+        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
+        options: [...opts.map((o) => {
+          const ok = avail.includes(o) && (!o.requires || requires(g, o.requires));
+          const miss = (o.requires?.flags || []).filter((f) => !sv.flags[f]).map(clueName).filter(Boolean);
+          return { label: o.text, disabled: !ok, sub: ok ? null : miss.length ? tf('accuse.need', { list: miss.join(', ') }) : t('loc.notAvailable'), run: (g2) => { toastAll(g2, chooseOption(sv, s, o.id, g2.data)); refresh(g2); } };
         }), { label: t('loc.questLater'), run: () => {} }],
       }) };
     }
@@ -201,7 +218,7 @@ export function createLocationScene(rawId, opts = {}) {
         // companions-scenes.md part 2: every quest check is a check scene (explicit by key or autoScene); group — everyone rolls
         run: (g) => openCheckScene(g, { title: q.name, scene: coolHeadScene(g, s, questScene(s).scene), dc: goalDc(sv, goal), members: ms(g), group: !!goal.group, cancel: true,
           memoKey: `quest:${s.qid}:${s.stage.id}:${s.sub ?? '-'}:${s.option?.id ?? '-'}`, xpBase: stageXp(s.qid), stageText: s.stage.text,
-          onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
+          onDone: (g2, ok) => { if (ok) findsAt(sv, `scene:${questScene(s).key}`); return ok ? done(g2) : failed(g2); } }) };
     }
     if (goal.kind === 'challenge') {
       return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.successes}/${goal.failures} · ${t('battle.dc')} ${goalDc(sv, goal)}`,
@@ -306,7 +323,7 @@ export function createLocationScene(rawId, opts = {}) {
     for (const r of rescuesAt(sv, locId)) out.push({ label: tf('exp.rescue', { name: NPCS[r.p.npc]?.name || r.p.npc }), sub: `${t('exp.rescueSub')} · ${encounterName(r.encounter)}`,
       run: (g) => startWorldBattle(g, { encounter: r.encounter, location: locId, onWin: (g2) => { toastAll(g2, freeCaptive(g2.save, r.p)); persist(g2); again(g2); } }) });
     // services
-    const svc = loc.services.filter((x) => !serviceOff(sv, loc, x));
+    const svc = nodeServices(sv, locId).filter((x) => !serviceOff(sv, loc, x)); // content-wave1.md: repaired nodes gain services
     if (canCampAt(locId)) out.push(restAction(sv, svc, tier));
     // companions-scenes.md: gifts (giftRare) and requests (refuseOrder)
     if (activeCompanions(sv).length) {
@@ -339,7 +356,7 @@ export function createLocationScene(rawId, opts = {}) {
     const spiritBlock = spiritRestBlock(sv, locId); // cyberspace-v2.md §7: a spirit rests only at an 'ours' terminal
     if (spiritBlock) return { label: t('rest.button'), sub: spiritBlock, disabled: true, reason: spiritBlock };
     return { label: t('rest.button'), sub: `${t('rest.buttonSub')} · ${st.short}/${st.max}`,
-      run: (g) => openRestMenu(g, { back: home(), locId, lodging, done: (g2) => { S.canSwap = true; refresh(g2); }, again }) };
+      run: (g) => openRestMenu(g, { back: home(), locId, lodging, done: (g2) => { S.canSwap = true; if (Math.random() < radioRestChance()) V(g2).radio = 'tavern'; refresh(g2); }, again }) };
   }
 
   function rumor(game) {
@@ -388,6 +405,7 @@ export function createLocationScene(rawId, opts = {}) {
     if (lore.problem) lines.push({ text: `${t('lore.problem')}: ${lore.problem}`, color: 'a' }, ...(hook ? [{ text: t('lore.problemQuest'), color: 'j' }] : []));
     if (lore.rumor) lines.push({ text: `${t('lore.rumor')}: «${lore.rumor}»`, color: '4' });
     if (lore.spots?.length) lines.push({ text: t('lore.spots'), color: 'h' });
+    if (!(sv.pendingFinds || []).length) nodeFinds(sv, locId); // content-wave1.md: looking around turns up the next note of the node
     game.openModal({ title: loc.name, width: 1000, lines,
       options: [...(lore.spots || []).map((sp) => ({ label: sp.name, sub: spotSub(sv, sp), run: (g) => openSpot(g, sp) })), { label: t('loc.close'), run: () => {} }] });
   }
@@ -693,6 +711,8 @@ export function createLocationScene(rawId, opts = {}) {
     const nav = [['map', 'loc.map', 'M'], ['party', 'panel.party', 'P'], ['rep', 'panel.rep', 'R'], ['journal', 'panel.journal', 'J'], ['save', 'save.save', 'S'], ['menu', 'loc.toMenu', 'Esc']];
     nav.forEach(([id, key, k], i) => btns.push({ kind: 'nav', id, label: t(key), key: k, x: ox + 648 + i * 102, y: oy + BASE_H - 60, w: 98, h: 44 }));
     if (S.roam) btns.push({ kind: 'nav', id: 'roam', label: t('roam.toMap'), key: 'Tab', x: ox + 930, y: oy + 94, w: 230, h: 24 });
+    const fresh = radioFresh(sv); // content-wave1.md: «Эфир» (V), a dot while there is news about the party
+    btns.push({ kind: 'nav', id: 'radio', label: `${t('radio.button')}${fresh ? ' ●' : ''}`, key: t('radio.key'), x: ox + 1096, y: oy + 58, w: 160, h: 26, font: FONT, selected: fresh > 0, tip: fresh ? { title: t('radio.title'), lines: [radioBadge(fresh).trim()] } : null });
     if (sv.hero.pendingTalents > 0) btns.push({ kind: 'nav', id: 'party', label: t('talent.pending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     else if ((sv.hero.pendingAsi || []).length) btns.push({ kind: 'nav', id: 'party', label: t('lvl.asiPending'), x: ox + 1016, y: oy + 16, w: 240, h: 36, selected: true });
     S.buttons = btns;
@@ -705,7 +725,8 @@ export function createLocationScene(rawId, opts = {}) {
     if (id === 'toMenu') { persist(game); return import('./menu.js').then((m) => game.setScene(m.menuScene)); }
     if (id === 'menu') return openPauseMenu(game, { onMenu: (g) => nav(g, 'toMenu') });
     if (id === 'save') { persist(game); return openSaveMenu(game); }
-    return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: home(), canSwap: !!S.canSwap || loc.services.includes('rest') })));
+    if (id === 'radio') return openRadio(game, { source: 'handset', onDone: (g) => refresh(g) });
+    return import('./panels.js').then((m) => game.setScene(m.createPanelsScene({ tab: id, back: home(), canSwap: !!S.canSwap || nodeServices(game.save, locId).includes('rest') })));
   }
 
   function click(game, b) {
@@ -722,6 +743,9 @@ export function createLocationScene(rawId, opts = {}) {
   /** Turn-ins / radio / epilogue when nothing is on screen (also called by the free map). → true if something opened. */
   function pump(game) {
     if (S.turnin && V(game).gate) { S.turnin = false; if (turnins(game)) return true; }
+    // content-wave1.md: queued lore finds, then the receiver of the node / the tavern
+    if (V(game).gate && !game.modals.length && (save(game).pendingFinds || []).length && openFind(game, (g) => refresh(g))) return true;
+    if (V(game).gate && !game.modals.length && V(game).radio) { const src = V(game).radio; V(game).radio = null; openRadio(game, { source: src, onDone: (g) => refresh(g) }); return true; }
     if (V(game).gate && !game.modals.length) { const back = unseenResults(save(game), locId); if (back.length) { openExpResults(game, back, (g) => refresh(g)); return true; } }
     return !!(V(game).gate && pendingEpilogue(game));
   }
@@ -734,7 +758,7 @@ export function createLocationScene(rawId, opts = {}) {
     S,
     // shared with the free node map (scenes/roam.js): the same actions as the menu
     npc: NA, actions: (g) => actions(g), searchCache: (g, c) => searchCache(g, c), openDisassemble: (g) => openDisassemble(g),
-    restAction: (g) => { const sv = save(g); return restAction(sv, loc.services.filter((x) => !serviceOff(sv, loc, x)), homeTier(g)); },
+    restAction: (g) => { const sv = save(g); return restAction(sv, nodeServices(sv, locId).filter((x) => !serviceOff(sv, loc, x)), homeTier(g)); },
     pump, refresh: (g) => refresh(g), toMap: (g) => toMap(g), nav: (g, id) => nav(g, id), V: (g) => V(g),
     enter(game) {
       S.time = 0;
@@ -768,6 +792,7 @@ export function createLocationScene(rawId, opts = {}) {
       else if (inp.wasPressed('KeyG')) nav(game, 'gear');
       else if (inp.wasPressed('KeyB')) nav(game, 'codex');
       else if (inp.wasPressed('KeyK')) nav(game, 'cards'); // cards-casino.md: collection / decks
+      else if (inp.wasPressed('KeyV')) nav(game, 'radio'); // content-wave1.md: «Эфир»
       else if (inp.wasPressed('KeyS')) nav(game, 'save');
       else if (inp.wasPressed('Escape')) nav(game, 'menu');
     },

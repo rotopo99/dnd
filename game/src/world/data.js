@@ -15,6 +15,11 @@ import { QUEST_TURNIN_CYBER } from '../data/text/quest-turnin-cyber.js';
 import { QUESTS_CYBER } from '../data/world/quests-cyber.js';
 import { AUTOABLE_QUESTS } from '../data/world/expeditions.js';
 import { CONSEQUENCES } from '../data/world/consequences.js';
+import { QUESTS_WAVE1_MAP } from '../data/world/quests-wave1.js';
+import { QUEST_TURNIN_WAVE1 } from '../data/text/quest-turnin-wave1.js';
+import { CONSEQUENCES_WAVE1 } from '../data/world/consequences-wave1.js';
+import { CHECK_SCENES } from '../data/world/check-scenes.js';
+import { CHECK_SCENES_WAVE1 } from '../data/world/check-scenes-wave1.js';
 import { PROLOGUE } from '../data/text/prologue.js';
 import { LOCATIONS, ITEMS as WORLD_ITEMS, resolveLocation } from '../data/world/locations.js';
 import { GAME_DATA } from '../data/index.js';
@@ -66,11 +71,23 @@ export function personalQuest(pq) {
   return { id: pq.id, name: pq.name, giver: pq.npc, summary: stages[0]?.text || '', personal: { npc: pq.npc, loyalty, altPath: !!unlockAltPath }, stages, rewards };
 }
 export const QUESTS_PERSONAL = Object.fromEntries(Object.values(PERSONAL_QUESTS).map((q) => [q.id, personalQuest(q)]));
-export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER };
+export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER, ...QUESTS_WAVE1_MAP };
 // cyberspace-v2.md: turn-in lines of the cyber quests; expeditions.md: mini quests a reserve companion can close (autoable)
 Object.assign(QUEST_TURNIN, QUEST_TURNIN_CYBER);
 for (const id of Object.keys(AUTOABLE_QUESTS)) if (QUESTS[id]) QUESTS[id].autoable = true;
-export const isNpcQuest = (id) => !!QUESTS_NPC[id] || !!QUESTS_D[id];
+export const isNpcQuest = (id) => !!QUESTS_NPC[id] || !!QUESTS_D[id] || !!QUESTS_WAVE1_MAP[id];
+
+// content-wave1.md §5.1: quests, turn-ins, consequences and check scenes of wave 1 join the shared tables.
+// quest.outcomeBy → turn-in outcomeBy (questOutcome); a timed quest falls back to timer.onExpire ('late') when no flag stands.
+Object.assign(QUEST_TURNIN, QUEST_TURNIN_WAVE1);
+for (const q of Object.values(QUESTS_WAVE1_MAP)) {
+  const td = QUEST_TURNIN[q.id];
+  if (td && (q.outcomeBy || q.timer?.onExpire)) td.outcomeBy = [...(q.outcomeBy || []), ...(q.timer?.onExpire ? [{ key: q.timer.onExpire }] : [])];
+}
+Object.assign(CONSEQUENCES, CONSEQUENCES_WAVE1);
+/** Wave-1 data numbers subgoals `s<N>` from 1, quests.js slots from 0: `…#s2o:x` → `…#s1o:x`. */
+export const wave1Key = (key) => String(key).replace(/#s(\d+)/, (m, n) => `#s${Math.max(0, Number(n) - 1)}`);
+for (const [k, sc] of Object.entries(CHECK_SCENES_WAVE1)) CHECK_SCENES[wave1Key(k)] = sc;
 
 /** Lore of a node (locations-lore.js): { desc, spots, rumor, problem } or null. */
 export const locationLore = (id) => LOCATION_LORE[resolveLocation(id)] || null;
