@@ -5325,5 +5325,93 @@ console.log('metric combat stage 3 (circle surfaces, cover polygons, bridges) + 
     assert.ok(p2.options.length && p2.options.every((id) => GAME_DATA.RACES[id].playable && id !== 'android'), p2.options.join(','));
   });
 }
+console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge traps)');
+{
+  const AI = await import('../game/src/rules/ai.js');
+  const GE = await import('../game/src/rules/geometry.js');
+  const G2 = await import('../game/src/rules/metric-geo.js');
+  const SU = await import('../game/src/rules/surfaces.js');
+  const put = (b, u, px, py) => {
+    const g = b.grid, x = Math.floor(px / 1.5), y = Math.floor(py / 1.5);
+    if (u.x >= 0) b.occ[u.y * g.w + u.x] = 0;
+    u.x = x; u.y = y; u.px = px; u.py = py; b.occ[y * g.w + x] = b.units.indexOf(u) + 1; b.occVersion++;
+  };
+  const mk4 = (map, nh = 1, enemies = ['scavenger']) => {
+    const heroes = Array.from({ length: nh }, () => buildCreature({ race: 'human', cls: 'ranger', level: 3, data: GAME_DATA }));
+    const b = createBattle({ map: { id: 'm4', win: 'killAll', ...map }, heroes, enemies, data: GAME_DATA, seed: 3, autoReactions: false, metric: 4 });
+    for (const u of b.units) u.maxHp = u.hp = 300;
+    return { b, H: b.units.filter((u) => u.team === 'heroes'), E: b.units.filter((u) => u.team === 'enemies') };
+  };
+  const OPEN = ['##############', '#............#', '#............#', '#............#', '#............#', '#............#', '#............#', '#............#', '#............#', '##############'];
+  test('metric 4: a cone hits by its exact form (circle vs sector edge), stage 3 by the angle estimate', () => {
+    const { b } = mk4({ grid: OPEN });
+    const O = { px: 3, py: 3, r: 0.4 }, C = { px: 6, py: 3, r: 0 };
+    const a = (49 * Math.PI) / 180, T = { px: 3 + Math.cos(a) * 4.8, py: 3 + Math.sin(a) * 4.8, r: 0.4 }; // 4 degrees off the edge, by the arc corner
+    assert.equal(G2.inAreaM(b, 'cone', 3, O, C, T), false, 'exact: misses the corner');
+    b.metric = 3; assert.equal(G2.inAreaM(b, 'cone', 3, O, C, T), true, 'stage 3 estimate hits'); b.metric = 4;
+    const a2 = (48 * Math.PI) / 180, T2 = { px: 3 + Math.cos(a2) * 3, py: 3 + Math.sin(a2) * 3, r: 0.4 };
+    assert.equal(G2.inAreaM(b, 'cone', 3, O, C, T2), true, 'a circle touching the side edge is in');
+    const pts = G2.areaPolyM(b, 'cone', 3, O, C);
+    assert.ok(GE.partHas({ pts }, 6, 3) && !GE.partHas({ pts }, 3, 6.5) && !GE.partHas({ pts }, 3, 3), 'polygon from the caster edge');
+  });
+  test('metric 4: a cone spill is a polygon; the AI aims away from its own unit in the fire', () => {
+    const { b, H, E } = mk4({ grid: OPEN }, 2, ['scavenger', 'scavenger']);
+    const [U, A] = E;
+    U.abilities = [{ id: 'fire-cone', name: 'x', action: 'action', range: 1, target: 'tile', area: { shape: 'cone', size: 3 }, roll: 'save', save: 'dex', onSave: 'half', effects: [{ op: 'damage', dice: '2d6', dmgType: 'fire' }], surface: { kind: 'fire', turns: 2 } }];
+    U.weapon = null;
+    put(b, U, 9.75, 7.75); put(b, H[0], 13.0, 7.75); put(b, A, 12.5, 6.4); put(b, H[1], 6.5, 7.75);
+    forceTurn(b, U);
+    const act = AI.chooseAction(b, U.id);
+    assert.equal(act.ability, 'fire-cone');
+    const C = act.tile.px != null ? { px: act.tile.px, py: act.tile.py } : G2.ptOf({ x: act.tile.x, y: act.tile.y });
+    const pts = G2.areaPolyM(b, 'cone', 3, G2.ptOf(U), C);
+    assert.ok(!GE.partHas({ pts }, A.px, A.py), 'own unit out of the fire');
+    assert.ok(G2.inAreaM(b, 'cone', 3, G2.ptOf(U), { ...C, r: 0 }, G2.ptOf(H[1])), 'the lone hero is the target');
+    assert.ok(perform(b, act).ok);
+    const f = SU.floorAt(b, H[1].x, H[1].y);
+    assert.ok(f && f.kind === 'fire' && f.shape && f.shape[0].pts, 'polygon layer');
+    assert.ok(!SU.floorAt(b, A.x, A.y));
+  });
+  test('metric 4: the AI picks the cover polygon side away from the threat', () => {
+    const grid = ['####################', '#..................#', '#..................#', '#..................#', '#.........c........#', '#..................#', '#..................#', '#..................#', '####################'];
+    for (const side of [1, -1]) {
+      const { b, H, E } = mk4({ grid, props: [{ id: 'crate', x: 10, y: 4, w: 1, h: 1, cover: 'half', blocks: true }] });
+      E[0].ai = 'ranged'; E[0].weapon = { ...H[0].weapon }; E[0].abilities = [];
+      put(b, H[0], 15.75 + side * 11.25, 6.75); put(b, E[0], 15.75 - side * 2.0, 9.75);
+      forceTurn(b, E[0]);
+      const t = AI.planTile(b, E[0]);
+      assert.ok(side > 0 ? t.px < 15.75 : t.px > 15.75, `behind the crate (${t.px})`);
+      assert.ok(G2.coverM(b, G2.ptOf(H[0]), { px: t.px, py: t.py, r: 0.4 }, false) >= 2, 'covered from the shooter');
+    }
+  });
+  test('metric 4: the AI brings a bridge down under a foe; a battle trigger collapses it on entry', () => {
+    const grid = ['##########', '#P.......#', '#WWWW=WWW#', '#WWWW=WWW#', '#WWWW=WWW#', '#.......E#', '##########'];
+    const { b, H, E } = mk4({ grid });
+    put(b, H[0], 8.25, 4.95); put(b, E[0], 8.25, 8.25);
+    b.bridges[0].hp = 1; b.bridges[0].armor = 1; E[0].abilities = [];
+    forceTurn(b, E[0]);
+    const act = AI.chooseAction(b, E[0].id);
+    assert.equal(act.type, 'smash');
+    for (let i = 0; i < 6 && !b.bridges[0].down; i++) { forceTurn(b, E[0]); perform(b, act); }
+    assert.ok(b.bridges[0].down && H[0].hp < 300 && H[0].hp >= 1, 'fell with damage');
+    const T = mk4({ grid, triggers: [{ id: 'tr', when: { event: 'enter', rect: [5, 2, 1, 3], team: 'heroes' }, do: [{ op: 'log', text: 'crack' }, { op: 'collapse', at: [5, 3] }] }] });
+    put(T.b, T.H[0], 6.75, 2.25); forceTurn(T.b, T.H[0]);
+    assert.ok(perform(T.b, { type: 'move', unit: T.H[0].id, to: { px: 8.25, py: 4.6 } }).ok);
+    assert.ok(T.b.bridges[0].down);
+    assert.deepEqual(T.b.log.filter((e) => ['trigger', 'triggerLog', 'geoCollapse', 'fall'].includes(e.type)).map((e) => e.type), ['trigger', 'triggerLog', 'geoCollapse', 'fall']);
+  });
+  const HM = await import('../game/src/world/handmade.js');
+  const bt = (await import('../game/src/data/maps/handmade/betonka.js')).default;
+  const wolf = (await import('../game/src/data/maps/handmade/arena-wolf-0.js')).default;
+  test('hand maps: bridge traps in Бетонка / Свалка / Волк-0 — triggers shifted into the battle cut', () => {
+    const amb = bt.battles.find((x) => x.id === 'bt-ambush');
+    const tr = HM.battleTriggers(amb.triggers, HM.battleRegion(amb));
+    assert.deepEqual(tr[0].do.find((o) => o.op === 'collapse').at, [23 - 14, 16 - 6]);
+    const def = HM.handArenaDef(wolf);
+    assert.ok(def.triggers && def.triggers[0].when.event === 'hp');
+    const b = createBattle({ map: def, heroes: [buildCreature({ race: 'human', cls: 'ranger', level: 5, data: GAME_DATA })], enemies: [wolf.boss], data: GAME_DATA, seed: 2, autoReactions: false, metric: 4 });
+    assert.ok(b.bridges.length >= 2 && b.triggers.length === 1);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
