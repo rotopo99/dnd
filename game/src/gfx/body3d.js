@@ -115,6 +115,9 @@ export function headShape({ F = false, face = {}, y0, hh = 0.215, cx = 0 }) {
     for (const k of ['rx', 'rz', 'z']) r[k] = cr(g(j - 1, k), g(j, k), g(j + 1, k), g(j + 2, k), f);
     const jaw = t < 0.34 ? lerp(fj * (F ? 0.93 : 1), 1, smooth(0, 0.34, t)) : 1;
     r.rx *= fw * jaw; if (F && t < 0.3) r.z += 0.002;
+    // chin (t < 0.16): pointed + jutting (>0) or soft + short (<0); cheekbones (t 0.2..0.5): wider and a bit forward
+    const cn = face.c || 0, ck = face.k || 0, cb = t < 0.16 ? 1 - t / 0.16 : 0, ch = Math.sin(Math.PI * smooth(0.16, 0.56, t)) * (t > 0.16 && t < 0.56 ? 1 : 0);
+    r.rx *= 1 - 0.16 * cn * cb + 0.075 * ck * ch; r.z += 0.016 * cn * cb + 0.006 * ck * ch;
     return r;
   };
   const S = (a, t) => { const r = ring(t); return [cx + Math.cos(a) * r.rx, y0 + t * H, r.z + Math.sin(a) * r.rz]; };
@@ -127,7 +130,7 @@ export function buildHead(mb, Hd, skinR, o) {
   const Q = o.lod ? 0.65 : 1, TAU = Math.PI * 2;
   surfGrid(mb, (u, v) => Hd.S(TAU * u, v), Math.round(26 * Q), Math.round(14 * Q), () => skinR, { closed: true, center: (p) => [Hd.cx, p[1], -0.005] });
   // face patch: slightly in front of the surface, uv in the atlas cell of the row (expression 0; the shader adds the column)
-  const row = faceRow(o.look, { skin: o.skinTag }), { half, t0, t1 } = FACE_PATCH;
+  const row = faceRow(o.look, { skin: o.skinTag, pin: o.pin }), { half, t0, t1 } = FACE_PATCH;
   const pat = (u, v) => { const a = Math.PI / 2 - half * (2 * u - 1), t = t1 - v * (t1 - t0); return add(Hd.S(a, t), mul(Hd.out(a, t), 0.0028)); };
   surfGrid(mb, pat, Math.round(14 * Q), Math.round(14 * Q), () => skinR, {
     center: (p) => [Hd.cx, p[1], -0.005], mat: 9,
@@ -158,7 +161,7 @@ const rng = (seed) => { let s = seed * 9301 + 49297; return () => { s = (s * 930
  * Returns the spring pivots {c1, c2, c3, sL, sR} for the bones. The caller has set the head bone.
  */
 export function buildHair(mb, Hd, style, grad, o = {}) {
-  const Q = o.lod ? 0.6 : 1, TAU = Math.PI * 2, R = rng((o.seed || 1) * 7 + 3), F = o.F, B = o.bones;
+  const Q = o.lod ? 0.6 : 1, TAU = Math.PI * 2, R = rng((o.seed || 1) * 7 + 3), F = o.F, B = o.bones, FK = 0.45 + 1.1 * (o.fringe ?? 0.5); // FK: length of the fringe locks
   const { y0, hh } = Hd;
   const pv = { c1: [0, y0 + 0.6 * hh, -0.085], c2: [0, y0 + 0.12 * hh, -0.095], c3: [0, y0 - 0.2 * hh, -0.1], sL: [0.085, y0 + 0.55 * hh, 0.02], sR: [-0.085, y0 + 0.55 * hh, 0.02] };
   if (style === 'bald' || o.hat === 'full') return pv;
@@ -194,7 +197,7 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
     const part = (side || (R() < 0.5 ? -1 : 1)) * 0.12;
     for (let i = 0; i < n; i++) {
       const f = n === 1 ? 0.5 : i / (n - 1), a = Math.PI / 2 + (f - 0.5) * spread + (over ? 0.5 * spread / n * (R() - 0.2) : 0);
-      const L = tLen * (0.55 + 0.45 * Math.sin(f * Math.PI)) * (0.7 + 0.6 * R()) + (over ? 0.04 * R() : 0);
+      const L = tLen * FK * (0.55 + 0.45 * Math.sin(f * Math.PI)) * (0.7 + 0.6 * R()) + (over ? 0.04 * R() : 0);
       strand(a, 0.985 - 0.05 * Math.abs(f - 0.5), 0.76 - L + (f - 0.5) * part, 0, 0.036 + 0.014 * R() + over * 0.5, { off0: 0.018 + over, off1: 0.03 + over * 1.4, n1: 3, taper: 1.15, gradK: over ? 0.85 : 1, sway: (f - 0.5) * 0.03 + (R() - 0.5) * 0.02 });
     }
   };
@@ -280,7 +283,7 @@ export function buildHair(mb, Hd, style, grad, o = {}) {
       const side = R() < 0.5 ? -1 : 1; // asymmetric swept bangs
       for (let i = 0; i < 7; i++) {
         const f = i / 6, a = Math.PI / 2 + side * (0.9 - f * 1.9), t0 = 0.99 - 0.02 * f;
-        strand(a, t0, 0.66 - 0.12 * Math.sin(f * 3) - (side * (f - 0.5) > 0 ? 0.1 : 0), 0.0, 0.04 + 0.01 * R(), { off0: 0.016, off1: 0.03, n1: 5, taper: 1.2, gradK: 1 });
+        strand(a, t0, 0.66 - 0.16 * (FK - 1) - 0.12 * Math.sin(f * 3) - (side * (f - 0.5) > 0 ? 0.1 : 0), 0.0, 0.04 + 0.01 * R(), { off0: 0.016, off1: 0.03, n1: 5, taper: 1.2, gradK: 1 });
       }
       if (F) { for (let i = 0; i < 11; i++) { const a = -0.4 + (i / 10) * (Math.PI + 0.8) * 1 + Math.PI; strand(a, 0.7, 0.3, 0.1, 0.04, { off0: 0.014, off1: 0.028, bn: chain ? ((s) => chainBn(chain, s)) : undefined }); } }
       else for (const s of [-1, 1]) strand(Math.PI / 2 - s * 1.3, 0.66, 0.4, 0.02, 0.03, { off0: 0.014, off1: 0.02 });

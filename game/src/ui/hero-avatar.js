@@ -5,6 +5,7 @@
 // Animation: breathing (bust scale +-1%), slow head sway (yaw +-3 deg), blink every 3-6 s, flinch + red flash on damage, tremor when morale is low.
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
 import { defaultLook, buildAvatarMesh, renderAvatar, isLook3d, rngOf, woundLevel, AVATAR_EMOTIONS } from './avatar3d.js';
+import { migrateLook } from './look-data.js';
 
 const FPS = 15;
 const pc = (k) => PALETTE[PALETTE_KEYS.indexOf(k)];
@@ -15,10 +16,12 @@ const makeCanvas = (w, h) => {
 
 // ---- look of a hero
 const lookMemo = new WeakMap();
+const migMemo = new WeakMap();
 const defMemo = new Map();
 export function heroLook3d(h) {
   const race = h?.race ?? h?.raceId ?? 'human';
   let av = h?.avatar;
+  if (isLook3d(av) && av.v === 1) { let mg = migMemo.get(av); if (!mg) { mg = migrateLook(av, race); migMemo.set(av, mg); } av = mg; }
   if (!isLook3d(av)) {
     const seed = String(h?.name ?? h?.cls ?? h?.classId ?? 'hero');
     const k = `${race}|${seed}`;

@@ -147,6 +147,7 @@ export function formatEvent(S, e) {
     case 'smash': return [a(A), g(` ${t('log.smash')} `), [t(`obj.${e.kind}`), C.a], g(`: ${rollStr(e.roll)} ${t('battle.vs')} ${t('res.kb')} ${e.kb} — `), e.hit ? [t('battle.hit'), C['5']] : [t('battle.miss'), C['4']]];
     case 'objectLoot': return [g(t('log.objectLoot'))];
     case 'geoCollapse': return [[t('log.collapse'), C.c]];
+    case 'triggerLog': return [[e.text, C.a]]; // battle triggers (rules/battle-triggers.js)
     case 'fall': return [a(T), g(` ${t('log.fall')} (${e.levels}): `), [String(e.amount), C.c]];
     case 'slam': return [a(T), g(` ${t('log.slam')}: ${e.amount}`)];
     case 'phase': return [a(A), g(': '), [t('log.phase').replace('{n}', e.n) + (e.say ? ` ${e.say}` : ''), C.c]];

@@ -17,6 +17,7 @@ import { ENEMIES } from '../data/index.js';
 import { SPRITES, heroSpriteIds, enemySpriteIds } from '../assets/sprites.js';
 import { buildAvatarMesh, defaultLook, rngOf } from '../ui/avatar3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
+import { migrateLook, BUILD_K, outfitOf, hairRamp } from '../ui/look-data.js';
 import { isMeleeWeapon } from '../rules/combat.js';
 import { MeshBuilder, rampRGB } from './mesh.js';
 import { NBONES } from './gl.js';
@@ -64,7 +65,8 @@ const factionOf = (id) => {
 function profile(u, type, base) {
   const hero = u.kind === 'hero', def = hero ? null : ENEMIES[base] || ENEMIES[u.enemyId] || null;
   const faction = hero ? null : factionOf(base);
-  let armor = hero ? (u.armorType || (u.team === 'npc' ? 'cloth' : 'light')) : def?.armorType || FACTION_ARMOR[faction] || 'light';
+  const outfit = hero ? outfitOf(heroLook3d(u).look) : null; // cosmetic outfit of the editor (look.outfit), 'auto' — by the gear
+  let armor = hero ? (outfit?.armor || u.armorType || (u.team === 'npc' ? 'cloth' : 'light')) : def?.armorType || FACTION_ARMOR[faction] || 'light';
   if (!hero && !def?.armorType) {
     const bump = def?.boss ? 3 : def?.rank === 'elite' || def?.rank === 'miniboss' ? 1 : 0;
     armor = ARMOR[Math.min(3, ARMOR.indexOf(armor) + bump)];
@@ -74,7 +76,7 @@ function profile(u, type, base) {
   let gender = hero ? 'x' : r() < 0.4 ? 'f' : 'm';
   if (hero) gender = heroLook3d(u).look.gender || 'x';
   const hide = hero && u.hide ? u.hide : {};
-  return { hero, def, faction, armor: hide.armor ? 'cloth' : armor, race, gender, hide, f: gender === 'f', off: hero ? u.offhand?.kind || null : null, rank: def?.rank || null, seed: r() };
+  return { hero, def, faction, trim: outfit?.trim || null, armor: hide.armor && !outfit ? 'cloth' : armor, race, gender, hide, f: gender === 'f', off: hero ? u.offhand?.kind || null : null, rank: def?.rank || null, seed: r() };
 }
 const enemyLooks = new Map();
 function enemyLook(base, pf) {
@@ -90,7 +92,7 @@ function enemyLook(base, pf) {
 }
 
 const tplCache = new Map();
-export function unitTemplate(u, { simple = false, lod = false } = {}) {
+export function unitTemplate(u, { simple = false, lod = false, fresh = false } = {}) {
   const hero = u.kind === 'hero';
   const type = bodyType(u);
   const melee = isMeleeWeapon(u);
@@ -101,7 +103,7 @@ export function unitTemplate(u, { simple = false, lod = false } = {}) {
   const key = hero
     ? `h|${type}|${u.raceId}|${u.classId}|${heroLook3d(u).key}|${wk}|${pf.armor}|${pf.off}|${JSON.stringify(pf.hide)}|${ks}`
     : `e|${type}|${base || u.id}|${pf.gender}|${wk}|${u.boss ? 1 : 0}|${ks}`;
-  let T = tplCache.get(key);
+  let T = fresh ? null : tplCache.get(key);
   if (T) return T;
   const ids = hero ? heroSpriteIds(u.raceId, u.classId, u.look) : enemySpriteIds(u.enemyId || u.id);
   const f0 = frame0(ids[0]), layer = ids[1] ? frame0(ids[1]) : [];
@@ -120,7 +122,7 @@ export function unitTemplate(u, { simple = false, lod = false } = {}) {
   const mb = new MeshBuilder().setBone(0);
   const pv = new Float32Array(NBONES * 3);
   const P = (b, x, y, z) => { pv[b * 3] = x; pv[b * 3 + 1] = y; pv[b * 3 + 2] = z; };
-  const o = { hero, u, col, wk, melee, simple: simple || lod, lod, mb, P, base, pf, tags: u.tags || [] };
+  const o = { hero, u, col, wk, melee, simple: simple || lod, lod, mb, P, base, pf, tags: u.tags || [], pin: !!u.pinFace };
   let top = 1.2, hover = false, anime = false;
   if (type === 'beast') top = beast(o);
   else if (type === 'drone') { hover = GFX.hover.some((k) => base.includes(k)); top = drone(o, hover); }
@@ -132,8 +134,8 @@ export function unitTemplate(u, { simple = false, lod = false } = {}) {
     top = anime ? humanoidAnime(o) : humanoid(o, type === 'robot');
   }
   const scale = (anime ? GFX.unit.scaleAnime : GFX.unit.scale) * (u.boss ? GFX.unit.bossScale : 1);
-  T = { key, type, mb, pivots: pv, top, scale, hover, ranged: !!wk && !melee, anime, fem: pf.f, hero, idle: hero ? u.classId || 'x' : pf.faction || 'x', look: o.lookUsed || null };
-  tplCache.set(key, T);
+  T = { key, type, mb, pivots: pv, top, scale, hover, ranged: !!wk && !melee, anime, fem: pf.f, hero, idle: hero ? u.classId || 'x' : pf.faction || 'x', look: o.lookUsed || null, headY: o.headY || 0 };
+  if (!fresh) tplCache.set(key, T);
   return T;
 }
 
@@ -194,6 +196,7 @@ function humanoid(o, robot) {
   dress(o, C);
   raceBody(o, C);
   factionBody(o, C);
+  if (pf.trim) factionBody(o, C, pf.trim);
   kit(o, C);
   // head
   mb.setBone(BONE.head);
@@ -264,6 +267,8 @@ function simpleHead(o, C, skinR) {
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const HAIR_KEYS = { black: ['0', '1', '2'], brown: ['6', '7', '8'], ginger: ['7', '8', 'e'], blond: ['8', 'a', 'b'], grey: ['2', '3', '4'], white: ['3', '4', '5'], green: ['k', 'j', 'j'], pink: ['o', 'n', 'n'], cyan: ['i', 'h', 'h'] };
 
+const hairKeys = (look) => hairRamp(look);
+
 /** Skin ramp with a warm (reddish) shadow instead of a grey-blue one: the shadow step leans to a ruddy tone, mid/light keep the palette. */
 function warmSkin(r) {
   const w = [0.5, 0.2, 0.15], k = 0.4, S = r[0].map((c, i) => Math.max(c, 0.16 + i * 0.02) * (1 - k) + w[i] * k);
@@ -273,18 +278,20 @@ function warmSkin(r) {
 function humanoidAnime(o) {
   const { mb, P, col, hero, u, lod, pf, base } = o;
   const R = GFX.races[pf.race] || {}, F = pf.f, A = pf.armor, hide = pf.hide, thin = lod || !hero;
-  const w = (R.w || 1) * (F ? 0.93 : 1) * (A === 'heavy' ? 1.05 : 1), lm = (R.limb || 1) * (F ? 0.88 : 1), hm = R.h || 1;
-  let look = hero ? heroLook3d(u).look : enemyLook(base, pf);
+  let look = migrateLook(hero ? heroLook3d(u).look : enemyLook(base, pf));
+  const BK = BUILD_K[look.build] || BUILD_K.normal;
+  const w = (R.w || 1) * (F ? 0.93 : 1) * (A === 'heavy' ? 1.05 : 1) * BK.w, lm = (R.limb || 1) * (F ? 0.88 : 1) * BK.limb, hm = (R.h || 1) * (1 + 0.07 * look.height);
+  const bustK = 1 + 0.38 * look.bust, hipK = 1 + 0.1 * look.hips, shK = 1 + 0.11 * look.shoulders;
   if (hide.helm) look = { ...look, acc: (look.acc || []).filter((a) => !['hood', 'helmet', 'bandana', 'cap'].includes(a)) };
   else if (!(look.acc || []).some((a) => ['hood', 'helmet', 'cap'].includes(a)) && ((hero && u.classId === 'arbiter') || (!hero && pf.faction === 'warprom' && ['elite', 'miniboss', 'boss'].includes(pf.rank)))) look = { ...look, acc: [...(look.acc || []), 'cap'] }; // peaked cap: arbiters, Warprom officers
   const av = buildAvatarMesh(look), M = matsOf(av);
   const cloth = (hero && look.cloth) || col.body;
   const rCloth = ramp(cloth), rUnder = ramp(col.legs), rDark = ramp('1'), rLeather = ramp('6'), rSkin = warmSkin(M.skin);
   const tights = F && (A === 'cloth' || A === 'light') ? ramp('1') : rUnder;
-  const accK = 'a', rPipe = ramp(accK), rGold = ramp('a'); // contrast piping / buttons: gold (palette a)
+  const accK = look.accent || 'a', rPipe = ramp(accK), rGold = ramp(accK); // contrast piping / buttons: gold (palette a) or the chosen accent
   const plate = ramp(pf.faction === 'tinBrotherhood' || A === 'heavy' ? '4' : '3');
   const shY = (F ? 1.105 : 1.13) * hm, hipY = (F ? 0.71 : 0.7) * hm, neckY = shY + 0.05 * hm, kn = hipY * 0.52;
-  const sx = (F ? 0.176 : 0.212) * w, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.088 * lm * (F ? 1.04 : 1);
+  const sx = (F ? 0.176 : 0.212) * w * shK, lx = (F ? 0.088 : 0.093) * w, t = 0.056 * lm, tl = 0.088 * lm * (F ? 1.04 * hipK : 1);
   const ey = shY - 0.25 * hm, wy = shY - 0.5 * hm;
   const C = { w, h: hm, t, sx, lx, hipY, shY, neckY, kn, ey, wy, tl, rCloth, rUnder, rDark, rLeather, rSkin, plate, R, F, A, bot: false, bone: false, cloth, rPipe, rGold };
   P(BONE.pelvis, 0, hipY, 0); P(BONE.torso, 0, hipY + 0.04, 0); P(BONE.head, 0, neckY, 0);
@@ -322,7 +329,7 @@ function humanoidAnime(o) {
     { y: f(-0.16), rx: 0.136, rz: 0.096, ao: 0.3 }, { y: f(0.0), rx: 0.148, rz: 0.104 }, { y: f(0.22), rx: 0.142, rz: 0.102 }, { y: f(0.45), rx: 0.13, rz: 0.098 },
     { y: f(0.62), rx: 0.15, rz: 0.108 }, { y: f(0.78), rx: 0.186, rz: 0.118, z: 0.004 }, { y: f(0.92), rx: 0.2, rz: 0.114 }, { y: f(1.0), rx: 0.196, rz: 0.104 }, { y: f(1.07), rx: 0.105, rz: 0.075 }, { y: f(1.14), rx: 0.054, rz: 0.054 },
   ];
-  for (const k of keys) { k.rx *= w; }
+  keys.forEach((k, i) => { k.rx *= w * (F ? (i <= 2 ? hipK : 1) : (i >= 4 ? shK : 1)); });
   const trunkR = A === 'cloth' || A === 'light' ? rCloth : (A === 'mech' ? ramp('2') : rDark);
   mb.setBone(BONE.torso).setMat(1);
   loft(mb, resample(keys, N), trunkR, { seg, rot: Math.PI / seg });
@@ -394,13 +401,14 @@ function humanoidAnime(o) {
   mb.setBone(BONE.head);
   const y0 = neckY + 0.015 * hm, Hd = headShape({ F, face: look.face || {}, y0, hh: 0.215 * (R.h ? Math.min(1.1, R.h) : 1) });
   const hat = (look.acc || []).includes('hood') || (look.acc || []).includes('helmet') ? 'full' : null;
-  buildHead(mb, Hd, rSkin, { look, lod: thin, F, ears: !!R.ears, skinTag: pf.race });
-  const hk = HAIR_KEYS[look.hairColor] || HAIR_KEYS.brown, grad = hairGrad(rampRGB(look.hairColor ? (M.hair ? hk : hk) : hk));
+  buildHead(mb, Hd, rSkin, { look, lod: thin, F, ears: !!R.ears, skinTag: pf.race, pin: o.pin });
+  const grad = hairGrad(rampRGB(hairKeys(look)));
   const bones = { c1: BONE.hair1, c2: BONE.hair2, c3: BONE.hair3, sL: BONE.sideL, sR: BONE.sideR };
   let style = look.hair === 'bald' && F ? 'bald' : look.hair;
-  const pvH = buildHair(mb, Hd, hat ? 'bald' : style, grad, { F, lod: thin, seed: pf.seed, bones, hat });
+  const pvH = buildHair(mb, Hd, hat ? 'bald' : style, grad, { F, lod: thin, seed: pf.seed, bones, hat, fringe: look.fringe });
   P(BONE.hair1, ...pvH.c1); P(BONE.hair2, ...pvH.c2); P(BONE.hair3, ...pvH.c3); P(BONE.sideL, ...pvH.sL); P(BONE.sideR, ...pvH.sR);
   const hc = Hd.y0 + Hd.hh * 0.5;
+  o.headY = hc;
   if (R.horns) for (const s of [-1, 1]) mb.cyl(s * 0.075, Hd.y0 + Hd.hh * 0.85, 0, 0.18, 0.03, ramp('5'), { seg: 6, r1: 0, ao: 0 });
   if (R.antenna) { tube(mb, [0.1, hc + 0.1, -0.03], [0.1, hc + 0.34, -0.03], 0.012, 0.012, ramp('3'), { seg: 4 }); mb.box(0.085, hc + 0.34, -0.045, 0.115, hc + 0.375, -0.015, glowR('h'), { glow: true, ao: 0 }); }
   let top = Hd.y0 + Hd.hh * (style === 'afro' ? 1.4 : style === 'mohawk' || style === 'spiky' ? 1.55 : 1.08);
@@ -408,8 +416,8 @@ function humanoidAnime(o) {
   // ---- bust (female): two soft domes on the bust bones over the trunk (the hook blends the trunk skin onto them)
   if (F && !lod) for (const s of [1, -1]) {
     mb.setBone(s > 0 ? BONE.bustL : BONE.bustR);
-    const b = s * 0.052 * w;
-    loft(mb, [{ y: shY - 0.106, rx: 0.036, rz: 0.03, x: b, z: 0.054, ao: 0.3 }, { y: shY - 0.075, rx: 0.049, rz: 0.044, x: b, z: 0.063 }, { y: shY - 0.045, rx: 0.046, rz: 0.043, x: b, z: 0.06 }, { y: shY - 0.015, rx: 0.026, rz: 0.026, x: b, z: 0.05 }], A === 'medium' || A === 'heavy' ? plate : trunkR, { seg: 10, capTop: true });
+    const b = s * 0.052 * w, bk = bustK, bz = (z) => 0.05 + (z - 0.05) * bk;
+    loft(mb, [{ y: shY - 0.106, rx: 0.036 * bk, rz: 0.03 * bk, x: b, z: bz(0.054), ao: 0.3 }, { y: shY - 0.075, rx: 0.049 * bk, rz: 0.044 * bk, x: b, z: bz(0.063) }, { y: shY - 0.045, rx: 0.046 * bk, rz: 0.043 * bk, x: b, z: bz(0.06) }, { y: shY - 0.015, rx: 0.026 * bk, rz: 0.026 * bk, x: b, z: 0.05 }], A === 'medium' || A === 'heavy' ? plate : trunkR, { seg: 10, capTop: true });
   }
   dressAnime(o, C);
   raceBody(o, C);
@@ -583,9 +591,9 @@ function raceBody(o, C) {
 }
 
 // ---------------------------------------------------------------- faction details (enemies)
-function factionBody(o, C) {
+function factionBody(o, C, trim = null) {
   const { mb, lod, pf } = o, { w, t, sx, shY, hipY, rCloth, rLeather, plate, rDark } = C;
-  const fc = pf.faction;
+  const fc = trim || pf.faction;
   if (!fc) return;
   mb.setBone(BONE.torso);
   const glowTri = (k) => mb.tri([-0.045, hipY + 0.3, 0.138], [0.045, hipY + 0.3, 0.138], [0, hipY + 0.2, 0.14], glowR(k), { glow: true });

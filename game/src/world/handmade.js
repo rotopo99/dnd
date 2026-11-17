@@ -216,6 +216,19 @@ export function battleOf(map, locId, save, id) {
 export const battleRegion = (b) => (b?.rect ? { x: b.rect[0], y: b.rect[1], w: b.rect[2], h: b.rect[3] } : null);
 
 /**
+ * Triggers of an embedded battle (level-design.md §7.2, rules/battle-triggers.js; authored in map cells) in the
+ * coordinates of the battle cut: `when.rect` and op `at` (collapse of the bridge holding that cell) shifted by region.
+ */
+export function battleTriggers(list, region) {
+  const ox = region ? region.x : 0, oy = region ? region.y : 0;
+  return (list || []).map((tr) => ({
+    ...tr,
+    when: tr.when && Array.isArray(tr.when.rect) ? { ...tr.when, rect: [tr.when.rect[0] - ox, tr.when.rect[1] - oy, tr.when.rect[2], tr.when.rect[3]] } : tr.when,
+    do: (tr.do || []).map((op) => (Array.isArray(op.at) ? { ...op, at: [op.at[0] - ox, op.at[1] - oy] } : op)),
+  }));
+}
+
+/**
  * Boss arena def (battle map): floor + elev, starts from the objs layer (P / A / E, B = the boss), the boss start goes to
  * index bossIndex of starts.E. → map def for createBattle.
  */
@@ -235,5 +248,6 @@ export function handArenaDef(def, { id = 'world', bossIndex = 0, weather = null,
     template: `hand:${def.id}`, ...(m.elev ? { elev: m.elev } : {}), weather: weather || def.weather || 'clear', tod: tod || def.tod || 'day' };
   if (boss) { es.splice(Math.max(0, Math.min(es.length, bossIndex)), 0, boss); out.starts = { E: es }; }
   if (def.surfaces) out.surfaces = def.surfaces;
+  if (def.battleTriggers) out.triggers = battleTriggers(def.battleTriggers, null); // e.g. a bridge that falls mid-fight
   return out;
 }

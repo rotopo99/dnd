@@ -20,7 +20,7 @@ import { openSkillAction, openSkillActions, drawSkillBadge, drawHintBadges } fro
 import { skillName } from '../world/checks.js';
 import { T_RUBBLE, T_EXIT, isPassable, chebyshev, stepCost } from '../rules/grid.js';
 import { openCheck } from '../ui/checks-ui.js';
-import { applyDoors, triggersAt, battleOf, battleRegion, handKey, noteKey, seenKey, secretHidden, spotSecrets } from '../world/handmade.js';
+import { applyDoors, triggersAt, battleOf, battleRegion, battleTriggers, handKey, noteKey, seenKey, secretHidden, spotSecrets } from '../world/handmade.js';
 import { codexOf } from '../world/codex.js';
 import { visit, openHidden } from '../world/state.js';
 import { rollDice } from '../rules/dice.js';
@@ -226,7 +226,7 @@ export function createRoamScene(rawId, opts = {}) {
     S.path = []; S.goal = null;
     game.toast(t('roam.fight'), 'c');
     startWorldBattle(game, { encounter: b.encounter, ...(b.enemies?.length ? { enemies: b.enemies, encounter: null } : {}), title: b.title, id: b.id,
-      roamFoes: b.foes, roamRegion: battleRegion(b), ambush: b.kind === 'ambush', noObjectives: true,
+      roamFoes: b.foes, roamRegion: battleRegion(b), ambush: b.kind === 'ambush', noObjectives: true, battleTriggers: b.triggers || null,
       onWin: (g) => { g.save.flags[handKey(locId, `b:${b.id}`)] = true; self.again(g); } });
     return true;
   }
@@ -906,6 +906,7 @@ export function createRoamScene(rawId, opts = {}) {
       while (foes.length < enemies.length) foes.push(foes[foes.length % k]);
       const def = roamBattleMap(map, S.objs, { party, foes: foes.slice(0, Math.max(1, enemies.length)), allies: allies.map(() => party[0]), id: locId, name: loc.name, region: o.roamRegion || null });
       Object.assign(def, weatherOf(game)); // the battle keeps the node's weather / time of day (as on the free map)
+      if (o.battleTriggers) def.triggers = battleTriggers(o.battleTriggers, def.roam.region); // level-design.md: bridge traps
       return {
         map: def,
         after(g, BS) {

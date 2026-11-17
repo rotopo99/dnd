@@ -12,6 +12,7 @@ import { EXODUS } from './data/world/exodus.js';
 import { normCodex } from './world/codex.js';
 import { normalizeInventory, syncItems } from './world/inventory.js';
 import { defaultLook } from './ui/avatar3d.js';
+import { migrateLook } from './ui/look-data.js';
 import { normalizeRomance } from './world/romance.js';
 import { normClashes } from './world/clashes.js';
 import { normCoop } from './world/coop.js';
@@ -92,7 +93,7 @@ export function normalizeSave(s, data) {
     pendingAsi: uniq(arr(h.pendingAsi).filter((l) => Number.isInteger(l))), levelNews: uniq(arr(h.levelNews).filter((l) => Number.isInteger(l))),
     equipment: normEquipment(h.equipment, h.cls, h.path),
     // 3D avatar (ui/avatar3d.js look object); old saves have none -> generated from race / name (everyone has a 3D hero)
-    avatar: h.avatar && typeof h.avatar === 'object' && h.avatar.v === 1 ? h.avatar : { ...defaultLook(typeof h.race === 'string' ? h.race : 'human', 'x', String(h.name || h.cls || 'hero')), cloth: typeof h.look === 'string' ? h.look : null },
+    avatar: h.avatar && typeof h.avatar === 'object' && (h.avatar.v === 1 || h.avatar.v === 2) ? migrateLook(h.avatar, typeof h.race === 'string' ? h.race : 'human') : { ...defaultLook(typeof h.race === 'string' ? h.race : 'human', 'x', String(h.name || h.cls || 'hero')), cloth: typeof h.look === 'string' ? h.look : null },
   };
   out.romance = normalizeRomance(s.romance); // romance.md
   out.party = arr(s.party).filter((p) => p && NPCS[p.npc]).map((p) => ({

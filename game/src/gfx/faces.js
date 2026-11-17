@@ -70,8 +70,8 @@ const shade = (h, k) => { // k > 0 towards white, k < 0 towards black
 
 function drawFace(g, X, Y, look, emo, blink, o) {
   const S = FACE_CELL, F = look.gender === 'f', M = look.gender === 'm';
-  const sk = skinKeys(look.skin), skin = hex(sk[1]), skinD = hex(sk[0]);
-  const eyeKey = EYE[look.eyes] || '8', hairKey = HAIRC[look.hairColor] || '6';
+  const sk = skinRamp(look), skin = hex(sk[1]), skinD = hex(sk[0]);
+  const eyeK = eyeKey(look), hairKey = hairRamp(look)[1];
   const robot = look.race === 'android' || look.race === 'skeleton';
   g.save();
   g.beginPath(); g.rect(X, Y, S, S); g.clip();
@@ -81,7 +81,8 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     sad: { open: 0.8, brow: 1, mouth: 'frown' }, scared: { open: 1.25, brow: 0.8, mouth: 'gasp' }, smug: { open: 0.62, brow: -0.4, mouth: 'smirk' },
     surprised: { open: 1.3, brow: 0.9, mouth: 'o' }, cringe: { open: 0.7, brow: 0.6, mouth: 'wavy' },
   }[emo] || { open: 1, brow: 0, mouth: 'flat' };
-  const ex = 15.4, ey = 27.5 + (F ? 1 : 0), ew = F ? 10.4 : 9.2, eh = (F ? 14 : 11.6) * (look.face?.h > 0.3 ? 1.05 : 1);
+  const SH = { round: [1, 1.08, 0, 0], almond: [1.06, 0.9, -1.6, 0.2], narrow: [1, 0.72, 0, 0], wide: [1.12, 1.14, 0, 0], droopy: [1, 0.96, 1.8, -0.2] }[look.eyeShape] || [1, 1, 0, 0];
+  const ex = 15.4, ey = 27.5 + (F ? 1 : 0), ew = (F ? 10.4 : 9.2) * SH[0], eh = (F ? 14 : 11.6) * (look.face?.h > 0.3 ? 1.05 : 1) * SH[1], et = SH[2]; // et: outer corner shift (px)
   const lash = hex(robot ? '0' : '0');
   // blush
   const bl = F || emo === 'happy' || emo === 'cringe' || emo === 'smug' ? (emo === 'cringe' ? 0.5 : 0.3) : 0;
@@ -120,7 +121,7 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     // iris: vertical gradient dark -> light, with a darker rim
     const ir = Math.min(ew * 0.9, h * 0.52) + (F ? 0.8 : 0), ix = cx + s * -0.6, iy = ocy + 0.6;
     const gr = g.createLinearGradient(0, iy - ir, 0, iy + ir);
-    const ec = hex(eyeKey);
+    const ec = hex(eyeK);
     gr.addColorStop(0, shade(ec, -0.55)); gr.addColorStop(0.55, ec); gr.addColorStop(1, shade(ec, 0.45));
     g.fillStyle = gr; g.beginPath(); g.ellipse(ix, iy, ir * 0.92, ir * 1.04, 0, 0, 7); g.fill();
     g.strokeStyle = shade(ec, -0.7); g.lineWidth = 0.9; g.stroke();
@@ -140,7 +141,7 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     g.strokeStyle = lash; g.lineCap = 'round'; g.lineWidth = F ? 3.1 : 2.5;
     g.beginPath();
     g.moveTo(cx - s * ew * 0.95, ocy - h * 0.15 + drop * 1.2);
-    g.quadraticCurveTo(cx, ocy - h * 0.62 - (E.brow < 0 ? -1 : 0), cx + s * ew * 0.95, ocy - h * 0.1 + tilt * 2);
+    g.quadraticCurveTo(cx, ocy - h * 0.62 - (E.brow < 0 ? -1 : 0), cx + s * ew * 0.95, ocy - h * 0.1 + tilt * 2 + et);
     g.stroke();
     if (F) { g.lineWidth = 1.7; g.beginPath(); g.moveTo(cx + s * ew * 0.9, ocy - h * 0.1 + tilt * 2); g.lineTo(cx + s * (ew + 3.2), ocy - h * 0.4 + tilt * 2); g.stroke();
       g.lineWidth = 1.1; for (let k = 0; k < 2; k++) { g.beginPath(); g.moveTo(cx + s * ew * (0.55 + k * 0.28), ocy - h * (0.5 - k * 0.1)); g.lineTo(cx + s * (ew * (0.7 + k * 0.3) + 1.6), ocy - h * (0.66 - k * 0.1)); g.stroke(); } }
@@ -154,23 +155,29 @@ function drawFace(g, X, Y, look, emo, blink, o) {
       g.strokeStyle = hex('p'); g.lineWidth = 0.6; for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(cx - 4 + k * 3 - 2, cy - 5 + k * 6); g.lineTo(cx - 4 + k * 3 + 3, cy - 4 + k * 6); g.stroke(); }
     }
   }
-  // brows
+  // brows (5 shapes)
   if (!robot) {
-    g.strokeStyle = hex(hairKey === '3' || hairKey === '4' ? '3' : hairKey); g.lineCap = 'round'; g.lineWidth = M ? 2.6 : 1.7;
+    const BR = { soft: [1, 0, 1], straight: [1.15, 0.9, 0.2], arched: [1.0, -0.4, 2.2], thick: [1.9, 0, 1], thin: [0.55, -0.3, 1.2] }[look.brows] || [1, 0, 1];
+    g.strokeStyle = hex(hairKey === '3' || hairKey === '4' ? '3' : hairKey); g.lineCap = 'round'; g.lineWidth = (M ? 2.6 : 1.7) * BR[0];
     for (const s of [-1, 1]) {
-      const cx = X + 32 + s * ex, by = Y + ey - eh * 0.5 - (F ? 4.2 : 3.6) - E.brow * 1.2 * (blink ? 0 : 1) * 0 - (emo === 'surprised' || emo === 'scared' ? 2.5 : 0);
-      const inner = by + (E.brow < 0 ? 2.2 : E.brow > 0.5 ? -2.4 : 0) + (emo === 'cringe' ? -1.2 : 0), outer = by + (E.brow < 0 ? -1 : E.brow > 0.5 ? 1.5 : -0.4);
-      g.beginPath(); g.moveTo(cx - s * ew * 0.95, inner); g.quadraticCurveTo(cx, Math.min(inner, outer) - 1.4, cx + s * ew * 1.05, outer); g.stroke();
+      const cx = X + 32 + s * ex, by = Y + ey - eh * 0.5 - (F ? 4.2 : 3.6) - (emo === 'surprised' || emo === 'scared' ? 2.5 : 0) - BR[1] * 0.8;
+      const inner = by + (E.brow < 0 ? 2.2 : E.brow > 0.5 ? -2.4 : 0) + (emo === 'cringe' ? -1.2 : 0), outer = by + (E.brow < 0 ? -1 : E.brow > 0.5 ? 1.5 : -0.4) + (BR[2] === 0.2 ? 0.5 : 0);
+      g.beginPath(); g.moveTo(cx - s * ew * 0.95, inner); g.quadraticCurveTo(cx, Math.min(inner, outer) - BR[2] * 1.4, cx + s * ew * 1.05, outer); g.stroke();
     }
   }
-  // nose: a short soft shadow stroke on the side + a tiny highlight (not a dark blot)
-  g.strokeStyle = shade(hex(sk[0]), 0.1); g.globalAlpha = 0.5; g.lineWidth = 1.1; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(X + 33.4, Y + 37.2); g.quadraticCurveTo(X + 34.2, Y + 39.6, X + 33, Y + 40.6); g.stroke(); g.globalAlpha = 1;
-  g.fillStyle = shade(hex(sk[2]), 0.3); g.globalAlpha = 0.7; g.beginPath(); g.ellipse(X + 31.6, Y + 38.4, 0.9, 1.3, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+  // nose: a short soft shadow stroke on the side + a tiny highlight (small / normal / strong)
+  const NS = { small: [0.7, 0.35], normal: [1, 0.5], strong: [1.4, 0.7] }[look.nose] || [1, 0.5];
+  g.strokeStyle = shade(hex(sk[0]), 0.1); g.globalAlpha = NS[1]; g.lineWidth = 1.1 * Math.min(1.3, NS[0]); g.lineCap = 'round';
+  g.beginPath(); g.moveTo(X + 33.4, Y + 37.2 - (NS[0] - 1) * 2.5); g.quadraticCurveTo(X + 34.2 + (NS[0] - 1), Y + 39.6, X + 33 + (NS[0] - 1) * 0.8, Y + 40.6 + (NS[0] - 1) * 1.2); g.stroke();
+  if (NS[0] > 1) { g.beginPath(); g.moveTo(X + 30.6, Y + 40.8); g.quadraticCurveTo(X + 32, Y + 41.8, X + 33.2, Y + 40.9); g.stroke(); }
+  g.globalAlpha = 1;
+  g.fillStyle = shade(hex(sk[2]), 0.3); g.globalAlpha = 0.7; g.beginPath(); g.ellipse(X + 31.6, Y + 38.4, 0.9 * NS[0], 1.3 * NS[0], 0, 0, 7); g.fill(); g.globalAlpha = 1;
   // mouth
-  const my = Y + 49.5, mx = X + 32, mc = hex(robot ? '0' : F ? 'c' : 'd');
+  const MS = { normal: [1, 1], full: [0.95, 1.9], thin: [1, 0.55], wide: [1.3, 1] }[look.mouth] || [1, 1];
+  const my = Y + 49.5, mx = X + 32, mc = hex(robot ? '0' : look.makeup?.on ? look.makeup.c : F ? 'c' : 'd');
+  g.save(); g.translate(mx, my); g.scale(MS[0], 1); g.translate(-mx, -my);
   g.fillStyle = shade(hex(sk[0]), -0.1); g.globalAlpha = 0.28; g.beginPath(); g.ellipse(mx, my + 3.6, 4.6, 1.5, 0, 0, 7); g.fill(); g.globalAlpha = 1;
-  g.strokeStyle = shade(hex(sk[0]), -0.35); g.fillStyle = mc; g.lineWidth = 1.1;
+  g.strokeStyle = shade(hex(sk[0]), -0.35); g.fillStyle = mc; g.lineWidth = 1.1 * MS[1];
   switch (E.mouth) {
     case 'smile': g.beginPath(); g.moveTo(mx - 6, my - 1); g.quadraticCurveTo(mx, my + 5.5, mx + 6, my - 1); g.stroke(); g.fillStyle = hex('d'); g.beginPath(); g.moveTo(mx - 5, my - 0.4); g.quadraticCurveTo(mx, my + 5, mx + 5, my - 0.4); g.fill(); g.fillStyle = '#f4f4f6'; g.fillRect(mx - 3.4, my, 6.8, 1.4); break;
     case 'frown': g.beginPath(); g.moveTo(mx - 4.5, my + 2); g.quadraticCurveTo(mx, my - 2, mx + 4.5, my + 2); g.stroke(); break;
@@ -179,8 +186,9 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     case 'smirk': g.beginPath(); g.moveTo(mx - 4.5, my + 0.5); g.quadraticCurveTo(mx + 1, my + 1.5, mx + 6, my - 2); g.stroke(); break;
     case 'grit': g.fillStyle = '#f4f4f6'; g.fillRect(mx - 5, my - 1.5, 10, 4); g.strokeRect(mx - 5, my - 1.5, 10, 4); g.lineWidth = 0.7; for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(mx - 5 + k * 2.5, my - 1.5); g.lineTo(mx - 5 + k * 2.5, my + 2.5); g.stroke(); } break;
     case 'wavy': g.beginPath(); g.moveTo(mx - 6, my); g.bezierCurveTo(mx - 3, my - 3, mx - 1, my + 3, mx + 1, my); g.bezierCurveTo(mx + 3, my - 3, mx + 5, my + 3, mx + 7, my); g.stroke(); break;
-    default: g.beginPath(); g.moveTo(mx - 3.8, my + 0.5); g.quadraticCurveTo(mx, my + (F ? 2.2 : 1.2), mx + 3.8, my + 0.5); g.stroke(); if (F) { g.fillStyle = 'rgba(196,40,40,0.55)'; g.fillRect(mx - 2.8, my + 0.6, 5.6, 1.1); }
+    default: g.beginPath(); g.moveTo(mx - 3.8, my + 0.5); g.quadraticCurveTo(mx, my + (F ? 2.2 : 1.2), mx + 3.8, my + 0.5); g.stroke(); if (F || look.makeup?.on || MS[1] > 1.2) { g.fillStyle = look.makeup?.on ? mc : 'rgba(196,40,40,0.55)'; g.globalAlpha = look.makeup?.on ? 0.85 : 1; g.fillRect(mx - 2.8, my + 0.6, 5.6, 1.1 * Math.max(1, MS[1])); g.globalAlpha = 1; }
   }
+  g.restore();
   // beard
   const bc = hex(hairKey === '3' || hairKey === '4' ? hairKey : hairKey);
   g.fillStyle = bc;
@@ -190,6 +198,32 @@ function drawFace(g, X, Y, look, emo, blink, o) {
   if (look.beard === 'full') { g.beginPath(); g.moveTo(X + 8, Y + 38); g.quadraticCurveTo(X + 10, Y + 66, X + 32, Y + 66); g.quadraticCurveTo(X + 54, Y + 66, X + 56, Y + 38); g.lineTo(X + 50, Y + 46); g.quadraticCurveTo(X + 32, Y + 41, X + 14, Y + 46); g.fill(); g.fillStyle = mc; g.globalAlpha = 0.9; g.fillRect(mx - 4, my - 1, 8, 2.4); g.globalAlpha = 1; }
   if (look.acc?.includes('scarCheek')) { g.strokeStyle = hex('d'); g.lineWidth = 1.2; g.beginPath(); g.moveTo(X + 44, Y + 33); g.lineTo(X + 52, Y + 44); g.stroke(); }
   if (look.acc?.includes('jawImp')) { g.fillStyle = hex('3'); g.fillRect(X + 40, Y + 50, 11, 6); g.fillStyle = hex('h'); g.fillRect(X + 44, Y + 52, 3, 2); }
+  if (!robot) {
+    if (look.freckles?.on) { // deterministic scatter over the cheeks and the bridge
+      g.fillStyle = hex(look.freckles.c); let q = 7;
+      const rnd = () => { q = (q * 9301 + 49297) % 233280; return q / 233280; };
+      for (let k = 0; k < 26; k++) { const side = k % 2 ? 1 : -1, px = X + 32 + side * (7 + rnd() * 17), py = Y + 36 + rnd() * 8; g.globalAlpha = 0.55 + rnd() * 0.3; g.beginPath(); g.arc(k < 5 ? X + 32 + (rnd() - 0.5) * 8 : px, k < 5 ? Y + 34 + rnd() * 4 : py, 0.7 + rnd() * 0.7, 0, 7); g.fill(); }
+      g.globalAlpha = 1;
+    }
+    if (look.makeup?.on) { // eyeshadow above the lids + a faint wing
+      const mk = hex(look.makeup.c);
+      for (const s of [-1, 1]) { const gr = g.createRadialGradient(X + 32 + s * ex, Y + ey - eh * 0.45, 1, X + 32 + s * ex, Y + ey - eh * 0.45, ew * 1.25); gr.addColorStop(0, mk); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = 0.5; g.fillStyle = gr; g.fillRect(X + 32 + s * ex - ew * 1.4, Y + ey - eh, ew * 2.8, eh * 0.9); }
+      g.globalAlpha = 1;
+    }
+    if (look.scar?.on) { // slash from the brow over the cheek, with stitches
+      const sc = hex(look.scar.c); g.strokeStyle = sc; g.lineCap = 'round'; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(X + 20, Y + 18); g.lineTo(X + 14, Y + 36); g.lineTo(X + 11, Y + 46); g.stroke();
+      g.strokeStyle = shade(skin, 0.35); g.lineWidth = 0.7; g.globalAlpha = 0.8;
+      for (let k = 0; k < 4; k++) { const t = k / 3; g.beginPath(); g.moveTo(X + 17 - t * 6 - 2.5, Y + 22 + t * 22); g.lineTo(X + 17 - t * 6 + 2.5, Y + 23.5 + t * 22); g.stroke(); }
+      g.globalAlpha = 1;
+    }
+    if (look.tattoo?.on) { // tribal marks on the right cheekbone and the temple
+      g.strokeStyle = hex(look.tattoo.c); g.lineCap = 'round'; g.lineWidth = 1.5;
+      for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(X + 45 + k * 2.2, Y + 33 + k * 3); g.lineTo(X + 54 - k * 0.5, Y + 31 + k * 4.5); g.stroke(); }
+      g.beginPath(); g.moveTo(X + 50, Y + 20); g.quadraticCurveTo(X + 55, Y + 24, X + 53, Y + 29); g.stroke();
+      g.fillStyle = hex(look.tattoo.c); g.beginPath(); g.arc(X + 49, Y + 17.5, 1.1, 0, 7); g.fill();
+    }
+  }
   g.restore();
 }
 
@@ -237,7 +271,7 @@ export function gpuAtlas(gl, X, which) {
   const key = `atlas_${which}`;
   let t = X[key];
   if (!t || t.gen !== X.gen) {
-    t = X[key] = { tex: gl.createTexture(), gen: X.gen, w: 0 };
+    t = X[key] = { tex: gl.createTexture(), gen: X.gen, w: 0, ver: -1 };
     gl.bindTexture(gl.TEXTURE_2D, t.tex);
     const w = cv?.width || 1, h = cv?.height || 1;
     if (cv) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
@@ -249,14 +283,14 @@ export function gpuAtlas(gl, X, which) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     if (cv) gl.generateMipmap(gl.TEXTURE_2D);
-    A.dirty = null;
+    A.dirty = null; t.ver = A.ver;
     return t.tex;
   }
-  if (face && A.dirty && cv) {
+  if (face && t.ver !== A.ver && cv) {
     gl.bindTexture(gl.TEXTURE_2D, t.tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
     gl.generateMipmap(gl.TEXTURE_2D);
-    A.dirty = null;
+    A.dirty = null; t.ver = A.ver;
   }
   return t.tex;
 }

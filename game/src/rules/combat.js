@@ -89,6 +89,7 @@ import {
 import {
   initTerrain, coverBonus, terrainHit, elevRange, meleeElevOk, objectAt, damageObject, damageObjectsIn, terrainOn, bridgeAt, damageBridge,
 } from './terrain.js';
+import { initTriggers, triggerEvent, runTriggers } from './battle-triggers.js';
 import { initObjectives, objectiveEvent, interact as objInteract, retreatWhy } from './objectives.js';
 import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath, archHit, archDmg, archKb } from './archetypes.js';
 import {
@@ -160,6 +161,7 @@ function emit(b, ev) {
   if (b.log) b.log.push(ev);
   if (b.onEvent) b.onEvent(ev, b);
   if (b.objectives && ev.type !== 'objective') objectiveEvent(b, ev); // combat-rework §6 (rules/objectives.js)
+  if (b.triggers) triggerEvent(b, ev);
 }
 export { emit as emitEvent };
 
@@ -544,6 +546,7 @@ export function createBattle({ map, heroes = [], enemies, allies, rivals = null,
   }
   // combat rework: destructible objects get HP from the battle level, AI archetypes (terrain.js, archetypes.js)
   initTerrain(b);
+  initTriggers(b);
   assignArchetypes(b);
   // combat rework §6 (stage 2): optional objective, chests, exits for retreat (rules/objectives.js)
   if (objectives) initObjectives(b, objectives);
@@ -593,6 +596,7 @@ function startNextTurn(b) {
       emit(b, { type: 'roundStart' });
       tickZones(b);
       tickSurfaces(b);
+      if (b.triggers) runTriggers(b, emit);
     }
     const u = b.byId[b.order[b.turnIndex]];
     if (!u || u.dead || u.removed) continue;
@@ -2929,6 +2933,7 @@ export function perform(b, action) {
     default:
       return fail(b, start, 'unknownAction');
   }
+  if (b.triggers) { runTriggers(b, emit); checkVictory(b); } // level-design.md: battle triggers (rules/battle-triggers.js)
   return { ok: true, events: b.log ? b.log.slice(start) : [] };
 }
 
