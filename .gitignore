@@ -3,3 +3,4 @@ tools/out/
 .claude/settings.local.json
 .claude/agent-memory-local/
 tools/out/blender-work/
+__pycache__/
