@@ -24,13 +24,14 @@ import { visionOf, lightSources } from '../world/battlefields.js';
 import { createGL, worldProgram, overlayProgram, skinProgram, depthProgram, particleProgram, hasWebGL2, softwareGL, BONE_TEX_W, NBONES } from './gl.js';
 import { MeshBuilder, OverlayBuilder, uploadMesh, freeMesh, uploadOverlay, resetOverlays, uploadInstanced, resetInstanced, keyRGB, rampRGB, cssRGBA } from './mesh.js';
 import { createCamera, fitCamera, rotateCamera, zoomCamera, updateCamera, viewProj, project, pickCell, basis, panCamera, centerCamera } from './camera.js';
+export { worldOf, buildChunk, buildEdges, nearMask, cutCells, topAt, TEAM };
 import { ramp, propModel, propTop } from './models.js';
 import { unitTemplate } from './units3d.js';
 import { gpuAtlas, faceCol, FACE_COLS } from './faces.js';
 import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
 import { buildFx, particleMesh, weatherFx, emitAmbient } from './fx3d.js';
 import { floorTone, floorExtras, scatterCell, wallBlock, buildBackdrop, lampsOf, lampGlow, ambientFx } from './env3d.js';
-import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken } from './settings.js';
+import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken, gfxEngine } from './settings.js';
 import { createPost } from './post.js';
 
 const G = GFX.geo;
@@ -45,6 +46,9 @@ export function createGfx(canvas, game) {
     idle: new Set(), // unreferenced cached meshes, oldest first
     live: new Set(), // holders (S of a battle / roam adapter) with a 3D state (S.v3) on this context
     stale: null, // holders to free at the end of the frame unless drawn in it (scene switch: game.setScene / resume)
+    three: null, // threejs-migration.md: Three.js backend (three/engine.js createThree), set by main.js once Three.js loaded
+    /** Three.js draws the battle: engine setting 'three' and the backend is up (else the old renderer). */
+    threeOn() { return gfxEngine() === 'three' && !!X.three && X.three.ok(); },
     ok() {
       if (X.failed) return false;
       if (X.gl && !X.lost) return true;
@@ -82,6 +86,7 @@ export function createGfx(canvas, game) {
       X.w = w; X.h = h;
       canvas.width = Math.max(1, Math.round(w * X.scale)); canvas.height = Math.max(1, Math.round(h * X.scale));
       canvas.style.width = cw; canvas.style.height = ch;
+      X.three?.resize(w, h, cw, ch);
     },
     use() { X.used = true; },
     endFrame() {
@@ -90,6 +95,7 @@ export function createGfx(canvas, game) {
       const show = X.used && !X.failed;
       if (canvas.style.visibility !== (show ? 'visible' : 'hidden')) canvas.style.visibility = show ? 'visible' : 'hidden';
       X.used = false;
+      X.three?.endFrame();
     },
     /** Scene switch: 3D states not drawn by the next frame are freed (chunks, edges, floor texture, mesh refs). */
     leaveScene() { if (X.live.size) X.stale = new Set(X.live); },
@@ -316,18 +322,22 @@ function chunkSig(Wd, cx0, cy0) {
 
 // ---------------------------------------------------------------- battle state
 export function battle3d(game, S) {
-  const want = gfxMode() === '3d' && game.gfx?.ok();
+  const X = game.gfx, three = gfxMode() === '3d' && !!X?.threeOn();
+  const want = gfxMode() === '3d' && (three || X?.ok());
   if (!want) {
     if (S.v3) dropBattle3d(game, S);
     return null;
   }
-  if (!S.v3 || S.v3.gen !== game.gfx.gen) {
-    S.v3 = { cam: S.v3?.cam || createCamera(), chunks: new Map(), meshes: new Set(), gen: game.gfx.gen, face: {}, hgt: {}, anim: {}, impact: {}, fx: [], lastSig: '', lastDraw: -1, gv: -1, world: null };
-    game.gfx.live.add(S);
+  const engine = three ? 'three' : 'old', gen = three ? X.three.gen : X.gen;
+  if (S.v3 && (S.v3.gen !== gen || S.v3.engine !== engine)) { const cam = S.v3.cam; dropBattle3d(game, S); S.v3 = { cam }; }
+  if (!S.v3?.world && !S.v3?.chunks) {
+    S.v3 = { cam: S.v3?.cam || createCamera(), engine, chunks: new Map(), meshes: new Set(), gen, face: {}, hgt: {}, anim: {}, impact: {}, fx: [], lastSig: '', lastDraw: -1, gv: -1, world: null };
+    X.live.add(S);
   }
-  game.gfx.stale?.delete(S);
+  X.stale?.delete(S);
   const V = S.v3, b = S.b;
   const gv = `${b.gridVersion || 0}|${b.objects?.size || 0}`;
+  if (V.gv !== gv && three) { V.world = worldOf(b); V.gv = gv; } // three/battle.js rebuilds its scene from V.world
   if (V.gv !== gv) {
     V.world = worldOf(b); V.gv = gv;
     const gl = game.gfx.gl;
@@ -356,6 +366,7 @@ export function dropBattle3d(game, S) {
   const X = game.gfx, V = S.v3;
   X?.live.delete(S);
   if (!V) return;
+  if (V.engine === 'three') { X?.three?.dropBattle(V); V.chunks?.clear(); V.world = null; S.v3 = null; return; }
   const gl = X?.gl;
   if (gl && V.gen === X.gen) {
     for (const c of V.chunks.values()) freeMesh(gl, c.mesh);
@@ -441,6 +452,7 @@ const topAt = (V) => (x, y) => { const i = y * V.world.w + x, o = V.world.obst[i
 export function pickBattle(S, px, py) {
   const V = S.v3;
   if (!V?.world) return null;
+  if (V.engine === 'three' && V.T) return V.T.pick(S, px, py); // three/battle.js: Raycaster
   const b = S.b, cam = V.cam;
   // a unit body under the cursor wins (click on a unit = its cell / target), else the floor / obstacle top (a point);
   // the floor hit always comes along as fx / fz (metric hover point); `unit` — id of the picked body
@@ -551,6 +563,8 @@ const physicsK = (prefs) => (prefs.physics === 'off' ? 0 : prefs.physics === 'lo
 const TEAM = (u) => (u.team === 'heroes' ? (u.kind === 'hero' ? 'player' : 'ally') : u.team === 'enemies' ? 'enemy' : 'rival');
 const ob = new OverlayBuilder();
 const PARTS = [];
+/** Overlay batch + particles of the last prepFrame (three/battle.js draws them). */
+export const frameBatches = () => ({ ob, PARTS });
 let boneData = new Float32Array(BONE_TEX_W * 4 * 32);
 
 /** Shadow resources of the context: depth texture + framebuffer of `size` (1 = dummy, shadows off). */
@@ -619,11 +633,80 @@ function lightVP(Ld, Wd) {
 /** Shadow quality: off with «Снизить эффекты» or the setting. */
 const shadowSize = (prefs) => (prefs.reduceFx || prefs.shadows === 'off' ? 0 : GFX.shadow.size[prefs.shadows] || GFX.shadow.size.high);
 
-export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay = null } = {}) {
-  const X = game.gfx, gl = X.gl, V = S.v3;
+export function drawBattle3d(game, S, opts = {}) {
+  const X = game.gfx, V = S.v3;
+  if (V?.engine === 'three') { if (V.world && X.three?.ok()) { X.stale?.delete(S); X.three.drawBattle(game, S, opts); } return; }
+  const gl = X.gl;
   if (!gl || !V?.world || X.lost) return;
   X.use();
   X.stale?.delete(S);
+  const F = prepFrame(game, S, opts, { soft: X.soft, size: `${gl.drawingBufferWidth}x${gl.drawingBufferHeight}` });
+  if (!F) return;
+  const { b, Wd, prefs, cam, now, view, busy, inst: raw, ls, lampsN, ambN, wxActive } = F;
+  // chunks: signatures only when the world changed (gridVersion / objects); a changed chunk is rebuilt alone
+  const CH = GFX.chunk;
+  if (V.chunkGv !== V.gv) {
+    V.chunkGv = V.gv;
+    for (let cy = 0; cy < Wd.h; cy += CH) for (let cx = 0; cx < Wd.w; cx += CH) {
+      const key = `${cx},${cy}`, s = chunkSig(Wd, cx, cy), c = V.chunks.get(key);
+      if (c && c.sig === s) continue;
+      if (c) freeMesh(gl, c.mesh);
+      let top = 0;
+      for (let y = cy; y < Math.min(Wd.h, cy + CH); y++) for (let x = cx; x < Math.min(Wd.w, cx + CH); x++) { const i = y * Wd.w + x; top = Math.max(top, Wd.floor[i] + Wd.obst[i]); }
+      V.chunks.set(key, { sig: s, mesh: uploadMesh(gl, buildChunk(Wd, cx, cy)), box: [cx, cy, Math.min(Wd.w, cx + CH), Math.min(Wd.h, cy + CH), top + 2.5] });
+    }
+  }
+  const A0 = cam.area;
+  const shown = [];
+  for (const c of V.chunks.values()) if (c.mesh && inView(S, cam, c.box)) shown.push(c);
+  const inst = [];
+  for (const p of raw) { const m = X.mesh(`tpl:${p.T.key}`, () => p.T.mb, V); if (m) inst.push({ ...p, m }); }
+  // rows: grouped by template, opaque first (x-ray / body / outline draw the opaque run, the translucent run after)
+  inst.sort((p, q) => (p.T.key < q.T.key ? -1 : p.T.key > q.T.key ? 1 : (p.trans ? 1 : 0) - (q.trans ? 1 : 0)));
+  const groups = [];
+  const rowF = BONE_TEX_W * 4;
+  if (boneData.length < inst.length * rowF) boneData = new Float32Array(inst.length * rowF * 2);
+  inst.forEach((p, row) => {
+    let g = groups[groups.length - 1];
+    if (!g || g.key !== p.T.key) { g = { key: p.T.key, m: p.m, first: row, nOp: 0, nTr: 0 }; groups.push(g); }
+    if (p.trans) g.nTr++; else g.nOp++;
+    poseInst(p, V, now, prefs, boneData, row * rowF);
+  });
+  return renderOld(game, S, F, { inst, groups, shown, A0, b, Wd, prefs, cam, view, busy, ls, lampsN, ambN, wxActive });
+}
+
+/** Chunk box [x0, z0, x1, z1, top] inside the map area of the screen (orthographic frustum culling). */
+function inView(S, cam, bx) {
+  const A0 = cam.area;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const X of [bx[0], bx[2]]) for (const Z of [bx[1], bx[3]]) for (const Y of [G.base, bx[4]]) {
+    const p = project(cam, X, Y, Z);
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+  }
+  return x1 >= A0.x && x0 <= A0.x + A0.w && y1 >= S.L.area.y && y0 <= S.L.area.y + S.L.area.h;
+}
+
+/** Bones (12 x NBONES floats: rows of 3x4) + 12 extra floats (flash rgb+k, team rgb+alpha, outline px, face column) of
+ *  one unit instance into out[o ..] — shared by the old renderer (bone texture row) and three/battle.js. */
+export function poseInst(p, V, now, prefs, out, o) {
+  const d = p.it.d;
+  poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, out, o, { walking: p.walking, reduceMotion: prefs.reduceMotion, physics: physicsK(prefs), crouch: p.it.crouch || 0, walkMul: p.it.walkMul || 1 });
+  const emo = d.emoT > 0 && d.emo ? d.emo : 'neutral', seed = p.st.seed;
+  const blink = p.dead || d.down || ((now * 0.37 + seed * 7.3) % 1) < 0.045;
+  const wc = WHITE();
+  out.set([wc[0], wc[1], wc[2], p.flash, p.team[0], p.team[1], p.team[2], p.alpha, p.grow, p.T.anime ? faceCol(emo, blink) / FACE_COLS : 0, 0, 0], o + NBONES * 12);
+}
+let whiteC = null;
+const WHITE = () => whiteC || (whiteC = keyRGB('5')); // hit flash: bone white, soft (d.flash fades)
+
+/**
+ * Backend-independent part of a battle frame: camera tween, unit heights, the overlay batch `ob` (contact blobs,
+ * surfaces / fx decals, weather, lamp pools, highlights, rings, cut lids) + particles PARTS, render-on-demand check
+ * and the unit instances (template, facing, walk state, alpha, flash, team colour). null — the frame is unchanged.
+ * R = {soft (idle fps), size (drawing buffer, part of the signature)}.
+ */
+export function prepFrame(game, S, { hl = [], units = [], cur = null, overlay = null } = {}, R = {}) {
+  const V = S.v3;
   // display clock: S.vtime (battle: frozen by the juice hit-stop, slowed by the accent), else S.time
   const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam, now = S.vtime ?? S.time;
   const dt = Math.min(GFX.camera.maxDt, V.lastT == null ? 0 : Math.max(0, now - V.lastT));
@@ -667,7 +750,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   const wxActive = weatherFx(V, b.map, now, prefs, ob, PARTS);
   // premium-look: glow pools of lamps / fires / screens + rare ambient particles (time quantised to the idle redraw rate:
   // no per-frame redraws); both off with «Снизить эффекты»
-  const tick = X.soft ? GFX.soft.idleFps : GFX.idleFps, tq = Math.floor(now * tick) / tick;
+  const tick = R.soft ? GFX.soft.idleFps : GFX.idleFps, tq = Math.floor(now * tick) / tick;
   const visE = visionOf(b.map), lampsN = lampGlow(Wd, cam, tq, prefs, ob, !!visE.dark || b.map.tod === 'dusk');
   const ambN = ambientFx(V, Wd.biome, tq, prefs, PARTS, emitAmbient);
   overlay?.(ob, fl);
@@ -693,35 +776,11 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   const walking = units.some((it) => it.d.path?.length);
   cutLids(V, view, ob);
   const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving || view.moving;
-  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.flashF || 0},${it.d.down ? 1 : 0}`).join(';')}|${cam.fx ? `${cam.fx.dx.toFixed(1)},${cam.fx.dy.toFixed(1)},${cam.fx.z.toFixed(3)}` : ''}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
-  if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / (X.soft ? GFX.soft.idleFps : GFX.idleFps)) return;
+  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.flashF || 0},${it.d.down ? 1 : 0}`).join(';')}|${cam.fx ? `${cam.fx.dx.toFixed(1)},${cam.fx.dy.toFixed(1)},${cam.fx.z.toFixed(3)}` : ''}|${R.size}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
+  if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / (R.soft ? GFX.soft.idleFps : GFX.idleFps)) return null;
   V.lastSig = sig; V.lastDraw = S.time;
 
-  // chunks: signatures only when the world changed (gridVersion / objects); a changed chunk is rebuilt alone
-  const CH = GFX.chunk;
-  if (V.chunkGv !== V.gv) {
-    V.chunkGv = V.gv;
-    for (let cy = 0; cy < Wd.h; cy += CH) for (let cx = 0; cx < Wd.w; cx += CH) {
-      const key = `${cx},${cy}`, s = chunkSig(Wd, cx, cy), c = V.chunks.get(key);
-      if (c && c.sig === s) continue;
-      if (c) freeMesh(gl, c.mesh);
-      let top = 0;
-      for (let y = cy; y < Math.min(Wd.h, cy + CH); y++) for (let x = cx; x < Math.min(Wd.w, cx + CH); x++) { const i = y * Wd.w + x; top = Math.max(top, Wd.floor[i] + Wd.obst[i]); }
-      V.chunks.set(key, { sig: s, mesh: uploadMesh(gl, buildChunk(Wd, cx, cy)), box: [cx, cy, Math.min(Wd.w, cx + CH), Math.min(Wd.h, cy + CH), top + 2.5] });
-    }
-  }
-  // frustum culling (orthographic: the projected chunk box against the map area)
-  const A0 = cam.area, inView = (bx) => {
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const X of [bx[0], bx[2]]) for (const Z of [bx[1], bx[3]]) for (const Y of [G.base, bx[4]]) {
-      const p = project(cam, X, Y, Z);
-      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
-    }
-    return x1 >= A0.x && x0 <= A0.x + A0.w && y1 >= S.L.area.y && y0 <= S.L.area.y + S.L.area.h;
-  };
-  const shown = [];
-  for (const c of V.chunks.values()) if (c.mesh && inView(c.box)) shown.push(c);
-
+  const A0 = cam.area;
   // ---- units: templates (cached meshes) + per-instance bones / colours in the bone texture
   const simple = !!prefs.reduceFx;
   const heroes = b.units.filter((u) => u.team === 'heroes' && !u.dead), foes = b.units.filter((u) => u.team !== 'heroes' && !u.dead);
@@ -731,8 +790,6 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     const u = it.u, d = it.d;
     if (it.cull && offScreen(d)) continue;
     const T = unitTemplate(u, { simple, lod: cam.zoomIdx === 0 || units.length > 10 });
-    const m = X.mesh(`tpl:${T.key}`, () => T.mb, V);
-    if (!m) continue;
     // facing: the target of the current action, else movement direction, else towards the other side
     const fz = V.face[u.id] || (V.face[u.id] = { x: d.x, y: d.y, a: null });
     let a = fz.a;
@@ -756,24 +813,15 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     const alpha = dead ? Math.min(1, it.alpha * 2.2) : it.alpha;
     const flash = d.flashF > 0 ? 1 : Math.min(0.6, (d.flash || 0) * 3); // juice: 1 frame of full bone-white, then soft
     const team = keyRGB(it.tint || it.teamKey || GFX.team[TEAM(u)]);
-    inst.push({ it, T, m, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.outlineTargetPx : GFX.unit.outlinePx });
+    inst.push({ it, T, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.outlineTargetPx : GFX.unit.outlinePx });
   }
-  // rows: grouped by template, opaque first (x-ray / body / outline draw the opaque run, the translucent run after)
-  inst.sort((p, q) => (p.T.key < q.T.key ? -1 : p.T.key > q.T.key ? 1 : (p.trans ? 1 : 0) - (q.trans ? 1 : 0)));
-  const groups = [];
+  return { V, b, Wd, prefs, cam, now, dt, view, busy, inst, lampsN, ambN, wxActive, fxActive };
+}
+
+/** Old WebGL2 renderer of a prepared frame (gfx/gl.js programs). */
+function renderOld(game, S, F, { inst, groups, shown, A0, b, Wd, prefs, cam, view, busy, lampsN, ambN, wxActive }) {
+  const X = game.gfx, gl = X.gl, V = S.v3, now = F.now;
   const rowF = BONE_TEX_W * 4;
-  if (boneData.length < inst.length * rowF) boneData = new Float32Array(inst.length * rowF * 2);
-  const wc = keyRGB('5'); // hit flash: bone white, soft (d.flash fades)
-  inst.forEach((p, row) => {
-    let g = groups[groups.length - 1];
-    if (!g || g.key !== p.T.key) { g = { key: p.T.key, m: p.m, first: row, nOp: 0, nTr: 0 }; groups.push(g); }
-    if (p.trans) g.nTr++; else g.nOp++;
-    const d = p.it.d, o = row * rowF;
-    poseBones(p.T, p.st, { dead: p.dead, down: !!d.down }, now, { x: d.x + 0.5, y: V.hgt[p.it.u.id] ?? 0, z: d.y + 0.5, yaw: p.a }, boneData, o, { walking: p.walking, reduceMotion: prefs.reduceMotion, physics: physicsK(prefs), crouch: p.it.crouch || 0, walkMul: p.it.walkMul || 1 });
-    const emo = d.emoT > 0 && d.emo ? d.emo : 'neutral', seed = p.st.seed;
-    const blink = p.dead || d.down || ((now * 0.37 + seed * 7.3) % 1) < 0.045;
-    boneData.set([wc[0], wc[1], wc[2], p.flash, p.team[0], p.team[1], p.team[2], p.alpha, p.grow, p.T.anime ? faceCol(emo, blink) / FACE_COLS : 0, 0, 0], o + NBONES * 12);
-  });
   const BT = boneTex(X, Math.max(1, inst.length));
   if (inst.length) {
     gl.activeTexture(gl.TEXTURE0);

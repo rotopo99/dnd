@@ -3,7 +3,7 @@
 export const GFX = {
   storageKey: 'dnd.gfx',
   // defaults of the settings window (ui/settings-ui.js); brightness 0.8–1.2
-  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always', physics: 'normal', walls: 'cut', xray: 'hold', metric: 'on' },
+  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always', physics: 'normal', walls: 'cut', xray: 'hold', metric: 'on', engine: 'three' },
   // shadow map of 1 directional light (§3): texture size by quality; «Снизить эффекты» = off
   shadow: { size: { high: 1024, low: 512 }, levels: ['high', 'low', 'off'], strength: 0.8, bias: 0.0025, pad: 1.5, dir: [-0.55, 1.5, 0.3] },
   brightness: { min: 0.8, max: 1.2, step: 0.1 },
@@ -140,4 +140,22 @@ export const GFX = {
   sky: { default: '0', night: '0', cyberspace: '0', snow: '1' }, // background (no white skies)
   fogColor: { default: '1', snow: '3', swamp: 'k', 'mutant-forest': 'k', cyberspace: 'i', port: 'g' },
   team: { player: 'h', ally: 'j', enemy: 'c', rival: 'a' },
+  // Three.js backend (docs/specs/threejs-migration.md, game/src/three/): exposure (Neutral tonemap), DPR cap, MSAA of
+  // the post target; lights (key = GFX.shadow.dir camera-relative, casts the shadow; fill = GFX.fill.dir; hemisphere
+  // sky / ground palette keys); shadow map size by quality; world material: roughness, value-noise amount on the albedo
+  // (world xz scales), AO baked in vertices (share), glow vertices -> emissive x; units: toon steps; GTAO (radius m,
+  // blend), bloom of HDR > threshold (emissive only); grade: vignette [strength, start], brightest pixel; night: ambient x,
+  // point lights (intensity, distance x light radius)
+  three: {
+    exposure: 1.0, maxDpr: 1.5, msaa: 4,
+    key: 2.4, fill: 0.55, hemi: { sky: '4', ground: '6', k: 1.1 }, keyColor: '5',
+    shadow: { high: 2048, low: 1024, bias: -0.0006, normalBias: 0.025, radius: 3 },
+    world: { rough: 0.86, noise: 0.16, noiseScale: [2.3, 9.0], ao: 0.55, glow: 2.6, cutPad: 0.01 },
+    unit: { steps: [0.42, 0.72, 1.0], glow: 2.2, flash: 1.6 },
+    ao: { radius: 0.6, distanceExponent: 1.2, thickness: 1.0, scale: 1.0, samples: 12, intensity: 0.85 },
+    bloom: { strength: 0.42, radius: 0.35, threshold: 0.92 },
+    grade: { vignette: 0.22, start: 0.55, max: 0.93 },
+    night: { ambient: 0.35, point: 3.2, dist: 1.6 },
+    particleGlow: 2.4,
+  },
 };

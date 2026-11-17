@@ -15,6 +15,7 @@ export function gfxPrefs() {
 export function setGfxPref(k, v) {
   gfxPrefs()[k] = v;
   if (k === 'mode') session = null; // an explicit choice beats ?gfx= for the rest of the session
+  if (k === 'engine') engineUrl = null; // same for ?engine=
   try { globalThis.localStorage?.setItem(GFX.storageKey, JSON.stringify(prefs)); } catch { /* private mode */ }
 }
 
@@ -26,6 +27,14 @@ const urlMode = () => {
   if (session === undefined) { try { session = new URLSearchParams(globalThis.location?.search || '').get('gfx'); } catch { session = null; } }
   return session;
 };
+let engineUrl;
+/** threejs-migration.md: 3D backend 'three' (Three.js, game/src/three/) | 'old' (own WebGL2, gfx/*). `?engine=` beats the
+ *  setting; 'three' falls back to 'old' while / if Three.js did not load (caller checks game.gfx.three). */
+export function gfxEngine() {
+  if (engineUrl === undefined) { try { engineUrl = new URLSearchParams(globalThis.location?.search || '').get('engine'); } catch { engineUrl = null; } }
+  if (engineUrl === 'old' || engineUrl === 'three') return engineUrl;
+  return gfxPrefs().engine === 'old' ? 'old' : 'three';
+}
 let broken = false; // shader error / lost context: 2D until reload
 export const markGfxBroken = () => { broken = true; };
 export const gfxBroken = () => broken;

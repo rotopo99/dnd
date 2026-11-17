@@ -10,6 +10,7 @@
 //   viewProj(cam, W, H)                    -> Float32Array(16) (column-major, for gl)
 //   project(cam, x, y, z)                  -> {x, y, d} screen px + depth
 //   rayAt(cam, px, py)                     -> {o:[3], d:[3]} picking ray;  basis(cam) -> {r, u, f}
+//   ortho(cam)                             -> {r, u, f, T, c:[cx, cy], s} screen mapping (Three.js camera sync)
 //   pickCell(cam, px, py, w, h, topAt(x,y)) -> {x, y} | null — nearest cell top hit by the ray
 //   cam.fx = {dx, dy, z, px, py} | null     juice (view only): shake px + zoom z about the screen point (px, py)
 import { GFX } from '../data/gfx.js';
@@ -133,6 +134,13 @@ export function viewProj(cam, W, H) {
   m[2] = f[0] / DEPTH; m[6] = f[1] / DEPTH; m[10] = f[2] / DEPTH; m[14] = -dot(f, T) / DEPTH;
   m[15] = 1;
   return m;
+}
+
+/** Screen mapping of the view (Three.js backend builds its OrthographicCamera from it): basis r/u/f, target T, screen
+ *  centre [cx, cy] px (juice cam.fx included), s px per metre. */
+export function ortho(cam) {
+  const { r, u, f } = basis(cam);
+  return { r, u, f, T: target(cam), c: center(cam), s: ppm(cam) };
 }
 
 export function project(cam, x, y, z) {

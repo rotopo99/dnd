@@ -1,0 +1,118 @@
+// Three.js backend (docs/specs/threejs-migration.md): renderer, post chain, shared caches. Loaded by main.js with a
+// dynamic import (Three.js is a vendor module, game/vendor/three/); until / unless it loads the old gfx/* renderer draws.
+// The world canvas #gl3 sits under the Canvas 2D UI (#game) like #gl; it is visible only in frames that drew into it.
+//   createThree(canvas, game) -> E { gen, ok(), resize(w, h, cw, ch), use(), endFrame(), drawBattle(game, S, opts),
+//                                    dropBattle(V), geometry(key, build), renderer, soft }
+// Battle scene: three/battle.js. Numbers: data/gfx.js GFX.three.
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GFX } from '../data/gfx.js';
+import { softwareGL } from '../gfx/gl.js';
+import { drawBattleThree, dropBattleThree } from './battle.js';
+
+// final grade (after tonemap + sRGB): vignette over the map area, biome colour balance, brightest pixel cap (3d.md §7)
+const GradeShader = {
+  name: 'GradeShader',
+  uniforms: { tDiffuse: { value: null }, uArea: { value: new THREE.Vector4(0, 0, 1, 1) }, uBal: { value: new THREE.Vector3(1, 1, 1) }, uVig: { value: new THREE.Vector2(0.2, 0.55) }, uMax: { value: 0.92 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec4 uArea; uniform vec3 uBal; uniform vec2 uVig; uniform float uMax; varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  vec2 q = (vUv - uArea.xy) / uArea.zw * 2.0 - 1.0;
+  float v = smoothstep(uVig.y, 1.45, length(q));
+  vec3 col = c.rgb * uBal * (1.0 - uVig.x * v);
+  gl_FragColor = vec4(min(col, vec3(uMax)), c.a);
+}`,
+};
+
+export function createThree(canvas, game) {
+  const E = {
+    canvas, gen: 0, renderer: null, failed: false, lost: false, used: false, soft: softwareGL(), w: canvas.width, h: canvas.height,
+    cw: '', ch: '', scale: 1, geos: new Map(), post: null, clip: '',
+    ok() {
+      if (E.failed || E.lost) return false;
+      if (E.renderer) return true;
+      try {
+        const r = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance' });
+        r.shadowMap.enabled = true;
+        r.shadowMap.type = THREE.PCFSoftShadowMap;
+        r.outputColorSpace = THREE.SRGBColorSpace;
+        r.toneMapping = THREE.NeutralToneMapping; // Khronos PBR Neutral: keeps the brand cyan / magenta (premium-look)
+        r.toneMappingExposure = GFX.three.exposure;
+        E.scale = E.soft ? GFX.soft.scale : Math.min(globalThis.devicePixelRatio || 1, GFX.three.maxDpr);
+        r.setPixelRatio(E.scale);
+        r.setSize(E.w, E.h, false);
+        canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); E.lost = true; });
+        canvas.addEventListener('webglcontextrestored', () => { E.lost = false; E.gen++; E.geos.clear(); E.disposePost(); });
+        E.renderer = r;
+        return true;
+      } catch (e) {
+        console.warn('three.js', e);
+        E.failed = true;
+        return false;
+      }
+    },
+    resize(w, h, cw, ch) {
+      E.w = w; E.h = h; E.cw = cw; E.ch = ch;
+      canvas.style.width = cw; canvas.style.height = ch;
+      if (E.renderer) { E.renderer.setSize(w, h, false); E.post?.setSize(w, h); }
+      else { canvas.width = w; canvas.height = h; }
+    },
+    use() { E.used = true; },
+    endFrame() {
+      const show = E.used && !E.failed;
+      if (canvas.style.visibility !== (show ? 'visible' : 'hidden')) canvas.style.visibility = show ? 'visible' : 'hidden';
+      E.used = false;
+    },
+    /** World clip to the map area (UI panels around stay clean): CSS clip-path in display px. */
+    clipTo(a) {
+      const k = (parseFloat(E.cw) || E.w) / E.w;
+      const c = `inset(${Math.max(0, a.y * k)}px ${Math.max(0, (E.w - a.x - a.w) * k)}px ${Math.max(0, (E.h - a.y - a.h) * k)}px ${Math.max(0, a.x * k)}px)`;
+      if (c !== E.clip) { E.clip = c; canvas.style.clipPath = c; }
+    },
+    /** Shared geometry cache (templates / props), per context generation. */
+    geometry(key, build) {
+      let g = E.geos.get(key);
+      if (g === undefined) { g = build(); E.geos.set(key, g); }
+      return g;
+    },
+    /** Post chain (EffectComposer): scene -> GTAO -> bloom (HDR, only what exceeds the threshold: emissive) -> tonemap -> grade. */
+    composer(scene, camera) {
+      const P = E.post;
+      if (P && P.scene === scene) { P.render.camera = camera; P.gtao.camera = camera; return P; }
+      E.disposePost();
+      const T3 = GFX.three, r = E.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
+      const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: E.soft ? 0 : T3.msaa });
+      const comp = new EffectComposer(r, rt);
+      comp.setPixelRatio(E.scale);
+      comp.setSize(E.w, E.h);
+      const render = new RenderPass(scene, camera);
+      const gtao = new GTAOPass(scene, camera, E.w, E.h);
+      gtao.updateGtaoMaterial(T3.ao);
+      gtao.blendIntensity = T3.ao.intensity;
+      // transparent overlays, particles, outline hulls and x-ray silhouettes stay out of the AO g-buffer
+      const ov = gtao._overrideVisibility.bind(gtao);
+      gtao._overrideVisibility = function () { ov(); scene.traverse((o) => { if (o.userData.noAO && o.visible) { o.visible = false; this._visibilityCache.push(o); } }); };
+      const B = T3.bloom, bloom = new UnrealBloomPass(new THREE.Vector2(E.w, E.h), B.strength, B.radius, B.threshold);
+      const out = new OutputPass();
+      const grade = new ShaderPass(GradeShader);
+      for (const p of [render, gtao, bloom, out, grade]) comp.addPass(p);
+      E.post = { scene, comp, render, gtao, bloom, grade, setSize: (w, h) => comp.setSize(w, h) };
+      return E.post;
+    },
+    disposePost() {
+      if (!E.post) return;
+      E.post.comp.dispose?.();
+      E.post.gtao.dispose?.(); E.post.bloom.dispose?.();
+      E.post = null;
+    },
+    drawBattle(game2, S, opts) { E.use(); drawBattleThree(E, game2, S, opts); },
+    dropBattle(V) { dropBattleThree(E, V); },
+  };
+  return E;
+}

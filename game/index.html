@@ -12,12 +12,17 @@
     html, body { margin: 0; height: 100%; overflow: hidden; background: #14141c; }
     body { display: grid; place-items: center; }
     canvas { image-rendering: pixelated; display: block; grid-area: 1 / 1; }
-    #gl { image-rendering: auto; pointer-events: none; visibility: hidden; }
+    #gl, #gl3 { image-rendering: auto; pointer-events: none; visibility: hidden; }
   </style>
 </head>
 <body>
   <canvas id="gl" width="1280" height="720"></canvas>
+  <canvas id="gl3" width="1280" height="720"></canvas>
   <canvas id="game" width="1280" height="720"></canvas>
+  <!-- vendor ES modules (game/vendor/README.md): relative paths, works from any static host / sub-folder -->
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/", "@pixiv/three-vrm": "./vendor/three-vrm/three-vrm.module.js" } }
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
