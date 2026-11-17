@@ -81,16 +81,17 @@ def build_head(P, sex):
     bm.free()
     smooth_shade(o)
     o['zchin'] = zchin; o['hh'] = hh; o['y0'] = y0
-    add_expressions(o, P)
     return o
 
 
-def add_expressions(o, P):
-    hs = P['hs']; fl = feature_layout(hs); zchin = o['zchin']; y0 = o['y0']
-    o.shape_key_add(name='Basis')
+def add_expressions(o, P, zchin, y0, lo, hi):
+    """Emotion shape keys on vertices lo..hi (the head block of the joined body mesh)."""
+    hs = P['hs']; fl = feature_layout(hs)
+    if not o.data.shape_keys: o.shape_key_add(name='Basis')
     def key(name, fn):
         k = o.shape_key_add(name=name, from_mix=False)
-        for i, v in enumerate(o.data.vertices):
+        for i in range(lo, hi):
+            v = o.data.vertices[i]
             if v.co.y > y0 + 0.002: continue
             d = fn(v.co.x, v.co.z - zchin, v.co)
             if d: k.data[i].co = v.co + Vector(d)

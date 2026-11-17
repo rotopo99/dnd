@@ -169,9 +169,9 @@ def face_sdf(hs=1.0):
     """Face shadow threshold map (toon shading, 'SDF' style): value = light azimuth (0 front .. 180 side, /180) at which the texel
     drops into shadow. The left half is a mirror of the right one; the game compares it with the light angle (flip for light from the other side)."""
     X, Z = _grid(hs); fl = feature_layout(hs)
-    x = X / 0.097
+    x = X / (0.097 * 1.09)
     base = np.sqrt(np.clip(1 - np.minimum(x ** 2, 1), 0, 1))       # height field of a cylinder-ish face
-    h = base * 0.097
+    h = base * 0.097 * 1.09
     for gx, gz, s, amp in ((0, fl['nose_z'] * hs, 0.0085, 0.0085), (0.05, 0.062 * hs, 0.016, -0.003), (-0.05, 0.062 * hs, 0.016, -0.003),
                           (0, 0.030 * hs, 0.014, 0.0035)):
         h = h + amp * np.exp(-((X - gx) ** 2 + (Z - gz) ** 2) / (2 * s * s))
