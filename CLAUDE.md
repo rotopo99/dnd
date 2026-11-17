@@ -10,7 +10,8 @@
 - Обычный чат: попроси «сделай фичу X» или вызови `/new-feature X` — пайплайн тот же.
 
 ## Техника
-- Игра: чистый HTML5 Canvas + ES-модули, **без сборки и без зависимостей**. Вход — `game/index.html`.
+- Игра: HTML5 Canvas + ES-модули, **без сборки**. Вход — `game/index.html`.
+- Зависимости (решение человека 2026-11-17): графика на **Three.js** (+ three-vrm, postprocessing) — файлы библиотек лежат в `game/vendor/` (скопированы из npm, без сборки, через importmap). Модели — **Blender** (`bpy` из PyPI) скриптами → GLB в `game/assets/models/`. Других зависимостей не добавлять.
 - Код игры — `game/src/`. Один модуль = одна система (`input.js`, `render.js`, `scenes/…`).
 - Локальный запуск: `python3 -m http.server 8000` в корне → http://localhost:8000/game/
 - Плейтест: `node tools/playtest.mjs` (Playwright: скриншот + ошибки консоли).
