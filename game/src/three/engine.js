@@ -41,7 +41,7 @@ export function createThree(canvas, game) {
         const r = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance' });
         r.shadowMap.enabled = true;
         E.lite = E.soft && !/[?&]hq=1/.test(globalThis.location?.search || ''); // software GL: GFX.three.soft
-        r.shadowMap.type = E.lite ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+        r.shadowMap.type = THREE.PCFShadowMap; // r18x: PCFSoftShadowMap removed; softness = shadow.radius (GFX.three.shadow)
         r.outputColorSpace = THREE.SRGBColorSpace;
         r.toneMapping = THREE.NeutralToneMapping; // Khronos PBR Neutral: keeps the brand cyan / magenta (premium-look)
         r.toneMappingExposure = GFX.three.exposure;
