@@ -157,5 +157,7 @@ export const GFX = {
     grade: { vignette: 0.22, start: 0.55, max: 0.93 },
     night: { ambient: 0.35, point: 3.2, dist: 1.6 },
     particleGlow: 2.4,
+    // software GL (SwiftShader / llvmpipe — fill rate): no bloom, smaller hard-PCF shadow map; `?hq=1` keeps full quality
+    soft: { bloom: false, shadow: 1024 },
   },
 };

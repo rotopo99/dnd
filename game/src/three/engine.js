@@ -40,7 +40,8 @@ export function createThree(canvas, game) {
       try {
         const r = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance' });
         r.shadowMap.enabled = true;
-        r.shadowMap.type = THREE.PCFSoftShadowMap;
+        E.lite = E.soft && !/[?&]hq=1/.test(globalThis.location?.search || ''); // software GL: GFX.three.soft
+        r.shadowMap.type = E.lite ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
         r.outputColorSpace = THREE.SRGBColorSpace;
         r.toneMapping = THREE.NeutralToneMapping; // Khronos PBR Neutral: keeps the brand cyan / magenta (premium-look)
         r.toneMappingExposure = GFX.three.exposure;
@@ -101,6 +102,7 @@ export function createThree(canvas, game) {
       const B = T3.bloom, bloom = new UnrealBloomPass(new THREE.Vector2(E.w, E.h), B.strength, B.radius, B.threshold);
       const out = new OutputPass();
       const grade = new ShaderPass(GradeShader);
+      bloom.enabled = !(E.lite && !T3.soft.bloom);
       for (const p of [render, gtao, bloom, out, grade]) comp.addPass(p);
       E.post = { scene, comp, render, gtao, bloom, grade, setSize: (w, h) => comp.setSize(w, h) };
       return E.post;

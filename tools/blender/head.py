@@ -29,7 +29,7 @@ def gauss(d2, s): return math.exp(-d2 / (2 * s * s))
 
 def feature_layout(hs=1.0):
     """Metric layout of the face features (m, relative to head centre line x=0 and chin z=0) shared with face_atlas.py."""
-    d = dict(eye_x=0.036, eye_z=0.094, eye_rx=0.0215, eye_rz=0.0165, brow_z=0.127, nose_z=0.060, mouth_z=0.037, blush_x=0.05, blush_z=0.066)
+    d = dict(eye_x=0.040, eye_z=0.092, eye_rx=0.0285, eye_rz=0.0235, brow_z=0.133, nose_z=0.060, mouth_z=0.037, blush_x=0.05, blush_z=0.066)
     return {k: v * K for k, v in d.items()}
 
 

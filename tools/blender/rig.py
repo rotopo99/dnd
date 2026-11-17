@@ -113,6 +113,7 @@ def build_body(sex='female', skin='light', hair_rgb=(0.3, 0.2, 0.17), iris=(0.25
     bpy.context.view_layer.objects.active = body
     bpy.ops.object.join()
     body.name = 'Body'; body.data.name = 'Body'
+    body.data.uv_layers.active = body.data.uv_layers[0]; body.data.uv_layers[0].active_render = True
     fixed = nearest_bone_fallback(body, arm)
     limit_and_normalize(body)
     zchin, y0 = head['zchin'] if False else None, None

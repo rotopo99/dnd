@@ -64,6 +64,13 @@ const game = {
 };
 
 game.gfx = createGfx(document.getElementById('gl'), game);
+// threejs-migration.md: the Three.js backend loads asynchronously (vendor module via the import map); until it is up — or
+// if it fails (old browser, no import maps) — 3D falls back to the old renderer (gfx/*)
+import('./three/engine.js').then(({ createThree }) => {
+  const c = document.getElementById('gl3');
+  game.gfx.three = createThree(c, game);
+  game.gfx.three.resize(game.width, game.height, canvas.style.width, canvas.style.height);
+}).catch((e) => { console.warn('three.js not loaded, old 3D renderer', e); game.gfx.threeFailed = true; });
 
 function resize() {
   const vw = window.innerWidth;

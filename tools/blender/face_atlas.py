@@ -69,7 +69,7 @@ def draw_face(sex='female', expr='neutral', skin='light', iris=(0.25, 0.62, 0.75
             # upper-lid shadow on the sclera
             sh = np.clip((Z - (ey + rz * 0.35)) / (rz * 0.9), 0, 1)
             _over(img, sclera * sh, (0.80, 0.75, 0.82), 0.7)
-            ir = 0.0128 * hs * 1.09; icx = cxe - s * 0.0008
+            ir = erx * 0.60; icx = cxe - s * 0.0008
             irz = ir * 1.12 * min(1.25, 0.55 + openness * 0.5)
             irisM = _aa(_ell(X, Z, icx, ey + rz * 0.08, ir, irz)) * sclera
             g = np.clip((Z - (ey + rz * 0.08 - irz)) / (2 * irz), 0, 1)       # 0 bottom .. 1 top
@@ -82,8 +82,8 @@ def draw_face(sex='female', expr='neutral', skin='light', iris=(0.25, 0.62, 0.75
             m = irisM[..., None]; img[..., :3] = img[..., :3] * (1 - m) + ic * m
             _over(img, _aa(_ell(X, Z, icx, ey + rz * 0.05, ir * 0.42, irz * 0.46)) * sclera, (0.05, 0.04, 0.08))
             # highlights
-            hx = icx - 0.0045 * hs * 1.0; _over(img, _aa(_ell(X, Z, hx, ey + rz * 0.50, 0.0042 * hs, 0.0050 * hs)) * sclera, (1, 1, 1))
-            _over(img, _aa(_ell(X, Z, icx + 0.0055 * hs, ey - rz * 0.35, 0.0021 * hs, 0.0021 * hs)) * sclera, (1, 1, 1), 0.95)
+            hx = icx - ir * 0.36; _over(img, _aa(_ell(X, Z, hx, ey + rz * 0.50, ir * 0.30, ir * 0.36)) * sclera, (1, 1, 1))
+            _over(img, _aa(_ell(X, Z, icx + ir * 0.42, ey - rz * 0.35, ir * 0.15, ir * 0.15)) * sclera, (1, 1, 1), 0.95)
             _over(img, _aa(_ell(X, Z, icx + 0.0, ey - rz * 0.62, ir * 0.7, 0.0025 * hs)) * sclera, (1, 1, 1), 0.28)
             # upper lash: thick arc, wing at the outer corner
             th = np.linspace(math.radians(165), math.radians(15), 26)
@@ -94,10 +94,10 @@ def draw_face(sex='female', expr='neutral', skin='light', iris=(0.25, 0.62, 0.75
             if sex == 'female':
                 wing = [arc[-1], (arc[-1][0] + s * 0.0075 * hs, arc[-1][1] + 0.0045 * hs * (0.6 if expr == 'sad' else 1.0))]
                 if expr == 'sad': wing[1] = (wing[1][0], wing[1][1] - 0.006)
-                _over(img, _aa(_stroke(X, Z, arc, 0.0030 * hs, 0.0055 * hs)), lash)
-                _over(img, _aa(_stroke(X, Z, wing, 0.0050 * hs, 0.0016)), lash)
+                _over(img, _aa(_stroke(X, Z, arc, 0.0040 * hs, 0.0070 * hs)), lash)
+                _over(img, _aa(_stroke(X, Z, wing, 0.0065 * hs, 0.0018)), lash)
             else:
-                _over(img, _aa(_stroke(X, Z, arc, 0.0028 * hs, 0.0042 * hs)), lash)
+                _over(img, _aa(_stroke(X, Z, arc, 0.0035 * hs, 0.0052 * hs)), lash)
             # lower lash: thin
             low = [(cxe + s * (-math.cos(a)) * erx * 0.98, ey + rz * 0.06 + math.sin(a) * rz * 1.0) for a in np.linspace(math.radians(190), math.radians(350), 14)]
             _over(img, _aa(_stroke(X, Z, low, 0.0007)), (0.55, 0.33, 0.33), 0.7)
@@ -115,12 +115,12 @@ def draw_face(sex='female', expr='neutral', skin='light', iris=(0.25, 0.62, 0.75
         # eyebrows
         bz = fl['brow_z'] * hs; tilt = {'angry': -0.011, 'sad': 0.009, 'surprised': 0.006}.get(expr, 0.0)
         lift = 0.006 if expr == 'surprised' else 0.0
-        inner = (s * (ex - 0.017 * hs), bz + tilt * -1 * 0.5 + lift - (0.002 if expr == 'angry' else 0))
+        inner = (s * (ex - 0.022 * hs), bz + tilt * -1 * 0.5 + lift - (0.002 if expr == 'angry' else 0))
         mid = (s * ex, bz + 0.004 + lift)
-        outer = (s * (ex + 0.020 * hs), bz - 0.001 + lift + tilt * 0.45 * (1 if expr != 'angry' else -1) * 0)
+        outer = (s * (ex + 0.026 * hs), bz - 0.001 + lift + tilt * 0.45 * (1 if expr != 'angry' else -1) * 0)
         if expr == 'angry': inner = (inner[0], bz - 0.004); outer = (outer[0], bz + 0.004)
         if expr == 'sad': inner = (inner[0], bz + 0.004); outer = (outer[0], bz - 0.004)
-        th = 0.0030 if sex == 'female' else 0.0042
+        th = 0.0042 if sex == 'female' else 0.0056
         pts = [inner, ((inner[0] + mid[0]) / 2, (inner[1] + mid[1]) / 2 + 0.0005), mid, ((mid[0] + outer[0]) / 2, (mid[1] + outer[1]) / 2), outer]
         _over(img, _aa(_stroke(X, Z, pts, th, 0.0009)), brow, 0.92)
     # mouth
@@ -128,7 +128,7 @@ def draw_face(sex='female', expr='neutral', skin='light', iris=(0.25, 0.62, 0.75
     mc = (0.55, 0.22, 0.25)
     if expr in ('neutral', 'blink'):
         pts = [(-0.0105, mz + 0.0012), (-0.004, mz - 0.0010), (0.004, mz - 0.0010), (0.0105, mz + 0.0012)]
-        _over(img, _aa(_stroke(X, Z, pts, 0.0017, 0.0017)), mc)
+        _over(img, _aa(_stroke(X, Z, pts, 0.0022, 0.0022)), mc)
     elif expr == 'happy':
         pts = [(-0.014, mz + 0.0035), (-0.007, mz - 0.0030), (0.007, mz - 0.0030), (0.014, mz + 0.0035)]
         d = _stroke(X, Z, pts, 0.0017, 0.0017)
@@ -139,7 +139,7 @@ def draw_face(sex='female', expr='neutral', skin='light', iris=(0.25, 0.62, 0.75
         _over(img, _aa(_stroke(X, Z, pts, 0.0019, 0.0019)), mc)
     elif expr == 'sad':
         pts = [(-0.009, mz - 0.0030), (-0.003, mz + 0.0008), (0.003, mz + 0.0008), (0.009, mz - 0.0030)]
-        _over(img, _aa(_stroke(X, Z, pts, 0.0017, 0.0017)), mc)
+        _over(img, _aa(_stroke(X, Z, pts, 0.0022, 0.0022)), mc)
     elif expr == 'surprised':
         _over(img, _aa(_ell(X, Z, 0, mz - 0.002, 0.0062, 0.0085)), (0.42, 0.12, 0.16)); _over(img, _aa(_ell(X, Z, 0, mz - 0.007, 0.0040, 0.0025)), (0.9, 0.42, 0.46))
         _over(img, _aa(np.abs(_ell(X, Z, 0, mz - 0.002, 0.0062, 0.0085)) - 0.0006), mc)
@@ -156,12 +156,15 @@ def to_linear(img):
 
 
 def make_image(name, arr, srgb=True, path=None):
-    """arr in sRGB 0..1 (rows = v ascending). Creates a Blender image (packed on export) and optionally saves a PNG."""
-    im = bpy.data.images.new(name, arr.shape[1], arr.shape[0], alpha=True)
-    im.pixels = arr.ravel().tolist()
+    """arr (rows = v ascending, sRGB 0..1) -> PNG on disk (WORK, or `path`) -> loaded + packed Blender image."""
+    tmp = bpy.data.images.new(name + '_tmp', arr.shape[1], arr.shape[0], alpha=True)
+    tmp.pixels = arr.ravel().tolist()
+    if not srgb: tmp.colorspace_settings.name = 'Non-Color'
+    p = path or os.path.join(WORK, name + '.png')
+    tmp.filepath_raw = p; tmp.file_format = 'PNG'; tmp.save(); bpy.data.images.remove(tmp)
+    im = bpy.data.images.load(p); im.name = name
     if not srgb: im.colorspace_settings.name = 'Non-Color'
-    if path: im.filepath_raw = path; im.file_format = 'PNG'; im.save()
-    else: im.pack()
+    im.pack()
     return im
 
 

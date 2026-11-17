@@ -69,6 +69,7 @@ def outline(objs, width=0.0025, color=(0.07, 0.05, 0.1)):
     out = nt.nodes.new('ShaderNodeOutputMaterial'); em = nt.nodes.new('ShaderNodeEmission')
     em.inputs[0].default_value = (*color, 1); nt.links.new(em.outputs[0], out.inputs[0])
     m.use_backface_culling = True
+    if hasattr(m, 'use_backface_culling_shadow'): m.use_backface_culling_shadow = True
     added = []
     for o in objs:
         if o.type != 'MESH': continue
@@ -98,14 +99,14 @@ def render_views(objs, path, views=('front', 'side', 'back', 'three'), size=(480
     L = bpy.data.objects.get('PLight')
     if not L:
         L = link(bpy.data.objects.new('PLight', bpy.data.lights.new('PLight', 'SUN')))
-    L.rotation_euler = (math.radians(50), 0, math.radians(-35)); L.data.energy = 3
+    L.rotation_euler = Vector((0.45, 0.75, -0.55)).to_track_quat('-Z', 'Y').to_euler(); L.data.energy = 3
     d = 7.0; c = Vector(center)
     dirs = {'front': (0, -1, 0.05), 'side': (1, 0, 0.05), 'back': (0, 1, 0.05), 'three': (0.7, -0.7, 0.12), 'face': (0.15, -1, 0.0), 'faceside': (0.8, -0.6, 0.0)}
     imgs = []
     for v in views:
         dv = Vector(dirs[v]).normalized()
         if v.startswith('face'):
-            _cam(c + dv * 2.0, c, ortho=None, lens=100)
+            _cam(c + dv * 2.0, c, ortho=None, lens=120)
         else:
             _cam(c + dv * d, c, ortho=height)
         fp = os.path.join(WORK, 'v_%s.png' % v); sc.render.filepath = fp
