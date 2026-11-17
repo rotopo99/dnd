@@ -30,6 +30,7 @@ import { gpuAtlas, faceCol, FACE_COLS } from './faces.js';
 import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
 import { buildFx, particleMesh, weatherFx } from './fx3d.js';
 import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken } from './settings.js';
+import { createPost } from './post.js';
 
 const G = GFX.geo;
 
@@ -50,7 +51,7 @@ export function createGfx(canvas, game) {
       try {
         X.gl = createGL(canvas, {
           onLost: () => { X.lost = true; X.lostAt = performance.now(); },
-          onRestored: () => { X.lost = false; X.P = null; X.gen++; X.gpu.clear(); X.refs.clear(); X.idle.clear(); X.live.clear(); X.sh = null; X.bt = null; resetOverlays(X.gl); resetInstanced(X.gl); X.init(); },
+          onRestored: () => { X.lost = false; X.P = null; X.gen++; X.gpu.clear(); X.refs.clear(); X.idle.clear(); X.live.clear(); X.sh = null; X.bt = null; X.post = undefined; resetOverlays(X.gl); resetInstanced(X.gl); X.init(); },
         }, { antialias: !softwareGL() });
         if (!X.gl) throw new Error('no webgl2');
         X.init();
@@ -606,9 +607,10 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   if (!gl || !V?.world || X.lost) return;
   X.use();
   X.stale?.delete(S);
-  const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam, now = S.time;
-  const dt = Math.min(GFX.camera.maxDt, V.lastT == null ? 0 : S.time - V.lastT);
-  V.lastT = S.time;
+  // display clock: S.vtime (battle: frozen by the juice hit-stop, slowed by the accent), else S.time
+  const b = S.b, Wd = V.world, prefs = gfxPrefs(), cam = V.cam, now = S.vtime ?? S.time;
+  const dt = Math.min(GFX.camera.maxDt, V.lastT == null ? 0 : Math.max(0, now - V.lastT));
+  V.lastT = now;
   // camera: lean to the active unit when zoomed in
   const cu = cur ? S.dispOf(cur) : null;
   V.focusPt = cu ? { x: cu.x + 0.5, z: cu.y + 0.5 } : S.focus3 || null;
@@ -625,6 +627,25 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   ob.clear();
   PARTS.length = 0;
   const fl = (x, y) => (Wd.floor[y * Wd.w + x] ?? 0) + G.overlay;
+  // contact shadows (premium-look): soft blobs under obstacles / props (static, cached per world version) and units
+  {
+    const CT = GFX.contact, cc = keyRGB(CT.color);
+    if (!prefs.reduceFx) {
+      if (V.blobGv !== V.gv) {
+        V.blobGv = V.gv; V.blobs = [];
+        for (let y = 0; y < Wd.h; y++) for (let x = 0; x < Wd.w; x++) {
+          const i = y * Wd.w + x, k = Wd.kind[i];
+          if (Wd.obst[i] > 0 && k !== 'wall' && k !== 'fence' && k !== 'deep' && k !== 'water') V.blobs.push(x + 0.5, y + 0.5, Wd.floor[i] + G.overlay - 0.004);
+        }
+      }
+      for (let i = 0; i < V.blobs.length; i += 3) ob.blob(V.blobs[i], V.blobs[i + 1], V.blobs[i + 2], CT.objR, CT.objR, [cc[0], cc[1], cc[2], CT.objA], 12);
+    }
+    for (const it of units) {
+      if (it.u.dead || it.u.removed || it.alpha < 0.5) continue;
+      const d = it.d, r = CT.unitR * (it.u.boss ? GFX.unit.bossScale : 1);
+      ob.blob(d.x + 0.5, d.y + 0.5, (V.hgt[it.u.id] ?? 0) + G.overlay - 0.002, r, r, [cc[0], cc[1], cc[2], CT.unitA * it.alpha]);
+    }
+  }
   const fxActive = buildFx(S, V, now, prefs, ob, PARTS);
   const wxActive = weatherFx(V, b.map, now, prefs, ob, PARTS);
   overlay?.(ob, fl);
@@ -650,7 +671,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   const walking = units.some((it) => it.d.path?.length);
   cutLids(V, view, ob);
   const busy = fxActive || wxActive || walking || animActive(V, now) || cam.moving || view.moving;
-  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.down ? 1 : 0}`).join(';')}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
+  const sig = `${cam.yaw.toFixed(2)}|${cam.zoom.toFixed(3)}|${cam.cx.toFixed(3)}|${cam.cz.toFixed(3)}|${V.gv}|${ob.v.length}|${hashArr(ob.v)}|${units.map((it) => `${it.d.x.toFixed(2)},${it.d.y.toFixed(2)},${it.alpha.toFixed(2)},${it.tint || ''},${(it.d.flash || 0).toFixed(2)},${it.d.flashF || 0},${it.d.down ? 1 : 0}`).join(';')}|${cam.fx ? `${cam.fx.dx.toFixed(1)},${cam.fx.dy.toFixed(1)},${cam.fx.z.toFixed(3)}` : ''}|${gl.drawingBufferWidth}x${gl.drawingBufferHeight}|${prefs.brightness}|${prefs.reduceFx}|${prefs.shadows}|${prefs.reduceMotion}|${view.k.toFixed(2)}|${view.xray ? 1 : 0}|${view.pts.map((p) => `${p[0].toFixed(2)},${p[2].toFixed(2)}`).join(';')}|${prefs.walls}`;
   if (!busy && sig === V.lastSig && S.time - V.lastDraw < 1 / (X.soft ? GFX.soft.idleFps : GFX.idleFps)) return;
   V.lastSig = sig; V.lastDraw = S.time;
 
@@ -711,7 +732,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     if (dead && st.deathT0 < 0) st.deathT0 = now; // removed without an event (fled / unsummoned)
     // dying units: stay opaque while they fall, then fade
     const alpha = dead ? Math.min(1, it.alpha * 2.2) : it.alpha;
-    const flash = Math.min(0.6, (d.flash || 0) * 3);
+    const flash = d.flashF > 0 ? 1 : Math.min(0.6, (d.flash || 0) * 3); // juice: 1 frame of full bone-white, then soft
     const team = keyRGB(it.tint || it.teamKey || GFX.team[TEAM(u)]);
     inst.push({ it, T, m, st, a, alpha, flash, team, dead, walking: !!d.path?.length, trans: alpha < 0.99, grow: it.tint ? GFX.unit.outlineTargetPx : GFX.unit.outlinePx });
   }
@@ -788,12 +809,20 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
   const bg = keyRGB(GFX.sky[Wd.biome] || GFX.sky.default);
-  gl.clearColor(bg[0], bg[1], bg[2], 1);
-  gl.disable(gl.SCISSOR_TEST);
-  gl.depthMask(true);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  // post-processing (gfx/post.js): the scene goes into an offscreen target (image + emissive), composited at the end;
+  // «Снизить эффекты» or no MRT -> straight to the canvas as before
+  if (!prefs.reduceFx && X.post === undefined) { try { X.post = createPost(gl, { soft: X.soft }); } catch (e) { console.warn('post', e); X.post = null; } }
+  const post = !prefs.reduceFx ? X.post : null;
+  if (post) post.begin(gl.canvas.width, gl.canvas.height, bg);
+  else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.clearColor(bg[0], bg[1], bg[2], 1);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.depthMask(true);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
   // the world only inside the map area (UI panels around it stay clean)
   const A = cam.area;
   gl.enable(gl.SCISSOR_TEST);
@@ -813,6 +842,8 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   const amount = vis.dark ? NT.amount : tod === 'dusk' ? NT.dusk : 0;
   const ovl = WEATHER.tod[tod]?.overlay?.[0] || '0', nc = keyRGB(ovl);
   const ls = amount && vis.dark ? (S.lights3 || lightSources(b)).slice(0, GFX.light.night.max) : [];
+  const Fd = GFX.fill.dir, fv = [r[0] * Fd[0] - f[0] * Fd[2], Fd[1], r[2] * Fd[0] - f[2] * Fd[2]], fvl = Math.hypot(...fv) || 1;
+  const HF = GFX.hfog;
   const larr = new Float32Array(24);
   ls.forEach(([x, y, rr], k) => { larr[k * 3] = x + 0.5; larr[k * 3 + 1] = y + 0.5; larr[k * 3 + 2] = (rr + 0.5) * NT.radiusMul; });
   const common = (P) => {
@@ -836,6 +867,10 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.uniform1i(U.uNumLights, ls.length);
     gl.uniform1f(U.uBright, prefs.brightness || 1);
     gl.uniform1f(U.uMaxPix, GFX.maxPixel);
+    // fill light opposite the key; height fog in the biome fog colour (both off with «Снизить эффекты»)
+    if (U.uFill) gl.uniform4f(U.uFill, fv[0] / fvl, fv[1] / fvl, fv[2] / fvl, prefs.reduceFx ? 0 : GFX.fill.k);
+    if (U.uHFog) gl.uniform4f(U.uHFog, HF.y0, HF.y1, 0, 0);
+    if (U.uHFogC) gl.uniform4f(U.uHFogC, fc[0], fc[1], fc[2], prefs.reduceFx ? 0 : HF.amount);
     if (U.uToon) { // anime toon: soft band edge, rim strength, shadow hue amount, outline darkness
       const T2 = GFX.toon, sh = keyRGB(T2.shadeHue), rm = keyRGB(T2.rim), rs = keyRGB(T2.rust);
       gl.uniform4f(U.uToon, T2.soft, prefs.reduceFx ? T2.rim2 * 0.5 : T2.rimK, T2.hue, T2.outline);
@@ -969,8 +1004,9 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   gl.depthMask(true);
   gl.disable(gl.BLEND);
   gl.disable(gl.SCISSOR_TEST);
+  if (post) post.end({ area: [A.x * rs, (H - (S.L.area.y + S.L.area.h)) * rs, A.w * rs, S.L.area.h * rs], bal: GFX.post.balance[Wd.biome] || GFX.post.balance.default });
   gl.bindVertexArray(null);
-  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy, chunks: shown.length, chunksAll: V.chunks.size, lights: ls.length, weather: wxActive };
+  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy, chunks: shown.length, chunksAll: V.chunks.size, lights: ls.length, weather: wxActive, post: !!post, msaa: post ? post.samples : 0 };
 }
 const angDelta = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 function hashArr(a) { let h = 0; for (let i = 0; i < a.length; i += 7) h = (Math.imul(h, 31) + (a[i] * 1000 | 0) + (a[i + 2] * 977 | 0) + (a[i + 6] * 100 | 0)) | 0; return h; }

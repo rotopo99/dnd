@@ -111,7 +111,7 @@ export const GFX = {
   // knee2 — tonemap shoulder start (palette colours are <= maxPixel 0.9: ~0.2 % shift); vignette strength / start (share of
   // the half-diagonal of the map area); grain amplitude (static); msaa samples on hardware
   post: {
-    threshold: 0.62, knee: 0.22, bloom: 0.3, mipW: [0.9, 0.7, 0.5], softMips: 2, knee2: 0.88,
+    threshold: 0.6, knee: 0.22, bloom: 0.32, mipW: [0.8, 1.0, 1.1], softMips: 2, knee2: 0.88,
     vignette: 0.22, vignetteStart: 0.55, grain: 0.03, msaa: 4,
     // colour balance by biome (multipliers, |k - 1| <= 0.03; no LUT — the floor colour tells the biome)
     balance: {
@@ -124,7 +124,7 @@ export const GFX = {
   fill: { dir: [0.75, 0.35, -0.35], k: 0.3 },
   hfog: { y0: -0.4, y1: 0.4, amount: 0.16 },
   // contact shadows: soft dark blobs under units (radius m, alpha) and obstacles / props (only without «Снизить эффекты»)
-  contact: { color: '0', unitR: 0.4, unitA: 0.42, objR: 0.66, objA: 0.3 },
+  contact: { color: '0', unitR: 0.42, unitA: 0.5, objR: 0.8, objA: 0.36 },
   sky: { default: '0', night: '0', cyberspace: '0', snow: '1' }, // background (no white skies)
   fogColor: { default: '1', snow: '3', swamp: 'k', 'mutant-forest': 'k', cyberspace: 'i', port: 'g' },
   team: { player: 'h', ally: 'j', enemy: 'c', rival: 'a' },

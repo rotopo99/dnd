@@ -5,6 +5,7 @@
 //   uploadMesh(gl, mb)             -> { vao, count, bufs } (null when empty; + bone attribute 6 after mb.setBone);  freeMesh
 //   uploadInstanced(gl, mesh, slot, data) -> per-instance attributes (particles: loc 2..4, 12 floats) on a dynamic buffer
 //   new OverlayBuilder()           .quad(p0..p3, rgba) .rect(x0, z0, x1, z1, y, rgba) .frame(...) .ring .poly(pts, y, rgba) .line
+//                                  .blob(cx, cz, y, rx, rz, rgba) soft contact shadow (alpha -> 0 at the rim)
 //   uploadOverlay(gl, ob, slot)    -> reuses one dynamic buffer per slot
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
 import { VERT } from './gl.js';
@@ -221,6 +222,17 @@ export class OverlayBuilder {
   /** Horizontal polygon [[x, z], ...] at height y (fan from the first point — convex / star-shaped from it, e.g. view cones). */
   poly(pts, y, c) {
     for (let k = 1; k + 1 < pts.length; k++) for (const p of [pts[0], pts[k], pts[k + 1]]) this.v.push(p[0], y, p[1], c[0], c[1], c[2], c[3]);
+    return this;
+  }
+  /** Soft horizontal blob (contact shadow): ellipse rx x rz, alpha c[3] in the centre -> 0 at the rim. */
+  blob(cx, cz, y, rx, rz, c, seg = 14) {
+    const e = [c[0], c[1], c[2], 0];
+    for (let k = 0; k < seg; k++) {
+      const a0 = (k / seg) * Math.PI * 2, a1 = ((k + 1) / seg) * Math.PI * 2;
+      this.v.push(cx, y, cz, c[0], c[1], c[2], c[3]);
+      this.v.push(cx + Math.cos(a1) * rx, y, cz + Math.sin(a1) * rz, ...e);
+      this.v.push(cx + Math.cos(a0) * rx, y, cz + Math.sin(a0) * rz, ...e);
+    }
     return this;
   }
   /** Horizontal line segment of width w. */
