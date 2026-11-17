@@ -14,6 +14,7 @@ import { t } from '../data/text/index.js';
 import { hotspot } from './tooltip.js';
 import { chrome, drawHeading, themeTitleColor } from './theme.js';
 import { createDetails, updateDetails, drawDetails } from './details.js';
+import { gfxPrefs } from '../gfx/settings.js';
 
 const DETAIL_W = 400;
 const DETAIL_MIN_H = 300;
@@ -120,13 +121,31 @@ export function updateModal(game) {
   opt.run?.(game);
 }
 
+const OPEN_T = 200; // ms: window opening — scale 0.96 -> 1 + fade, easeOutCubic (premium-look item 6)
 export function renderModal(game) {
   const { ctx } = game;
-  ctx.fillStyle = 'rgba(20,20,28,0.72)';
-  ctx.fillRect(0, 0, game.width, game.height);
   const m = game.modals[game.modals.length - 1];
+  const now = typeof performance !== 'undefined' ? performance.now() : 0;
+  m._t0 ??= now;
+  const k = Math.max(0, Math.min(1, (now - m._t0) / OPEN_T)), e = 1 - (1 - k) ** 3;
+  ctx.fillStyle = `rgba(20,20,28,${(0.72 * (game.modals.length > 1 ? 1 : e)).toFixed(3)})`;
+  ctx.fillRect(0, 0, game.width, game.height);
   const spec = m._spec || specOf(game, m);
   const L = m._layout || layout(game, spec, m);
+  ctx.save();
+  if (e < 1) {
+    ctx.globalAlpha = e;
+    if (!gfxPrefs().reduceMotion) {
+      const cx = L.x + L.w / 2, cy = L.y + L.h / 2, s = 0.96 + 0.04 * e;
+      ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
+    }
+  }
+  drawModalBody(game, m, spec, L);
+  ctx.restore();
+}
+
+function drawModalBody(game, m, spec, L) {
+  const { ctx } = game;
   panel(ctx, L.x, L.y, L.w, L.h, C['1'], spec.border ? C[spec.border] : chrome());
   const title = fit(ctx, spec.title || '', L.w - 48, FONT_L);
   ctx.font = FONT_L;

@@ -2,10 +2,16 @@
 //   heroLook3d(h)                       save.hero | battle unit | build -> look (avatar + clothes colour; none saved -> default from race/name)
 //   heroAvatarFrame(h, size, opts)      cached offscreen canvas of the current frame (15 fps, frames cached by quantised pose)
 //   drawHeroAvatar(ctx, h, x, y, box, opts)   opts { emotion, hp, mrl (0..1), hurtAt (performance.now of last damage), time (ms), bg }
+// Since the model pass the portrait is the real 3D head of the hero (gfx/stage.js: the same toon shaders as the battle, close-up of
+// the head and shoulders, face atlas emotions / blink); without WebGL2 (or after a lost context) the old Canvas 2D bust is drawn.
 // Animation: breathing (bust scale +-1%), slow head sway (yaw +-3 deg), blink every 3-6 s, flinch + red flash on damage, tremor when morale is low.
 import { PALETTE, PALETTE_KEYS } from '../assets/sprites.js';
 import { defaultLook, buildAvatarMesh, renderAvatar, isLook3d, rngOf, woundLevel, AVATAR_EMOTIONS } from './avatar3d.js';
 import { migrateLook } from './look-data.js';
+import { hasWebGL2 } from '../gfx/gl.js';
+import { getStage } from '../gfx/stage.js';
+import { unitTemplate } from '../gfx/units3d.js';
+import { animState } from '../gfx/anim.js';
 
 const FPS = 15;
 const pc = (k) => PALETTE[PALETTE_KEYS.indexOf(k)];
@@ -60,6 +66,54 @@ function blinkOn(key, t) {
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : 0);
 const bucket = (box) => (box <= 100 ? 96 : box <= 200 ? 192 : 288);
 
+// ---- GL portrait: one shared 288 x 288 stage, templates cached by look, wounds / flash painted over in 2D
+const GLK = { yawDeg: 15, pitch: 4, view: 0.72 };
+const tplMemo = new Map();
+const poseStates = new Map();
+const stateOf = (key) => { let s = poseStates.get(key); if (!s) { s = animState({ anim: {} }, 'p'); s.seed = 0.3; if (poseStates.size > 80) poseStates.clear(); poseStates.set(key, s); } return s; };
+let glBroken = false, budgetAt = 0, budgetN = 0;
+function portraitTemplate(h, r) {
+  const k = `${r.key.length}${r.key}|${h?.race ?? h?.raceId}|${h?.cls ?? h?.classId}|${h?.armorType || ''}|${JSON.stringify(h?.hide || 0)}`;
+  let T = tplMemo.get(k);
+  if (T) return T;
+  const u = { kind: 'hero', team: 'heroes', id: 'portrait', raceId: h?.race ?? h?.raceId ?? 'human', classId: h?.cls ?? h?.classId ?? 'x', armorType: h?.armorType || 'cloth', weapon: null,
+    avatar: r.look, look: null, hide: h?.hide || null, tags: [], name: h?.name };
+  T = unitTemplate(u);
+  if (tplMemo.size > 24) tplMemo.clear();
+  tplMemo.set(k, T);
+  return T;
+}
+const lastGl = new Map();
+function glFrame(h, r, size, p) {
+  if (glBroken || !hasWebGL2()) return null;
+  const stage = getStage('portrait', 288, 288);
+  if (!stage) { glBroken = true; return null; }
+  const hk = r.key.length + r.key.slice(0, 60);
+  // at most 3 new GL frames per ~16 ms: the rest keep the previous frame of that hero
+  const nw = nowMs();
+  if (nw - budgetAt > 16) { budgetAt = nw; budgetN = 0; }
+  if (++budgetN > 3 && lastGl.has(hk)) return lastGl.get(hk);
+  let T;
+  try { T = portraitTemplate(h, r); } catch (e) { glBroken = true; console.warn('portrait 3d failed', e); return null; }
+  const top = T.top * T.scale, headC = T.headY ? T.headY * T.scale : top - 0.16;
+  const zoom = (top + 0.12) / (GLK.view / p.zoomK);
+  const cv = makeCanvas(size, size), c = cv.getContext('2d');
+  if (p.bg) { c.fillStyle = pc('1'); c.fillRect(0, 0, size, size); const g = c.createRadialGradient(size * 0.4, size * 0.3, 2, size * 0.5, size * 0.5, size * 0.8); g.addColorStop(0, 'rgba(141,149,168,0.22)'); g.addColorStop(1, 'rgba(20,20,28,0.0)'); c.fillStyle = g; c.fillRect(0, 0, size, size); c.fillStyle = pc('2'); c.fillRect(0, size * 0.86, size, size * 0.14); }
+  stage.draw(T, stateOf(hk), { vx: 0, vy: 0, vw: size, vh: size, yaw: GLK.yawDeg + p.yawD, pitch: GLK.pitch + p.pitchD, zoom, focus: headC - 0.07, now: 3, emo: p.emo, blink: p.blink, physics: 0, reduceMotion: true });
+  c.drawImage(stage.canvas, 0, 0, size, size, 0, 0, size, size);
+  woundMarks(c, size, p.lvl, p.nervous);
+  lastGl.set(hk, cv); if (lastGl.size > 60) lastGl.clear();
+  return cv;
+}
+/** Wounds (by the hp share) and the nervous sweat painted over the head: scratches, bruise, blood, bandage (palette colours). */
+function woundMarks(c, size, lvl, nervous) {
+  const u = size / 96, px = (x, y, w, h, k, a = 1) => { c.globalAlpha = a; c.fillStyle = pc(k); c.fillRect(Math.round(x * u), Math.round(y * u), Math.max(1, Math.round(w * u)), Math.max(1, Math.round(h * u))); c.globalAlpha = 1; };
+  if (lvl >= 1) { px(33, 50, 9, 1.2, 'd'); px(35, 52, 7, 1.2, 'c', 0.85); }
+  if (lvl >= 2) { c.globalAlpha = 0.55; c.fillStyle = pc('o'); c.beginPath(); c.ellipse(57 * u, 44 * u, 5 * u, 3 * u, 0, 0, 7); c.fill(); c.globalAlpha = 1; px(47, 17, 1.4, 11, 'c'); px(46, 27, 3, 2, 'd'); }
+  if (lvl >= 3) { c.save(); c.translate(52 * u, 21 * u); c.rotate(-0.2); c.fillStyle = pc('5'); c.fillRect(-14 * u, -3 * u, 28 * u, 6 * u); c.fillStyle = pc('4'); c.fillRect(-14 * u, 2 * u, 28 * u, 1 * u); c.fillStyle = pc('c'); c.fillRect(4 * u, -3 * u, 4 * u, 6 * u); c.restore(); px(64, 52, 1.5, 7, 'c'); }
+  if (nervous) { c.fillStyle = pc('h'); c.beginPath(); c.ellipse(70 * u, 30 * u, 1.8 * u, 2.6 * u, 0, 0, 7); c.fill(); }
+}
+
 /** Current frame canvas (square, bucketed size). */
 export function heroAvatarFrame(h, box = 96, o = {}) {
   const r = heroLook3d(h);
@@ -89,6 +143,14 @@ export function heroAvatarFrame(h, box = 96, o = {}) {
   const key = `${r.key.length}${r.key}|${size}|${emo}|${lvl}|${nervous ? 1 : 0}|${blink ? 1 : 0}|${q(yaw, 100)}|${q(pitch, 100)}|${q(zoom, 400)}|${flash}|${o.bg === false ? 0 : 1}`;
   let cv = frameCache.get(key);
   if (cv) return cv;
+  const gk = glFrame(h, r, size, { zoomK: q(zoom, 400) / 400 / 1.25, yawD: (q(yaw, 100) / 100 - 0.3) * 57.3, pitchD: (q(pitch, 100) / 100 - 0.05) * 57.3, emo, lvl, nervous, blink, bg: o.bg !== false });
+  if (gk) {
+    cv = gk;
+    if (flash) { const f = makeCanvas(size, size), g2 = f.getContext('2d'); g2.drawImage(gk, 0, 0); g2.globalCompositeOperation = 'source-atop'; g2.globalAlpha = 0.45; g2.fillStyle = pc('c'); g2.fillRect(0, 0, size, size); cv = f; }
+    if (frameCache.size > 500) frameCache.clear();
+    frameCache.set(key, cv);
+    return cv;
+  }
   cv = makeCanvas(size, size);
   const c = cv.getContext('2d');
   if (o.bg !== false) { c.fillStyle = pc('1'); c.fillRect(0, 0, size, size); c.fillStyle = pc('2'); c.fillRect(0, size * 0.72, size, size * 0.28); }

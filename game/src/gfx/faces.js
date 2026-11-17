@@ -202,7 +202,7 @@ function drawFace(g, X, Y, look, emo, blink, o) {
     if (look.freckles?.on) { // deterministic scatter over the cheeks and the bridge
       g.fillStyle = hex(look.freckles.c); let q = 7;
       const rnd = () => { q = (q * 9301 + 49297) % 233280; return q / 233280; };
-      for (let k = 0; k < 26; k++) { const side = k % 2 ? 1 : -1, px = X + 32 + side * (7 + rnd() * 17), py = Y + 36 + rnd() * 8; g.globalAlpha = 0.55 + rnd() * 0.3; g.beginPath(); g.arc(k < 5 ? X + 32 + (rnd() - 0.5) * 8 : px, k < 5 ? Y + 34 + rnd() * 4 : py, 0.7 + rnd() * 0.7, 0, 7); g.fill(); }
+      for (let k = 0; k < 24; k++) { const side = k % 2 ? 1 : -1, px = X + 32 + side * (8 + rnd() * 12), py = Y + 37 + rnd() * 6; g.globalAlpha = 0.35 + rnd() * 0.25; g.beginPath(); g.arc(k < 6 ? X + 32 + (rnd() - 0.5) * 7 : px, k < 6 ? Y + 35 + rnd() * 3.5 : py, 0.45 + rnd() * 0.45, 0, 7); g.fill(); }
       g.globalAlpha = 1;
     }
     if (look.makeup?.on) { // eyeshadow above the lids + a faint wing

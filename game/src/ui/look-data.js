@@ -44,7 +44,7 @@ export const EYE_NAMED = [
   { id: 'brown', name: 'Карие', k: '8' }, { id: 'blue', name: 'Синие', k: 'f' }, { id: 'green', name: 'Зелёные', k: 'j' }, { id: 'grey', name: 'Серые', k: '4' },
   { id: 'amber', name: 'Янтарные', k: 'a' }, { id: 'red', name: 'Красные', k: 'c' }, { id: 'cyan', name: 'Циановые', k: 'h' }, { id: 'violet', name: 'Фиолетовые', k: 'o' },
 ];
-const isKey = (k) => typeof k === 'string' && PALETTE_KEYS.includes(k);
+const isKey = (k) => typeof k === 'string' && k.length === 1 && PALETTE_KEYS.includes(k);
 /** 'p:<palette key>' — a custom colour from the whole palette. */
 export const customKey = (id) => (typeof id === 'string' && id.startsWith('p:') && isKey(id.slice(2)) ? id.slice(2) : null);
 export function hairRamp(look) {
@@ -60,7 +60,7 @@ export const eyeKey = (look) => customKey(look?.eyes) || (EYE_NAMED.find((e) => 
 export const OPT = {
   gender: [{ id: 'm', name: 'Мужской' }, { id: 'f', name: 'Женский' }, { id: 'x', name: 'Не указан' }],
   build: [{ id: 'lean', name: 'Худой' }, { id: 'normal', name: 'Обычный' }, { id: 'sturdy', name: 'Крепкий' }],
-  eyeShape: [{ id: 'round', name: 'Круглые' }, { id: 'almond', name: 'Миндалевидные' }, { id: 'narrow', name: 'Узкие' }, { id: 'wide', name: 'Широкие' }, { id: 'droopy', name: 'Грустные' }],
+  eyeShape: [{ id: 'round', name: 'Круглые' }, { id: 'almond', name: 'Миндаль' }, { id: 'narrow', name: 'Узкие' }, { id: 'wide', name: 'Широкие' }, { id: 'droopy', name: 'Грустные' }],
   brows: [{ id: 'soft', name: 'Мягкие' }, { id: 'straight', name: 'Прямые' }, { id: 'arched', name: 'Дугой' }, { id: 'thick', name: 'Густые' }, { id: 'thin', name: 'Тонкие' }],
   mouth: [{ id: 'normal', name: 'Обычный' }, { id: 'full', name: 'Пухлый' }, { id: 'thin', name: 'Тонкий' }, { id: 'wide', name: 'Широкий' }],
   nose: [{ id: 'small', name: 'Маленький' }, { id: 'normal', name: 'Обычный' }, { id: 'strong', name: 'Крупный' }],

@@ -106,6 +106,25 @@ export const GFX = {
     i: ['1', 'i', 'h'], j: ['k', 'j', 'j'], k: ['1', 'k', 'l'], l: ['k', 'l', 'm'], m: ['l', 'm', 'p'], n: ['o', 'n', 'p'],
     o: ['1', 'o', 'n'], p: ['m', 'p', '5'],
   },
+  // post-processing (gfx/post.js; premium-look, STYLE «Пост-эффекты»): off with «Снизить эффекты». Bloom of the emissive
+  // buffer only: soft threshold on the max channel (threshold ± knee), strength, weights of the 3 mips (software GL — softMips);
+  // knee2 — tonemap shoulder start (palette colours are <= maxPixel 0.9: ~0.2 % shift); vignette strength / start (share of
+  // the half-diagonal of the map area); grain amplitude (static); msaa samples on hardware
+  post: {
+    threshold: 0.62, knee: 0.22, bloom: 0.3, mipW: [0.9, 0.7, 0.5], softMips: 2, knee2: 0.88,
+    vignette: 0.22, vignetteStart: 0.55, grain: 0.03, msaa: 4,
+    // colour balance by biome (multipliers, |k - 1| <= 0.03; no LUT — the floor colour tells the biome)
+    balance: {
+      default: [1, 1, 1], wasteland: [1.03, 1.0, 0.97], 'ruins-city': [1.02, 1.0, 0.98], factory: [1.02, 1.0, 0.98], 'bunker-interior': [1.01, 1.0, 0.99],
+      snow: [0.98, 1.0, 1.03], swamp: [0.98, 1.02, 0.98], 'mutant-forest': [0.98, 1.02, 0.98], cyberspace: [0.98, 0.99, 1.03], port: [0.98, 1.0, 1.02],
+    },
+  },
+  // fill light (opposite the key, horizontal + up; share of the way shadow -> base tone) and height fog (low ground hazier:
+  // full below y0, none above y1 m, amount; colour = biome fog colour); both off with «Снизить эффекты»
+  fill: { dir: [0.75, 0.35, -0.35], k: 0.3 },
+  hfog: { y0: -0.4, y1: 0.4, amount: 0.16 },
+  // contact shadows: soft dark blobs under units (radius m, alpha) and obstacles / props (only without «Снизить эффекты»)
+  contact: { color: '0', unitR: 0.4, unitA: 0.42, objR: 0.66, objA: 0.3 },
   sky: { default: '0', night: '0', cyberspace: '0', snow: '1' }, // background (no white skies)
   fogColor: { default: '1', snow: '3', swamp: 'k', 'mutant-forest': 'k', cyberspace: 'i', port: 'g' },
   team: { player: 'h', ally: 'j', enemy: 'c', rival: 'a' },

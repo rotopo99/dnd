@@ -199,6 +199,7 @@ const ru = {
   'battle.reaction': 'Реакция',
   'battle.hit': 'Попадание',
   'battle.miss': 'Промах',
+  'battle.block': 'Блок',
   'battle.crit': 'Крит!',
   'battle.cover': 'Укрытие',
   'battle.advantage': 'Преимущество',

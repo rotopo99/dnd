@@ -27,7 +27,7 @@ const posOf = (S, u) => { const d = S.dispOf(u); return { x: d.x + 0.5, z: d.y +
 /** Start an action of unit u (kind: swing | shoot | cast | throw | use) aimed at {x, z} (cells, centred). */
 function act(S, V, u, kind, aim, delay = 0) {
   const s = stOf(V, u.id);
-  s.act = kind; s.t0 = S.time + delay; s.dur = ACT_DUR[kind]; s.aim = aim;
+  s.act = kind; s.t0 = (S.vtime ?? S.time) + delay; s.dur = ACT_DUR[kind]; s.aim = aim;
 }
 /** World point of the unit's hand / chest (for projectiles). */
 function handAt(S, V, u, up = 0.75) {
@@ -38,7 +38,7 @@ function handAt(S, V, u, up = 0.75) {
 export function animEvent3d(S, e) {
   const V = S.v3;
   if (!V) return;
-  const b = S.b, now = S.time;
+  const b = S.b, now = S.vtime ?? S.time; // display clock (juice hit-stop freezes it)
   const Au = e.actor ? b.byId[e.actor] : null, Tu = e.target ? b.byId[e.target] : null;
   const L = A.launch;
   const tileAim = (x, y) => ({ x: x + 0.5, z: y + 0.5 });

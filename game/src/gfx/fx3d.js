@@ -37,10 +37,13 @@ export function particleMesh() {
   return pm;
 }
 
+// emissive particles (flames, embers, sparks of current, bolts / orbs / muzzle flashes / impact sparks) feed the bloom of
+// gfx/post.js: their alpha is sent + 2 (the particle shader splits it back)
+let GLOW = 0;
 /** One particle: position, size, colour key / rgb, alpha, stretch, yaw. */
 function part(P, x, y, z, s, c, a, sx = 1, sy = 1, sz = 1, yaw = 0) {
   if (P.length >= F.maxParticles * 12) return;
-  P.push(x, y, z, s, c[0], c[1], c[2], a, sx, sy, sz, yaw);
+  P.push(x, y, z, s, c[0], c[1], c[2], a + GLOW, sx, sy, sz, yaw);
 }
 const rgb = (k) => keyRGB(k);
 
@@ -79,6 +82,7 @@ export function buildFx(S, V, now, prefs, ob, P) {
     if (k < 0) continue;
     transient(ob, P, e, k, parts);
   }
+  GLOW = 0;
   if (V.fx) V.fx = keep;
   return active;
 }
@@ -104,7 +108,7 @@ function floorDecal(base0, P, d, x, y, f, t, ph, parts, prefs, detail) {
         for (let i = 0; i <= 5; i++) pts.push([x + 0.08 + i * 0.168, z0 + 0.11 * Math.sin(i * 2.4 + TW * F.arcHz * t + ph * 9 + r * 2)]);
         for (let i = 0; i < 5; i++) seg(ob, pts[i], pts[i + 1], g, 0.035, [core[0], core[1], core[2], 0.8]);
       }
-      if (parts) { const k = frac(t * 0.45 + ph); part(P, x + 0.1 + 0.8 * k, f + 0.06, y + 0.3 + 0.4 * Math.round(ph), 0.05, core, 0.85); }
+      if (parts) { const k = frac(t * 0.45 + ph); GLOW = 2; part(P, x + 0.1 + 0.8 * k, f + 0.06, y + 0.3 + 0.4 * Math.round(ph), 0.05, core, 0.85); GLOW = 0; }
       break;
     }
     case 'water': case 'oil': case 'blood': {
@@ -178,6 +182,7 @@ function shapedDecal(ob, P, d, x, y, f, t, ph, parts, prefs, shape, base0) {
 /** Two flame tongues (outer + core) slowly changing height (0.8 Hz) and a rising ember. */
 function flames(P, x, y, f, t, ph) {
   const e = rgb('e'), cb = rgb('b'), a = rgb('a');
+  GLOW = 2;
   for (let i = 0; i < 2; i++) {
     const px = x + 0.32 + 0.36 * i + 0.08 * (hash(x, y, i) - 0.5), pz = y + 0.4 + 0.25 * hash(x, y, i + 9);
     const hgt = 1 + 0.25 * Math.sin(TW * F.flameHz * t + ph * TW + i * 2.1);
@@ -186,6 +191,7 @@ function flames(P, x, y, f, t, ph) {
   }
   const k = frac(t / F.emberT + ph);
   part(P, x + 0.5 + 0.15 * Math.sin(TW * (k + ph)), f + 0.2 + k * 0.8, y + 0.5, 0.03, a, 0.8 * Math.sin(Math.PI * k));
+  GLOW = 0;
 }
 
 /** Gas / smoke: soft puffs slowly circling over the cell; flat haze without particles. */
@@ -208,6 +214,7 @@ function seg(ob, a, b, y, w, c) {
 
 function transient(ob, P, e, k, parts) {
   const col = rgb(e.color || F.color[e.kind] || F.color.bolt);
+  GLOW = e.kind === 'bolt' || e.kind === 'orb' || e.kind === 'flash' || e.kind === 'spark' ? 2 : 0;
   const lerp = (a, b) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
   switch (e.kind) {
     case 'bolt': case 'orb': case 'arc': {

@@ -40,6 +40,8 @@ import { hitButton, inRect, C, LINE } from '../ui/draw.js';
 import { layoutBattle, renderBattle, isHiddenFoe } from '../ui/battle-view.js';
 import { pickBattle, cameraInput3d } from '../gfx/scene3d.js';
 import { animEvent3d } from '../gfx/anim.js';
+import { createJuice, juiceEvent, juiceTick, damagePop } from '../ui/juice.js';
+import { JUICE } from '../data/juice.js';
 import { objectiveStripBottom } from '../ui/battle-objectives.js';
 import { line as storyLine } from '../data/text/prologue.js';
 import { skillCheck } from '../rules/skills.js';
@@ -207,7 +209,7 @@ export function createBattleScene(opts) {
     S.aiTimer = AI_TURN_GAP;
     S.fast = loadFast();
     S.skip = false;
-    S.shake = 0;
+    S.juice = createJuice(); // premium-look: hit-stop, shake, accent (view only)
     S.intents = {};
     S.pin = createPin();
     S.aiSteps = 0;
@@ -219,6 +221,7 @@ export function createBattleScene(opts) {
     S.hover = { cell: null, button: null };
     S.lastTeam = null;
     S.time = 0;
+    S.vtime = 0; // display clock: 3D animations / camera (frozen by hit-stop, slowed by the accent)
     S.dirty = true;
     S.flags = {};
     S.tricksUsed = {};
@@ -803,11 +806,11 @@ export function createBattleScene(opts) {
     if (S.log.length > MAX_LOG) S.log.shift();
   }
 
-  function popup(u, text, color) {
+  function popup(u, text, color, kind = 'text') {
     const d = dispOf(u);
     let stack = 0;
     for (const p of S.popups) if (p.id === u.id && p.t < 0.3) stack++;
-    S.popups.push({ id: u.id, x: d.x, y: d.y, text, color, t: -stack * 0.25 });
+    S.popups.push({ id: u.id, x: d.x, y: d.y, text, color, kind, t: -stack * JUICE.pop.stack });
   }
 
   /** Name of the used action over the unit (team colour, ~1 s). Weapon attacks inside an ability are not repeated. */
@@ -868,7 +871,7 @@ export function createBattleScene(opts) {
       }
       case 'attack':
         if (A && !(S.lastActPop?.id === A.id && S.lastActPop.time === S.time)) actPop(A, A.weapon?.name || t('battle.attack'));
-        if (!e.hit && T) popup(T, t('battle.miss'), C['4']);
+        if (!e.hit && T) popup(T, t('battle.miss'), C[JUICE.color.miss], 'miss');
         break;
       case 'ability': actPop(A, e.name); break;
       case 'useItem': actPop(A, ITEMS[e.item]?.name || e.item); break;
@@ -881,11 +884,11 @@ export function createBattleScene(opts) {
       case 'glitchFail': actPop(A, t('battle.glitchFail')); break;
       // combat rework: objects, falls, phases, flight
       case 'objectHit': tilePop(e.x, e.y, `−${e.amount}`, C.c); break;
-      case 'objectBreak': tilePop(e.x, e.y, t(`obj.${e.kind}`), C.a); S.shake = 0.15; break;
+      case 'objectBreak': tilePop(e.x, e.y, t(`obj.${e.kind}`), C.a); break;
       case 'smash': actPop(A, t(`obj.${e.kind}`)); if (!e.hit) tilePop(e.x, e.y, t('battle.miss'), C['4']); break;
       case 'fall': if (T) popup(T, t('log.fall'), C.c); break;
-      case 'geoCollapse': tilePop(e.x, e.y, t('log.collapse'), C.c); S.shake = 0.3; break;
-      case 'phase': if (A) { popup(A, t('log.phase').replace('{n}', e.n), C.c); S.shake = 0.25; } break;
+      case 'geoCollapse': tilePop(e.x, e.y, t('log.collapse'), C.c); break;
+      case 'phase': if (A) popup(A, t('log.phase').replace('{n}', e.n), C.c); break;
       case 'flee': if (T) { const d = dispOf(T); d.fade = 1; d.drift = 1; popup(T, t('log.flee'), C['4']); } break;
       case 'rage': if (A) popup(A, t('log.rage'), C.c); break;
       // combat rework §6: objectives, chests, retreat, junk weapon jam
@@ -895,26 +898,21 @@ export function createBattleScene(opts) {
       case 'objFree': tilePop(e.x, e.y, t('obj.freed'), C.j); break;
       case 'objHack': tilePop(e.x, e.y, e.success ? `${e.progress}/${e.need}` : t('battle.miss'), e.success ? C.j : C['4']); break;
       case 'chestOpen': tilePop(e.x, e.y, e.success ? t('obj.chestOpened') : t('battle.miss'), e.success ? C.b : C['4']); break;
-      case 'chestTrap': tilePop(e.x, e.y, t('obj.trap'), C.c); S.shake = 0.15; break;
+      case 'chestTrap': tilePop(e.x, e.y, t('obj.trap'), C.c); break;
       case 'retreat': if (A) { const d = dispOf(A); d.fade = 1; popup(A, t('obj.retreated'), C.j); } break;
       case 'jam': if (A) popup(A, t('battle.jammed'), C.c); break;
       case 'damage': {
         if (!T) break;
         const d = dispOf(T);
         d[e.resource] = e.value;
-        if (e.amount > 0 || !e.absorbed) {
-          d.flash = 0.12; d.hurtAt = typeof performance !== 'undefined' ? performance.now() : 0;
-          const col = e.resource === 'mrl' ? C.n : e.dmgType === 'proxy' ? C.a : C.c;
-          popup(T, `${e.crit ? '!' : ''}−${e.amount}`, col);
-        }
-        if (e.absorbed) popup(T, `◊−${e.absorbed}`, C.f);
+        if (e.amount > 0) { d.flash = 0.12; d.flashF = JUICE.flashFrames; d.hurtAt = typeof performance !== 'undefined' ? performance.now() : 0; }
+        for (const p of damagePop(e)) popup(T, p.text, p.color, p.kind); // juice: colour by damage type, crit / block
         if (e.amount > 0) emote(T, e.resource === 'mrl' || d.hp < T.maxHp * 0.4 ? 'scared' : 'angry');
         if (e.crit && A && A !== T) emote(A, pick2('smug', 'happy'));
-        if (e.crit) S.shake = Math.max(S.shake || 0, 0.15);
         break;
       }
-      case 'heal': if (T) { dispOf(T)[e.resource] = e.value; popup(T, `+${e.amount}`, e.resource === 'mrl' ? C.f : C.j); emote(T, 'happy'); } break;
-      case 'shield': if (T && !e.kept) popup(T, t('battle.shieldGain').replace('{n}', e.value), C.f); break;
+      case 'heal': if (T) { dispOf(T)[e.resource] = e.value; for (const p of damagePop(e)) popup(T, p.text, p.color, p.kind); emote(T, 'happy'); } break;
+      case 'shield': if (T && !e.kept) for (const p of damagePop(e)) popup(T, p.text, p.color, p.kind); break;
       case 'nadlom': if (T) popup(T, t('state.strain'), C.n); break;
       case 'breakdown':
         if (T) {
@@ -937,6 +935,7 @@ export function createBattleScene(opts) {
       }
       default: break;
     }
+    juiceEvent(S.juice, e, b, gfxPrefs().reduceMotion); // hit-stop / shake / camera accent (view only)
     if (S.v3) animEvent3d(S, e); // 3D view: unit animations, projectiles (read-only)
     opts.onEvent?.(S, e);
     S.dirty = true;
@@ -1122,8 +1121,10 @@ export function createBattleScene(opts) {
       const aiRun = !!S.b.turn && !S.b.winner && !S.playerTurn;
       if (!aiRun) S.skip = false;
       const k = aiRun ? (S.skip ? PACE.skipMul : S.fast ? PACE.fastMul : 1) : 1;
-      if (S.shake > 0) S.shake -= dt;
-      animate(dt * k);
+      const jk = juiceTick(S.juice, dt); // 0 during hit-stop, < 1 in the accent's slow motion: the view only
+      S.vtime += dt * jk;
+      for (const id in S.disp) if (S.disp[id].flashF > 0) S.disp[id].flashF--;
+      animate(dt * k * jk);
       processQueue();
       vision();
       if (S.dirty) refresh();

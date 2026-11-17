@@ -11,6 +11,7 @@ import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal
 import { renderTips, clearTips } from './ui/tooltip.js';
 import { renderContextMenu } from './ui/context-menu.js';
 import { syncTheme } from './ui/theme.js';
+import { clearTextCache, HEAD_FAMILY } from './ui/draw.js';
 import { updateBarks, renderBark } from './ui/bark.js';
 import { createGfx } from './gfx/scene3d.js';
 
@@ -51,7 +52,7 @@ const game = {
     scene.resume?.(this);
     syncMusic(this);
   },
-  openModal(spec) { this.modals.push(spec); play('open'); },
+  openModal(spec) { if (spec) spec._t0 = null; this.modals.push(spec); play('open'); },
   closeModal() { if (this.modals.pop()) play('close'); },
   /** Toast: identical ones are merged («×N»), at most 3 are kept (oldest dropped). */
   toast(text, color = 'h') {
@@ -82,6 +83,12 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+// heading web font (ui/draw.js HEAD_FAMILY): canvas text does not trigger the download by itself; when it arrives,
+// cached measurements are dropped and the scene re-lays out (offline: the system fallback stays)
+if (document.fonts) {
+  document.fonts.addEventListener?.('loadingdone', () => { clearTextCache(); game.scene?.resize?.(game); });
+  document.fonts.load(`24px ${HEAD_FAMILY}`).catch(() => {});
+}
 unlockAudioOnFirstGesture(window);
 
 setSaveErrorHandler(() => game.toast(t('save.failed'), 'c'));

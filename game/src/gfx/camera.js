@@ -11,6 +11,7 @@
 //   project(cam, x, y, z)                  -> {x, y, d} screen px + depth
 //   rayAt(cam, px, py)                     -> {o:[3], d:[3]} picking ray;  basis(cam) -> {r, u, f}
 //   pickCell(cam, px, py, w, h, topAt(x,y)) -> {x, y} | null — nearest cell top hit by the ray
+//   cam.fx = {dx, dy, z, px, py} | null     juice (view only): shake px + zoom z about the screen point (px, py)
 import { GFX } from '../data/gfx.js';
 
 const DEG = Math.PI / 180;
@@ -111,8 +112,13 @@ export function centerCamera(cam, x, z) {
   clampPan(cam);
 }
 
-const ppm = (cam) => cam.ppmFit * cam.zoom;
-const center = (cam) => [cam.area.x + cam.area.w / 2, cam.area.y + cam.area.h / 2];
+const ppm = (cam) => cam.ppmFit * cam.zoom * (cam.fx?.z || 1);
+// cam.fx (ui/juice.js, view only): shake offset dx, dy px + zoom z about the screen point (px, py) — projection, picking
+// and the 2D anchors all follow it, so bars / numbers stay on the units during a shake or an accent
+const center = (cam) => {
+  const c = [cam.area.x + cam.area.w / 2, cam.area.y + cam.area.h / 2], F = cam.fx;
+  return F ? [F.px + (c[0] - F.px) * F.z + F.dx, F.py + (c[1] - F.py) * F.z + F.dy] : c;
+};
 const target = (cam) => [cam.cx, cam.cy, cam.cz];
 const DEPTH = 200;
 

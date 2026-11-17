@@ -5,7 +5,7 @@ import { isAllowed } from '../rules/character.js';
 import { PLAYABLE_RACES, CLASS_ORDER } from '../data/index.js';
 import { drawSprite, heroSpriteIds, enemySpriteIds, idleFrame } from '../assets/sprites.js';
 import { play, stopAmbience } from '../audio/sfx.js';
-import { C, FONT, FONT_XL, text, button, hitButton, clear } from '../ui/draw.js';
+import { C, FONT, FONT_XL, FONT_HB, text, button, hitButton, clear } from '../ui/draw.js';
 import { createCreateScene } from './create.js';
 import { createBattleScene } from './battle.js';
 import { hasSave } from '../save.js';
@@ -64,6 +64,7 @@ function layout(game) {
   buttons.push({ id: 'run', label: t('menu.run'), sub: t('menu.runHint'), key: 'R', x: x + hw + gap, y: yy, w: w - hw - gap, h: 56 }); yy += 56 + gap;
   buttons.push({ id: 'net', label: t('menu.net'), sub: t('menu.netHint'), key: 'M', x, y: yy, w, h: 56 });
   buttons.push({ id: 'settings', label: t('menu.settings'), key: 'O', x: W - 216, y: 16, w: 200, h: 40 }); // 3d.md: graphics
+  for (const b of buttons) b.font = FONT_HB; // heading font on the main-menu buttons (STYLE «Шрифт»)
 }
 
 export const menuScene = {

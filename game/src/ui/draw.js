@@ -8,8 +8,13 @@ export const C = Object.fromEntries([...PALETTE_KEYS].map((k, i) => [k, PALETTE[
 
 export const FONT = '16px monospace';
 export const FONT_B = 'bold 16px monospace';
-export const FONT_L = 'bold 24px monospace';
-export const FONT_XL = 'bold 48px monospace';
+// headings (window titles, scene names, big numbers, main-menu buttons): Russo One (Google Fonts, OFL; <link> in
+// game/index.html, font-display swap), system sans fallback; body text stays monospace (STYLE «Шрифт»)
+export const HEAD_FAMILY = '"Russo One", "Arial Black", "Segoe UI", sans-serif';
+export const headFont = (px) => `${px}px ${HEAD_FAMILY}`;
+export const FONT_L = headFont(24);
+export const FONT_XL = headFont(48);
+export const FONT_HB = headFont(18); // main-menu buttons
 export const LINE = 20;
 
 export const RES_COLORS = {
@@ -28,6 +33,8 @@ export function text(ctx, s, x, y, color = C['5'], font = FONT, align = 'left') 
 }
 
 const wrapCache = new Map();
+/** Drop cached text measurements (a web font finished loading: widths changed). */
+export function clearTextCache() { wrapCache.clear(); }
 /** Word-wrap a string to width (cached by font+width+text). Returns array of lines. */
 export function wrap(ctx, s, width, font = FONT) {
   const key = `${font}|${width}|${s}`;
@@ -175,10 +182,33 @@ export function flowButtons(ctx, items, { x, y, w, h, gap = 4, rows = 2, font = 
   return out;
 }
 
+// hover easing (premium-look item 6): 80 ms in / out per button (keyed by rect + label), label lifts by 1 px
+const HOVER_T = 0.08;
+const hoverK = new Map();
+let hoverSweep = 0;
+const nowS = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+/** 0..1 eased hover of a button (no animation for «Снизить движение»: callers pass instant). */
+export function hoverAmount(b, hover, instant = false) {
+  const key = `${b.x},${b.y},${b.w},${b.h},${b.label}`, now = nowS();
+  let h = hoverK.get(key);
+  if (!h) { h = { k: hover ? 1 : 0, at: now }; hoverK.set(key, h); }
+  const dt = Math.min(0.1, now - h.at);
+  h.at = now;
+  h.k = instant ? (hover ? 1 : 0) : Math.max(0, Math.min(1, h.k + (hover ? dt : -dt) / HOVER_T));
+  if (now - hoverSweep > 2) { hoverSweep = now; for (const [k, v] of hoverK) if (now - v.at > 2) hoverK.delete(k); }
+  return h.k;
+}
+
 export function button(ctx, b, hover) {
-  const fill = b.selected ? C.i : hover && !b.disabled ? C['3'] : C['2'];
-  const border = b.selected ? C.h : hover && !b.disabled ? C['4'] : C['3'];
-  if (!drawThemedBox(ctx, b.x, b.y, b.w, b.h, { fill: b.selected ? C.i : fill, border, kind: 'btn', hover: !!hover && !b.disabled, sel: !!b.selected, disabled: !!b.disabled })) panel(ctx, b.x, b.y, b.w, b.h, fill, border);
+  const hk = b.disabled ? 0 : hoverAmount(b, !!hover);
+  const box = (hv) => {
+    const fl = b.selected ? C.i : hv ? C['3'] : C['2'], bd = b.selected ? C.h : hv ? C['4'] : C['3'];
+    if (!drawThemedBox(ctx, b.x, b.y, b.w, b.h, { fill: fl, border: bd, kind: 'btn', hover: hv, sel: !!b.selected, disabled: !!b.disabled })) panel(ctx, b.x, b.y, b.w, b.h, fl, bd);
+  };
+  if (hk > 0 && hk < 1) { box(false); ctx.save(); ctx.globalAlpha *= hk; box(true); ctx.restore(); } // cross-fade 80 ms
+  else box(hk >= 1);
+  const lift = Math.round(hk); // 1 px up when hovered
+  if (lift) { ctx.save(); ctx.translate(0, -lift); }
   const col = b.disabled ? C['3'] : C['5'];
   const font = b.font || FONT_B;
   // the hotkey sits in the top-left corner: the label is centred in the space right of it
@@ -201,7 +231,27 @@ export function button(ctx, b, hover) {
     cut = L.cut;
   }
   if (b.key) text(ctx, b.key, b.x + 5, b.y + 3, b.disabled ? C['3'] : C.a, KEY_FONT);
+  if (lift) ctx.restore();
   if (cut && !b.tip && !b.detail) tipHook?.(b.x, b.y, b.w, b.h, { title: b.label, lines: b.sub ? [b.sub] : [] });
+}
+/**
+ * Light sheen on a card (ability buttons): a faint diagonal highlight in the top-left corner, brighter with hover k.
+ * Bone-white `5` at low alpha only (no new colours).
+ */
+export function sheen(ctx, x, y, w, h, k = 0) {
+  ctx.save();
+  roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 5);
+  ctx.clip();
+  const g = ctx.createLinearGradient(x, y, x + w * 0.6, y + h);
+  const a = 0.07 + 0.07 * k;
+  g.addColorStop(0, `rgba(223,227,232,${a})`);
+  g.addColorStop(0.35, `rgba(223,227,232,${a * 0.35})`);
+  g.addColorStop(0.36, 'rgba(223,227,232,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = `rgba(223,227,232,${0.12 + 0.1 * k})`;
+  ctx.fillRect(x + 4, y + 1, w - 8, 1); // top edge catch-light
+  ctx.restore();
 }
 let tipHook = null;
 /** ui/tooltip.js registers its hotspot here (no import cycle): cut button labels get their full text as a tip. */

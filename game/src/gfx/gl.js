@@ -5,6 +5,10 @@
 //   makeProgram(gl, vs, fs)          -> { prog, u: {name: location} } (throws on compile / link error)
 //   worldProgram(gl), skinProgram(gl), depthProgram(gl, skin), particleProgram(gl), overlayProgram(gl)
 //   VERT — layout of the world vertex (floats): pos3 nrm3 shadow3 base3 light3 ao glow
+// Post (gfx/post.js, premium-look): every scene program also writes location 1 — the emissive (glow) buffer for bloom
+// (glow vertices of the world / units, glowing particles; 0 elsewhere). Without a 2nd draw buffer it is discarded.
+// uFill (dir xyz, share) — fill light from the side opposite the key: shadowed faces lean to the base tone;
+// uHFog (y0, y1) + uHFogC (rgb, amount) — height fog (low ground hazier). Unset uniforms = 0 = off (gfx/stage.js).
 let probe = null;
 function probeGL() {
   if (probe) return probe;
@@ -82,7 +86,7 @@ flat out vec3 vShade;
 flat out float vLitFace;
 out vec3 vWorld;
 out vec3 vShadow;
-${depth ? '' : 'out vec3 vNw;'}
+${depth ? '' : 'out vec3 vNw;\nflat out float vGlow;\nuniform vec4 uFill;'}
 void main() {
   vec3 n = normalize(mat3(uModel) * aNrm);
   vec4 wp = uModel * vec4(aPos + aNrm * uGrow, 1.0);
@@ -93,6 +97,8 @@ ${depth ? '' : `  vec4 sp = uShadowVP * wp;
   vShadow = sp.xyz * 0.5 + 0.5;
   float d = dot(n, uLight);
   vec3 c = aX.y > 0.5 ? aB : (d > uSteps.x ? aL : (d > uSteps.y ? aB : aS));
+  if (aX.y < 0.5 && d <= uSteps.y) c = mix(c, aB, uFill.w * smoothstep(0.0, 0.6, dot(n, uFill.xyz)));
+  vGlow = aX.y;
   vLitFace = aX.y > 0.5 || d <= uSteps.y ? 0.0 : 1.0;
   vShade = aS;
   vCol = mix(c, aS, clamp(aX.x * uAo, 0.0, 1.0));`}
@@ -106,6 +112,9 @@ flat in float vLitFace;
 in vec3 vWorld;
 in vec3 vShadow;
 in vec3 vNw;
+flat in float vGlow;
+uniform vec4 uHFog;
+uniform vec4 uHFogC;
 // metric-combat.md «Обзор»: floor height per cell (R32F), cut-away (-, -, camera dir xz | fade k, cut height, -,
 // x-ray keep share) in boxes in front of the cut points (uCutP: x, z, length toward the camera, half width — whole
 // cells, so the JS lids match), see-through holes (gl_FragCoord xy, radius px, window depth) round the active unit / cursor
@@ -131,7 +140,8 @@ uniform float uBright;
 uniform float uMaxPix;
 uniform sampler2DShadow uShadow;
 uniform vec3 uShadowOn; // strength, texel size, bias
-out vec4 outColor;
+layout(location=0) out vec4 outColor;
+layout(location=1) out vec4 outGlow;
 void main() {
   if (uCutK.x > 0.0 || uCutK.w > 0.0 || uNumSee > 0) {
     ivec2 ts = textureSize(uFloorT, 0);
@@ -182,8 +192,10 @@ void main() {
   float depth = dot(vWorld, uFogPlane.xyz) + uFogPlane.w;
   float f = clamp((depth - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0) * uFog.a;
   c = mix(c, uFog.rgb, f);
+  if (uHFogC.a > 0.0) c = mix(c, uHFogC.rgb, (1.0 - smoothstep(uHFog.x, uHFog.y, vWorld.y)) * uHFogC.a);
   c = min(c * uBright, vec3(uMaxPix));
   outColor = vec4(c, uAlpha);
+  outGlow = vec4(c * vGlow, uAlpha);
 }`;
 
 // ---------------------------------------------------------------- units: anime toon shading + 2-bone skinning
@@ -288,7 +300,11 @@ uniform sampler2DShadow uShadow;
 uniform vec3 uShadowOn;
 uniform sampler2D uFace;
 uniform sampler2D uMatTex;
-out vec4 outColor;
+uniform vec4 uFill;
+uniform vec4 uHFog;
+uniform vec4 uHFogC;
+layout(location=0) out vec4 outColor;
+layout(location=1) out vec4 outGlow;
 void main() {
   vec3 n = normalize(vN);
   vec3 c;
@@ -299,6 +315,7 @@ void main() {
     vec3 shade = mix(vS, uShadeHue, uToon.z);
     c = mix(shade, vB, t1);
     c = mix(c, vL, t2);
+    c = mix(c, vB, uFill.w * smoothstep(0.0, 0.6, dot(n, uFill.xyz)) * (1.0 - t1)); // fill light on the shadow side
     int kind = int(vUV.z + 0.5);
     if (uMode == 2) {
       c = mix(vS * (1.0 - uToon.w), vFlatI.rgb, 0.3);
@@ -359,8 +376,10 @@ void main() {
   float depth = dot(vWorld, uFogPlane.xyz) + uFogPlane.w;
   float f = clamp((depth - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0) * uFog.a;
   c = mix(c, uFog.rgb, f);
+  if (uHFogC.a > 0.0) c = mix(c, uHFogC.rgb, (1.0 - smoothstep(uHFog.x, uHFog.y, vWorld.y)) * uHFogC.a);
   c = min(c * uBright, vec3(uMaxPix));
   outColor = vec4(c, vAlphaI);
+  outGlow = vec4(uMode == 0 && vAX.y > 0.5 ? c : vec3(0.0), vAlphaI);
 }`;
 const DEPTH_FS = `#version 300 es
 precision mediump float;
@@ -381,15 +400,30 @@ layout(location=3) in vec4 iCol;
 layout(location=4) in vec4 iShape;
 uniform mat4 uVP;
 out vec4 vCol;
+out float vGlow;
 void main() {
   float c = cos(iShape.w), s = sin(iShape.w);
   vec3 p = aPos * iShape.xyz * iPos.w;
   p = vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
   gl_Position = uVP * vec4(p + iPos.xyz, 1.0);
   vec3 n = vec3(c * aNrm.x + s * aNrm.z, aNrm.y, -s * aNrm.x + c * aNrm.z);
-  vCol = vec4(iCol.rgb * (0.86 + 0.14 * n.y), iCol.a);
+  vGlow = iCol.a > 1.5 ? 1.0 : 0.0; // fx3d: glowing particles carry alpha + 2
+  vCol = vec4(iCol.rgb * (0.86 + 0.14 * n.y), iCol.a - 2.0 * vGlow);
 }`;
-export const particleProgram = (gl) => makeProgram(gl, PART_VS, OVER_FS_SRC);
+const PART_FS = `#version 300 es
+precision mediump float;
+in vec4 vCol;
+in float vGlow;
+uniform float uBright;
+uniform float uMaxPix;
+layout(location=0) out vec4 outColor;
+layout(location=1) out vec4 outGlow;
+void main() {
+  vec3 c = min(vCol.rgb * uBright, vec3(uMaxPix));
+  outColor = vec4(c, vCol.a);
+  outGlow = vec4(c * vGlow, vCol.a);
+}`;
+export const particleProgram = (gl) => makeProgram(gl, PART_VS, PART_FS);
 
 // Highlights / rings / surfaces: plain coloured translucent triangles (pos3 + rgba4).
 const OVER_VS = `#version 300 es
@@ -403,6 +437,7 @@ precision mediump float;
 in vec4 vCol;
 uniform float uBright;
 uniform float uMaxPix;
-out vec4 outColor;
-void main() { outColor = vec4(min(vCol.rgb * uBright, vec3(uMaxPix)), vCol.a); }`;
+layout(location=0) out vec4 outColor;
+layout(location=1) out vec4 outGlow;
+void main() { outColor = vec4(min(vCol.rgb * uBright, vec3(uMaxPix)), vCol.a); outGlow = vec4(0.0, 0.0, 0.0, vCol.a); }`;
 export const overlayProgram = (gl) => makeProgram(gl, OVER_VS, OVER_FS_SRC);

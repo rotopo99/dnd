@@ -125,3 +125,19 @@ export function createStage(w = 256, h = 256) {
   };
   return stage;
 }
+
+// shared stages by name (the editor and the portraits each keep one; a lost context is replaced)
+const stages = new Map();
+export function getStage(name, w, h) {
+  let s = stages.get(name);
+  if (s && s.lost()) { stages.delete(name); s = null; }
+  if (s === undefined || s === null) {
+    if (stages.get(name) === false) return null;
+    s = createStage(w, h);
+    stages.set(name, s || false);
+    if (!s) return null;
+  }
+  if (!s) return null;
+  s.resize(w, h);
+  return s;
+}

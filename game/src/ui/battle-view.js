@@ -5,7 +5,7 @@ import { drawUnitPortrait } from './portrait-of.js';
 import { TILE, drawSprite, drawTeamMarker, heroSpriteIds, enemySpriteIds, tileSpriteIds, idleFrame } from '../assets/sprites.js';
 import { abilityRange, unitView, movePath, statusFactor, isStatusImmune } from '../rules/combat.js';
 import { drawSurfaces, drawBarrels, surfaceHover } from './surface-view.js';
-import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, clear, TMP_COLOR } from './draw.js';
+import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, wrap, fit, panel, button, bar, clear, TMP_COLOR, sheen, hoverAmount } from './draw.js';
 import { teamColor } from './battle-log.js';
 import { ITEMS } from '../data/index.js';
 import { beginClip, endClip, drawScrollbar, SCROLLBAR_W } from './scroll.js';
@@ -20,6 +20,10 @@ import { drawStatusIcon } from '../assets/status-icons.js';
 import { battle3d, drawBattle3d, cellScreen, unitScreen, camButtons } from '../gfx/scene3d.js';
 import { drawMovePath2d, movePathOverlay3d, drawMovePill, aimShapes } from './move-path.js';
 import { budgetM } from '../rules/metric.js';
+import { juiceShake, juiceZoom, drawPop } from './juice.js';
+import { JUICE } from '../data/juice.js';
+import { project } from '../gfx/camera.js';
+import { gfxPrefs } from '../gfx/settings.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -205,9 +209,18 @@ export function renderBattle(game, S) {
   if (V) ctx.clearRect(0, 0, L.W, L.H); else clear(ctx, L.W, L.H);
   ctx.imageSmoothingEnabled = false;
   if (!V && (b.gridVersion || 0) !== S.gridV) buildMapLayer(S); // a barrel / object broke
-  // combat rework: camera shake on crits, explosions, boss phases
-  const shaking = S.shake > 0 && !V; // 3D: no shake (3d.md §3)
-  if (shaking) { ctx.save(); ctx.translate(Math.round((Math.random() - 0.5) * 8), Math.round((Math.random() - 0.5) * 8)); }
+  // juice (ui/juice.js): camera shake on crits / kills / blasts / phases; 3D — also the accent zoom of big abilities
+  // (through cam.fx: projection, picking and 2D anchors follow it). 2D: shake only (pixel art keeps integer scales)
+  const sh = juiceShake(S.juice), zm = juiceZoom(S.juice);
+  if (V) {
+    V.cam.fx = null;
+    if (sh.x || sh.y || zm) {
+      const k = JUICE.m3d * V.cam.ppmFit * V.cam.zoom, p = zm ? project(V.cam, zm.x + 0.5, 0, zm.y + 0.5) : { x: 0, y: 0 };
+      V.cam.fx = { dx: sh.x * k, dy: sh.y * k, z: zm ? zm.z : 1, px: p.x, py: p.y };
+    }
+  }
+  const shaking = !V && (sh.x || sh.y);
+  if (shaking) { ctx.save(); ctx.translate(Math.round(sh.x), Math.round(sh.y)); }
   const tms = S.time * 1000;
   if (!V) drawWorld2d(ctx, S, tms);
   drawObjects(ctx, S);
@@ -489,25 +502,15 @@ function drawUnits(ctx, S, preview, tms) {
   }
 }
 
+/** Floating numbers / words (ui/juice.js drawPop: pop scale, drift, colour by damage type, crit outline). */
 function drawPopups(ctx, S) {
-  const L = S.L;
-  ctx.font = 'bold 16px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = C['0'];
+  const L = S.L, rm = gfxPrefs().reduceMotion;
   for (const p of S.popups) {
     if (p.t < 0) continue;
     const pu = p.id != null && S.v3 ? S.b.byId[p.id] : null; // 3D: over the head of the unit
     const sp = pu ? unitScreen(S, pu, { x: p.x, y: p.y }) : cellScreen(S, p.x, p.y, S.v3 ? 1 : 0);
-    const x = sp.x + L.cell / 2;
-    const y = sp.y - 8 - p.t * 28;
-    ctx.globalAlpha = p.t > 0.8 ? Math.max(0, (1.1 - p.t) / 0.3) : 1;
-    ctx.strokeText(p.text, x, y);
-    ctx.fillStyle = p.color;
-    ctx.fillText(p.text, x, y);
+    drawPop(ctx, p, sp.x + L.cell / 2, sp.y + 8, rm);
   }
-  ctx.globalAlpha = 1;
 }
 
 /** Action / ability / item names over the acting unit in its team colour (S.actPops, ~1 s). */
@@ -561,6 +564,7 @@ function drawActionBar(ctx, S) {
     const hover = S.hover.button === btn;
     const fill = btn.selected ? C.i : hover && !btn.disabled ? C['3'] : C['2'];
     panel(ctx, btn.x, btn.y, btn.w, btn.h, fill, btn.selected ? C.h : hover && !btn.disabled ? C['4'] : C['3']);
+    if (!btn.disabled) sheen(ctx, btn.x, btn.y, btn.w, btn.h, hoverAmount(btn, hover)); // card catch-light
     const col = btn.disabled ? C['3'] : C['5'];
     const lines = wrap(ctx, btn.label, btn.w - 12, AB_FONT);
     const cx = btn.x + btn.w / 2;
