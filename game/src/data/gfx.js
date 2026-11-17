@@ -123,6 +123,18 @@ export const GFX = {
   // full below y0, none above y1 m, amount; colour = biome fog colour); both off with «Снизить эффекты»
   fill: { dir: [0.75, 0.35, -0.35], k: 0.3 },
   hfog: { y0: -0.4, y1: 0.4, amount: 0.16 },
+  // premium-look «окружение» (gfx/env3d.js): floor tone variants (share base -> light), litter per cell (base + random + at
+  // edges, max), decal chance, backdrop beyond the map (ring width m, gradient bands, silhouettes), point-light glow pools
+  // (nearest max, radius m, alpha day / night, flicker share < 1 Hz, palette keys), ambient particles cap; per-biome height
+  // fog: [amount x, top m] — ground mist in swamp / forest / port, thin haze elsewhere
+  env: {
+    tone: [0.3, 0.55, 0.8, 1.0], decalP: 0.16,
+    scatter: { base: 0, rand: 2, edge: 2, max: 4 },
+    backdrop: { ring: 24, bands: 9, n: 96 },
+    light: { max: 8, rWarm: 2.7, rCold: 2.0, aDay: 0.2, aNight: 0.38, flick: 0.1, warm: 'a', cold: 'h', hot: 'b', props: ['lamp', 'campfire', 'server', 'hologram-pillar', 'data-pylon', 'glitch-cube', 'kiosk'] },
+    ambientMax: 56,
+    hfog: { swamp: [1.9, 0.7], 'mutant-forest': [1.6, 0.6], port: [1.7, 0.6], cyberspace: [1.4, 0.5], snow: [1.3, 0.5] },
+  },
   // contact shadows: soft dark blobs under units (radius m, alpha) and obstacles / props (only without «Снизить эффекты»)
   contact: { color: '0', unitR: 0.42, unitA: 0.5, objR: 0.8, objA: 0.36 },
   sky: { default: '0', night: '0', cyberspace: '0', snow: '1' }, // background (no white skies)

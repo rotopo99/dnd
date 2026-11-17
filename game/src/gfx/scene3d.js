@@ -28,7 +28,8 @@ import { ramp, propModel, propTop } from './models.js';
 import { unitTemplate } from './units3d.js';
 import { gpuAtlas, faceCol, FACE_COLS } from './faces.js';
 import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
-import { buildFx, particleMesh, weatherFx } from './fx3d.js';
+import { buildFx, particleMesh, weatherFx, emitAmbient } from './fx3d.js';
+import { floorTone, floorExtras, scatterCell, wallBlock, buildBackdrop, lampsOf, lampGlow, ambientFx } from './env3d.js';
 import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken } from './settings.js';
 import { createPost } from './post.js';
 
@@ -183,7 +184,9 @@ function worldOf(b) {
   }
   // extra static models baked into the chunks (roam: stalls, beds, stashes, gates ...): {x, y, mb, sig}
   const objs = b.map.objs3 || [];
-  return { biome, kind, floor, obst, props, alive, edge, objs, wallH, w: g.w, h: g.h };
+  const Wd = { biome, kind, floor, obst, props, alive, edge, objs, wallH, under, w: g.w, h: g.h };
+  Wd.lamps = lampsOf(Wd, b);
+  return Wd;
 }
 
 /** Wall cell: block with a bevel (trees in swamp / forest); low — the cut-away version (near map border). */
@@ -195,7 +198,7 @@ function wallMesh(mb, Wd, x, y, low) {
     if (low) { mb.cyl(x + 0.5, f, y + 0.5, 0.2, 0.4, ramp(wa), { seg: 7, r1: 0.25, rot: hv % 7 }); return; }
     mb.cyl(x + 0.5, f + 0.5, y + 0.5, 0.9, 0.48, ramp(wa), { seg: 7, r1: 0.22, rot: hv % 7 });
     mb.cyl(x + 0.5, f + 1.25, y + 0.5, 0.65, 0.34, ramp(wb), { seg: 7, r1: 0, rot: hv % 5 });
-  } else mb.bevelBox(x, f, y, x + 1, f + (low ? G.cut : Wd.wallH || G.wall), y + 1, low ? 0.04 : G.bevel, ramp(wa), { top: ramp(wb) });
+  } else wallBlock(mb, Wd, x, y, low, wa, wb);
 }
 
 /** Border walls grouped by side mask: { mask, full, low } builders. */
@@ -224,11 +227,10 @@ const hash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263, 127412
 function buildChunk(Wd, cx0, cy0) {
   const { w, h, kind, floor, obst, biome } = Wd;
   const tones = biomeTones(biome), o = tones.o;
-  const rFloor = rampRGB([o.dk, o.base, o.lt]), rFloor2 = rampRGB([o.dk, o.dk, o.base]);
   const [ha, hb] = tileTones(biome, 'half'), [fa, fb] = tileTones(biome, 'full');
   const rHalf = ramp(ha), rHalfTop = ramp(hb), rFull = ramp(fa), rFullTop = ramp(fb);
   // level-design.md: height steps read as retaining walls (wall tone, darker than the floor) — levels, ramps, cliffs
-  const rSide = rampRGB([o.dk, o.dk, o.dk]), rFloorHi = rampRGB([o.base, o.lt, o.lt]); // upper levels (≥ 1 m) are lighter
+  const rBorder = rampRGB([o.dk, o.base, o.lt]), rSide = rampRGB([o.dk, o.dk, o.dk]); // floor tones: gfx/env3d.js floorTone (upper levels lighter)
   const wk = tones.water || ['1', '2', '3'];
   const rWater = rampRGB([wk[0], wk[1], wk[1]]), rDeep = rampRGB([wk[0], wk[0], wk[1]]);
   const deb = tones.debris || ['3', '4', '2', '6'];
@@ -242,14 +244,16 @@ function buildChunk(Wd, cx0, cy0) {
       const a = occ(x + dx, y, f), c = occ(x, y + dz, f), d = occ(x + dx, y + dz, f);
       return Math.min(1, (a + c + (a && c ? 1 : d)) / 3);
     });
-    const fr = k === 'water' ? rWater : k === 'deep' ? rDeep : k === 'deck' ? ramp('8') : k === 'exit' ? ramp('6') : f >= 0.99 ? rFloorHi : (hv % 100 < 14 ? rFloor2 : rFloor);
+    const fr = k === 'water' ? rWater : k === 'deep' ? rDeep : k === 'deck' ? ramp('8') : k === 'exit' ? ramp('6') : floorTone(Wd, x, y, f);
     mb.quad([x, f, y], [x, f, y + 1], [x + 1, f, y + 1], [x + 1, f, y], fr, { ao, inside: [x + 0.5, f - 1, y + 0.5] });
+    floorExtras(mb, Wd, x, y);
+    scatterCell(mb, Wd, x, y);
     // side faces down to lower neighbours (and the map border)
     const sides = [[0, 1, [x, y + 1], [x + 1, y + 1]], [0, -1, [x + 1, y], [x, y]], [1, 0, [x + 1, y + 1], [x + 1, y]], [-1, 0, [x, y], [x, y + 1]]];
     for (const [dx, dz, a, c] of sides) {
       const nt = top(x + dx, y + dz);
       if (nt >= f - 1e-3) continue;
-      mb.quad([a[0], nt, a[1]], [c[0], nt, c[1]], [c[0], f, c[1]], [a[0], f, a[1]], k === 'water' || k === 'deep' ? rWater : nt >= 0 ? rSide : rFloor, { inside: [x + 0.5, f - 0.5, y + 0.5], ao: [0.6, 0.6, 0, 0] });
+      mb.quad([a[0], nt, a[1]], [c[0], nt, c[1]], [c[0], f, c[1]], [a[0], f, a[1]], k === 'water' || k === 'deep' ? rWater : nt >= 0 ? rSide : rBorder, { inside: [x + 0.5, f - 0.5, y + 0.5], ao: [0.6, 0.6, 0, 0] });
     }
     const X0 = x, X1 = x + 1, Z0 = y, Z1 = y + 1;
     switch (k) {
@@ -330,10 +334,22 @@ export function battle3d(game, S) {
     V.floorTex = floorTexture(gl, V.world, V.floorTex);
     for (const e of V.edges || []) { freeMesh(gl, e.full); freeMesh(gl, e.low); }
     V.edges = buildEdges(V.world).map((e) => ({ mask: e.mask, full: uploadMesh(gl, e.full), low: uploadMesh(gl, e.low) }));
+    const bk = `${V.world.biome}|${V.world.w}x${V.world.h}`;
+    if (V.backKey !== bk) { // horizon beyond the map (once per biome / size)
+      freeBackdrop(gl, V.backdrop);
+      const B = buildBackdrop(V.world, GFX.sky[V.world.biome] || GFX.sky.default);
+      V.backdrop = { ground: B.ground, low: uploadMesh(gl, B.low), groups: B.groups.map((g) => ({ mask: g.mask, mesh: uploadMesh(gl, g.mb) })) };
+      V.backKey = bk;
+    }
   }
   const L = S.L;
   if (L) fitCamera(V.cam, L.camArea || { x: L.area.x, y: L.area.y + 30, w: L.area.w, h: L.area.h - 54 }, b.grid.w, b.grid.h, G.wall + 0.5);
   return V;
+}
+function freeBackdrop(gl, B) {
+  if (!B) return;
+  freeMesh(gl, B.low);
+  for (const g of B.groups) freeMesh(gl, g.mesh);
 }
 /** Frees the GPU resources of a 3D state (chunks, border walls, floor texture; mesh refs back to the shared cache). */
 export function dropBattle3d(game, S) {
@@ -344,10 +360,11 @@ export function dropBattle3d(game, S) {
   if (gl && V.gen === X.gen) {
     for (const c of V.chunks.values()) freeMesh(gl, c.mesh);
     for (const e of V.edges || []) { freeMesh(gl, e.full); freeMesh(gl, e.low); }
+    freeBackdrop(gl, V.backdrop);
     if (V.floorTex) gl.deleteTexture(V.floorTex);
     X.release(V);
   }
-  V.chunks.clear(); V.edges = null; V.floorTex = null; V.world = null;
+  V.chunks.clear(); V.edges = null; V.backdrop = null; V.floorTex = null; V.world = null;
   S.v3 = null;
 }
 
@@ -648,6 +665,11 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   }
   const fxActive = buildFx(S, V, now, prefs, ob, PARTS);
   const wxActive = weatherFx(V, b.map, now, prefs, ob, PARTS);
+  // premium-look: glow pools of lamps / fires / screens + rare ambient particles (time quantised to the idle redraw rate:
+  // no per-frame redraws); both off with «Снизить эффекты»
+  const tick = X.soft ? GFX.soft.idleFps : GFX.idleFps, tq = Math.floor(now * tick) / tick;
+  const visE = visionOf(b.map), lampsN = lampGlow(Wd, cam, tq, prefs, ob, !!visE.dark || b.map.tod === 'dusk');
+  const ambN = ambientFx(V, Wd.biome, tq, prefs, PARTS, emitAmbient);
   overlay?.(ob, fl);
   for (const tr of b.traps || []) if (tr.team === 'heroes') ob.frame(tr.x + 0.2, tr.y + 0.2, tr.x + 0.8, tr.y + 0.8, fl(tr.x, tr.y), 0.06, [...keyRGB('a'), 0.9]);
   for (const h of hl) {
@@ -869,8 +891,9 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
     gl.uniform1f(U.uMaxPix, GFX.maxPixel);
     // fill light opposite the key; height fog in the biome fog colour (both off with «Снизить эффекты»)
     if (U.uFill) gl.uniform4f(U.uFill, fv[0] / fvl, fv[1] / fvl, fv[2] / fvl, prefs.reduceFx ? 0 : GFX.fill.k);
-    if (U.uHFog) gl.uniform4f(U.uHFog, HF.y0, HF.y1, 0, 0);
-    if (U.uHFogC) gl.uniform4f(U.uHFogC, fc[0], fc[1], fc[2], prefs.reduceFx ? 0 : HF.amount);
+    const hk = GFX.env.hfog[Wd.biome] || [1, 1];
+    if (U.uHFog) gl.uniform4f(U.uHFog, HF.y0, HF.y1 * hk[1], 0, 0);
+    if (U.uHFogC) gl.uniform4f(U.uHFogC, fc[0], fc[1], fc[2], prefs.reduceFx ? 0 : HF.amount * hk[0]);
     if (U.uToon) { // anime toon: soft band edge, rim strength, shadow hue amount, outline darkness
       const T2 = GFX.toon, sh = keyRGB(T2.shadeHue), rm = keyRGB(T2.rim), rs = keyRGB(T2.rust);
       gl.uniform4f(U.uToon, T2.soft, prefs.reduceFx ? T2.rim2 * 0.5 : T2.rimK, T2.hue, T2.outline);
@@ -891,6 +914,17 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, BT.tex);
 
+  if (V.backdrop) { // horizon ground: flat colour bands with the cheap overlay program, drawn first (no depth write)
+    const O = X.O, ov = uploadOverlay(gl, V.backdrop.ground, 1);
+    gl.disable(gl.CULL_FACE); gl.depthMask(false);
+    gl.useProgram(O.prog);
+    gl.uniformMatrix4fv(O.u.uVP, false, VP);
+    gl.uniform1f(O.u.uBright, prefs.brightness || 1);
+    gl.uniform1f(O.u.uMaxPix, GFX.maxPixel);
+    gl.bindVertexArray(ov.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, ov.count);
+    gl.depthMask(true); gl.enable(gl.CULL_FACE);
+  }
   const P = X.P, U = P.u;
   common(P);
   gl.uniformMatrix4fv(U.uModel, false, IDENT);
@@ -923,6 +957,13 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   }
   for (const c of shown) { gl.bindVertexArray(c.mesh.vao); gl.drawElements(gl.TRIANGLES, c.mesh.count, gl.UNSIGNED_INT, 0); }
   const near = nearMask(cam);
+  if (V.backdrop) { // horizon: ground bands + clutter always, tall silhouettes only on the far sides (the near ones would hide the map)
+    const B = V.backdrop;
+    gl.uniform3f(U.uShadowOn, 0, 1 / (shSize || 1), GFX.shadow.bias); // no shadow taps over the big flat areas (fill rate)
+    for (const m of [B.low]) if (m) { gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0); }
+    for (const g of B.groups) if (g.mesh && !(g.mask & near)) { gl.bindVertexArray(g.mesh.vao); gl.drawElements(gl.TRIANGLES, g.mesh.count, gl.UNSIGNED_INT, 0); }
+    gl.uniform3f(U.uShadowOn, shSize ? GFX.shadow.strength : 0, 1 / (shSize || 1), GFX.shadow.bias);
+  }
   for (const e of V.edges || []) {
     const m = e.mask & near ? e.low : e.full;
     if (m) { gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0); }
@@ -1006,7 +1047,7 @@ export function drawBattle3d(game, S, { hl = [], units = [], cur = null, overlay
   gl.disable(gl.SCISSOR_TEST);
   if (post) post.end({ area: [A.x * rs, (H - (S.L.area.y + S.L.area.h)) * rs, A.w * rs, S.L.area.h * rs], bal: GFX.post.balance[Wd.biome] || GFX.post.balance.default });
   gl.bindVertexArray(null);
-  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy, chunks: shown.length, chunksAll: V.chunks.size, lights: ls.length, weather: wxActive, post: !!post, msaa: post ? post.samples : 0 };
+  V.stats = { units: inst.length, groups: groups.length, particles: PARTS.length / 12, shadow: shSize, busy, chunks: shown.length, chunksAll: V.chunks.size, lights: ls.length, glow: lampsN, ambient: ambN, weather: wxActive, post: !!post, msaa: post ? post.samples : 0 };
 }
 const angDelta = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 function hashArr(a) { let h = 0; for (let i = 0; i < a.length; i += 7) h = (Math.imul(h, 31) + (a[i] * 1000 | 0) + (a[i + 2] * 977 | 0) + (a[i + 6] * 100 | 0)) | 0; return h; }

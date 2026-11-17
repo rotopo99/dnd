@@ -46,6 +46,8 @@ function part(P, x, y, z, s, c, a, sx = 1, sy = 1, sz = 1, yaw = 0) {
   P.push(x, y, z, s, c[0], c[1], c[2], a + GLOW, sx, sy, sz, yaw);
 }
 const rgb = (k) => keyRGB(k);
+/** Ambient particle of gfx/env3d.js: glow — feeds the bloom. */
+export function emitAmbient(P, x, y, z, s, c, a, glow) { if (P.length < F.maxParticles * 12) P.push(x, y, z, s, c[0], c[1], c[2], a + (glow ? 2 : 0), 1, 1, 1, 0); }
 
 export function buildFx(S, V, now, prefs, ob, P) {
   const b = S.b, Wd = V.world, fl = (x, y) => (Wd.floor[y * Wd.w + x] ?? 0);

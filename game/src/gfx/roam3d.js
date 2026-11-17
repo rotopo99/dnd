@@ -57,7 +57,7 @@ function objs3(objs) {
     }
     if (o.type === 'secret' && (o.opened || o.hidden)) continue;
     const v = (o.type === 'stash' || o.type === 'door' || o.type === 'hatch' || o.type === 'lever' || o.type === 'note') && o.opened ? 'open' : '';
-    out.push({ x: o.x, y: o.y, mb: roamObjModel(o.hatch ? 'hatch' : o.type, o.hatch ? 'open' : v), sig: `${o.type[0]}${v ? 1 : 0}` });
+    out.push({ x: o.x, y: o.y, mb: roamObjModel(o.hatch ? 'hatch' : o.type, o.hatch ? 'open' : v), sig: `${o.type[0]}${v ? 1 : 0}`, glow: o.type === 'fire' ? 'warm' : o.type === 'terminal' ? 'cold' : null });
   }
   return out;
 }
