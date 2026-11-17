@@ -2,3 +2,4 @@ node_modules/
 tools/out/
 .claude/settings.local.json
 .claude/agent-memory-local/
+tools/out/blender-work/
