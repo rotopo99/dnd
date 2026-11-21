@@ -2,7 +2,7 @@
 // the world description, overlay batch, particles and unit poses come from the backend-independent gfx/scene3d.js
 // prepFrame; this module turns them into a Three scene: static chunks (MeshStandardMaterial, vertex colours + baked
 // AO + world-space value noise, glow vertices -> emissive, cut-away of walls in front of the focus), map border walls
-// (low on the near sides), horizon backdrop, barrels (InstancedMesh per kind), units (SkinnedMesh per unit on the old templates: toon material,
+// (low on the near sides), horizon backdrop, barrels (InstancedMesh per kind), units (heroes: GLB characters of three/party.js; others SkinnedMesh per unit on the old templates: toon material,
 // inverted-hull outline in the team colour, x-ray silhouette behind walls, hit flash -> emissive), floor decals
 // (highlights, path, zones, surfaces, rings, contact blobs: one dynamic translucent mesh), particles (instanced shader),
 // key light with soft shadows + fill + hemisphere, night point lights, linear fog; post chain of three/engine.js.
@@ -24,6 +24,7 @@ import { NBONES } from '../gfx/gl.js';
 import { visionOf, lightSources } from '../world/battlefields.js';
 import { gfxPrefs } from '../gfx/settings.js';
 import { unitUniforms, syncUnitUniforms, unitMaterial, hullMaterial } from './units.js';
+import { syncParty, sweepParty, dropParty } from './party.js';
 
 const G = GFX.geo;
 const DIST = 100; // camera distance behind the view target (orthographic: only depth precision depends on it)
@@ -218,7 +219,7 @@ function createState(E, V) {
   scene.add(parts);
   const T = {
     scene, cam3, U, UU: unitUniforms(), world, hemi, key, fill, overlay, parts, ovCap: 0, ptCap: 0,
-    chunks: new Map(), edges: [], backdrop: null, backKey: '', barrels: new Map(), units: new Map(), points: [], props: new Map(),
+    chunks: new Map(), edges: [], backdrop: null, backKey: '', barrels: new Map(), units: new Map(), party: new Map(), partyFrame: 0, points: [], props: new Map(),
     pickMesh: null, pickCells: null, proxies: new Map(), ray: new THREE.Raycaster(), gv: -1, shadowSize: -1,
   };
   T.pick = (S, px, py) => pickThree(E, V, T, S, px, py);
@@ -437,9 +438,11 @@ export function drawBattleThree(E, game, S, opts) {
   }
 
   // units
-  const seen = new Set(), ppm = cam.ppmFit * cam.zoom;
+  const seen = new Set(), ppm = cam.ppmFit * cam.zoom, PC = { now, ppm, prefs, hgt: V.hgt };
+  let glbN = 0;
   for (const p of inst) {
     const id = p.it.u.id;
+    if (syncParty(T, p, PC)) { glbN++; continue; } // GLB hero (three/party.js); its procedural twin is dropped below
     let o = T.units.get(id);
     if (o && o.key !== p.T.key) { dropUnit(o); o = null; }
     if (!o) { o = makeUnit(E, T, p.T); if (!o) continue; T.units.set(id, o); }
@@ -461,6 +464,7 @@ export function drawBattleThree(E, game, S, opts) {
     o.body.visible = true;
   }
   for (const [id, o] of T.units) if (!seen.has(id)) { dropUnit(o); T.units.delete(id); }
+  sweepParty(T);
 
   // decals + particles of the frame
   const { ob, PARTS } = frameBatches();
@@ -558,7 +562,7 @@ export function drawBattleThree(E, game, S, opts) {
     Gd.uSat.value = gr.sat;
     P.comp.render();
   }
-  V.stats = { units: inst.length, groups: new Set(inst.map((p) => p.T.key)).size, particles: np, shadow: shSize, busy, chunks: shownN, chunksAll: T.chunks.size, lights: ls.length, glow: lampsN, ambient: ambN, weather: wxActive, post: !prefs.reduceFx, msaa: E.soft ? 0 : T3.msaa, three: true, calls: r.info.render.calls, tris: r.info.render.triangles };
+  V.stats = { units: inst.length, glb: glbN, groups: new Set(inst.map((p) => p.T.key)).size, particles: np, shadow: shSize, busy, chunks: shownN, chunksAll: T.chunks.size, lights: ls.length, glow: lampsN, ambient: ambN, weather: wxActive, post: !prefs.reduceFx, msaa: E.soft ? 0 : T3.msaa, three: true, calls: r.info.render.calls, tris: r.info.render.triangles };
 }
 
 export function dropBattleThree(E, V) {
@@ -566,6 +570,7 @@ export function dropBattleThree(E, V) {
   if (!T) return;
   for (const o of T.units.values()) dropUnit(o);
   T.units.clear();
+  dropParty(T);
   for (const m of T.barrels.values()) m.dispose();
   T.barrels.clear();
   for (const c of T.chunks.values()) c.mesh?.geometry.dispose();

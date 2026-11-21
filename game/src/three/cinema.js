@@ -5,50 +5,22 @@
 // (world/cine.js); never writes it.
 //   createCinemaView(E) -> V { load(def, hero) Promise, ready, failed, frame(R, dt, W, H), shake(amp), dispose() }
 import * as THREE from 'three';
-import { instanceGLB, loadGLB } from './models.js';
+import { assembleCharacter, toonify, setBodyShape, stepSprings, faceTex, disposeCharacter, heroSpec, HAIRS, MORPHS } from './character.js';
+import { gfxPrefs } from '../gfx/settings.js';
+import { HERO_MODELS } from '../data/hero-models.js';
 import { SHOT_FRAMES, SHOT_MOVES } from '../data/cinematics/index.js';
 import {
   CINE_VIEW as CV, CLIP_FALLBACK, CINE_GESTURES, GESTURE_IN, CINE_FACES, CINE_MODELS, CINE_LOOKS, CINE_AIM, CINE_SIDE_DEG, CINE_STAGES,
 } from '../data/cine-play.js';
 
-const DIR = new URL('../../assets/models/', import.meta.url).href;
-const HAIRS = ['bob', 'long', 'ponytail', 'short', 'spiky', 'twin'];
-const MORPHS = ['blink', 'happy', 'angry', 'sad', 'surprised'];
 const UP = new THREE.Vector3(0, 1, 0);
 const smooth = (k) => k * k * (3 - 2 * k);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerpK = (rate, dt) => 1 - Math.exp(-rate * dt);
 
-const texLoader = new THREE.TextureLoader();
-const texCache = new Map();
-function faceTex(sex, id) {
-  const url = `${DIR}face_${sex}_${id}.png`;
-  let t = texCache.get(url);
-  if (!t) {
-    t = texLoader.load(url);
-    t.flipY = false; t.colorSpace = THREE.SRGBColorSpace;
-    texCache.set(url, t);
-  }
-  return t;
-}
-
-let ramp = null;
-function toonRamp() {
-  if (ramp) return ramp;
-  const d = new Uint8Array([70, 70, 70, 255, 160, 160, 160, 255, 255, 255, 255, 255]);
-  ramp = new THREE.DataTexture(d, 3, 1, THREE.RGBAFormat);
-  ramp.minFilter = ramp.magFilter = THREE.NearestFilter;
-  ramp.needsUpdate = true;
-  return ramp;
-}
-
-/** GLB files of a cast entry: { base, parts, sex, hair, scale, tint }. */
+/** GLB files of a cast entry: { base, parts, sex, hair, scale, tint } (the hero — from the appearance editor look). */
 function filesOf(c, hero) {
-  if (c.k === 'hero') {
-    const sex = hero?.avatar?.gender === 'f' ? 'f' : 'm';
-    const hs = hero?.avatar?.hair;
-    return { base: `hero_${sex}_field`, parts: [], sex, hair: HAIRS.includes(hs) ? hs : null };
-  }
+  if (c.k === 'hero') return heroSpec(hero || {});
   if (c.model === null) return null;
   const m = CINE_MODELS[c.model];
   if (m) return { ...m, sex: m.base.endsWith('_f') ? 'f' : 'm', hair: c.hair || null };
@@ -56,70 +28,15 @@ function filesOf(c, hero) {
   return { base: 'body_m', parts: ['outfit_rags_m'], sex: 'm', hair: c.hair || null };
 }
 
-const outlineMat = (() => {
-  let m = null;
-  return () => {
-    if (m) return m;
-    m = new THREE.MeshBasicMaterial({ color: 0x14141c, side: THREE.BackSide });
-    m.onBeforeCompile = (s) => {
-      s.vertexShader = s.vertexShader.replace('#include <skinning_vertex>', '#include <skinning_vertex>\n  transformed += normalize(objectNormal) * 0.0035;');
-    };
-    return m;
-  };
-})();
-
-/** Plain PBR from Blender -> toon (3 bands) per instance; the Face material is kept for the atlas swap. */
-function toonify(A, look) {
-  const L = look ? CINE_LOOKS[look] : null;
-  const meshes = [];
-  A.root.traverse((o) => { if (o.isMesh) meshes.push(o); });
-  for (const o of meshes) {
-    const conv = (m) => {
-      const t = new THREE.MeshToonMaterial({ name: m.name, color: m.color?.clone() || new THREE.Color(1, 1, 1), map: m.map || null, gradientMap: toonRamp(),
-        side: THREE.DoubleSide, transparent: !!L?.opacity, opacity: L?.opacity ?? 1, emissive: new THREE.Color(L?.emissive ?? (/glow/i.test(m.name) ? 0x4fa0f0 : 0)) });
-      if (L?.tint) t.color.lerp(new THREE.Color(L.tint), 0.6);
-      if (A.tint && m.name === 'Skin') t.color.set(A.tint);
-      if (m.name === 'Face') A.faces.push(t);
-      return t;
-    };
-    o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
-    o.castShadow = !L?.opacity; o.receiveShadow = true;
-    if (o.morphTargetDictionary && o.morphTargetInfluences) A.morph.push(o);
-    if (o.isSkinnedMesh && !L?.opacity) { // inverted hull sharing the skeleton and the morph weights
-      const h = new THREE.SkinnedMesh(o.geometry, outlineMat());
-      h.bind(o.skeleton, o.bindMatrix);
-      if (o.morphTargetInfluences) { h.morphTargetInfluences = o.morphTargetInfluences; h.morphTargetDictionary = o.morphTargetDictionary; }
-      h.frustumCulled = false; h.castShadow = false; h.userData.hull = true;
-      o.parent.add(h);
-      h.position.copy(o.position); h.quaternion.copy(o.quaternion); h.scale.copy(o.scale);
-    }
-  }
-}
-
 async function buildActor(who, c, hero) {
   const F = filesOf(c, hero);
   if (!F) return null;
-  const inst = await instanceGLB(`${DIR}${F.base}.glb`);
-  const A = { who, inst, root: inst.root, sex: F.sex, faces: [], morph: [], tint: F.tint, look: c.look || null, bones: new Map(), rest: new Map(),
+  const C = await assembleCharacter({ ...F, hair: HAIRS.includes(F.hair) ? F.hair : null });
+  const A = Object.assign(C, { who, look: c.look || null,
     yaw: 0, headYaw: 0, headPitch: 0, w: Object.fromEntries(MORPHS.map((k) => [k, 0])), blinkT: 0, nextBlink: 1 + Math.random() * 3,
-    face: null, act: null, clip: null, gT: 0, gesture: null, placed: false, headY: 1.62 };
-  const parts = [...(F.parts || [])];
-  if (F.hair) {
-    A.root.traverse((o) => { if (o.isMesh && /^Hair/i.test(o.name)) o.visible = false; });
-    parts.push(`hair_${F.hair}_${F.sex}`);
-  }
-  for (const p of parts) { try { inst.attach(await loadGLB(`${DIR}${p}.glb`)); } catch (e) { console.warn('cinema part', p, e?.message || e); } }
-  const hidden = [];
-  A.root.traverse((o) => { if (o.isMesh && !o.visible) hidden.push(o); });
-  for (const o of hidden) o.parent?.remove(o);
-  if (F.scale) A.root.scale.setScalar(F.scale);
-  toonify(A, c.look);
-  A.root.traverse((o) => { if (o.isBone && !A.bones.has(o.name)) { A.bones.set(o.name, o); A.rest.set(o.name, o.quaternion.clone()); } });
-  inst.play('idle');
-  inst.update(0);
-  A.root.updateMatrixWorld(true);
-  const hb = A.bones.get('head');
-  if (hb) A.headY = hb.getWorldPosition(new THREE.Vector3()).y + 0.08;
+    face: null, act: null, clip: null, gT: 0, gesture: null, placed: false });
+  toonify(A, { look: c.look ? CINE_LOOKS[c.look] : null, skinHex: F.tint && typeof F.tint !== 'object' ? F.tint : null, tint: typeof F.tint === 'object' ? F.tint : null, outline: true });
+  if (F.shape) setBodyShape(A, F.shape);
   return A;
 }
 
@@ -236,6 +153,7 @@ function updateActor(A, R, dt, now) {
   for (const n of ['head', 'neck', 'chest', 'spine', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm']) { const b = A.bones.get(n); if (b) b.quaternion.copy(A.rest.get(n)); }
   A.inst.update(dt);
   A.root.updateMatrixWorld(true);
+  stepSprings(A, dt, HERO_MODELS.physics[gfxPrefs().physics] ?? 1);
   const G = A.gesture && CINE_GESTURES[A.gesture];
   if (G) {
     const fin = smooth(clamp(A.gT / GESTURE_IN, 0, 1));
@@ -407,10 +325,7 @@ export function createCinemaView(E) {
   };
 
   V.dispose = () => {
-    for (const A of V.actors.values()) {
-      A.root.traverse((o) => { if (o.isMesh && !o.userData.hull) for (const m of [].concat(o.material)) m.dispose(); });
-      A.inst.dispose();
-    }
+    for (const A of V.actors.values()) disposeCharacter(A);
     V.actors.clear();
     for (const x of V.disp) x.dispose?.();
     scene.clear();

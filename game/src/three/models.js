@@ -1,8 +1,9 @@
 // GLB models on Three.js (docs/specs/threejs-migration.md §6, stage 3 groundwork): GLTFLoader with a shared Promise
 // cache by URL, instances through SkeletonUtils.clone (own skeleton per unit), AnimationMixer per instance with named
 // clips (Blender contract, tools/blender/README.md: idle walk run crouch_walk loop; attack_melee attack_shoot cast hit
-// death one-shot), parts (hair / outfit GLBs on the same bone names) bound to the instance skeleton.
-// Nothing loads unless asked: units stay on the procedural templates (three/units.js) until a model key exists.
+// death one-shot; talk shrug sit may appear), parts (hair / outfit GLBs on the same bone names) bound to the instance
+// skeleton (their own spring chains re-parented onto the instance bones).
+// Users: three/character.js (assembly shared by three/cinema.js and three/party.js).
 //   loadGLB(url)                     -> Promise<gltf> (cached; a failed load is dropped from the cache)
 //   instanceGLB(url)                 -> Promise<Inst> {root, mixer, clips, play(name, o), update(dt), attach(gltf), dispose()}
 //   clearModelCache()                dispose cached geometries / materials / textures (context loss, leaving 3D)
@@ -12,7 +13,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const cache = new Map();
 let loader = null;
-const LOOP = new Set(['idle', 'walk', 'run', 'crouch_walk']);
+const LOOP = new Set(['idle', 'walk', 'run', 'crouch_walk', 'talk', 'sit']);
 
 export function loadGLB(url) {
   let p = cache.get(url);
@@ -42,16 +43,17 @@ export async function instanceGLB(url) {
   let cur = null;
   const I = {
     root, mixer, clips, current: () => cur?.getClip().name || null,
-    /** Cross-fade to a clip (o.fade s, default 0.2); one-shots clamp on the last frame. Unknown name: no-op. */
+    /** Cross-fade to a clip (o.fade s, default 0.2; o.restart replays a running one); one-shots clamp on the last frame. Unknown name: no-op. */
     play(name, o = {}) {
       const clip = clips.get(name);
-      if (!clip || (cur && cur.getClip() === clip && cur.isRunning())) return cur;
+      if (!clip || (!o.restart && cur && cur.getClip() === clip && cur.isRunning())) return cur;
       const a = mixer.clipAction(clip);
       const loop = o.loop ?? LOOP.has(name);
       a.reset();
       a.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
       a.clampWhenFinished = !loop;
       a.timeScale = o.speed || 1;
+      a.enabled = true; a.setEffectiveWeight(1);
       if (cur && cur !== a) a.crossFadeFrom(cur, o.fade ?? 0.2, false);
       a.play();
       cur = a;
@@ -61,6 +63,11 @@ export async function instanceGLB(url) {
     /** Part GLB (hair / outfit): its skinned meshes rebound to this instance's bones by name. */
     attach(part) {
       const bones = bonesOf(root), src = cloneSkinned(part.scene), added = [];
+      // bones only the part has (hair_* / skirt_* chains): moved under the instance bone of the same parent name, so
+      // they follow the animated body (left in the detached clone they would stay at the bind pose)
+      const extra = [];
+      src.traverse((o) => { if (o.isBone && !bones.has(o.name) && o.parent?.isBone && bones.has(o.parent.name)) extra.push(o); });
+      for (const b of extra) { bones.get(b.parent.name).add(b); b.traverse((c) => { if (c.isBone) bones.set(c.name, c); }); }
       src.traverse((o) => {
         if (!o.isSkinnedMesh) return;
         const list = o.skeleton.bones.map((b) => bones.get(b.name) || b);
