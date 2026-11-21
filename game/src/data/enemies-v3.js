@@ -1141,6 +1141,7 @@ export const ENCOUNTERS_V3 = Object.fromEntries([
   enc('enc-judge', 'Аватар Судьи', 5, 'cult', ['kiberspeys'], ['cult-judge-hand', 'acolyte-5', 'skrilet-5', 'cult-executioner'], { final: true }),
   // content-wave2.md §1.2: суд проигран (c4 court-lost) — Судья исполняет приговор лично; эхо — стук из недоваренной створки (judge-knocks)
   enc('enc-judge-hard', 'Аватар Судьи: приговор', 5, 'cult', ['kiberspeys'], ['cult-judge-hand', 'cult-executioner', 'acolyte-5', 'skrilet-5', 'skrilet-5'], { final: true }),
+  enc('enc-w2-polite', 'Вежливые', 4, null, ['dungeons-m15'], ['dawn-body', 'dawn-body', 'dawn-body', 'lis-drone']),
   enc('enc-judge-echo', 'Эхо Судьи', 5, 'cult', ['kiberspeys'], ['acolyte-5', 'skrilet-5', 'scriptlet', 'scriptlet']),
   enc('enc-lis-drones', 'Охранные дроны Бункера Лиса', 3, null, ['bunker-lisa'], ['lis-drone', 'lis-drone', 'lis-sentry', 'lis-drone']),
   enc('enc-dawn-bodies', 'Пустые тела «Рассвета»', 4, null, ['bunker-kuksiusa'], ['dawn-body', 'dawn-body', 'dawn-body', 'dawn-body']),

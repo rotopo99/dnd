@@ -39,6 +39,73 @@ export const QUESTS_WAVE2 = [
     ],
     { xp: 900, credits: 150, rep: { technikums: 5 } },
     { requires: { any: [{ flag: 'act1-done' }, { flag: 'met-lox' }] } }),
+
+  // ================= w2-name «Имя без чувств» (Ладов / Предложка, T12, ур. 9) =================
+  Q('w2-name', 'Имя без чувств', 'keeper-of-history', 'cringegons', 9,
+    'Хранитель Истории уверен: у Великого Собирателя было имя, и Предложка его помнит — голосом, не словами. Найти три свидетельства и решить, стоит ли его называть.',
+    [
+      { ...st('keeper', 'Хранитель раскрывает тетрадь со сносками: «Мы помним голос. Чей — сноска утеряна».', talk('keeper-of-history', 'baza-predlozhki'), 'shelf'), effects: { flags: ['ladov-w-voice'] } },
+      st('shelf', 'Стеллаж в Кринж-катакомбах: на стеклянных глазах — подписи. Прочесть три имени.', check(['perception', 'survival', 'meditation'], 15, 'file'), 'file'),
+      st('file', 'Терминал катакомб: «Личное дело № 0». Найти хотя бы одно из двух — имя или приказ.', all([
+        { ...check(['hacking', 'tech'], 14), location: 'dungeons-m14', doneFlag: 'ladov-w-name', desc: 'Графа «владелец» вырезана, но фамилия осталась в шапке' },
+        { ...check(['analysis', 'perception'], 14), location: 'dungeons-m14', doneFlag: 'ladov-w-order', desc: 'Приказ 2004 года: «переносить без остатка»' },
+      ], 1), 'choose'),
+      st('choose', 'Предложка ждёт решения. Дисс просит «не трогать»: имя может вернуть стыд — ему и им.', choice([
+        opt('name', 'Назвать имя при всех. Пусть Предложка скажет его хором.', null, 'back',
+          { requires: { any: [{ flags: ['ladov-w-voice', 'ladov-w-name'] }, { flags: ['ladov-w-voice', 'ladov-w-order'] }, { flags: ['ladov-w-name', 'ladov-w-order'] }] }, effects: { flags: ['ladov-name-known'] } }),
+        opt('offer', 'Предложить обмен: душа-замена вместо экспонатов.', null, 'back', { effects: { flags: ['ladov-offer-soul'] } }),
+        opt('skip', 'Не идти. Некоторые имена лучше оставить на полке.', null, 'back', { effects: { flags: ['ladov-skip'] } }),
+      ]), 'back'),
+      st('back', 'Вернуться к Хранителю Истории со сноской.', talk('keeper-of-history', 'baza-predlozhki'), 'done'),
+    ],
+    { xp: 1000, credits: 120, rep: { cringegons: 3 } },
+    { requires: { flag: 'collector-met' } }),
+
+  // ================= w2-cold «Вежливая очередь» (бункер «Холод», ур. 7) =================
+  Q('w2-cold', 'Вежливая очередь', 'repa', 'none', 7,
+    'Репа ищет свой блок памяти. В Ледяном бункере при −40 души живут в телах и стоят в очереди — вежливо, без конца. Терминал знает, что подходящий блок есть.',
+    [
+      st('ask', 'Репа кладёт на стойку объявление: «Ищу блок. Говорят, во льду. Пойдёшь со мной — что вспомню, то твоё».', talk('repa', 'lagoon-bar'), 'door'),
+      st('door', 'Дверь Ледяного бункера вмёрзла. Открыть её и не вмёрзнуть самому.', check(['tech', 'survival', 'endurance'], 14, 'polite'), 'queue'),
+      st('queue', 'Очередь из шести душ. Каждая уступает место другой. Уговорить их пропустить вперёд.', check(['persuasion', 'meditation', 'religion'], 13, 'polite'), 'choice'),
+      st('polite', 'Очередь «вежливо» не пускает. Вежливость у неё ледяная и с кулаками.', battle('enc-w2-polite', 'dungeons-m15'), 'choice'),
+      st('choice', 'Блок № 17 подходит. В нём — Эдик Семёныч, который давно хотел «свободное место».', choice([
+        opt('block', 'Взять блок № 17: Эдик переезжает в пустоту Репы, Репа — в его голос.', null, 'back', { effects: { flags: ['repa-block-found'] } }),
+        opt('thaw', 'Разморозить всех. Бункер погибнет, шесть душ выйдут наружу.', check(['tech', 'hacking'], 17), 'back', { effects: { flags: ['cold-thawed'], mrl: -5 } }),
+        opt('leave', 'Уйти. Очередь вежливо закроет за вами дверь.', null, 'back', { effects: { flags: ['cold-left'] } }),
+      ]), 'back'),
+      st('back', 'Вернуться к Репе в Бар Лагуны.', talk('repa', 'lagoon-bar'), 'done'),
+    ],
+    { xp: 700, credits: 90, rep: { technikums: 2 } }),
+
+  // ================= w2-customs «Досмотр» (бункер §8.1 №10, ур. 6) =================
+  Q('w2-customs', 'Досмотр', 'w2-inspector', 'pirates', 6,
+    'На руинах таможни скелет-инспектор держит печать над бланком с 2008 года. Без печати груз не груз — и караваны стоят.',
+    [
+      st('ask', 'Инспектор листает регламент: «Нет в списке разрешённых: кринж. Предъявите».', talk('w2-inspector', 'ruins-m35'), 'decide'),
+      st('decide', 'Что делать с печатью?', choice([
+        opt('stamp', 'Поставить печать по регламенту. Партия любит регламент.', null, 'back', { effects: { flags: ['customs-stamp'] } }),
+        opt('fake', 'Подделать печать: пираты заплатят, инспектор не заметит.', check(['tech', 'deception'], 15, 'caught'), 'back', { effects: { flags: ['customs-fake'] } }),
+        opt('closed', 'Не пускать никого. Инспектор остаётся при деле.', null, 'back', { effects: { flags: ['customs-closed'] } }),
+      ]), 'back'),
+      st('caught', 'Подделку заметили: печать смазана, а инспектор — нет. Штраф по тарифу 2008 года.', { kind: 'pay', credits: 60 }, 'back'),
+      st('back', 'Доложить Инспектору итог досмотра.', talk('w2-inspector', 'ruins-m35'), 'done'),
+    ],
+    { xp: 450, credits: 80, rep: { pirates: 1 } }),
+
+  // ================= w2-laugh «Смех по расписанию» (бункер «Норма счастья», ур. 7) =================
+  Q('w2-laugh', 'Смех по расписанию', 'w2-sentry', 'warprom', 7,
+    'В коридорах под Кремлём динамик смеётся ровно в 9 и в 18. Рядом стул, придвинутый к нему. Живой часовой слушает и плачет. Правильного ответа нет.',
+    [
+      st('ask', 'Часовой показывает на стул: «Сюда садились, чтобы смеяться вместе. Теперь сажусь я, чтобы не смеяться одному».', talk('w2-sentry', 'dungeons-m12'), 'choose'),
+      st('choose', 'Что делать с динамиком?', choice([
+        opt('off', 'Выключить. Тишина тоже норма.', check(['tech', 'hacking'], 14), 'back', { effects: { flags: ['laugh-off'], mrl: -3 } }),
+        opt('kept', 'Сохранить и охранять расписание.', null, 'back', { effects: { flags: ['laugh-kept'] } }),
+        opt('replaced', 'Записать свой смех вместо старого.', check(['persuasion', 'deception', 'meditation'], 16), 'back', { effects: { flags: ['laugh-replaced'] } }),
+      ]), 'back'),
+      st('back', 'Сказать часовому, что теперь будет в 9 и в 18.', talk('w2-sentry', 'dungeons-m12'), 'done'),
+    ],
+    { xp: 650, credits: 70, rep: { warprom: 2 } }),
 ];
 
 export const QUESTS_WAVE2_MAP = Object.fromEntries(QUESTS_WAVE2.map((q) => [q.id, q]));

@@ -5888,5 +5888,83 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(RD.radioEligible(s).some((n) => n.id === 'rd-w2-harmony-public'));
   });
 }
+
+// ---------------------------------------------------------------- content-wave2.md §2: w2-name, w2-cold, w2-customs, w2-laugh (gates, ways, outcomes, delayed)
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const DL = await import('../game/src/world/delayed.js');
+  const { QUESTS: QW } = await import('../game/src/world/data.js');
+  const { NPCS: NW } = await import('../game/src/data/npcs.js');
+  const { RADIO } = await import('../game/src/data/world/radio.js');
+  const { CONSEQUENCES: CW } = await import('../game/src/data/world/consequences.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true }, flags); s.hero.credits = 500; return s; };
+  const choiceSlot = (s, q) => QS.slots(s, q).find((x) => x.kind === 'choice');
+  const W2 = ['w2-harmony-truth', 'w2-name', 'w2-cold', 'w2-customs', 'w2-laugh'];
+  test('wave2: every quest has a giver NPC, ≥ 2 ways, a rumor and a radio line', () => {
+    for (const id of W2) {
+      const q = QW[id];
+      assert.ok(q && NW[q.giver], id);
+      const ways = q.stages.filter((x) => x.goal.kind === 'choice').flatMap((x) => x.goal.options);
+      assert.ok(ways.length >= 2, id);
+      assert.ok(Object.values(CW[id]).some((e) => e.rumors.length || e.delayed?.length), id);
+      assert.ok(RADIO.news.some((n) => JSON.stringify(n.when).includes(id)), id);
+    }
+  });
+  test('wave2 name: needs collector-met; name needs 2 of 3 witnesses; skip -> beacon flares in 7 days', () => {
+    assert.ok(!QS.questsOffered(mk(), 'keeper-of-history').some((q) => q.id === 'w2-name'));
+    const s = mk({ 'collector-met': true });
+    assert.ok(QS.questsOffered(s, 'keeper-of-history').some((q) => q.id === 'w2-name'));
+    QS.startQuest(s, 'w2-name'); QS.onTalk(s, 'keeper-of-history', GAME_DATA);
+    assert.ok(s.flags['ladov-w-voice']); assert.equal(s.quests['w2-name'].stage, 'shelf');
+    s.quests['w2-name'].stage = 'choose';
+    assert.ok(!QS.availableOptions(s, choiceSlot(s, 'w2-name')).some((o) => o.id === 'name'));
+    s.flags['ladov-w-order'] = true;
+    assert.ok(QS.availableOptions(s, choiceSlot(s, 'w2-name')).some((o) => o.id === 'name'));
+    QS.chooseOption(s, choiceSlot(s, 'w2-name'), 'skip', GAME_DATA);
+    QS.onTalk(s, 'keeper-of-history', GAME_DATA);
+    assert.equal(s.quests['w2-name'].state, 'done');
+    QS.claimTurnin(s, 'w2-name', GAME_DATA);
+    assert.ok(s.flags['cq:w2-name:skip'] && s.flags['ladov-skip']);
+    s.day += 7; DL.delayedTick(s, GAME_DATA);
+    assert.ok(s.flags['dl:w2-name:beacon-flare']);
+  });
+  test('wave2 cold: door fail -> polite battle -> choice; block / thaw outcomes', () => {
+    const s = mk(); QS.startQuest(s, 'w2-cold'); QS.onTalk(s, 'repa', GAME_DATA);
+    assert.equal(s.quests['w2-cold'].stage, 'door');
+    QS.failSlot(s, QS.slots(s, 'w2-cold')[0], GAME_DATA);
+    assert.equal(s.quests['w2-cold'].stage, 'polite');
+    QS.onBattleWon(s, 'enc-w2-polite', 'dungeons-m15', GAME_DATA);
+    assert.equal(s.quests['w2-cold'].stage, 'choice');
+    QS.chooseOption(s, choiceSlot(s, 'w2-cold'), 'block', GAME_DATA);
+    QS.onTalk(s, 'repa', GAME_DATA);
+    assert.equal(s.quests['w2-cold'].outcome, 'block');
+    assert.ok(s.flags['repa-block-found']);
+  });
+  test('wave2 customs: fake caught -> fine stage; stamp -> tax news in 6 days; closed marks the node', () => {
+    const s = mk(); QS.startQuest(s, 'w2-customs'); QS.onTalk(s, 'w2-inspector', GAME_DATA);
+    const sl = choiceSlot(s, 'w2-customs');
+    QS.chooseOption(s, sl, 'fake', GAME_DATA);
+    const fk = QS.slots(s, 'w2-customs').find((x) => x.goal.kind === 'check');
+    QS.failSlot(s, fk, GAME_DATA);
+    assert.equal(s.quests['w2-customs'].stage, 'caught');
+    const t = mk(); QS.startQuest(t, 'w2-customs'); QS.onTalk(t, 'w2-inspector', GAME_DATA);
+    QS.chooseOption(t, choiceSlot(t, 'w2-customs'), 'stamp', GAME_DATA); QS.onTalk(t, 'w2-inspector', GAME_DATA);
+    assert.equal(t.quests['w2-customs'].outcome, 'stamp');
+    QS.claimTurnin(t, 'w2-customs', GAME_DATA);
+    t.day += 6; DL.delayedTick(t, GAME_DATA);
+    assert.ok(t.flags['dl:w2-customs:customs-tax']);
+  });
+  test('wave2 laugh: kept / replaced (sentry note in 3 days)', () => {
+    const s = mk(); QS.startQuest(s, 'w2-laugh'); QS.onTalk(s, 'w2-sentry', GAME_DATA);
+    QS.chooseOption(s, choiceSlot(s, 'w2-laugh'), 'replaced', GAME_DATA);
+    const ck = QS.slots(s, 'w2-laugh').find((x) => x.goal.kind === 'check');
+    QS.completeSlot(s, ck, GAME_DATA); QS.onTalk(s, 'w2-sentry', GAME_DATA);
+    assert.equal(s.quests['w2-laugh'].outcome, 'replaced');
+    QS.claimTurnin(s, 'w2-laugh', GAME_DATA);
+    s.day += 3; DL.delayedTick(s, GAME_DATA);
+    assert.ok(s.flags['dl:w2-laugh:sentry-note']);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
