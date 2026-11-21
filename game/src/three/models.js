@@ -18,7 +18,9 @@ export function loadGLB(url) {
   let p = cache.get(url);
   if (!p) {
     loader ||= new GLTFLoader();
-    p = loader.loadAsync(url).catch((e) => { cache.delete(url); throw e; });
+    // hosts that do not serve .glb get a JSON glTF twin (<name>.gltf.json, buffers embedded) — tools/glb2json.py
+    p = loader.loadAsync(url).catch((e) => (/\.glb$/.test(url) ? loader.loadAsync(url.replace(/\.glb$/, '.gltf.json')) : Promise.reject(e)))
+      .catch((e) => { cache.delete(url); throw e; });
     cache.set(url, p);
   }
   return p;
