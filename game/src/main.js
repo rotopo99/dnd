@@ -3,7 +3,7 @@ import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture, play } from './audio/sfx.js';
 import { playTrack } from './audio/music.js';
 import { romanceInterrupt } from './scenes/romance-scene.js';
-import { cineInterrupt, playCinematic } from './scenes/cinema.js';
+import { cineId, cineInterrupt, playCinematic } from './scenes/cinema.js';
 import { exodusMark } from './world/exodus.js';
 import { PLAY_DATA as GAME_DATA } from './world/data.js';
 import { setSaveErrorHandler } from './save.js';
@@ -121,7 +121,7 @@ function syncMusic(g) {
 game.setScene(menuScene);
 // debug (cinematics.md §7.5): ?cine=<id>[&flags=a,b][&comic=1] plays a scene on a scratch save, then back to the menu
 {
-  const q = new URLSearchParams(location.search), cid = q.get('cine');
+  const q = new URLSearchParams(location.search), cid = q.get('cine') && cineId(q.get('cine'));
   if (cid) {
     const sv = { flags: Object.fromEntries((q.get('flags') || '').split(',').filter(Boolean).map((f) => [f, true])), cine: {} };
     const hero = { name: t('create.defaultName'), race: 'human', cls: 'ranger', avatar: null };

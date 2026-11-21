@@ -27,4 +27,14 @@ export const HERO_MODELS = {
   flash: 0.9,                                // hit flash -> emissive white x this
   keepUnseen: 5,                             // s an off-screen (culled) character stays built
   physics: { off: 0, low: 0.5, normal: 1 },  // settings «Физика тела» -> spring bones weight
+  // weapon in hand (three/weapons.js): gfx/gear3d.js weaponKind -> category (missing / null — empty hand)
+  weapon: {
+    cat: { knife: 'blade', sword: 'blade', sabre: 'blade', katana: 'blade', cyberblade: 'blade', axe: 'blade', hammer: 'blunt', club: 'blunt',
+      polearm: 'staff', wand: 'staff', bow: 'staff', pistol: 'pistol', smg: 'pistol', rifle: 'rifle', mg: 'rifle', crossbow: 'rifle', launcher: 'rifle', laser: 'rifle', melta: 'rifle' },
+    glow: ['cyberblade', 'laser', 'melta', 'wand'], // kinds with a glowing part
+    bone: 'rightHand', grip: [0, 0.07, -0.025],      // m in the hand bone (y: wrist -> knuckles; -x: thumb side; -z: palm)
+    holster: { bone: 'hips', pos: [-0.2, -0.08, 0.02], rot: [0, 0, Math.PI * 0.94] }, // u.hide.weapon: stowed at the right hip
+    scale: 1.2,                                      // stylized oversize, readable at battle zoom
+    color: { metal: 0xb4bcc8, dark: 0x343a46, wood: 0x7a5232, grip: 0x2a2320, glow: 0x4fd0ff },
+  },
 };

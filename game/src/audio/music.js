@@ -273,6 +273,24 @@ mk('tragic', {
   ],
 });
 
+// Кринж-низ: ло-фи орган и гармонь на медленном суб-пульсе, редкая фальшивая нота (flag wr).
+mk('cringe-low', {
+  bpm: 66, prog: [[45, 52, 57, 60], [53, 57, 60, 64], [50, 57, 62, 65], [52, 59, 64, 65]], ms: 'reed', mv: 0.05,
+  pads: { str: 0.035, org: 0.05 }, dv: 0.7,
+  m: [
+    [[0, 4, 4], [3, 8, 4], [2, 12, 4]],
+    [[0, 0, 8], [-1, 8, 8]],
+    [[4, 0, 4], [2, 4, 4], [0, 8, 8]],
+    [[-2, 0, 4], [0, 4, 4], [-5, 8, 8]],
+  ],
+  secs: [
+    S(8, { org: 0.5, str: 0.3, b: 'R.......R.......' }),
+    S(8, { org: 0.4, str: 0.3, d: 'tense', b: 'R.......R.......', m: 1, rd: 1, wr: 1 }),
+    S(8, { org: 0.5, str: 0.2, b: 'R...R.......R...', m: 1, rd: 1, wr: 1 }),
+    S(4, { org: 0.3, str: 0.1 }),
+  ],
+});
+
 mk('card-game', {
   bpm: 104, prog: [[50, 57, 60, 64], [43, 50, 53, 57], [48, 55, 58, 62], [45, 52, 55, 59]], ms: 'key', mv: 0.055,
   pads: { str: 0.03, org: 0.02 }, dv: 0.8, pw: 'guit',
@@ -1266,6 +1284,9 @@ function scheduleBar(tr, b, t0) {
   }
   if (sec.bl && L3 && b % 4 === 0) bellNote(tr, t0, chord[0] + 24, 4, 0.05 * dv, 'fx');
 
+  // off-key "wrong" note (flag wr): a minor second above the root, now and then (seeded, rare)
+  if (sec.wr && L3 && tr.rnd() < 0.3) reedNote(tr, t0 + 10 * st, chord[0] + 13, 2 * st, 0.03 * dv, 'fx');
+
   // layer 4: brass stabs on the beat and the offbeat of the bar
   if (sec.br && L4) {
     for (const p of [0, 8]) {
@@ -1303,6 +1324,7 @@ export const TRACK_IDS = Object.freeze(TRACK_IDS_LIST);
 //   'roguelike-map' not wired yet (roguelike map scene not located)
 //   'romance'       game/src/data/romance.js           date scene (romance.date)
 //   'tragic'        romance.js farewell, breakup, death (romance.death) and tragic epilogue
+//   'cringe-low'    game/src/data/cinematics/c8-ladov-name.js (music: 'cringe-low')
 //   stopMusic(1500): game end and the pause menu's "В главное меню" (game/src/ui/save-ui.js).
 //   setMusicVolume(v): settings screen. setIntensity(v): battle and boss scenes, 0..1.
 //   Calls before the first user gesture are stored and start on that gesture by themselves.

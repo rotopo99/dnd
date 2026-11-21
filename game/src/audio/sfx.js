@@ -20,6 +20,7 @@
 import { initCore, isReady, getAudioContext, getNoiseBuffer, getVoiceCount, setMasterVolume, getMasterVolume, setBusVolume, getBusVolume, tone, noise, steps, rand, vary, NOTE } from './core.js';
 import { FOLEY, FOLEY_SURFACES, FOLEY_WEAPONS } from './sfx-foley.js';
 import { UI } from './sfx-ui.js';
+import { RADIO_SOUNDS } from './sfx-radio.js';
 import { say, VOX_KINDS } from './vox.js';
 
 export { masterGain } from './core.js';
@@ -142,6 +143,7 @@ const HIT = {
 
 const SOUNDS = {
   ...UI,
+  ...RADIO_SOUNDS,
   ...Object.fromEntries(Object.entries(FOLEY).filter(([k]) => k !== 'step')),
   step(opts = {}) {
     FOLEY.step(opts);

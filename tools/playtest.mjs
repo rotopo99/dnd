@@ -51,10 +51,21 @@ const url = `http://localhost:${server.address().port}/game/index.html${gfx ? `?
 const errors = [];
 const browser = await chromium.launch(gfx === '3d' ? { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } : {});
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`));
+// a single .glb 404 is expected on hosts without .glb (three/models.js falls back to .gltf.json for the session)
+const isGlb = (u) => /\.glb(\?|$)/.test(u || '');
+let glb404 = 0, glbConsole = 0;
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  if (isGlb(m.location()?.url) && / 404 /.test(m.text()) && glbConsole++ === 0) return;
+  errors.push(`console: ${m.text()}`);
+});
 page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
 page.on('requestfailed', (r) => errors.push(`request failed: ${r.url()}`));
-page.on('response', (r) => r.status() >= 400 && errors.push(`HTTP ${r.status()}: ${r.url()}`));
+page.on('response', (r) => {
+  if (r.status() < 400) return;
+  if (r.status() === 404 && isGlb(r.url()) && glb404++ === 0) return;
+  errors.push(`HTTP ${r.status()}: ${r.url()}`);
+});
 
 await page.goto(url);
 await page.waitForTimeout(wait);

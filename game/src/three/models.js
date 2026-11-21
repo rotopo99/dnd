@@ -13,14 +13,18 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const cache = new Map();
 let loader = null;
+let glbFailed = false; // a .glb 404'd once: later models load their .gltf.json twin directly
 const LOOP = new Set(['idle', 'walk', 'run', 'crouch_walk', 'talk', 'sit']);
 
 export function loadGLB(url) {
   let p = cache.get(url);
   if (!p) {
     loader ||= new GLTFLoader();
-    // hosts that do not serve .glb get a JSON glTF twin (<name>.gltf.json, buffers embedded) — tools/glb2json.py
-    p = loader.loadAsync(url).catch((e) => (/\.glb$/.test(url) ? loader.loadAsync(url.replace(/\.glb$/, '.gltf.json')) : Promise.reject(e)))
+    // hosts that do not serve .glb get a JSON glTF twin (<name>.gltf.json, buffers embedded) — tools/glb2json.py;
+    // after the first .glb failure the session goes straight to the twins (one 404 per session, QA v39 #1)
+    const isGlb = /\.glb$/.test(url), twin = url.replace(/\.glb$/, '.gltf.json');
+    p = (isGlb && glbFailed ? loader.loadAsync(twin)
+      : loader.loadAsync(url).catch((e) => { if (!isGlb) throw e; glbFailed = true; return loader.loadAsync(twin); }))
       .catch((e) => { cache.delete(url); throw e; });
     cache.set(url, p);
   }

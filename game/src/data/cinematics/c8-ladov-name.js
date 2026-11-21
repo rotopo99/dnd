@@ -3,7 +3,7 @@
 // начать должен герой. QTE seq «Г-А-Л-Д»: имя целиком (ladov-named) или оборванное (ladov-torn); обмен душой — ladov-trade.
 // Исходы читает арена (cine-hooks CINE_ENCOUNTER_MODS / CINE_BATTLE_SKIP). ~2 мин.
 export const C8_LADOV_NAME = {
-  id: 'c8-ladov-name', title: 'Имя', mins: 2, music: 'tragic', stage: 'collector-hall',
+  id: 'c8-ladov-name', title: 'Имя', mins: 2, music: 'cringe-low', stage: 'collector-hall',
   trigger: { at: 'arena-great-collector', before: 'arena-great-collector', needFlag: 'ladov-name-known', once: true },
   cast: {
     hero: { k: 'hero' },

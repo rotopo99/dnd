@@ -52,6 +52,15 @@ export function setCinePrefs(p) {
 
 // ------------------------------------------------------------------------------------------------ hooks
 
+/** Debug id lookup (QA v39 #3): full id, or a unique prefix before '-' (`c4` -> `c4-court`); unknown -> warn with the valid ids, null. */
+export function cineId(id) {
+  if (CINEMATICS[id]) return id;
+  const ids = Object.keys(CINEMATICS), m = ids.filter((k) => k.startsWith(id + '-'));
+  if (m.length === 1) return m[0];
+  console.warn(`cine: unknown id "${id}"${m.length ? ' (ambiguous)' : ''}; valid: ${ids.join(', ')}`);
+  return null;
+}
+
 export function playCinematic(game, id, o = {}) {
   const def = CINEMATICS[id];
   if (!def) { o.onEnd ? o.onEnd(game, null) : o.back && game.resume(o.back); return null; }

@@ -10,6 +10,7 @@
 //                                       (c: {now (display clock), ppm (px per metre), prefs, hgt (unit heights)})
 //   sweepParty(T)                    hide characters not drawn this frame; drop after HERO_MODELS.keepUnseen s
 //   dropParty(T)                     dispose all (scene change: three/battle.js dropBattleThree)
+// Weapon in the right hand by the equipped weapon category (three/weapons.js), re-attached when it changes.
 import * as THREE from 'three';
 import { HERO_MODELS as HM } from '../data/hero-models.js';
 import { CINE_FACES } from '../data/cine-play.js';
@@ -17,6 +18,7 @@ import { GFX } from '../data/gfx.js';
 import { bodyType } from '../gfx/units3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
 import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec } from './character.js';
+import { weaponKey, attachWeapon, detachWeapon } from './weapons.js';
 
 const failed = new Set(); // spec keys that did not load: procedural for the session
 const specs = new WeakMap();
@@ -59,6 +61,7 @@ function build(T, id, R, spec) {
     C.root.visible = false;
     T.scene.add(C.root);
     R.C = C;
+    R.wkey = undefined; // weapon attached by syncParty (follows the equipped weapon)
   }).catch((e) => {
     console.warn('party model', spec.key, e?.message || e);
     failed.add(spec.key);
@@ -68,7 +71,7 @@ function build(T, id, R, spec) {
 
 function dropRec(R) {
   R.dead = true;
-  if (R.C) { R.C.root.parent?.remove(R.C.root); disposeCharacter(R.C); R.hull?.dispose(); R.xray?.dispose(); R.C = null; }
+  if (R.C) { R.C.root.parent?.remove(R.C.root); disposeCharacter(R.C); R.W = null; R.hull?.dispose(); R.xray?.dispose(); R.C = null; }
 }
 
 /** Clip choice: fall / action / hit one-shots by the gfx/anim.js state, else the locomotion loop by display speed. */
@@ -114,6 +117,8 @@ export function syncParty(T, p, c) {
   R.seen = T.partyFrame; R.seenAt = wallNow();
   if (!R.C) return false;
   const C = R.C, d = p.it.d, now = c.now;
+  const wk = weaponKey(u);
+  if (wk !== R.wkey) { detachWeapon(C, R.W); R.W = attachWeapon(C, wk, R.hull); R.wkey = wk; }
   const dt = R.lastNow == null ? 0 : clamp(now - R.lastNow, 0, 0.25);
   R.lastNow = now;
   const x = d.x + 0.5, z = d.y + 0.5, y = c.hgt[id] ?? 0;
@@ -143,6 +148,7 @@ export function syncParty(T, p, c) {
   const tm = p.team;
   R.hull.color.set(HM.outline).lerp(new THREE.Color().setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace), HM.outlineTeam);
   R.hull.userData.grow.value = p.grow / c.ppm / R.k;
+  R.W?.hullMat?.color.copy(R.hull.color);
   R.xray.color.setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace);
   for (const o of C.extra) o.visible = o.userData.hull ? !p.trans : !p.trans && !p.dead;
   return true;
