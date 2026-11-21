@@ -8,6 +8,7 @@ python3.13 -m venv .venv && .venv/bin/pip install bpy==5.3.0     # ~300 MB, venv
 NEED_GL=1 tools/blender/run.sh build_all.py                       # everything (xvfb-run needed only for preview renders)
 tools/blender/run.sh build_all.py --only body --no-preview        # fast, no GL (a few seconds)
 ```
+Env: `QUICK=1` (one preview view), `HAIR_STYLES=a,b`, `OUTFITS=a,b`, `PRESETS=name,name`.
 Options: `--only faces|body|hair|outfit|preset`, `--sex male|female`, `--no-preview`.
 EEVEE previews run on software GL under `xvfb-run` (first render compiles shaders, ~1 min).
 
@@ -19,15 +20,17 @@ EEVEE previews run on software GL under `xvfb-run` (first render compiles shader
 | `head.py` | anime head (deformed UV sphere, planar face UV, ears, nose), emotion shape keys |
 | `face_atlas.py` | procedural face atlas (eyes+iris+highlights, brows, mouth, blush, nose), 6 expressions, face-shadow SDF map |
 | `rig.py` | assembles body+hands+head, automatic weights (heat) with nearest-bone fallback, body shape keys |
-| `hair.py` | 3 styles: `long`, `bob`, `short` (cap + wedge strands, spring-bone chains) |
-| `clothes.py` | outfits `field` (jacket, chest rig, backpack, pants, boots, orange accent) and `uniform` (piped coat, skirt or trousers, shoes) |
+| `sculpt.py` | analytic sculpt pass on the skin body (hourglass waist/hips, bust, glutes, calves, clavicles, pecs...) + smoothing; weights smoothed after heat |
+| `hair.py` | 6 styles: `long bob short ponytail twin spiky` (cap + V-tipped lock sheets with ridges + bangs + tapered clumps, tip-gradient texture with anime ring highlight, spring chains) |
+| `clothes.py` | 4 outfits `field uniform cyber rags`: decimated shells with snapped hems, noise/crease folds, weave/knit/leather textures, pleated skirt with 8x2 spring bones (`skirt_k_q`), glowing cyber seams |
+| `animsheet.py`, `animsheet_pack.py`, `face_check.py` | motion frame renders -> `tools/out/blender-anim-*.png/.gif`; expression close-ups -> `blender-face-*.png` |
 | `anim.py` | procedural FK clips |
 | `export.py`, `build_all.py`, `preview.py` | export, orchestration, toon+outline preview |
 
 ## Output files (`game/assets/models/`)
 - `body_f.glb`, `body_m.glb` - body + armature + 9 animations + shape keys.
-- `hair_{long,bob,short}_{f,m}.glb`, `outfit_{field,uniform}_{f,m}.glb` - parts: same armature (same bone names) + skinned meshes; bind to the body skeleton by bone name.
-- `hero_{f,m}_{uniform,field}.glb` - assembled presets (everything + animations).
+- `hair_{long,bob,short,ponytail,twin,spiky}_{f,m}.glb`, `outfit_{field,uniform,cyber,rags}_{f,m}.glb` - parts: same armature (same bone names) + skinned meshes; bind to the body skeleton by bone name.
+- `hero_{f,m}_{uniform,field,cyber,rags}.glb` - assembled presets (everything + animations).
 - `*.json` - meta: bone list, spring chains, expressions, animations, triangles.
 - `face_{f,m}_{neutral,blink,happy,angry,sad,surprised}.png` (512 px, swap-in face atlases), `face_sdf.png` (face shadow threshold map: value = light azimuth 0..180 deg / 180 at which the texel goes into shadow; mirror for the other side).
 
@@ -43,4 +46,5 @@ EEVEE previews run on software GL under `xvfb-run` (first render compiles shader
 ## Known limits
 - Face expressions are texture-painted features moved by shape keys: strong emotions look best with the `face_*` texture swap.
 - Hair strands are simple wedges; physics is data-only here (the game runs the spring bones).
-- Skirt/coat do not collide with legs (spring chains for the skirt are not authored).
+- Skirt: spring bones authored (8 sectors x 2), lower part also follows the thighs (35%) to avoid cutting through; no real collision.
+- Ragged cloth edges are stair-stepped (face-size); legs/proportions of the body are not lengthened (skeleton unchanged).

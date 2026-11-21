@@ -208,7 +208,7 @@ def skirt_springs(o, arm, P, nsec=8):
         a = math.atan2(v.co.x, -v.co.y) % (2 * math.pi); s = a / (2 * math.pi) * nsec; k0 = int(s) % nsec; fr = s - int(s)
         w = {}
         leg = 'leftUpperLeg' if v.co.x > 0 else 'rightUpperLeg'
-        w_leg = 0.35 * smooth01(f * 1.3) * (1 if abs(v.co.y) > 0.0 else 0)
+        w_leg = 0.7 * smooth01(f * 1.3) * (1 if abs(v.co.y) > 0.0 else 0)
         if f < 0.02: w['hips'] = 1.0
         else:
             ws = smooth01(f / 0.5)                  # hips -> spring bone 0
