@@ -6,7 +6,7 @@
 //   nodeMarks (description + map glyph, the latest entry for a node wins), worldRumors, consequenceLog, epilogue.
 // content-wave1.md: `deeds` [tag] — state.deed at once; `delayed` — queued (world/delayed.js); `services` { loc: { add, remove } }
 //   and `priceZone` { locs, mult } — derived (nodeServices, priceZoneMult); lore notes `cq:<qid>:<outcome>` are queued.
-import { CONSEQUENCES, CQ_FLAG, EPILOGUE } from '../data/world/consequences.js';
+import { CONSEQUENCES, CQ_FLAG, EPILOGUE, COURT_MOD_WHEN } from '../data/world/consequences.js';
 import { NPCS } from '../data/npcs.js';
 import { LOCATIONS, resolveLocation, ROUTES, QUESTS } from './data.js';
 import { applyRep, factionName } from './reputation.js';
@@ -100,7 +100,20 @@ export function applyConsequences(save, qid) {
     if (!save.discovered.includes(id)) save.discovered.push(id);
     for (const r of ROUTES) if ((r.from === id || r.to === id) && r.hidden) save.flags[`route:${r.from}:${r.to}`] = true;
   }
-  const lines = cqLines(e);
+  // content-wave2.md §1.3: finale modifiers of the court by c4/c6 flags — extra entries { qid, o: 'mod:<id>' }
+  const mods = qid === 'mq3-court' ? COURT_MOD_WHEN.filter((m) => m.all.every((f) => save.flags[f]) && (!m.outcome || m.outcome === o)) : [];
+  if (mods.some((m) => m.id === 'lox9-grave')) save.flags['lox9-via-leaflet'] = true;
+  const modEntries = [];
+  for (const m of mods) {
+    const k = `mod:${m.id}`, me = c[k];
+    if (!me || save.flags[CQ_FLAG(qid, k)]) continue;
+    save.flags[CQ_FLAG(qid, k)] = true;
+    save.cq.push({ qid, o: k, day: save.day });
+    for (const [f, d] of Object.entries(me.rep || {})) if (d) out.push(...repToasts(applyRep(save, f, d)));
+    scheduleDelayed(save, qid, k, me);
+    modEntries.push(me);
+  }
+  const lines = [e, ...modEntries].flatMap(cqLines);
   const name = QUESTS[qid]?.name || qid;
   for (const l of lines) journal(save, tf('cq.journal', { name, text: l }));
   for (const l of lines.slice(0, CQ_TOASTS)) out.push({ text: tf('cq.toast', { text: l }), color: 'h' });

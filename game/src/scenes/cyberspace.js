@@ -325,7 +325,7 @@ export function createCyberspaceScene() {
     if (s.kind === 'choice') return { label: `${t('loc.decide')}: ${s.stage.text}`, run: (g) => g.openModal({ title: name, lines: [{ text: s.stage.text }],
       options: [...availableOptions(sv, s).map((o) => ({ label: o.text, run: (g2) => done(g2, chooseOption(sv, s, o.id, g2.data)) })), { label: t('loc.questLater'), run: () => {} }] }) };
     if (goal.kind === 'battle') return { label: `${t('loc.fight')}: ${ENCOUNTERS[goal.encounter]?.name || goal.encounter}`,
-      run: (g) => runBattle(g, ENCOUNTERS[goal.encounter]?.enemies || ['scriptlet'], ENCOUNTERS[goal.encounter]?.name, (g2) => done(g2, onBattleWon(sv, goal.encounter, zone, g2.data)), (g2) => surface(g2, true)) };
+      run: (g) => runBattle(g, ENCOUNTERS[goal.encounter]?.enemies || ['scriptlet'], ENCOUNTERS[goal.encounter]?.name, (g2) => done(g2, onBattleWon(sv, goal.encounter, zone, g2.data)), (g2) => (goal.onFail ? done(g2, failSlot(sv, s, g2.data)) : surface(g2, true))) };
     if (goal.kind === 'check') return { label: `${t('loc.solve')}: ${s.option?.text || s.stage.text}`,
       run: (g) => runCheck(g, goal.skills, goalDc(sv, goal), s.stage.text, (g2, ok) => done(g2, ok ? completeSlot(sv, s, g2.data) : failSlot(sv, s, g2.data))) };
     if (goal.kind === 'pay') return { label: `${t('loc.pay')} ${goal.credits}`, disabled: sv.hero.credits < goal.credits, run: (g) => { sv.hero.credits -= goal.credits; done(g, completeSlot(sv, s, g.data)); } };

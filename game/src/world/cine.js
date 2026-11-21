@@ -14,6 +14,7 @@
 import { CINE_RULES, SHOT_FRAMES, SHOT_MOVES, CLIPS, EMOS } from '../data/cinematics/index.js';
 import { CINE_VIEW, CINE_SKILL_ALIAS } from '../data/cine-play.js';
 import { t } from '../data/text/index.js';
+import { cineResult } from './quests.js';
 
 const tf = (k, v = {}) => t(k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -235,6 +236,8 @@ function finish(R, end) {
     R.save.flags[`cine-seen:${R.id}`] = true;
     if (R.save.cine) delete R.save.cine.progress;
   }
+  // content-wave2.md §1.2: the result moves the quest stage the scene played at (c4 -> mq3-court verdict / fights)
+  if (R.save?.quests) for (const x of cineResult(R.save, R.result, R.ctr, R.env?.data)) emit(R, { k: 'toast', text: x.text, color: x.color });
   const fade = (end.fx || []).find((x) => x.k === 'fade');
   R.phase = 'end'; R.timer = fade ? (fade.d || 0) + (fade.after || 0) : CINE_VIEW.endFadeSec;
   R.line = null; R.speaking = null;
@@ -392,6 +395,7 @@ export function createCineEnv(save, data, world) {
   if (!save?.hero || !world) return nullEnv(save);
   const base = nullEnv(save), W = world;
   return {
+    data,
     flag: base.flag,
     rel(npc, d) {
       relWrite(save, npc, d);

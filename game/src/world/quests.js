@@ -37,7 +37,7 @@ import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
-import { cineStage } from './cine-hooks.js';
+import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX } from './cine-hooks.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -150,11 +150,12 @@ export function startQuest(save, id) {
   return [{ text: tf('q.new', { name: q.name }), color: 'h' }];
 }
 
-/** Stage entered: lore finds of the stage, the quest timer starts on its stage. */
-function enterStage(save, qid, stageId) {
+/** Stage entered: lore finds of the stage, the quest timer starts on its stage. via 'cine' — a scene result moved here (no scenes re-queued). */
+function enterStage(save, qid, stageId, via = null) {
   const q = QUESTS[qid], st = save.quests[qid];
   findsAt(save, `stage:${qid}/${stageId}`);
-  cineStage(save, qid, stageId); // cinematics.md: stage flags + queued scenes (mq3-court/inside -> c6, c4)
+  if (via !== 'cine') cineStage(save, qid, stageId); // cinematics.md: stage flags + queued scenes (mq3-court/inside -> c6, c4)
+  else st.via = stageId;
   if (q.timer && q.timer.stage === stageId && st.due == null) st.due = save.day + q.timer.days;
 }
 /** Timer of an active quest on its stage: days left (≥ 0) or null. */
@@ -227,9 +228,9 @@ export function allNeed(save, g) {
   return g.goals.length;
 }
 
-/** DC of a check / challenge goal: v3 easeBy — every set flag from the list lowers the DC by 1. */
+/** DC of a check / challenge goal: v3 easeBy — every set flag from the list lowers the DC by 1 ({flag, n} — by n). */
 export function goalDc(save, goal) {
-  const ease = (goal.easeBy || []).filter((f) => save.flags[f]).length;
+  const ease = (goal.easeBy || []).reduce((a, f) => a + (typeof f === 'string' ? (save.flags[f] ? 1 : 0) : (save.flags[f.flag] ? f.n ?? 1 : 0)), 0);
   return (goal.dc || 0) - ease;
 }
 
@@ -313,14 +314,44 @@ function deliver(save, qid, td) {
   return [{ text: turninText(save, qid), color: 'a' }];
 }
 
-function toStage(save, qid, next, data) {
+/**
+ * content-wave2.md §1.2: a cinematic ended with `result` (cine.js finish). Side effects of the result (CINE_RESULT_FX: flags,
+ * counter flags, a companion dies) and, for a quest standing at a stage of CINE_RESULT_NEXT, the next stage (the stage's
+ * own goal — the c4 challenge — is skipped). → toasts.
+ */
+export function cineResult(save, result, ctr = {}, data = null) {
+  const out = [];
+  if (!result || !save?.quests) return out;
+  const fx = CINE_RESULT_FX[result];
+  if (fx) {
+    save.flags ||= {};
+    for (const f of fx.flags || []) save.flags[f] = true;
+    for (const [k, f] of Object.entries(fx.ctrFlags || {})) if ((ctr?.[k] || 0) >= 1) save.flags[f] = true;
+    if (fx.dead) {
+      const p = (save.party || []).find((x) => x.npc === fx.dead && x.state !== 'left');
+      if (p) p.state = 'left';
+      save.npcs ||= {};
+      save.npcs[fx.dead] = { ...(save.npcs[fx.dead] || {}), dead: true };
+      journal(save, tf('q.cineDead', { name: NPCS[fx.dead]?.name || fx.dead }));
+    }
+  }
+  for (const key of Object.keys(CINE_RESULT_NEXT)) {
+    const [qid, sid] = key.split('/');
+    const st = save.quests[qid], next = cineResultStage(qid, sid, result);
+    if (!next || st?.state !== 'active' || st.stage !== sid) continue;
+    out.push(...toStage(save, qid, next, data, 'cine'));
+  }
+  return out;
+}
+
+function toStage(save, qid, next, data, via = null) {
   const q = QUESTS[qid];
   const st = save.quests[qid];
   const stage = stageOf(save, qid);
   if (!next || !stageDef(q, next)) return finish(save, qid, stage?.end || 'done', data);
   st.stage = next; st.opt = null; st.subs = {};
   track(st, next);
-  enterStage(save, qid, next);
+  enterStage(save, qid, next, via);
   journal(save, tf('q.stage', { name: q.name, text: stageDef(q, next).text }));
   return q.personal ? personalStage(save, q) : [];
 }

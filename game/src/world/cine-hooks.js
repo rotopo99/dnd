@@ -5,6 +5,7 @@
 //   cinesAt(save, point)       ids ready at the point ('before' triggers first)
 //   cineStage(save, qid, sid)  quest stage entered: CINE_STAGE_FLAGS + queue ready scenes (save.cine.queue)
 //   takeCineQueue(save)        next queued id (main.js setScene on a calm scene)
+//   cineResultStage(qid, sid, result)  content-wave2.md §1.2: the scene's end.result -> the next stage of a quest (or null)
 import { CINEMATICS, CINEMATIC_ORDER } from '../data/cinematics/index.js';
 
 // Designer's trigger names -> game points (the scenes name story moments, the game has encounters / nodes / stages).
@@ -16,6 +17,23 @@ export const CINE_POINT_ALIAS = {
 };
 // Flags the triggers wait for, set by quest stages (enterStage).
 export const CINE_STAGE_FLAGS = { 'mq3-court/inside': 'mq3-court' };
+
+// content-wave2.md §1.2: a scene played at a quest stage decides the next stage by its end.result (the stage goal —
+// the c4 challenge — stays as the fallback when the scene did not play). `result` keys: c4 end results and spec aliases.
+export const CINE_RESULT_NEXT = {
+  'mq3-court/inside': {
+    'court-won': 'verdict',
+    'court-draw': 'judge-fight', 'to-battle-judge-avatar': 'judge-fight',
+    'court-lost': 'judge-fight-hard', 'to-battle-judge-avatar-hard': 'judge-fight-hard',
+  },
+};
+// Side effects of a result (quests.js cineResult): flags; ctrFlags {counter: flag} — set when the scene counter ≥ 1;
+// dead — the companion dies in the scene (leaves the party for good, save.npcs[id].dead).
+export const CINE_RESULT_FX = {
+  'court-won': { flags: ['court-precedent'], ctrFlags: { proof: 'court-proof' } },
+  'lox-lost': { dead: 'lox' },
+};
+export const cineResultStage = (qid, sid, result) => (result && CINE_RESULT_NEXT[`${qid}/${sid}`]?.[result]) || null;
 
 export function cinePoint(tr) {
   if (!tr) return null;

@@ -1139,6 +1139,9 @@ export const ENCOUNTERS_V3 = Object.fromEntries([
   enc('enc-arsenal-cult', 'Культ в арсенале', 5, 'cult', ['vooruzhenie'], ['cult-executioner', 'cult-terminalist', 'cult-neophyte', 'skrilet-5']),
   enc('enc-kiberspeys-door', 'Штурм Двери', 5, 'cult', ['kiberspeys'], ['acolyte-5', 'skrilet-5', 'skrilet-5', 'scriptlet']),
   enc('enc-judge', 'Аватар Судьи', 5, 'cult', ['kiberspeys'], ['cult-judge-hand', 'acolyte-5', 'skrilet-5', 'cult-executioner'], { final: true }),
+  // content-wave2.md §1.2: суд проигран (c4 court-lost) — Судья исполняет приговор лично; эхо — стук из недоваренной створки (judge-knocks)
+  enc('enc-judge-hard', 'Аватар Судьи: приговор', 5, 'cult', ['kiberspeys'], ['cult-judge-hand', 'cult-executioner', 'acolyte-5', 'skrilet-5', 'skrilet-5'], { final: true }),
+  enc('enc-judge-echo', 'Эхо Судьи', 5, 'cult', ['kiberspeys'], ['acolyte-5', 'skrilet-5', 'scriptlet', 'scriptlet']),
   enc('enc-lis-drones', 'Охранные дроны Бункера Лиса', 3, null, ['bunker-lisa'], ['lis-drone', 'lis-drone', 'lis-sentry', 'lis-drone']),
   enc('enc-dawn-bodies', 'Пустые тела «Рассвета»', 4, null, ['bunker-kuksiusa'], ['dawn-body', 'dawn-body', 'dawn-body', 'dawn-body']),
   enc('enc-lox-clone', 'Клон Lox и каратели', 4, 'aiParty', ['lox-5'], ['ai-lox-clone', 'ai-riot', 'ai-riot', 'ai-patrol']),
@@ -1235,6 +1238,8 @@ export const POWER_V3 = {
   'enc-vibe-burner': {"p":4.25,"hp":0.2,"atk":2,"dmg":4,"kb":1},
   'enc-harmony-fall': 2.85,
   'enc-judge': {"p":3.5,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-judge-hard': {"p":3.5,"hp":0,"atk":2,"dmg":5,"kb":0},
+  'enc-judge-echo': 3.5,
   'enc-lox-clone': {"p":3.7,"hp":0.2,"atk":2,"dmg":4,"kb":1},
   'enc-plague-seed': {"p":3.85,"hp":0,"atk":2,"dmg":5,"kb":0},
   'enc-clone-vats': {"p":2.85,"hp":0.2,"atk":2,"dmg":4,"kb":1},

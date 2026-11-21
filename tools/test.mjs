@@ -5783,5 +5783,70 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.deepEqual(HK.cinesAt(save, 'loc:harmony-reactor'), [], 'once');
   });
 }
+
+// ---------------------------------------------------------------- content-wave2.md §1: c4/c6 -> mq3-court stages, verdict options, COURT_MODS
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const DL = await import('../game/src/world/delayed.js');
+  const { QUESTS: QW } = await import('../game/src/world/data.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act2-done': true }, flags); return s; };
+  const atInside = (flags) => { const s = mk(flags); QS.startQuest(s, 'mq3-court'); s.quests['mq3-court'].stage = 'inside'; return s; };
+  const verdictIds = (s) => { const sl = QS.slots(s, 'mq3-court').find((x) => x.kind === 'choice'); return QS.availableOptions(s, sl).map((o) => o.id); };
+  test('wave2: c4 result -> verdict / judge-fight / judge-fight-hard; court-won sets precedent and proof', () => {
+    const w = atInside(); QS.cineResult(w, 'court-won', { proof: 1 }, GAME_DATA);
+    assert.equal(w.quests['mq3-court'].stage, 'verdict');
+    assert.ok(w.flags['court-precedent'] && w.flags['court-proof']);
+    const d = atInside(); QS.cineResult(d, 'to-battle-judge-avatar', {}, GAME_DATA);
+    assert.equal(d.quests['mq3-court'].stage, 'judge-fight');
+    const l = atInside(); QS.cineResult(l, 'to-battle-judge-avatar-hard', {}, GAME_DATA);
+    assert.equal(l.quests['mq3-court'].stage, 'judge-fight-hard');
+    const other = mk(); QS.startQuest(other, 'mq3-court'); QS.cineResult(other, 'court-won', {}, GAME_DATA);
+    assert.equal(other.quests['mq3-court'].stage, 'door', 'only from the inside stage');
+  });
+  test('wave2: verdict options by c4/c6 flags (reflash, vessel, lox9, lox-leave) and DC', () => {
+    const won = atInside({ 'court-won': true, 'court-proof': true }); QS.cineResult(won, 'court-won', { proof: 1 }, GAME_DATA);
+    let ids = verdictIds(won);
+    assert.ok(ids.includes('reflash') && ids.includes('closed') && !ids.includes('vessel') && !ids.includes('lox-leave'));
+    const closed = QW['mq3-court'].stages.find((x) => x.id === 'verdict').goal.options.find((o) => o.id === 'closed');
+    assert.equal(QS.goalDc(won, closed.goal), 13);
+    const lost = atInside({ 'court-lost': true, 'lis-online': true, 'lox-dead': true, 'lox-leaflet': true }); lost.quests['mq3-court'].stage = 'verdict';
+    ids = verdictIds(lost);
+    assert.ok(!ids.includes('reflash') && ids.includes('vessel') && ids.includes('lox9'));
+    const alive = atInside({ 'lox-alive-door': true, 'door-halfsealed': true, 'lox9-free': true }); alive.quests['mq3-court'].stage = 'verdict';
+    ids = verdictIds(alive);
+    assert.ok(ids.includes('lox-leave') && !ids.includes('lox9'));
+    assert.equal(QS.goalDc(alive, closed.goal), 13);
+    // judge-fight-hard lost -> crushed (no game over): vessel / surrender
+    const h = atInside({ 'court-lost': true }); QS.cineResult(h, 'court-lost', {}, GAME_DATA);
+    const fs = QS.slots(h, 'mq3-court')[0];
+    QS.failSlot(h, fs, GAME_DATA);
+    assert.equal(h.quests['mq3-court'].stage, 'crushed');
+    const cs = QS.slots(h, 'mq3-court')[0];
+    QS.chooseOption(h, cs, 'surrender', GAME_DATA);
+    assert.equal(h.quests['mq3-court'].state, 'done');
+    assert.ok(h.flags['ending-vessel-forced']);
+  });
+  test('wave2: COURT_MODS with the outcome (lox-dead grave + lox9 at the grave, halfsealed knocks after 6 days)', () => {
+    const s = atInside({ 'lox-dead': true, 'lox-leaflet': true }); s.quests['mq3-court'].stage = 'verdict';
+    QS.chooseOption(s, QS.slots(s, 'mq3-court')[0], 'lox9', GAME_DATA);
+    CQ.applyConsequences(s, 'mq3-court');
+    assert.ok(s.flags['cq:mq3-court:lox9'] && s.flags['cq:mq3-court:mod:lox-dead'] && s.flags['lox9-via-leaflet']);
+    assert.ok(CQ.nodeMark(s, 'kiberspeys'));
+    assert.ok(CQ.epilogueSlides(s, 40).some((x) => x.id === 'court-lox-dead'));
+    const k = atInside({ 'lox-alive-door': true, 'door-halfsealed': true }); k.quests['mq3-court'].stage = 'verdict';
+    k.quests['mq3-court'].path = ['closed']; k.quests['mq3-court'].state = 'done';
+    CQ.applyConsequences(k, 'mq3-court');
+    assert.ok(k.flags['cq:mq3-court:closed'] && k.flags['cq:mq3-court:mod:halfsealed'] && k.flags['cq:mq3-court:mod:lox-alive']);
+    k.day += 6; DL.delayedTick(k, GAME_DATA);
+    assert.ok(k.flags['judge-knocks'] && (k.radioPush || []).includes('rd-w2-knock'));
+  });
+  test('wave2: c6 lox-lost -> Lox leaves the party for good', () => {
+    const s = mk(); st.recruit(s, 'lox'); QS.cineResult(s, 'lox-lost', {}, GAME_DATA);
+    assert.equal(s.party.find((p) => p.npc === 'lox').state, 'left');
+    assert.ok(s.npcs.lox.dead);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

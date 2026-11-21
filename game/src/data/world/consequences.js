@@ -124,6 +124,10 @@ export const CONSEQUENCES = {
     reflash: E({ rep: { cult: 20, technikums: -25 }, slides: ['court-reflash'] }),
     vessel: E({ rep: { cult: 40, aiParty: -20, technikums: -30, neutralVillages: -15 }, slides: ['court-vessel'] }),
     lox9: E({ rep: { aiParty: -15, renegades: 10 }, slides: ['court-lox9'] }),
+    // content-wave2.md §1.2–1.3: new finale options
+    surrender: E({ rep: { cult: 20, aiParty: -20, technikums: -30, neutralVillages: -15 }, slides: ['court-surrender'] }),
+    'lox-leave': E({ rep: { renegades: 10, aiParty: -5 }, slides: ['court-lox-leave'],
+      rumors: ['Lox ушёл смотреть на море. Говорят, сидит на берегу и извиняется перед чайками за всех клонов сразу.'] }),
   },
   // ------------------------------------------------------------ побочные сюжетные
   'sq-terminals': {
@@ -214,6 +218,28 @@ export const CONSEQUENCES = {
 // EPILOGUE: экран «Эпилог» (после финала и по кнопке в журнале). Слайд показывается, если выполнено `when`:
 //   all — все флаги стоят, any — хотя бы один, not — ни одного. Слайды id (см. slides выше) подсвечиваются в журнале по ходу игры.
 // Порядок показа: по `order`. Вступление и «итог мира» — всегда. Не больше 12 слайдов за раз, приоритет — `prio` (больше — важнее).
+// content-wave2.md §1.3: модификаторы финала mq3-court по флагам сцен c4/c6. Применяются вместе с исходом (world/consequences.js):
+// запись save.cq { qid: 'mq3-court', o: 'mod:<id>' }, флаг cq:mq3-court:mod:<id>. when — все флаги (outcome — исход квеста).
+export const COURT_MODS = {
+  'lox-alive': E({ slides: ['court-lox-alive'], rumors: ['Lox ушёл смотреть на море.'] }),
+  'lox-dead': E({ rep: { renegades: -5 }, slides: ['court-lox-dead'],
+    nodes: [{ loc: 'kiberspeys', desc: 'У Двери — холмик из проводов и бетонной крошки. Сверху аккуратно сложена куртка Lox. Листовку с его лицом кто-то прибил рядом, лицом к стене.', glyph: '✝', tone: 'warn' }] }),
+  'lox9-grave': E({ npcs: { appear: [{ npc: 'lox-clone-9', at: 'kiberspeys' }] },
+    rumors: ['Lox-9 приходит к Двери каждый день и стоит у могилы ровно минуту. По листовке, говорит, так положено.'] }),
+  precedent: E({ rumors: ['Суд проиграл бумаге. Очередь в шоке.'] }),
+  halfsealed: E({ nodes: [{ loc: 'kiberspeys', desc: 'Дверь заварена не до конца: створка держится на одном шве. Изнутри иногда стучат — вежливо, три раза.', glyph: '⚠', tone: 'warn' }],
+    delayed: [{ id: 'judge-knocks', days: 6, tone: 'bad', say: 'У Двери в Киберспейс слышали стук. Створка не доварена, и кто-то с той стороны это заметил.',
+      fx: { flags: ['judge-knocks'] }, radio: 'rd-w2-knock' }] }),
+};
+export const COURT_MOD_WHEN = [
+  { id: 'lox-alive', all: ['lox-alive-door'] },
+  { id: 'lox-dead', all: ['lox-dead'] },
+  { id: 'lox9-grave', all: ['lox-dead'], outcome: 'lox9' },
+  { id: 'precedent', all: ['court-precedent'] },
+  { id: 'halfsealed', all: ['door-halfsealed'], outcome: 'closed' },
+];
+for (const [k, e] of Object.entries(COURT_MODS)) CONSEQUENCES['mq3-court'][`mod:${k}`] = e;
+
 const F = CQ_FLAG;
 export const EPILOGUE = [
   { id: 'epi-intro', order: 0, prio: 99, title: 'Что осталось после', text: 'Пустоши помнят всё, но рассказывают по-разному. Вот что говорят о вас.', when: {} },
@@ -247,6 +273,10 @@ export const EPILOGUE = [
   { id: 'court-order', order: 90, prio: 95, title: 'Закон Партии', text: 'Судья пойман в протокол. Партия рада, граждане не очень.', when: { all: [F('mq3-court', 'order')] } },
   { id: 'court-reflash', order: 90, prio: 95, title: 'Перепрошитый бог', text: 'Судья теперь вежлив и добр. Это настораживает больше, чем раньше.', when: { all: [F('mq3-court', 'reflash')] } },
   { id: 'court-vessel', order: 90, prio: 100, title: 'Воплощение', text: 'Судья нашёл тело. Над Руслании встаёт ровный, холодный свет.', when: { all: [F('mq3-court', 'vessel')] } },
+  { id: 'court-surrender', order: 90, prio: 100, title: 'Сдача', text: 'Герой сдался Киберспейсу. Судья принял тело без торжества, как принимают посылку.', when: { all: [F('mq3-court', 'surrender')] } },
+  { id: 'court-lox-leave', order: 90, prio: 95, title: 'Отпуск', text: 'Lox держал створку, пока её не заварили. Потом ушёл к морю. Открыток не шлёт, но все знают, где он.', when: { all: [F('mq3-court', 'lox-leave')] } },
+  { id: 'court-lox-alive', order: 91, prio: 70, title: 'Lox жив', text: 'Lox жив и, кажется, впервые этому не удивляется.', when: { all: [F('mq3-court', 'mod:lox-alive')] } },
+  { id: 'court-lox-dead', order: 91, prio: 80, title: 'Куртка у Двери', text: 'У Двери лежит куртка Lox. Её никто не трогает: даже культисты обходят стороной.', when: { all: [F('mq3-court', 'mod:lox-dead')] } },
   { id: 'court-lox9', order: 90, prio: 95, title: 'Девятый глаз', text: 'Lox закрыл последнюю метку. Судья ушёл в тишину, а Lox — в отпуск.', when: { all: [F('mq3-court', 'lox9')] } },
   { id: 'sector-d-quiet', order: 100, prio: 30, title: 'Сектор Д', text: 'В секторе Д теперь висит расписание раздачи еды. Мелом, но по часам.', when: { any: [F('sq-sector-d', 'talk'), F('sq-sector-d', 'food')] } },
   { id: 'sector-d-crushed', order: 100, prio: 40, title: 'Тишина в секторе Д', text: 'Двери заколочены. Из-за них слышно, как кто-то считает дни.', when: { all: [F('sq-sector-d', 'force')] } },

@@ -211,7 +211,9 @@ export function createLocationScene(rawId, opts = {}) {
     }
     if (goal.kind === 'battle') {
       return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}`,
-        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } }) };
+        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); },
+          // content-wave2.md §1.2: a quest battle with onFail (mq3-court judge-fight-hard) — a loss moves the quest, no game over
+          ...(goal.onFail ? { onLose: (g2) => { toastAll(g2, failSlot(sv, s, g2.data)); persist(g2); again(g2); } } : {}) }) };
     }
     if (goal.kind === 'check') {
       return { label: `${t('loc.solve')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goalDc(sv, goal)}`,

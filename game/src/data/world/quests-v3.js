@@ -143,16 +143,26 @@ const LIST = [
     'Дверь у маркера «Киберспейс» открыта. Войти, выстоять суд Судьи и решить судьбу Киберспейса.',
     [
       st('door', 'Штурм Двери с союзниками.', fight('enc-kiberspeys-door', 'kiberspeys'), 'inside'),
+      // content-wave2.md §1: c4 (cine-hooks CINE_RESULT_NEXT) moves the quest from 'inside' by its result; the challenge is the fallback
       st('inside', 'Киберспейс. Суд над «идеальным телом».', { kind: 'challenge', skills: ['persuasion', 'judge', 'meditation', 'religion'], dc: 17, successes: 5, failures: 3, onFail: 'judge-fight',
-        easeBy: ['victor-soul-freed', 'saved-people', 'saved-terminal', 'arsenal-sealed', 'burner-off'] }, 'verdict'),
+        easeBy: ['victor-soul-freed', 'saved-people', 'saved-terminal', 'arsenal-sealed', 'burner-off', 'lox-alive-door'] }, 'verdict'),
       st('judge-fight', 'Приговор вынесен. Бой с Судьёй.', fight('enc-judge', 'kiberspeys'), 'verdict'),
+      st('judge-fight-hard', 'Суд проигран. Судья исполняет приговор лично.', { ...fight('enc-judge-hard', 'kiberspeys'), onFail: 'crushed' }, 'verdict'),
       st('verdict', 'Финал.', choice(
-        opt('closed', '«Дело закрыто»: разрушить Дверь.', check(['tech', 'athletics', 'judge'], 15), { flags: ['ending-closed'] }),
+        opt('closed', '«Дело закрыто»: разрушить Дверь.', { ...check(['tech', 'athletics', 'judge'], 15), easeBy: [{ flag: 'court-precedent', n: 2 }, { flag: 'lox-alive-door', n: 2 }] }, { flags: ['ending-closed'] }),
         opt('oldgod', '«Старый бог»: прокси-буря по всему миру.', null, { flags: ['ending-oldgod'] }, null, { flag: 'sputnik-owner-tekhonki' }),
         opt('order', '«Порядок»: Судья в карантин, мир под контроль АИ.', null, { flags: ['ending-order'], deeds: ['serve-ai'] }, null, { flag: 'sputnik-owner-ai' }),
-        opt('reflash', '«Перепрошивка»: вернуть Киберспейсу первый смысл.', check(['hacking', 'judge'], 19, 'closed'), { flags: ['ending-reflash'], deeds: ['mercy'] }, null, { flag: 'lis-online' }),
-        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel'], deeds: ['cult-deal'] }, null, { alignment: 'evil' }),
-        opt('lox9', '«Приманка»: Lox-9 займёт место героя.', null, { flags: ['ending-lox9'], deeds: ['honor'] }, null, { flag: 'lox9-free' }),
+        opt('reflash', '«Перепрошивка»: вернуть Киберспейсу первый смысл.', { ...check(['hacking', 'judge'], 19, 'closed'), easeBy: [{ flag: 'court-precedent', n: 2 }] }, { flags: ['ending-reflash'], deeds: ['mercy'] }, null,
+          { notFlag: 'court-lost', any: [{ flag: 'lis-online' }, { flags: ['court-won', 'court-proof'] }] }),
+        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel'], deeds: ['cult-deal'] }, null, { any: [{ alignment: 'evil' }, { flag: 'court-lost' }] }),
+        opt('lox9', '«Приманка»: Lox-9 займёт место героя.', null, { flags: ['ending-lox9'], deeds: ['honor'] }, null, { notFlag: 'lox-alive-door', any: [{ flag: 'lox9-free' }, { flag: 'lox-leaflet' }] }),
+        opt('lox-leave', '«Отпуск»: Lox держит створку, а потом уходит смотреть на море.', null, { flags: ['ending-lox-leave'] }, null, { flag: 'lox-alive-door' }),
+      ), 'done'),
+      // judge-fight-hard lost: no game over — the court is over, only the Judge's terms remain
+      st('crushed', 'Партия пала. Судья наклоняется: «Предлагаю договориться».', choice(
+        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel'], deeds: ['cult-deal'] }),
+        opt('surrender', 'Сдаться Киберспейсу.', null, { flags: ['ending-vessel-forced'] }),
+        opt('oldgod', '«Старый бог»: прокси-буря по всему миру.', null, { flags: ['ending-oldgod'] }, null, { flag: 'sputnik-owner-tekhonki' }),
       ), 'done'),
     ],
     { xp: 1000, flags: ['game-complete'] }, { key: true, requires: { flag: 'act2-done' } }),
