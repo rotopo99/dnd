@@ -79,6 +79,135 @@
   "Outfit_uniform_Boots"
  ],
  "animations": [],
- "springBones": [],
- "triangles": 3893
+ "springBones": [
+  {
+   "name": "skirt0",
+   "bones": [
+    "skirt_0_0",
+    "skirt_0_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt1",
+   "bones": [
+    "skirt_1_0",
+    "skirt_1_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt2",
+   "bones": [
+    "skirt_2_0",
+    "skirt_2_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt3",
+   "bones": [
+    "skirt_3_0",
+    "skirt_3_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt4",
+   "bones": [
+    "skirt_4_0",
+    "skirt_4_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt5",
+   "bones": [
+    "skirt_5_0",
+    "skirt_5_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt6",
+   "bones": [
+    "skirt_6_0",
+    "skirt_6_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt7",
+   "bones": [
+    "skirt_7_0",
+    "skirt_7_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  }
+ ],
+ "triangles": 8335
 }

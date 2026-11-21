@@ -6,7 +6,7 @@
 // The roam rules never depend on this module: it only reads the scene state.
 //   roam3d(game, R)              -> adapter A (A.v3 — the 3D state) or null (2D); R = {S, map, locId, wx, area, camArea}
 //   drawRoam3d(game, A, R, o)    one frame (o: {path, hover, hoverEnt, marks, cones, zones, others})
-//   pickRoam(A, R, px, py)       -> {cell: {x, y} | null, ent: index into R.bodies | -1}
+//   pickRoam(A, R, px, py)       -> {cell: {x, y} | null, ent: index into R.bodies | -1} (Three: Raycaster cell pick)
 //   roamScreen(A, x, y, h)       -> {x, y} screen point of a cell centre at height h (2D layer anchors); A.ppm — px per m
 //   roamCamInput(game, A)        wheel zoom, [ ] rotate, drag pan, Home; true when used
 import { GFX } from '../data/gfx.js';
@@ -221,6 +221,10 @@ export function pickRoam(A, R, px, py) {
     if (px > a.x - rw && px < a.x + rw && py < a.y + rw * 0.4 && py > c.y && a.d < bd) { bd = a.d; ent = i; }
   });
   const W = V.world;
+  if (V.engine === 'three' && V.T) { // three/battle.js: Raycaster against the pick surface (cell tops + tall sides)
+    const k = V.T.pick(A, px, py);
+    return { cell: k ? { x: k.x, y: k.y } : null, ent };
+  }
   const cell = pickCell(cam, px, py, W.w, W.h, (x, y) => W.floor[y * W.w + x]);
   return { cell, ent };
 }

@@ -205,7 +205,7 @@ def hair_material(name, rgb, tip=None):
 
 
 SPRING_DEFAULT = dict(stiffness=0.9, gravityPower=0.05, gravityDir=[0, -1, 0], dragForce=0.45, hitRadius=0.02)
-STYLES = ['long', 'bob', 'short', 'ponytail', 'twin', 'spiky']
+STYLES = os.environ.get('HAIR_STYLES', 'long,bob,short,ponytail,twin,spiky').split(',')
 
 
 def lerp_line(phi, front, side, back):
@@ -214,9 +214,9 @@ def lerp_line(phi, front, side, back):
     return front + (side - front) * sm(0.35, 1.5, a) + (back - side) * sm(1.8, 2.8, a)
 
 
-def bangs(hb, width=46, n=10, nl=5, depth=0.70, tip=0.16, off=0.012, flare=0.040, part=0.0):
+def bangs(hb, width=46, n=10, nl=5, depth=0.76, tip=0.12, off=0.012, flare=0.040, part=0.0):
     hf = hb.hf
-    hb.add_sheet(-width, width, 36, nl, 0.975, lambda phi: depth + 0.04 * abs(math.degrees(phi)) / width, lambda phi: hf.z0 + 0.52 * hf.hh,
+    hb.add_sheet(-width, width, 36, nl, 0.975, lambda phi: depth + 0.05 * abs(math.degrees(phi)) / width, lambda phi: hf.z0 + 0.74 * hf.hh,
                  (0, 0), n=n, off0=off, flare=flare, wave=0.0, bulge=0.006, tip=tip, block=12, spring_nb=2, spring_start=0.5, name='F', seed=1.3, sway=0.004)
 
 
@@ -241,7 +241,7 @@ def tail(hb, name, tie, length, spread=0.026, side=0.0, n=7, curl=0.03, nb=5, wi
             sx = tie.x + side * out * 1.2 + math.sin(f * 4 + i) * curl * f + o.x * (1 + 0.35 * f)
             sy = tie.y + 0.04 * math.sin(f * 2.4) + 0.025 * f + o.y * (1 + 0.25 * f)
             pts.append(Vector((sx, sy, z)))
-        hb.add_strand(pts, wid, 0.008, 0.024, chain=name, up=lambda p, s: Vector((0, 1, 0)))
+        hb.add_strand(pts, wid, 0.010, 0.040, chain=name, up=lambda p, s: Vector((0, 1, 0)))
         if i == 0: hb.chain_from(name, pts, nb, 0.10)
 
 
@@ -257,11 +257,11 @@ def build_hair(style, arm, P, rgb, tip=None):
     elif style == 'bob':
         hb.add_cap(lambda phi: lerp_line(phi, 0.79, 0.50, 0.28), rows=9, cols=44, lift=0.010)
         hb.add_sheet(46, 314, 62, 9, 0.78, lambda phi: 0.36, lambda phi: hf.z0 + 0.10 * hf.hh, (0.088, 0.094), n=8, flare=0.030, wave=0.004, inward=0.14, bulge=0.012, tip=0.20, block=4, name='B', seed=2.2)
-        bangs(hb, tip=0.12, depth=0.66); side_locks(hb, hf.z0 - 0.02, ang=(78,), shoulder=(0.094, 0.0), nb=3, t1=0.36, flare=0.026)
+        bangs(hb, tip=0.12, depth=0.75); side_locks(hb, hf.z0 - 0.02, ang=(78,), shoulder=(0.094, 0.0), nb=3, t1=0.36, flare=0.026)
         cfg['default'].update(stiffness=1.0, dragForce=0.55, gravityPower=0.03)
     elif style == 'short':
         hb.add_cap(lambda phi: lerp_line(phi, 0.80, 0.58, 0.50), rows=9, cols=44, lift=0.014)
-        bangs(hb, width=50, nl=6, depth=0.68, tip=0.22, flare=0.046, n=7)
+        bangs(hb, width=50, nl=6, depth=0.76, tip=0.22, flare=0.046, n=7)
         for sgn in (1, -1):
             pts = hb.hang(r(sgn * 82), 0.70, 0.44, hf.z0 + 0.34 * hf.hh, n=5, off0=0.008, flare=0.016, shoulder=(0, 0))
             hb.add_strand(pts, 0.046, 0.010, 0.014, chain=None)
@@ -272,24 +272,24 @@ def build_hair(style, arm, P, rgb, tip=None):
         cfg['default'].update(stiffness=1.2, dragForce=0.6, gravityPower=0.02)
     elif style == 'ponytail':
         hb.add_cap(lambda phi: lerp_line(phi, 0.80, 0.56, 0.34), rows=9, cols=44, lift=0.012)
-        bangs(hb, width=48, nl=5, depth=0.68, tip=0.16)
+        bangs(hb, width=48, nl=5, depth=0.76, tip=0.16)
         side_locks(hb, hf.z0 + 0.0 * hf.hh, ang=(80,), shoulder=(0.096, 0.0), nb=3, t1=0.40, flare=0.024)
         tie = hf.P(math.pi, 0.70, 0.03)
-        tail(hb, 'T', tie, 0.40 * hs + 0.06, spread=0.024, n=8, curl=0.02, wid=0.052)
+        tail(hb, 'T', tie, 0.40 * hs + 0.06, spread=0.022, n=7, curl=0.02, wid=0.088)
         cfg['T'] = dict(SPRING_DEFAULT, stiffness=0.55, dragForce=0.35, gravityPower=0.08); cfg['default'].update(stiffness=1.0)
     elif style == 'twin':
         hb.add_cap(lambda phi: lerp_line(phi, 0.80, 0.58, 0.40), rows=9, cols=44, lift=0.012)
-        bangs(hb, width=48, nl=5, depth=0.68, tip=0.16)
+        bangs(hb, width=48, nl=5, depth=0.76, tip=0.16)
         for sgn, nm in ((1, 'TL'), (-1, 'TR')):
             tie = hf.P(sgn * r(112), 0.68, 0.035)
-            tail(hb, nm, tie, 0.46 * hs + 0.10, spread=0.022, side=sgn, n=7, curl=0.02, wid=0.050)
+            tail(hb, nm, tie, 0.46 * hs + 0.10, spread=0.020, side=sgn, n=6, curl=0.02, wid=0.080)
             cfg[nm] = dict(SPRING_DEFAULT, stiffness=0.5, dragForce=0.32, gravityPower=0.09)
     else:  # spiky
         hb.add_cap(lambda phi: lerp_line(phi, 0.80, 0.60, 0.50), rows=9, cols=44, lift=0.010)
-        bangs(hb, width=52, nl=7, depth=0.69, tip=0.34, flare=0.044, n=7)
+        bangs(hb, width=52, nl=7, depth=0.76, tip=0.34, flare=0.044, n=7)
         for i in range(11):
             ph = r(18 + 324 * i / 10 + 10 * math.sin(i * 1.7)); t0 = 0.82 + 0.05 * math.sin(i)
-            pts = [hf.P(ph, min(0.995, t0 + 0.11 * f), 0.006 + 0.075 * f ** 1.2 * (1.0 + 0.3 * math.sin(i * 2.3))) for f in (0, 0.25, 0.5, 0.75, 1.0)]
+            pts = [hf.P(ph, min(0.995, t0 + 0.11 * f), 0.006 + 0.055 * f ** 1.2 * (1.0 + 0.3 * math.sin(i * 2.3))) for f in (0, 0.25, 0.5, 0.75, 1.0)]
             pts = [p + Vector((0.025 * math.sin(ph) * f * f, 0.03 * -math.cos(ph) * f * f * -1, 0.015 * f)) for p, f in zip(pts, (0, .25, .5, .75, 1))]
             hb.add_strand(pts, 0.070, 0.004, 0.024, chain=None)
         cfg['default'].update(stiffness=1.3)

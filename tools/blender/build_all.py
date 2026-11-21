@@ -9,7 +9,7 @@ from skeleton import MALE, FEMALE
 ap = argparse.ArgumentParser(); ap.add_argument('--only', default='all'); ap.add_argument('--sex', default='both'); ap.add_argument('--no-preview', action='store_true')
 args = ap.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:])
 SEXES = ['female', 'male'] if args.sex == 'both' else [args.sex]
-STYLES = hair.STYLES; OUTFITS = ['field', 'uniform']
+STYLES = hair.STYLES; OUTFITS = os.environ.get('OUTFITS', ','.join(clothes.KINDS)).split(',')
 PRESETS = [('hero_f_uniform', 'female', 'long', 'uniform', 'silver', 'light'), ('hero_f_field', 'female', 'bob', 'field', 'brown', 'tan'),
            ('hero_m_field', 'male', 'short', 'field', 'black', 'light'), ('hero_m_uniform', 'male', 'short', 'uniform', 'brown', 'tan')]
 sx = lambda s: 'f' if s == 'female' else 'm'
@@ -48,6 +48,7 @@ def make_faces():
 
 def done_preview(name, objs, views=('front', 'three', 'back'), **kw):
     if args.no_preview: return
+    if os.environ.get('QUICK'): views = ('three',)
     preview.render_views(objs, os.path.join(OUT, 'blender-%s.png' % name), views=views, toon=True, engine='EEVEE', size=(380, 640), center=(0, 0, 0.9), height=1.9, **kw)
 
 
@@ -75,16 +76,16 @@ for sex in SEXES:
     if args.only in ('all', 'outfit'):
         for k in OUTFITS:
             load_blend('base_' + sex); arm = bpy.data.objects['Armature']; body = bpy.data.objects['Body']
-            parts = clothes.build_outfit(k, body, arm, P, sex)
+            parts, sps = clothes.build_outfit(k, body, arm, P, sex)
             p = os.path.join(MODELS, 'outfit_%s_%s.glb' % (k, sx(sex))); export.glb(p, [arm] + parts, animations=False)
-            export.meta(p, arm, P, sex, [o.name for o in parts], [], [], dict(triangles=sum(tri_count(o) for o in parts)))
+            export.meta(p, arm, P, sex, [o.name for o in parts], [], sps, dict(triangles=sum(tri_count(o) for o in parts)))
             log('outfit', k, sex, kb(p), 'tris', sum(tri_count(o) for o in parts))
             done_preview('outfit-%s-%s' % (k, sx(sex)), [body] + parts)
 if args.only in ('all', 'preset'):
     for name, sex, st, k, hc, skin in PRESETS:
         if sex not in SEXES: continue
         P, arm, body, names = base_scene(sex, hair.HAIR_COLORS[hc], skin)
-        o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS[hc], hair.HAIR_TIPS[hc]); parts = clothes.build_outfit(k, body, arm, P, sex)
+        o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS[hc], hair.HAIR_TIPS[hc]); parts, sps = clothes.build_outfit(k, body, arm, P, sex); sp = sp + sps
         p = os.path.join(MODELS, name + '.glb'); objs = [arm, body, o] + parts
         export.glb(p, objs)
         tris = sum(tri_count(x) for x in objs[1:])

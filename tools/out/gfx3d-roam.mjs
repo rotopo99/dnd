@@ -149,7 +149,9 @@ if (bid === 'battle') {
   ok(b3.v3 && b3.id.startsWith('roam-'), `node battle in 3D (${b3.id})`);
   ok(b3.tod === 'night' && b3.weather === 'rain', `node battle keeps the node weather (${b3.tod}, ${b3.weather})`);
   await page.mouse.move(640, 300);
-  await page.keyboard.down('ArrowLeft'); await wait(400); await page.keyboard.up('ArrowLeft');
+  await page.keyboard.down('ArrowLeft');
+  for (let t = 0; t < 30; t++) { await wait(100); if (t >= 3 && (await page.evaluate(() => { const c = window.__game.scene.S.v3.cam; return Math.hypot(c.px, c.pz) > 0.5; }))) break; }
+  await page.keyboard.up('ArrowLeft');
   const pan = await page.evaluate(() => { const c = window.__game.scene.S.v3.cam; return Math.hypot(c.px, c.pz); });
   ok(pan > 0.5, `arrows pan the battle camera (${pan.toFixed(2)})`);
   await shot('gfx3d-roam-battle');
