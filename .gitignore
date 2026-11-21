@@ -4,3 +4,4 @@ tools/out/
 .claude/agent-memory-local/
 tools/out/blender-work/
 __pycache__/
+game/assets/models/*.gltf.json
