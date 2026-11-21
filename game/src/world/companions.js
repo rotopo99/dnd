@@ -118,6 +118,7 @@ export function joinCompanion(save, npcId, pathId) {
   if (!path?.ok || st.already) return null;
   if (path.pay) save.hero.credits -= path.pay;
   const state = recruit(save, npcId);
+  save.flags[`met-${npcId}`] = true; // cinematics.md: trigger flags (`met-lox` -> c3)
   const p = ensureCompanionXp(save, partyEntry(save, npcId));
   const out = [];
   if (path.pay) out.push({ text: tf('fx.credits', { n: `−${path.pay}` }), color: 'b' });

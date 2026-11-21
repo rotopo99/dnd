@@ -51,7 +51,7 @@ export const C6_LOX_DOOR = {
       check: { skills: ['hack', 'engineering'], dc: 15, ok: { next: 'pull-set' }, fail: { next: 'accept', on: { flag: { 'cine-c6-late': true } } } },
     },
     'pull-set': {
-      shot: 'low:wide>shake', fx: [{ k: 'sfx', id: 'breakdown' }, { k: 'shake', amp: 0.2 }],
+      shot: 'wide>shake', fx: [{ k: 'sfx', id: 'breakdown' }, { k: 'shake', amp: 0.2 }],
       lines: [
         { w: 'narr', t: 'Створки Двери опускаются. Между ними и полом — человеческий рост. Пока.' },
       ],

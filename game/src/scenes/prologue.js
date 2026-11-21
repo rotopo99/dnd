@@ -7,6 +7,7 @@ import { MAPS } from '../data/index.js';
 import { createDialogueScene, toLines } from './dialogue.js';
 import { wounds } from '../ui/portrait-of.js';
 import { createBattleScene } from './battle.js';
+import { playCinematic } from './cinema.js';
 import { menuScene } from './menu.js';
 import { C } from '../ui/draw.js';
 import { newSave, gainXp, journal } from '../world/state.js';
@@ -53,7 +54,7 @@ function storyHooks(race) {
 }
 
 export function startPrologue(game, hero) {
-  const flags = {};
+  const flags = { cine: { flags: {}, cine: {} } }; // cinematics.md: c1 writes here, startWorld merges into the save
   const race = hero.race;
   const H = { race: hero.race, cls: hero.cls, look: hero.look || null, avatar: hero.avatar || null, name: hero.name };
   const dlg = (title, ls, next, wounds = null) => game.setScene(createDialogueScene({ title, lines: ls, hero: H, wounds, onDone: next }));
@@ -86,7 +87,8 @@ export function startPrologue(game, hero) {
   const after2 = (g, S) => dlg(t('s2_title'), lines(race, 's2_after', 's2_after_race', 's2_reveal', 's2_reward'), scene3, hurtAfter(S));
   const scene2 = () => dlg(t('s2_title'), lines(race, 's2_before', 's2_race'), () => battle(2, after2));
   const after1 = (g, S) => dlg(t('s1_title'), lines(race, 's1_after', 's1_reward'), scene2, hurtAfter(S));
-  const scene1 = () => dlg(t('s1_title'), lines(race, 's1_before', 's1_race', 's1_tip'), () => battle(1, after1));
+  // cinematics.md: c1 «День бунта» right before battle 1 (trigger prologue-1 / battle-1)
+  const scene1 = () => dlg(t('s1_title'), lines(race, 's1_before', 's1_race', 's1_tip'), (g) => playCinematic(g, 'c1-arrival', { save: flags.cine, hero: H, onEnd: () => battle(1, after1) }));
   dlg(t('intro_title'), lines(race, 'intro_radio', 'intro_paper', 'intro_arrival', 'seer_meet', 'seer_race', 'explosion'), scene1);
 }
 
@@ -96,6 +98,7 @@ export function startWorld(game, hero, flags = {}) {
   save.flags['prologue-done'] = true;
   exodusStart(save); // third-exodus.md: the Exodus timer starts with the prologue
   if (flags.gansAlive) save.flags['gans-alive'] = true;
+  if (flags.cine) { Object.assign(save.flags, flags.cine.flags); save.cine = { ...(save.cine || {}), rel: { ...(flags.cine.cine?.rel || {}) } }; }
   game.save = save;
   for (const x of gainXp(save, 350, game.data)) game.toast(x.text, x.color);
   journal(save, `${t('world.arrived')}: ${LOCATIONS[START_LOCATION].name}`);

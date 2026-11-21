@@ -3,6 +3,7 @@
 // dead companion → Cyberspace state; dead hero / lost battle → Cyberspace episode (scenes/cyberspace.js).
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
+import { cineBefore } from './cinema.js';
 import { radioBattle } from '../world/radio.js';
 import { applyWithdrawal } from '../rules/aftermath.js';
 import { t } from '../data/text/index.js';
@@ -90,6 +91,8 @@ export function objectiveSpec(save, o, enemies, rng = Math.random) {
  */
 export function startWorldBattle(game, o) {
   if (game.coop?.guest) return; // multiplayer.md: a co-op guest's world is a mirror — battles start on the host only
+  // cinematics.md: a scene before the battle (c2 before the sector D cult cell), then the battle itself
+  if (!o.cineDone && o.encounter && cineBefore(game, `battle:${o.encounter}`, (g) => startWorldBattle(g, { ...o, cineDone: true }))) return;
   const save = game.save;
   const data = game.data;
   const setup = o.encounter ? encounterSetup(save, o.encounter) : { enemies: o.enemies, allies: [] };

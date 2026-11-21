@@ -1,0 +1,151 @@
+{
+ "name": "hero_m_rags.glb",
+ "sex": "male",
+ "height_m": 1.79,
+ "up": "Y",
+ "front": "+Z",
+ "bones_vrm_humanoid": [
+  "hips",
+  "spine",
+  "chest",
+  "upperChest",
+  "neck",
+  "head",
+  "leftShoulder",
+  "leftUpperArm",
+  "leftLowerArm",
+  "leftHand",
+  "leftUpperLeg",
+  "leftLowerLeg",
+  "leftFoot",
+  "leftToes",
+  "leftIndexProximal",
+  "leftIndexIntermediate",
+  "leftIndexDistal",
+  "leftMiddleProximal",
+  "leftMiddleIntermediate",
+  "leftMiddleDistal",
+  "leftRingProximal",
+  "leftRingIntermediate",
+  "leftRingDistal",
+  "leftLittleProximal",
+  "leftLittleIntermediate",
+  "leftLittleDistal",
+  "leftThumbMetacarpal",
+  "leftThumbProximal",
+  "leftThumbDistal",
+  "rightShoulder",
+  "rightUpperArm",
+  "rightLowerArm",
+  "rightHand",
+  "rightUpperLeg",
+  "rightLowerLeg",
+  "rightFoot",
+  "rightToes",
+  "rightIndexProximal",
+  "rightIndexIntermediate",
+  "rightIndexDistal",
+  "rightMiddleProximal",
+  "rightMiddleIntermediate",
+  "rightMiddleDistal",
+  "rightRingProximal",
+  "rightRingIntermediate",
+  "rightRingDistal",
+  "rightLittleProximal",
+  "rightLittleIntermediate",
+  "rightLittleDistal",
+  "rightThumbMetacarpal",
+  "rightThumbProximal",
+  "rightThumbDistal"
+ ],
+ "expressions": [
+  "blink",
+  "happy",
+  "angry",
+  "sad",
+  "surprised"
+ ],
+ "body_shape_keys": [
+  "bust",
+  "hips",
+  "shoulders",
+  "build",
+  "legs_long",
+  "height"
+ ],
+ "parts": [
+  "Body",
+  "Hair_spiky",
+  "Outfit_rags_Shirt",
+  "Outfit_rags_Shorts",
+  "Outfit_rags_Wraps",
+  "Outfit_rags_Metal",
+  "Outfit_rags_Boots"
+ ],
+ "animations": [
+  "idle",
+  "walk",
+  "run",
+  "crouch_walk",
+  "attack_melee",
+  "attack_shoot",
+  "cast",
+  "hit",
+  "death"
+ ],
+ "springBones": [
+  {
+   "name": "F0",
+   "bones": [
+    "hair_F0_0",
+    "hair_F0_1"
+   ],
+   "stiffness": 1.3,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F1",
+   "bones": [
+    "hair_F1_0",
+    "hair_F1_1"
+   ],
+   "stiffness": 1.3,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F2",
+   "bones": [
+    "hair_F2_0",
+    "hair_F2_1"
+   ],
+   "stiffness": 1.3,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.45,
+   "hitRadius": 0.02
+  }
+ ],
+ "triangles": 20178,
+ "hair": "spiky",
+ "outfit": "rags",
+ "hair_color": "blonde",
+ "skin": "dark"
+}

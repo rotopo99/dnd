@@ -340,8 +340,15 @@ export function validateCine(def) {
     }
     if (b.choice) {
       if (!b.choice.silence) err.push(`${def.id}: ${k} choice without silence`);
-      const n = b.choice.opts.length;
-      if (n < 2 || n > 4) err.push(`${def.id}: ${k} choice has ${n} options`);
+      // visible options for every combination of the `req` flags: 2–4 (c3: truth-lox5 / lox5-partial exclude each other)
+      const reqs = [...new Set(b.choice.opts.filter((x) => x.req?.flag).map((x) => x.req.flag))];
+      const combos = reqs.length > 4 ? [null] : Array.from({ length: 2 ** reqs.length }, (_, m) => new Set(reqs.filter((_, i) => m & (1 << i))));
+      const excl = { 'truth-lox5': 'lox5-partial', 'lox5-partial': 'truth-lox5' };
+      for (const on of combos) {
+        if (on && [...on].some((f) => on.has(excl[f]))) continue;
+        const n = b.choice.opts.filter((x) => !x.req?.flag || !on || on.has(x.req.flag)).length;
+        if (n < 2 || (on && n > 4)) err.push(`${def.id}: ${k} choice shows ${n} options`);
+      }
     }
     if (b.qte && (!b.qte.ok || !b.qte.fail)) err.push(`${def.id}: ${k} qte needs ok and fail`);
     if (b.branch && b.branch[b.branch.length - 1].if) err.push(`${def.id}: ${k} branch without a default`);

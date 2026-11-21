@@ -17,6 +17,8 @@ import { members } from '../world/state.js';
 import { checkInfo, rollCheck, skillName } from '../world/checks.js';
 import { personalDone } from '../world/companions.js';
 import { saveGame } from '../save.js';
+import { playCinematic } from './cinema.js';
+import { cinesAt } from '../world/cine-hooks.js';
 import {
   genderize, heroGender, romanceEntry, peekRomance, talkCandidates, canTalk, flirt, flirtDc, flirtAdv, dateStatus, crisisStatus,
   finishDate, finishCrisis, breakUp, partnerOf, conflictPending, resolveConflict, takeRomanceEvent, hasRomanceEvent, mourning, stageFor,
@@ -246,8 +248,13 @@ export function openTalkWith(game, id, o = {}) {
       : ds.why === 'days' ? tf('rom.why.days', { n: ds.wait }) : ds.why === 'place' ? tf('rom.why.place', { place: t(`rom.place.${ds.date.where}`) })
         : ds.why ? t(`rom.why.${ds.why}`).replace('{name}', nameOf(id)) : null;
     opts.push({ label: tf('rom.date', { name: ds.date.name }), sub: tf('rom.dateN', { n: ds.n }), disabled: !ds.ok, reason,
-      run: (g) => playRomanceScene(g, { title: ds.date.name, npc: id, nodes: ds.date.nodes, music: RR.music.date, fade: true, fadeText: t('rom.morning'),
-        onDone: (g2, res) => finishDate(g2.save, id, res), after: (g2) => o.done?.(g2) }, back) });
+      run: (g) => {
+        // cinematics.md: a date with its own cinematic (c5 — Заря, date 2) plays it instead; its end calls finishDate
+        const cid = cinesAt(g.save, `date:${id}:${ds.n}`)[0];
+        if (cid) return playCinematic(g, cid, { onEnd: (g2) => { saveGame(g2.save); g2.resume(back); o.done?.(g2); } });
+        playRomanceScene(g, { title: ds.date.name, npc: id, nodes: ds.date.nodes, music: RR.music.date, fade: true, fadeText: t('rom.morning'),
+          onDone: (g2, res) => finishDate(g2.save, id, res), after: (g2) => o.done?.(g2) }, back);
+      } });
   }
   if (crisisStatus(sv, id, personalDone(sv, id)).ok) {
     opts.push({ label: t('rom.crisis'), sub: t('rom.crisisSub'),

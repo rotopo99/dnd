@@ -37,6 +37,7 @@ import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
+import { cineStage } from './cine-hooks.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -153,6 +154,7 @@ export function startQuest(save, id) {
 function enterStage(save, qid, stageId) {
   const q = QUESTS[qid], st = save.quests[qid];
   findsAt(save, `stage:${qid}/${stageId}`);
+  cineStage(save, qid, stageId); // cinematics.md: stage flags + queued scenes (mq3-court/inside -> c6, c4)
   if (q.timer && q.timer.stage === stageId && st.due == null) st.due = save.day + q.timer.days;
 }
 /** Timer of an active quest on its stage: days left (≥ 0) or null. */
