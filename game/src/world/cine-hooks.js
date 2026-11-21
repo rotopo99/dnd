@@ -33,6 +33,10 @@ export const CINE_RESULT_FX = {
   'court-won': { flags: ['court-precedent'], ctrFlags: { proof: 'court-proof' } },
   'lox-lost': { dead: 'lox' },
 };
+// After a scene (by id, any result): ifFlag set -> flags (content-wave2.md: c3 truth-lox5 -> the w2-harmony-truth clue).
+export const CINE_AFTER = {
+  'c3-lox5': { ifFlag: 'truth-lox5', flags: ['ha-proof-lox5'] },
+};
 export const cineResultStage = (qid, sid, result) => (result && CINE_RESULT_NEXT[`${qid}/${sid}`]?.[result]) || null;
 
 export function cinePoint(tr) {

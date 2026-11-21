@@ -46,4 +46,9 @@ export const WAVE1_TEXT = {
   'flag.w1-clue-key': 'ключ от кладовки у Якоря',
   'flag.w1-clue-log': 'журнал камбуза',
   'flag.w1-clue-debt': 'долг Паруса за карты',
+  // content-wave2.md §2.2: улики «Лицо на листовке»
+  'flag.ha-proof-leaflet': 'дописка на листовке',
+  'flag.ha-proof-reactor': 'журнал допуска реактора',
+  'flag.ha-proof-lox5': 'письмо Lox-5',
+  'flag.ha-proof-protocol': 'протокол «пробы № 1»',
 };

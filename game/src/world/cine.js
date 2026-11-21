@@ -237,7 +237,7 @@ function finish(R, end) {
     if (R.save.cine) delete R.save.cine.progress;
   }
   // content-wave2.md §1.2: the result moves the quest stage the scene played at (c4 -> mq3-court verdict / fights)
-  if (R.save?.quests) for (const x of cineResult(R.save, R.result, R.ctr, R.env?.data)) emit(R, { k: 'toast', text: x.text, color: x.color });
+  if (R.save?.quests) for (const x of cineResult(R.save, R.result, R.ctr, R.env?.data, R.id)) emit(R, { k: 'toast', text: x.text, color: x.color });
   const fade = (end.fx || []).find((x) => x.k === 'fade');
   R.phase = 'end'; R.timer = fade ? (fade.d || 0) + (fade.after || 0) : CINE_VIEW.endFadeSec;
   R.line = null; R.speaking = null;

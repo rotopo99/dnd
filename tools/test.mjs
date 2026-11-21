@@ -5848,5 +5848,45 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(s.npcs.lox.dead);
   });
 }
+
+// ---------------------------------------------------------------- content-wave2.md §2.2: w2-harmony-truth (clues, c3 auto-clue, 3 of 4 + protocol, delayed news)
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const DL = await import('../game/src/world/delayed.js');
+  const RD = await import('../game/src/world/radio.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true }, flags); return s; };
+  const Q = 'w2-harmony-truth';
+  const accuseIds = (s) => { const sl = QS.slots(s, Q).find((x) => x.kind === 'choice'); return QS.availableOptions(s, sl).map((o) => o.id); };
+  test('wave2 harmony: offered by Sera after act1 / met-lox; c3 truth-lox5 sets the Lox-5 clue', () => {
+    assert.ok(!QS.questsOffered(mk(), 'sera').some((q) => q.id === Q));
+    const s = mk({ 'met-lox': true });
+    assert.ok(QS.questsOffered(s, 'sera').some((q) => q.id === Q));
+    QS.startQuest(s, Q); QS.onTalk(s, 'sera', GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'clues');
+    s.flags['truth-lox5'] = true;
+    QS.cineResult(s, 'c3-done', {}, GAME_DATA, 'c3-lox5');
+    assert.ok(s.flags['ha-proof-lox5']);
+    QS.cineResult(s, null, {}, GAME_DATA, 'c1-arrival');
+    assert.equal(s.quests[Q].stage, 'clues', '1 clue is not enough');
+  });
+  test('wave2 harmony: 2 clues without protocol -> only quiet / clone; protocol + 2 more -> public / marta; public -> wanted-lox-off in 5 days', () => {
+    const s = mk({ 'act1-done': true }); QS.startQuest(s, Q); s.quests[Q].stage = 'accuse';
+    Object.assign(s.flags, { 'ha-proof-leaflet': true, 'ha-proof-reactor': true });
+    assert.deepEqual(accuseIds(s).sort(), ['clone', 'quiet']);
+    s.flags['ha-proof-protocol'] = true;
+    assert.ok(accuseIds(s).includes('public') && accuseIds(s).includes('marta'));
+    QS.chooseOption(s, QS.slots(s, Q).find((x) => x.kind === 'choice'), 'public', GAME_DATA);
+    assert.ok(s.flags['truth-harmony-public']);
+    QS.onTalk(s, 'sera', GAME_DATA);
+    assert.equal(s.quests[Q].state, 'done');
+    assert.equal(s.quests[Q].outcome, 'public');
+    assert.ok(s.flags['cq:w2-harmony-truth:public']);
+    s.day += 5; DL.delayedTick(s, GAME_DATA);
+    assert.ok(s.flags['wanted-lox-off']);
+    assert.ok(RD.radioEligible(s).some((n) => n.id === 'rd-w2-harmony-public'));
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -37,7 +37,7 @@ import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
-import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX } from './cine-hooks.js';
+import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER } from './cine-hooks.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -317,10 +317,13 @@ function deliver(save, qid, td) {
 /**
  * content-wave2.md §1.2: a cinematic ended with `result` (cine.js finish). Side effects of the result (CINE_RESULT_FX: flags,
  * counter flags, a companion dies) and, for a quest standing at a stage of CINE_RESULT_NEXT, the next stage (the stage's
- * own goal — the c4 challenge — is skipped). → toasts.
+ * own goal — the c4 challenge — is skipped). CINE_AFTER[id] — flags after a scene by id. → toasts.
  */
-export function cineResult(save, result, ctr = {}, data = null) {
+export function cineResult(save, result, ctr = {}, data = null, id = null) {
   const out = [];
+  const after = id && CINE_AFTER[id];
+  if (after && save?.flags && (!after.ifFlag || save.flags[after.ifFlag])) for (const f of after.flags || []) save.flags[f] = true;
+  if (after && save?.quests) out.push(...flagStages(save, data)); // a clue flag may finish an 'all' stage
   if (!result || !save?.quests) return out;
   const fx = CINE_RESULT_FX[result];
   if (fx) {
@@ -489,7 +492,13 @@ export function autoProgress(save, data) {
     if (s.goal.kind === 'item') dropItem(save, s.goal.item, s.goal.n || 1);
     out.push(...completeSlot(save, s, data));
   }
-  // 'all' stages whose subgoals are done by flags (also flags set by check-scene fx: enough of them → the next stage)
+  out.push(...flagStages(save, data));
+  return out;
+}
+
+/** 'all' stages whose subgoals are done by flags (also flags set by check-scene fx: enough of them → the next stage). */
+function flagStages(save, data) {
+  const out = [];
   for (const id of Object.keys(save.quests)) {
     const stage = stageOf(save, id);
     if (stage?.goal.kind !== 'all' || stageLocked(save, stage)) continue;
