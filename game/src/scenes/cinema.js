@@ -363,7 +363,7 @@ export function createCinemaScene(def, o = {}) {
     if (!l) return;
     const w = Math.min(980, W - 120), y0 = bar + band - 74;
     const nm = l.w === 'narr' ? '' : `${nameOf(l.w)}: `;
-    ctx.font = FONT_B;
+    ctx.font = 'bold 18px monospace'; // the font the name is drawn with (FONT_B measured narrower: names ran into the text)
     const nw = nm ? ctx.measureText(nm).width : 0;
     const lines = wrap(ctx, l.t, w - nw, l.w === 'narr' ? 'italic 18px monospace' : 'bold 18px monospace').slice(0, 3);
     const lh = 24, h = lines.length * lh + 14, x = Math.floor((W - w) / 2), y = y0 - (lines.length - 2) * lh;

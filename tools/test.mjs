@@ -5634,8 +5634,8 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     return { R, save };
   };
 
-  test('cine: 6 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
-    assert.equal(Object.keys(CINEMATICS).length, 6);
+  test('cine: 8 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
+    assert.equal(Object.keys(CINEMATICS).length, 8);
     for (const d of Object.values(CINEMATICS)) assert.deepEqual(CN.validateCine(d), [], d.id);
     const bad = { id: 'x', start: 'a', cast: {}, beats: { a: { choice: { opts: [{ id: 'o', next: 'nope' }, { id: 'p', next: 'a' }] } }, z: { end: { result: 'r' } } } };
     const e = CN.validateCine(bad).join('\n');
@@ -5781,6 +5781,34 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.equal(HK.takeCineQueue(save), 'c4-court', 'c6 needs Lox loyalty 40');
     save.flags['cine-seen:c3-lox5'] = true;
     assert.deepEqual(HK.cinesAt(save, 'loc:harmony-reactor'), [], 'once');
+  });
+  test('cine wave2: c7 waits for the reactor clue (queued by cineFlag), c8 before the Collector arena; arena mods / skip', () => {
+    const save = { flags: { 'cine-seen:c3-lox5': true }, party: [] };
+    assert.equal(HK.cinePoint(CINEMATICS['c7-ha-reel'].trigger), 'loc:harmony-reactor');
+    assert.equal(HK.cinePoint(CINEMATICS['c8-ladov-name'].trigger), 'battle:v4-boss-collector');
+    assert.deepEqual(HK.cinesAt(save, 'loc:harmony-reactor'), []);
+    HK.cineFlag(save, 'ha-proof-reactor'); assert.ok(!save.cine?.queue?.length, 'flag not set yet');
+    save.flags['ha-proof-reactor'] = true; HK.cineFlag(save, 'ha-proof-reactor');
+    assert.deepEqual(save.cine.queue, ['c7-ha-reel']);
+    assert.equal(HK.takeCineQueue(save), 'c7-ha-reel');
+    assert.deepEqual(HK.cinesAt(save, 'battle:v4-boss-collector'), []);
+    save.flags['ladov-name-known'] = true;
+    assert.deepEqual(HK.cinesAt(save, 'battle:v4-boss-collector'), ['c8-ladov-name']);
+    const foes = ['boss-great-collector', 'crg-meme-lord', 'crg-banner-bearer'];
+    assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes), foes);
+    save.flags['ladov-torn'] = true;
+    assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes)[0], { enemy: 'boss-great-collector', hpPct: 0.9 });
+    delete save.flags['ladov-torn']; save.flags['ladov-named'] = true;
+    assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes), ['boss-great-collector']);
+    assert.ok(HK.cineBattleSkip('v4-boss-collector', 'ladov-trade') && !HK.cineBattleSkip('v4-boss-collector', 'ladov-named'));
+    // results of c8 by path: name QTE ok -> named, fail -> torn, trade -> trade (silence -> the name QTE)
+    const r = (pick, qte) => drive(CINEMATICS['c8-ladov-name'], { pick: () => pick, qte }).R.result;
+    assert.equal(r('name', 'ok'), 'ladov-named'); assert.equal(r('name', 'fail'), 'ladov-torn');
+    assert.equal(r('file', 'fail'), 'ladov-named'); assert.equal(r('trade', 'ok'), 'ladov-trade'); assert.equal(r('silence', 'fail'), 'ladov-torn');
+    const c7 = (qte) => drive(CINEMATICS['c7-ha-reel'], { pick: () => 'watch', qte }).save.flags;
+    const f1 = c7('ok'), f2 = c7('fail');
+    assert.ok(f1['lox5-woke-seen'] && f1['truth-harmony-seen'] && !f1['lox5-partial']);
+    assert.ok(f2['lox5-partial'] && f2['truth-harmony-seen'] && !f2['lox5-woke-seen']);
   });
 }
 

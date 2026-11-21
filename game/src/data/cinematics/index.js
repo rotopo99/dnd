@@ -6,6 +6,8 @@ import { C3_LOX5 } from './c3-lox5.js';
 import { C4_COURT } from './c4-court.js';
 import { C5_ZARYA } from './c5-zarya.js';
 import { C6_LOX_DOOR } from './c6-lox-door.js';
+import { C7_HA_REEL } from './c7-ha-reel.js';
+import { C8_LADOV_NAME } from './c8-ladov-name.js';
 
 export const CINE_RULES = {
   subtitle: { cps: 15, minSec: 1.2, gapSec: 0.25, pauseSec: 0.6 },   // длительность реплики = max(minSec, символы / cps)
@@ -63,7 +65,7 @@ export const SHOT_MOVES = {
 };
 
 // Сцены-площадки (строит art-director/программист из готовых кусков; `stage` в данных сцены).
-export const STAGES = ['dock-riot', 'server-hall', 'reactor-log', 'court-cyber', 'roof-night', 'door-hall'];
+export const STAGES = ['dock-riot', 'server-hall', 'reactor-log', 'court-cyber', 'roof-night', 'door-hall', 'collector-hall'];
 // Клипы: есть в Blender-пайплайне (idle walk run crouch_walk attack_melee attack_shoot cast hit death)
 // и НУЖНЫЕ новые для сцен (нет в tools/blender/anim.py): talk shrug point lean sit nod shake laugh cry hands_up stagger reach.
 export const CLIPS = ['idle','walk','run','crouch_walk','attack_melee','attack_shoot','cast','hit','death','talk','shrug','point','lean','sit','nod','shake','laugh','cry','hands_up','stagger','reach'];
@@ -72,5 +74,6 @@ export const EMOS = ['neutral','happy','angry','sad','scared','smug','surprised'
 export const CINEMATICS = {
   [C1_ARRIVAL.id]: C1_ARRIVAL, [C2_PRIEST.id]: C2_PRIEST, [C3_LOX5.id]: C3_LOX5,
   [C4_COURT.id]: C4_COURT, [C5_ZARYA.id]: C5_ZARYA, [C6_LOX_DOOR.id]: C6_LOX_DOOR,
+  [C7_HA_REEL.id]: C7_HA_REEL, [C8_LADOV_NAME.id]: C8_LADOV_NAME,
 };
 export const CINEMATIC_ORDER = Object.keys(CINEMATICS);

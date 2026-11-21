@@ -44,6 +44,8 @@ export function openCheckScene(game, o) {
     o.onDone?.(g, m.success, m);
     if (save) saveGame(save);
     if (m.zero) import('./exodus-zero.js').then((x) => x.startExodusZero(g));
+    // cinematics.md: a scene queued by the check (c7 after the reactor clue) plays right away when nothing else is open
+    else if (save?.cine?.queue?.length) import('./cinema.js').then((x) => x.cineInterrupt(g, g.scene));
   };
   const cancel = (g) => { g.resume(back); o.onCancel?.(g); };
 

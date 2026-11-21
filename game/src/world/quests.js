@@ -37,7 +37,7 @@ import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
-import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER } from './cine-hooks.js';
+import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag } from './cine-hooks.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -382,7 +382,7 @@ export function completeSlot(save, slot, data) {
   if (slot.sub !== undefined) {
     st.subs[slot.sub] = true;
     const sg = slot.stage.goal.goals?.[slot.sub];
-    if (sg?.doneFlag) save.flags[sg.doneFlag] = true; // the subgoal's flag is the world's memory of it (mq3-fall: saved-*)
+    if (sg?.doneFlag) { save.flags[sg.doneFlag] = true; cineFlag(save, sg.doneFlag); } // the world's memory of it (mq3-fall: saved-*); c7 waits for ha-proof-reactor
     const g = slot.stage.goal;
     const done = g.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
     if (done >= needNow(save, slot.qid, slot.stage)) {

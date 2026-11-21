@@ -72,6 +72,7 @@ export const CINE_MODELS = {
   'judge-avatar': { base: 'body_m', parts: ['outfit_cyber_m'], tint: 0xb9a39e, scale: 1.25 },
   outfit_cyber_m: { base: 'body_m', parts: ['outfit_cyber_m', 'hair_short_m'] },
   outfit_cyber_f: { base: 'body_f', parts: ['outfit_cyber_f', 'hair_bob_f'] },
+  ladov: { base: 'body_m', parts: ['outfit_uniform_m', 'hair_short_m'], tint: 0xa8acb4, scale: 1.12 }, // c8: the burnt-out colonel, greyed
 };
 // Actor looks: `look: 'spirit'` — translucent cyan; `blank` — empty eyes (neutral face, no blink).
 export const CINE_LOOKS = { spirit: { opacity: 0.55, tint: 0x70d8f2, emissive: 0x1c4a5a }, blank: { noBlink: true, face: 'neutral' } };
@@ -94,6 +95,10 @@ export const CINE_STAGES = {
     props: [[-3, -2, 0.6, 1, 0.6, '#6e3d22'], [2.5, -3, 2.5, 0.5, 0.8, '#5b6175'], [0, -0.4, 2.4, 0.45, 0.6, '#6e3d22']] },
   'door-hall': { floor: '#3c3f4f', wall: '#262833', fog: '#14141c', key: '#dfe3e8', fill: '#c42828', glow: '#70d8f2',
     props: [[0, -5.5, 3, 4, 0.5, '#5b6175'], [-3.5, -3, 0.5, 3.5, 0.5, '#3c3f4f'], [3.5, -3, 0.5, 3.5, 0.5, '#3c3f4f']] },
+  // c8: Зал Коллекции — витрины (стекло, тёмная рама) по бокам и за помостом, длинная витрина-прилавок за Собирателем
+  'collector-hall': { floor: '#3c3f4f', wall: '#262833', fog: '#14141c', key: '#dfe3e8', fill: '#e04fa8', glow: '#70d8f2',
+    props: [[0, -6.4, 3.2, 1.1, 0.8, '#5b6175'], [-4, -5, 1, 3.2, 0.8, '#1c4a5a'], [-2, -6.5, 1, 3.4, 0.8, '#1c4a5a'], [2, -6.5, 1, 3.4, 0.8, '#1c4a5a'],
+      [4, -5, 1, 3.2, 0.8, '#1c4a5a'], [-4.6, -1.5, 0.8, 2.6, 0.8, '#1f3563'], [4.6, -1.5, 0.8, 2.6, 0.8, '#1f3563']] },
 };
 
 // Colour grades (fx grade): 2D tint over the image (Three and comic alike). `flash` fades out over fx.d.

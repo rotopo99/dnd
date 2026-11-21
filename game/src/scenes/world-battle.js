@@ -4,6 +4,7 @@
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
 import { cineBefore } from './cinema.js';
+import { cineEncounter, cineBattleSkip } from '../world/cine-hooks.js';
 import { radioBattle } from '../world/radio.js';
 import { applyWithdrawal } from '../rules/aftermath.js';
 import { t } from '../data/text/index.js';
@@ -52,7 +53,15 @@ export function encounterSetup(save, encId) {
     reduce = FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length;
     for (const m of QUESTS['mq-exodus']?.finaleMods || []) if (m.flag && save.flags[m.flag]) allies.push(...(m.allies || []));
   }
-  return { enemies: encounterEnemies(encId, partySize(save), { reduce }), allies };
+  return { enemies: cineEncounter(save, encId, encounterEnemies(encId, partySize(save), { reduce })), allies };
+}
+
+/** content-wave2.md §3 c8: a scene result replaced the battle (CINE_BATTLE_SKIP) — it counts as done, onWin runs. */
+function skipBattle(game, o) {
+  const save = game.save;
+  if (o.id && !save.battlesDone.includes(o.id)) save.battlesDone.push(o.id);
+  saveGame(save);
+  o.onWin?.(game);
 }
 
 const enemyDef = (e) => ENEMIES[String(typeof e === 'string' ? e : e?.enemy || e?.enemyId || e?.id || '').split('^')[0]];
@@ -92,7 +101,8 @@ export function objectiveSpec(save, o, enemies, rng = Math.random) {
 export function startWorldBattle(game, o) {
   if (game.coop?.guest) return; // multiplayer.md: a co-op guest's world is a mirror — battles start on the host only
   // cinematics.md: a scene before the battle (c2 before the sector D cult cell), then the battle itself
-  if (!o.cineDone && o.encounter && cineBefore(game, `battle:${o.encounter}`, (g) => startWorldBattle(g, { ...o, cineDone: true }))) return;
+  if (!o.cineDone && o.encounter && cineBefore(game, `battle:${o.encounter}`, (g, res) => (cineBattleSkip(o.encounter, res)
+    ? skipBattle(g, o) : startWorldBattle(g, { ...o, cineDone: true })))) return;
   const save = game.save;
   const data = game.data;
   const setup = o.encounter ? encounterSetup(save, o.encounter) : { enemies: o.enemies, allies: [] };

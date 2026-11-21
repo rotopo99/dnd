@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const outDir = path.join(root, 'tools', 'out');
+const set = (() => { const i = process.argv.indexOf('--set'); return i > 0 ? process.argv[i + 1] : 'base'; })(); // base (c1, c4) | wave2 (c7, c8)
 const only = (() => { const i = process.argv.indexOf('--only'); return i > 0 ? process.argv[i + 1] : null; })();
 const { chromium } = createRequire(import.meta.url)('playwright');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.glb': 'model/gltf-binary', '.css': 'text/css' };
@@ -27,7 +28,7 @@ const st = (page) => page.evaluate(() => {
   const s = window.__game?.scene;
   if (s?.id !== 'cinema') return { id: s?.id, toasts: window.__game?.toasts?.map((x) => x.text) };
   const R = s.R;
-  return { id: 'cinema', mode: s.S.mode, phase: R.phase, key: R.key, done: R.done, line: !!R.line, choice: R.choice?.opts.map((o) => o.id), qte: R.qte?.kind, res: R.qte?.res, result: R.result, picks: R.picks, ctr: R.ctr };
+  return { id: 'cinema', mode: s.S.mode, phase: R.phase, key: R.key, done: R.done, line: !!R.line, choice: R.choice?.opts.map((o) => o.id), qte: R.qte?.kind, qkeys: R.qte?.keys, qidx: R.qte?.idx, res: R.qte?.res, result: R.result, picks: R.picks, ctr: R.ctr };
 });
 async function until(page, fn, ms = 30000) {
   const t0 = Date.now();
@@ -51,7 +52,7 @@ async function play(page, tag, { pick, qte, shots = [] }) {
     }
     if (s.phase === 'qte') {
       if (!taken.has(`qte-${s.key}`)) { taken.add(`qte-${s.key}`); await shot(page, `${tag}-qte-${s.key}`); }
-      if (qte?.(s) === 'ok') { await page.keyboard.down('KeyE'); await page.waitForTimeout(60); await page.keyboard.up('KeyE'); }
+      if (qte?.(s) === 'ok') { const k = `Key${s.qte === 'seq' ? s.qkeys[s.qidx || 0] : s.qkeys?.[0] || 'E'}`; await page.keyboard.down(k); await page.waitForTimeout(60); await page.keyboard.up(k); }
       else await page.waitForTimeout(200);
       continue;
     }
@@ -78,6 +79,18 @@ async function run(tag, query, o) {
   return end;
 }
 
+if (set === 'wave2') {
+  if (only !== 'comic') {
+    await run('c7-3d', 'gfx=3d&cine=c7-ha-reel', { pick: () => 2, qte: () => 'ok', shots: ['open', 'play', 'c-watch', 'ok', 'outro'] });
+    await run('c8-3d', 'gfx=3d&cine=c8-ladov-name', { pick: () => 1, qte: () => 'ok', shots: ['open', 'ladov', 'say', 'choir', 'react'] });
+  }
+  if (only !== '3d') {
+    await browser.close();
+    browser = await chromium.launch();
+    await run('c7-comic', 'gfx=3d&comic=1&cine=c7-ha-reel', { pick: () => null, qte: () => 'fail', shots: ['open', 'play', 'c-wait', 'fail', 'outro'] });
+    await run('c8-comic', 'gfx=3d&comic=1&cine=c8-ladov-name', { pick: () => 3, qte: () => 'fail', shots: ['open', 'turn', 'c-trade', 'trade-end'] });
+  }
+} else {
 if (only !== 'comic') {
   await run('c1-3d', 'gfx=3d&cine=c1-arrival', { pick: () => 1, qte: () => 'ok', shots: ['gate', 'g-hands', 'alarm', 'sting'] });
   await run('c4-3d', 'gfx=3d&cine=c4-court&flags=victor-soul-freed,truth-lox5,cine-c2-impressed', { pick: (s) => (s.key === 'plea' ? 2 : 2), qte: () => 'ok', shots: ['open', 'souls', 'w-victor', 'w-lox', 'w-courier', 'won'] });
@@ -87,6 +100,7 @@ if (only !== '3d') {
   browser = await chromium.launch();
   await run('c1-comic', 'gfx=2d&cine=c1-arrival', { pick: () => null, qte: () => 'fail', shots: ['gate', 'g-silent', 'slide-fail', 'sting'] });
   await run('c4-comic', 'gfx=3d&comic=1&cine=c4-court', { pick: (s) => (s.key === 'plea' ? 3 : 1), qte: () => 'fail', shots: ['open', 'p-number', 'closing', 'lost'] });
+}
 }
 await browser.close();
 server.close();

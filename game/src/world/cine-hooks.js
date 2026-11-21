@@ -6,6 +6,9 @@
 //   cineStage(save, qid, sid)  quest stage entered: CINE_STAGE_FLAGS + queue ready scenes (save.cine.queue)
 //   takeCineQueue(save)        next queued id (main.js setScene on a calm scene)
 //   cineResultStage(qid, sid, result)  content-wave2.md §1.2: the scene's end.result -> the next stage of a quest (or null)
+//   cineFlag(save, flag)       a quest flag was just set (doneFlag): queue `loc:` scenes waiting for it (c7 after the reactor clue)
+//   cineEncounter(save, encId, enemies)  CINE_ENCOUNTER_MODS: scene outcomes change a battle (c8 -> the Collector arena)
+//   cineBattleSkip(encId, result)        CINE_BATTLE_SKIP: the scene result replaces the battle (counts as won)
 import { CINEMATICS, CINEMATIC_ORDER } from '../data/cinematics/index.js';
 
 // Designer's trigger names -> game points (the scenes name story moments, the game has encounters / nodes / stages).
@@ -14,6 +17,8 @@ export const CINE_POINT_ALIAS = {
   'battle-cult-cell': 'battle:w-harmony-cult-cell', // c2: sector D cult cell (quest «cell» stage / ambush)
   'ha-reactor': 'loc:harmony-reactor',             // c3: entering the Harmony reactor node
   'mq3-court': 'stage:mq3-court/inside',           // c6 (before) and c4 (after): the door is stormed, the court opens
+  'harmony-reactor': 'loc:harmony-reactor',        // c7: the reactor clue of w2-harmony-truth (also queued by cineFlag)
+  'arena-great-collector': 'battle:v4-boss-collector', // c8: before the Great Collector arena (vyzhigatel-vayba, battles-v4)
 };
 // Flags the triggers wait for, set by quest stages (enterStage).
 export const CINE_STAGE_FLAGS = { 'mq3-court/inside': 'mq3-court' };
@@ -37,6 +42,17 @@ export const CINE_RESULT_FX = {
 export const CINE_AFTER = {
   'c3-lox5': { ifFlag: 'truth-lox5', flags: ['ha-proof-lox5'] },
 };
+// content-wave2.md §3 c8: outcomes read by the arena. drop — the boss hands over his exhibits (only the boss fights,
+// «phase 3» never comes); hpPct — the boss starts weakened (torn name: −10% ЗДР).
+export const CINE_ENCOUNTER_MODS = {
+  'v4-boss-collector': [
+    { flag: 'ladov-named', keep: ['boss-great-collector'] },
+    { flag: 'ladov-torn', hpPct: { 'boss-great-collector': 0.9 } },
+  ],
+};
+// Scene results that replace the battle at their point (c8 «отдать душу»: no fight, the arena counts as won).
+export const CINE_BATTLE_SKIP = { 'v4-boss-collector': ['ladov-trade'] };
+
 export const cineResultStage = (qid, sid, result) => (result && CINE_RESULT_NEXT[`${qid}/${sid}`]?.[result]) || null;
 
 export function cinePoint(tr) {
@@ -89,4 +105,34 @@ export function takeCineQueue(save) {
     if (CINEMATICS[id] && cineReady(save, CINEMATICS[id])) return id;
   }
   return null;
+}
+
+const baseId = (e) => String(typeof e === 'string' ? e : e?.enemy || e?.enemyId || e?.id || '').split('^')[0];
+
+/** Enemies of `encId` changed by scene outcome flags (CINE_ENCOUNTER_MODS); the list itself is not mutated. */
+export function cineEncounter(save, encId, enemies) {
+  const mods = CINE_ENCOUNTER_MODS[encId];
+  if (!mods || !Array.isArray(enemies)) return enemies;
+  let out = enemies;
+  for (const m of mods) {
+    if (!save?.flags?.[m.flag]) continue;
+    if (m.keep) { const kept = out.filter((e) => m.keep.includes(baseId(e))); if (kept.length) out = kept; }
+    if (m.hpPct) out = out.map((e) => { const p = m.hpPct[baseId(e)]; return p == null ? e : { ...(typeof e === 'object' ? e : {}), enemy: typeof e === 'string' ? e : e.enemy || e.id, hpPct: p }; });
+  }
+  return out;
+}
+
+export const cineBattleSkip = (encId, result) => !!(result && CINE_BATTLE_SKIP[encId]?.includes(result));
+
+/** A quest flag was set right now: ready scenes of `loc:` points that wait for exactly this flag go to the queue
+ *  (they play on the next calm scene instead of only on the next visit of the node). */
+export function cineFlag(save, flag) {
+  if (!save || !flag) return;
+  for (const id of CINEMATIC_ORDER) {
+    const def = CINEMATICS[id];
+    if (def.trigger?.needFlag !== flag || !cinePoint(def.trigger)?.startsWith('loc:') || !cineReady(save, def)) continue;
+    save.cine ||= {};
+    const q = (save.cine.queue ||= []);
+    if (!q.includes(id)) q.push(id);
+  }
 }
