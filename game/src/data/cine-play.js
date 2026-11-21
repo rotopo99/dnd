@@ -83,7 +83,7 @@ export const CINE_SIDE_DEG = 22; // single-actor frames: camera this far off the
 // Stage dioramas (STAGES): floor / back wall / fog colours (palette), key light, props (boxes: [x, z, w, h, d, colour]).
 export const CINE_STAGES = {
   'dock-riot': { floor: '#3c3f4f', wall: '#262833', fog: '#14141c', key: '#f0b050', fill: '#4fa0f0', glow: '#f06a24',
-    props: [[-4, -3, 1.2, 1.2, 1.2, '#6e3d22'], [3.5, -3.5, 2, 2.6, 0.4, '#5b6175'], [-2, -6, 6, 3.5, 0.3, '#3c3f4f'], [5, 1, 1, 0.9, 1, '#a95f2c']] },
+    props: [[-4, -3, 1.2, 1.2, 1.2, '#6e3d22'], [3.5, -3.5, 2, 2.6, 0.4, '#5b6175'], [-3, -8.3, 6, 3.5, 0.3, '#3c3f4f'], [5, 1, 1, 0.9, 1, '#a95f2c']] },
   'server-hall': { floor: '#262833', wall: '#1f3563', fog: '#14141c', key: '#70d8f2', fill: '#e04fa8', glow: '#4fa0f0',
     props: [[-3.5, -4, 1, 2.6, 1, '#3c3f4f'], [-1.5, -4, 1, 2.6, 1, '#3c3f4f'], [1.5, -4, 1, 2.6, 1, '#3c3f4f'], [3.5, -4, 1, 2.6, 1, '#3c3f4f']] },
   'reactor-log': { floor: '#2e5030', wall: '#262833', fog: '#14141c', key: '#74c050', fill: '#70d8f2', glow: '#74c050',
@@ -105,9 +105,9 @@ export const CINE_GRADES = {
 
 // Comic fallback panels: frame -> panel share of the strip width, portrait scale, tilt (deg).
 export const COMIC_FRAMES = {
-  wide: { w: 1, scale: 3, tilt: 0 }, two: { w: 0.62, scale: 4, tilt: 0 }, med: { w: 0.42, scale: 4, tilt: 0 },
-  close: { w: 0.34, scale: 5, tilt: 0 }, xclose: { w: 0.28, scale: 6, tilt: 0 }, ots: { w: 0.5, scale: 4, tilt: 0 },
-  low: { w: 0.36, scale: 5, tilt: 0 }, high: { w: 0.4, scale: 3, tilt: 0 }, dutch: { w: 0.38, scale: 4, tilt: -6 },
+  wide: { w: 1, scale: 3, tilt: 0 }, two: { w: 0.62, scale: 5, tilt: 0 }, med: { w: 0.42, scale: 6, tilt: 0 },
+  close: { w: 0.34, scale: 7, tilt: 0 }, xclose: { w: 0.28, scale: 8, tilt: 0 }, ots: { w: 0.5, scale: 5, tilt: 0 },
+  low: { w: 0.36, scale: 6, tilt: 0 }, high: { w: 0.4, scale: 4, tilt: 0 }, dutch: { w: 0.38, scale: 5, tilt: -6 },
 };
 export const COMIC_KEEP = 3; // panels on the page at once
 

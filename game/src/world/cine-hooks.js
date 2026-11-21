@@ -39,18 +39,20 @@ export function cineReady(save, def) {
   return true;
 }
 
+/** Scenes of a point in order: `before` triggers first, then data order. */
+const idsAt = (point) => CINEMATIC_ORDER.filter((id) => cinePoint(CINEMATICS[id].trigger) === point)
+  .sort((a, b) => (CINEMATICS[a].trigger.before ? 0 : 1) - (CINEMATICS[b].trigger.before ? 0 : 1));
+
 export function cinesAt(save, point) {
   if (!save || !point) return [];
-  const ids = CINEMATIC_ORDER.filter((id) => cinePoint(CINEMATICS[id].trigger) === point);
-  ids.sort((a, b) => (CINEMATICS[a].trigger.before ? 0 : 1) - (CINEMATICS[b].trigger.before ? 0 : 1));
-  return ids.filter((id) => cineReady(save, CINEMATICS[id]));
+  return idsAt(point).filter((id) => cineReady(save, CINEMATICS[id]));
 }
 
 /** Quest stage entered: its flag (CINE_STAGE_FLAGS), then scenes of `stage:<qid>/<sid>` are queued. */
 export function cineStage(save, qid, sid) {
   const key = `${qid}/${sid}`;
   if (CINE_STAGE_FLAGS[key]) (save.flags ||= {})[CINE_STAGE_FLAGS[key]] = true;
-  const ids = CINEMATIC_ORDER.filter((id) => cinePoint(CINEMATICS[id].trigger) === `stage:${key}`);
+  const ids = idsAt(`stage:${key}`);
   if (!ids.length) return;
   save.cine ||= {};
   const q = (save.cine.queue ||= []);

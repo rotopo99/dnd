@@ -390,6 +390,14 @@ export function createCinemaView(E) {
     cam.lookAt(tg);
     if (d.roll) cam.rotateZ(d.roll);
     cam.updateProjectionMatrix();
+    // actors outside the shot that stand between the camera and its target are hidden (no back of a head over the frame)
+    const seg = new THREE.Line3(p, tg), cp = new THREE.Vector3(), dT = p.distanceTo(tg);
+    for (const A of V.actors.values()) {
+      if (!A.root.visible || A.who === R.shot?.a || A.who === R.shot?.b) continue;
+      const c = A.root.position.clone().setY(A.headY * 0.6);
+      seg.closestPointToPoint(c, true, cp);
+      if (cp.distanceTo(c) < 0.55 && p.distanceTo(c) < dT - 0.3) A.root.visible = false;
+    }
     E.use();
     E.clipTo({ x: 0, y: 0, w: E.w, h: E.h });
     const r = E.renderer;

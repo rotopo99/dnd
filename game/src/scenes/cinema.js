@@ -310,7 +310,7 @@ export function createCinemaScene(def, o = {}) {
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(px, py, pw, ph * 0.55);
       ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
       const who = p.who, n = Math.max(1, who.length);
-      const sc = Math.max(1, Math.min(F.scale, crispScale(Math.min(ph * (p.shot.frame === 'high' ? 0.55 : 0.85), (pw / n) * 0.95))));
+      const sc = Math.max(1, Math.min(F.scale, crispScale(Math.min(ph * (p.shot.frame === 'high' ? 0.55 : 0.85), (pw / n) * 0.95), 8)));
       const s = 48 * sc;
       who.forEach((w, j) => {
         const cx = px + (pw / n) * (j + 0.5) - s / 2, cy = p.shot.frame === 'low' ? py + ph - s + s * 0.08 : py + ph - s;

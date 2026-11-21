@@ -5607,5 +5607,181 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.equal(CQ.priceZoneMult(l, 'svalka'), 1);
   });
 }
+
+// ---------------------------------------------------------------- cinematics.md: scene graph runner, timer -> silence, QTE branches, writes
+{
+  const { CINEMATICS } = await import('../game/src/data/cinematics/index.js');
+  const CN = await import('../game/src/world/cine.js');
+  const HK = await import('../game/src/world/cine-hooks.js');
+  const st = await import('../game/src/world/state.js');
+  const await0 = { rep: await import('../game/src/world/reputation.js'), comp: await import('../game/src/world/companions.js'), rom: await import('../game/src/world/romance.js'),
+    chk: await import('../game/src/world/checks.js'), NPCS: (await import('../game/src/data/npcs.js')).NPCS };
+  const failEnv = (save, ok = false) => ({ flag: (k, v) => { save.flags[k] = v; }, rel: () => [], rep: () => [], bond: () => [], date: () => [], mrlPct: () => [], roll: (sk, dc) => ({ ok, total: 10, skill: sk[0], dc }), name: (w) => w });
+  const solve = (R) => {
+    const q = R.qte;
+    if (q.kind === 'hold') CN.cineHold(R, true);
+    else if (q.kind === 'seq') CN.cineKey(R, q.keys[q.idx]);
+    else CN.cineKey(R, q.keys[0]);
+  };
+  const drive = (def, o = {}) => {
+    const save = o.save || { flags: { ...(o.flags || {}) } };
+    const R = CN.createCine(def, { save, env: o.env, prefs: o.prefs, rng: o.rng });
+    for (let i = 0; i < 30000 && !R.done; i++) {
+      if (R.phase === 'choice' && R.choice.t >= R.choice.lock && !R.choice.expired) { const id = o.pick?.(R); if (id) CN.cinePick(R, id); }
+      if (R.phase === 'qte' && !R.qte.res) { R.qte._d ??= typeof o.qte === 'function' ? o.qte(R) : o.qte; if (R.qte._d === 'ok') solve(R); }
+      CN.cineTick(R, 0.05);
+    }
+    return { R, save };
+  };
+
+  test('cine: 6 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
+    assert.equal(Object.keys(CINEMATICS).length, 6);
+    for (const d of Object.values(CINEMATICS)) assert.deepEqual(CN.validateCine(d), [], d.id);
+    const bad = { id: 'x', start: 'a', cast: {}, beats: { a: { choice: { opts: [{ id: 'o', next: 'nope' }, { id: 'p', next: 'a' }] } }, z: { end: { result: 'r' } } } };
+    const e = CN.validateCine(bad).join('\n');
+    assert.match(e, /without silence/); assert.match(e, /missing beat "nope"/); assert.match(e, /"z" unreachable/);
+  });
+
+  test('cine: every scene ends on every branch (random walks cover all beats, never an error result)', () => {
+    let seed = 7;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const flagSets = [{}, { 'victor-soul-freed': true, 'truth-lox5': true, 'cine-c2-stalled': true }, { 'lox5-partial': true }];
+    for (const d of Object.values(CINEMATICS)) {
+      const seen = new Set();
+      for (let run = 0; run < 120; run++) {
+        const flags = { ...flagSets[run % flagSets.length] };
+        const save = { flags };
+        const { R } = drive(d, { save, env: failEnv(save, rnd() < 0.5), pick: (R2) => { const ids = [...R2.choice.opts.map((x) => x.id), 'silence']; return ids[Math.floor(rnd() * ids.length)]; }, qte: () => (rnd() < 0.5 ? 'ok' : 'fail') });
+        assert.ok(R.done, `${d.id} finished`);
+        assert.ok(R.result && R.result !== 'error', `${d.id} result ${R.result}`);
+        assert.ok(save.flags[`cine-seen:${d.id}`]);
+        for (const k of R.visited) seen.add(k);
+      }
+      const missing = Object.keys(d.beats).filter((k) => !seen.has(k));
+      assert.deepEqual(missing, [], `${d.id} beats never visited: ${missing}`);
+    }
+  });
+
+  test('cine: choice timer runs out -> silence (c1: «Смотреть на него»), input locked first 0.4 s, pause freezes, «Выкл.» has no timer', () => {
+    const d = CINEMATICS['c1-arrival'], save = { flags: {} };
+    const R = CN.createCine(d, { save });
+    while (R.phase !== 'choice') { CN.cineAdvance(R); CN.cineTick(R, 0.01); }
+    assert.equal(R.choice.total, 8);
+    assert.equal(CN.cinePick(R, 'hands'), false, 'locked');
+    const t0 = R.choice.t; R.paused = true; CN.cineTick(R, 30); assert.equal(R.phase, 'choice'); assert.equal(R.choice.t, t0);
+    R.paused = false;
+    for (let i = 0; i < 9 * 20; i++) CN.cineTick(R, 0.05);
+    assert.equal(R.key, 'g-silent');
+    assert.equal(save.flags['cine-c1-silent'], true);
+    assert.deepEqual(R.picks[0], { beat: 'gate', id: 'silence' });
+    const R2 = CN.createCine(d, { save: { flags: {} }, prefs: { timer: 'off' } });
+    while (R2.phase !== 'choice') { CN.cineAdvance(R2); CN.cineTick(R2, 0.01); }
+    for (let i = 0; i < 100; i++) CN.cineTick(R2, 1);
+    assert.equal(R2.phase, 'choice');
+    const R3 = CN.createCine(d, { save: { flags: {} }, prefs: { timer: 'relaxed' } });
+    while (R3.phase !== 'choice') { CN.cineAdvance(R3); CN.cineTick(R3, 0.01); }
+    assert.equal(R3.choice.total, 12);
+  });
+
+  test('cine: QTE fail -> its own branch (c1 shutter: dragged, Gans rel +1, «запомнит»), success / «Пропускать QTE» -> ok', () => {
+    const d = CINEMATICS['c1-arrival'];
+    const f = drive(d, { pick: () => 'hands', qte: 'fail' });
+    assert.ok(f.R.visited.includes('slide-fail') && !f.R.visited.includes('slide-ok'));
+    assert.equal(f.save.flags['cine-c1-dragged'], true);
+    assert.equal(f.save.cine.rel.gans, 2, 'hands +1, dragged +1');
+    assert.equal(f.R.result, 'to-battle-1');
+    const ok = drive(d, { pick: () => 'joke', qte: 'ok' });
+    assert.ok(ok.R.visited.includes('slide-ok'));
+    assert.equal(ok.save.flags['cine-c1-slid'], true);
+    assert.equal(ok.save.flags['cine-c1-brochure'], true);
+    const sk = drive(d, { pick: () => 'shove', qte: 'fail', prefs: { qte: 'skip' } });
+    assert.ok(sk.R.visited.includes('slide-ok'), 'skip QTE = success');
+    // rem toast event
+    const R = CN.createCine(d, { save: { flags: {} } });
+    while (R.phase !== 'choice') { CN.cineAdvance(R); CN.cineTick(R, 0.01); }
+    CN.cineTick(R, 0.5); R.out.length = 0; CN.cinePick(R, 'hands');
+    assert.ok(R.out.some((e) => e.k === 'rem' && /Ганс запомнит это/.test(e.text)));
+    // hold: releasing drops progress twice as fast; seq: a wrong key fails
+    const c3 = CINEMATICS['c3-lox5'];
+    const R4 = CN.createCine(c3, { save: { flags: {} } });
+    for (let i = 0; i < 3000 && R4.phase !== 'qte'; i++) { CN.cineAdvance(R4); CN.cineTick(R4, 0.01); if (R4.phase === 'choice') CN.cinePick(R4, 'silence'); }
+    assert.equal(R4.qte.kind, 'hold');
+    CN.cineHold(R4, true); CN.cineTick(R4, 1); CN.cineHold(R4, false); CN.cineTick(R4, 0.25);
+    assert.ok(Math.abs(R4.qte.prog - 0.5) < 1e-9);
+    const c2 = CINEMATICS['c2-priest'];
+    const R5 = CN.createCine(c2, { save: { flags: {} } });
+    for (let i = 0; i < 3000 && R5.phase !== 'qte'; i++) { CN.cineAdvance(R5); CN.cineTick(R5, 0.01); if (R5.phase === 'choice' && R5.choice.t > 0.5) CN.cinePick(R5, R5.choice.opts.find((x) => /swap|seat|place|take/.test(x.id))?.id || R5.choice.opts[R5.choice.opts.length - 1].id); }
+    if (R5.qte?.kind === 'seq') { CN.cineKey(R5, R5.qte.keys[0]); CN.cineKey(R5, R5.qte.keys[0] === 'W' ? 'A' : 'W'); assert.equal(R5.qte.res, 'fail'); }
+  });
+
+  test('cine: consequences are written (c3 truth / partial, c6 lox-dead or alive+halfsealed, c4 DC by counters, no witnesses -> lost)', () => {
+    const c3 = CINEMATICS['c3-lox5'];
+    const a = drive(c3, { qte: 'ok' }), b = drive(c3, { qte: 'fail' });
+    assert.ok(a.save.flags['truth-lox5'] && !a.save.flags['lox5-partial']);
+    assert.ok(b.save.flags['lox5-partial'] && !b.save.flags['truth-lox5']);
+    const c6 = CINEMATICS['c6-lox-door'];
+    for (let i = 0; i < 4; i++) {
+      const r = drive(c6, { pick: (R) => R.choice.opts[i % R.choice.opts.length].id, qte: i % 2 ? 'ok' : 'fail', env: undefined });
+      const f = r.save.flags;
+      assert.ok(f['lox-dead'] || (f['lox-alive-door'] && f['door-halfsealed']), JSON.stringify(f));
+    }
+    const c4 = CINEMATICS['c4-court'];
+    const R = CN.createCine(c4, { save: { flags: {} } });
+    Object.assign(R.ctr, { witness: 3, proof: 1, counsel: 1 });
+    assert.equal(CN.checkDc(R, c4.beats.verdict.check), 11);
+    R.save.flags['door-halfsealed'] = true;
+    assert.equal(CN.checkDc(R, c4.beats.verdict.check), 13);
+    const save = { flags: {} };
+    const lost = drive(c4, { save, env: failEnv(save, false), pick: () => 'silence', qte: 'fail' });
+    assert.ok(lost.R.visited.includes('lost') && !lost.R.visited.includes('w-lox'));
+    assert.equal(lost.R.result, 'to-battle-judge-avatar-hard');
+    assert.equal(save.flags['court-lost'], true);
+    const s2 = { flags: { 'victor-soul-freed': true, 'truth-lox5': true, 'cine-c2-impressed': true } };
+    const won = drive(c4, { save: s2, env: failEnv(s2, true), pick: (R2) => R2.choice.opts[0].id, qte: 'ok' });
+    assert.equal(won.R.ctr.witness, 3);
+    assert.equal(won.R.result, 'court-won');
+  });
+
+  test('cine: skip scene -> default answers (silence), QTE ok; progress saved per beat and cleared at the end', () => {
+    const save = { flags: {} };
+    const R = CN.createCine(CINEMATICS['c1-arrival'], { save });
+    CN.cineAdvance(R); CN.cineTick(R, 0.01);
+    assert.equal(save.cine.progress.id, 'c1-arrival');
+    assert.equal(CN.cineSkip(R), 'to-battle-1');
+    assert.ok(save.flags['cine-c1-silent'] && save.flags['cine-c1-slid']);
+    assert.equal(save.cine.progress, undefined);
+    assert.deepEqual(CN.parseShot('ots:gans:hero>push:3'), { frame: 'ots', a: 'gans', b: 'hero', move: 'push', dur: 3, args: [], src: 'ots:gans:hero>push:3' });
+    assert.equal(CN.lineSec('ab'), 1.2);
+    assert.equal(CN.lineSec('x'.repeat(30)), 2);
+  });
+
+  test('cine: world env (rel -> save.cine.rel + loyalty ×2 for a companion, flags, MRL %) and triggers', () => {
+    const save = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+    const W = { ...(await0.rep), ...(await0.comp), ...(await0.rom), members: st.members, ...(await0.chk), NPCS: await0.NPCS };
+    const env = CN.createCineEnv(save, GAME_DATA, W);
+    env.flag('x-flag', true); assert.equal(save.flags['x-flag'], true);
+    env.rel('gans', 9); assert.equal(save.cine.rel.gans, 5, 'clamped to +5');
+    st.recruit(save, 'lox');
+    const p = save.party.find((x) => x.npc === 'lox'), before = p.approval || 0;
+    env.rel('lox', 1); assert.equal(p.approval, before + 2);
+    const m0 = st.members(save, GAME_DATA)[0].unit; env.mrlPct(-10);
+    assert.equal(save.hero.mrl, m0.mrl - Math.round(m0.maxMrl * 0.1));
+    const r = env.roll(['persuasion', 'hack'], 5); assert.equal(typeof r.ok, 'boolean');
+    // triggers
+    assert.equal(HK.cinePoint(CINEMATICS['c1-arrival'].trigger), 'prologue:battle-1');
+    assert.equal(HK.cinePoint(CINEMATICS['c5-zarya'].trigger), 'date:zarya:2');
+    assert.deepEqual(HK.cinesAt(save, 'loc:harmony-reactor'), []);
+    save.flags['met-lox'] = true;
+    assert.deepEqual(HK.cinesAt(save, 'loc:harmony-reactor'), ['c3-lox5']);
+    assert.deepEqual(HK.cinesAt(save, 'battle:w-harmony-cult-cell'), ['c2-priest']);
+    p.approval = 10;
+    HK.cineStage(save, 'mq3-court', 'inside');
+    assert.equal(save.flags['mq3-court'], true);
+    assert.deepEqual(save.cine.queue, ['c6-lox-door', 'c4-court']);
+    assert.equal(HK.takeCineQueue(save), 'c4-court', 'c6 needs Lox loyalty 40');
+    save.flags['cine-seen:c3-lox5'] = true;
+    assert.deepEqual(HK.cinesAt(save, 'loc:harmony-reactor'), [], 'once');
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

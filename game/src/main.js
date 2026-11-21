@@ -124,7 +124,8 @@ game.setScene(menuScene);
   const q = new URLSearchParams(location.search), cid = q.get('cine');
   if (cid) {
     const sv = { flags: Object.fromEntries((q.get('flags') || '').split(',').filter(Boolean).map((f) => [f, true])), cine: {} };
-    playCinematic(game, cid, { save: sv, debug: true, comic: q.get('comic') === '1', onEnd: (g, res) => { g.toast(`cine ${cid}: ${res}`, 'a'); g.setScene(menuScene); } });
+    const hero = { name: t('create.defaultName'), race: 'human', cls: 'ranger', avatar: null };
+    playCinematic(game, cid, { save: sv, hero, debug: true, comic: q.get('comic') === '1', onEnd: (g, res) => { g.toast(`cine ${cid}: ${res}`, 'a'); g.setScene(menuScene); } });
   }
 }
 
