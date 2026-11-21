@@ -1,6 +1,6 @@
 """Three hairstyles (long, bob, short + fringe): cap shell + tapered wedge strands, spring-bone chains (VRM springBone compatible)."""
 from common import *
-from skeleton import joints
+from skeleton import joints, stretch_mesh, stretch_bones, zinv
 from head import ring, HH, K
 import numpy as np
 
@@ -294,4 +294,6 @@ def build_hair(style, arm, P, rgb, tip=None):
             hb.add_strand(pts, 0.070, 0.004, 0.024, chain=None)
         cfg['default'].update(stiffness=1.3)
     o, springs = hb.finish('Hair_' + style, arm, cfg, tip)
+    # built in the raw layout -> move with the stretched body (hair sits above the leg band: a pure shift)
+    stretch_mesh(o, P); stretch_bones(arm, P, {b.name for b in arm.data.bones if b.name.startswith('hair_')})
     return o, springs

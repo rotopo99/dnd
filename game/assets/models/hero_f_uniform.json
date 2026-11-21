@@ -1,7 +1,7 @@
 {
  "name": "hero_f_uniform.glb",
  "sex": "female",
- "height_m": 1.674,
+ "height_m": 1.779,
  "up": "Y",
  "front": "+Z",
  "bones_vrm_humanoid": [
@@ -85,6 +85,9 @@
   "walk",
   "run",
   "crouch_walk",
+  "talk",
+  "sit",
+  "shrug",
   "attack_melee",
   "attack_shoot",
   "cast",
@@ -647,7 +650,7 @@
    "hitRadius": 0.04
   }
  ],
- "triangles": 23706,
+ "triangles": 24562,
  "hair": "long",
  "outfit": "uniform",
  "hair_color": "silver",

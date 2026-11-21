@@ -1,7 +1,7 @@
 {
  "name": "hero_m_cyber.glb",
  "sex": "male",
- "height_m": 1.79,
+ "height_m": 1.902,
  "up": "Y",
  "front": "+Z",
  "bones_vrm_humanoid": [
@@ -84,6 +84,9 @@
   "walk",
   "run",
   "crouch_walk",
+  "talk",
+  "sit",
+  "shrug",
   "attack_melee",
   "attack_shoot",
   "cast",

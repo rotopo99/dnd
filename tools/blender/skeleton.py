@@ -71,3 +71,58 @@ def build_armature(P, name='Armature'):
 
 
 def head_pos(P): return Vector(joints(P)['head'])
+
+
+# ------------------------------------------------------------------ leg stretch (pass 3: stylized ~8 heads)
+# Everything is authored in the 'raw' layout above; then the shin/thigh band [LEG_Z0, LEG_Z1] * hs is stretched by LEG
+# (soft ramps at both ends, feet and pelvis keep their shape) and everything above moves up. zmap / zinv are exact inverses.
+LEG = float(os.environ.get('LEG_STRETCH', '1.17'))
+LEG_Z0, LEG_Z1, LEG_RAMP = 0.13, 0.86, 0.07
+_ZT = {}
+
+
+def _ztab(hs):
+    import numpy as np
+    if hs not in _ZT:
+        z = np.linspace(-0.5, 3.0, 7001); a, b, r = LEG_Z0 * hs, LEG_Z1 * hs, LEG_RAMP * hs
+        ramp = lambda x: np.clip(x, 0, 1) ** 2 * (3 - 2 * np.clip(x, 0, 1))
+        s = 1 + (LEG - 1) * ramp((z - a) / r) * ramp((b - z) / r)
+        zm = np.concatenate([[0.0], np.cumsum((s[1:] + s[:-1]) / 2 * np.diff(z))])
+        zm = zm - np.interp(0.0, z, zm)          # z = 0 (floor) stays at 0
+        _ZT[hs] = (z, zm)
+    return _ZT[hs]
+
+
+def zmap(z, P):
+    import numpy as np
+    zs, zm = _ztab(P['hs']); return float(np.interp(z, zs, zm))
+
+
+def zinv(z, P):
+    import numpy as np
+    zs, zm = _ztab(P['hs']); return float(np.interp(z, zm, zs))
+
+
+def stretch_mesh(o, P, inverse=False):
+    """Map z of all vertices (+ shape keys) of a mesh object (armature at the origin)."""
+    f = zinv if inverse else zmap
+    me = o.data
+    if me.shape_keys:
+        for kb in me.shape_keys.key_blocks:
+            for d in kb.data: d.co.z = f(d.co.z, P)
+    for v in me.vertices: v.co.z = f(v.co.z, P)
+    me.update()
+
+
+def stretch_bones(arm, P, names=None):
+    """Map z of the bone heads / tails (all bones or the given names)."""
+    mode('OBJECT', arm); mode('EDIT', arm)
+    eb = [b for b in arm.data.edit_bones if names is None or b.name in names]
+    con = {b.name: b.use_connect for b in eb}
+    for b in eb: b.use_connect = False
+    for b in eb: b.head.z = zmap(b.head.z, P); b.tail.z = zmap(b.tail.z, P)
+    for b in eb: b.use_connect = con[b.name]
+    mode('OBJECT', arm)
+
+
+def height_m(P): return zmap(1.79 * P['hs'], P)

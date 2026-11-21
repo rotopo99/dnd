@@ -15,20 +15,21 @@ EEVEE previews run on software GL under `xvfb-run` (first render compiles shader
 ## Modules
 | file | what |
 |---|---|
-| `skeleton.py` | proportions (MALE/FEMALE), VRM-humanoid bone table (T-pose, +X = character's left, front = -Y in Blender = +Z in glTF), armature |
+| `skeleton.py` | proportions (MALE/FEMALE), VRM-humanoid bone table (T-pose, +X = character's left, front = -Y in Blender = +Z in glTF), armature; leg stretch `LEG` (env `LEG_STRETCH`, default 1.17): `zmap/zinv`, `stretch_mesh`, `stretch_bones`, `height_m` |
 | `bodymesh.py` | skin-modifier graph -> subdivision (body lvl 2, hands lvl 1) |
 | `head.py` | anime head (deformed UV sphere, planar face UV, ears, nose), emotion shape keys |
 | `face_atlas.py` | procedural face atlas (eyes+iris+highlights, brows, mouth, blush, nose), 6 expressions, face-shadow SDF map |
 | `rig.py` | assembles body+hands+head, automatic weights (heat) with nearest-bone fallback, body shape keys |
 | `sculpt.py` | analytic sculpt pass on the skin body (hourglass waist/hips, bust, glutes, calves, clavicles, pecs...) + smoothing; weights smoothed after heat |
 | `hair.py` | 6 styles: `long bob short ponytail twin spiky` (cap + V-tipped lock sheets with ridges + bangs + tapered clumps, tip-gradient texture with anime ring highlight, spring chains) |
-| `clothes.py` | 4 outfits `field uniform cyber rags`: decimated shells with snapped hems, noise/crease folds, weave/knit/leather textures, pleated skirt with 8x2 spring bones (`skirt_k_q`), glowing cyber seams |
+| `clothes.py` | 4 outfits `field uniform cyber rags`: decimated shells with snapped hems (trim bands sliced + kept out of decimation), noise/crease folds, weave/knit/leather textures, A-line pleated skirt conformed to the body (`BodyRadius`) with flared, turned-up hem and 8x2 spring bones (`skirt_k_q`), coat tails draped (`drape`), layer resolve (`push_out`: skirt > coat > trousers > body), rags: clean cuts + deliberate torn tongues (`tatter`), glowing cyber seams |
 | `animsheet.py`, `animsheet_pack.py`, `face_check.py` | motion frame renders -> `tools/out/blender-anim-*.png/.gif`; expression close-ups -> `blender-face-*.png` |
-| `anim.py` | procedural FK clips |
+| `anim.py` | procedural FK clips (leg lengths read from the stretched armature; shoulder raise `Ls/Rs`; `ground_y=0` keeps feet in place) |
+| `posecheck.py` | review sheet: rest front/side/back + clip frames -> `tools/out/blender-pose-<s>-<hair>-<outfit>.png` (`NEED_GL=1 run.sh posecheck.py female long uniform walk:8:three,sit:10:side`) |
 | `export.py`, `build_all.py`, `preview.py` | export, orchestration, toon+outline preview |
 
 ## Output files (`game/assets/models/`)
-- `body_f.glb`, `body_m.glb` - body + armature + 9 animations + shape keys.
+- `body_f.glb`, `body_m.glb` - body + armature + 12 animations + shape keys.
 - `hair_{long,bob,short,ponytail,twin,spiky}_{f,m}.glb`, `outfit_{field,uniform,cyber,rags}_{f,m}.glb` - parts: same armature (same bone names) + skinned meshes; bind to the body skeleton by bone name.
 - `hero_{f,m}_{uniform,field,cyber,rags}.glb` - assembled presets (everything + animations).
 - `*.json` - meta: bone list, spring chains, expressions, animations, triangles.
@@ -39,12 +40,13 @@ EEVEE previews run on software GL under `xvfb-run` (first render compiles shader
 - Spring bones: JSON in `springBones` (node extras of hair mesh + `.json` meta): `{name, bones[], stiffness, gravityPower, gravityDir, dragForce, hitRadius}`. Not the VRMC extension - the loader maps it.
 - Shape keys (morph targets): `blink happy angry sad surprised` (face; geometry-driven, texture variants in `face_*.png` for stronger looks), `bust hips shoulders build legs_long height` (sliders, `build` -1..1 etc.). Outfits carry the same body keys (transferred).
 - Materials are plain PBR (base colour / texture): the game applies its own toon shader + inverted-hull outline (see `preview.py` for the reference look: 3 bands, outline 2.5 mm).
-- Animations (30 fps): `idle walk run crouch_walk` loop; `attack_melee attack_shoot cast hit death` one-shot. In place (no root motion). Legs are auto-grounded.
+- Animations (30 fps): `idle walk run crouch_walk talk sit` loop; `attack_melee attack_shoot cast hit death shrug` one-shot. In place (no root motion). Legs are auto-grounded.
+  Cinematics clips: `talk` (90 f: open-palm beats, nods), `shrug` (36 f), `sit` (90 f: seat ~0.45-0.5 m behind the actor origin, feet stay at the origin; no chair in the model).
+- Proportions: ~8 heads (male ~1.92 m, female ~1.80 m, `height_m` in the meta). Everything is authored in the raw layout and the leg band is stretched at the end of `rig.build_body`; hair / outfits are built in the raw layout (outfits on a raw proxy of the body) and mapped with the same `zmap`.
 - Size: ~13.7k tris body (female; male similar), hair 1.4-2.8k, outfit 3-4k; hero GLB about 1.5-2.5 MB (limit 3).
 - Triangle count is not tuned for mobile; LOD = drop outfit/hair parts or use the lower subdivision (`build_skin(level=1)`).
 
 ## Known limits
 - Face expressions are texture-painted features moved by shape keys: strong emotions look best with the `face_*` texture swap.
 - Hair strands are simple wedges; physics is data-only here (the game runs the spring bones).
-- Skirt: spring bones authored (8 sectors x 2), lower part also follows the thighs (35%) to avoid cutting through; no real collision.
-- Ragged cloth edges are stair-stepped (face-size); legs/proportions of the body are not lengthened (skeleton unchanged).
+- Skirt: spring bones authored (8 sectors x 2), lower part also follows the thighs (front up to 97%, back 82%) to avoid cutting through; no real collision (extreme run poses may still graze it).

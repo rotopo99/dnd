@@ -1,7 +1,7 @@
 {
  "name": "hero_f_rags.glb",
  "sex": "female",
- "height_m": 1.674,
+ "height_m": 1.779,
  "up": "Y",
  "front": "+Z",
  "bones_vrm_humanoid": [
@@ -87,6 +87,9 @@
   "walk",
   "run",
   "crouch_walk",
+  "talk",
+  "sit",
+  "shrug",
   "attack_melee",
   "attack_shoot",
   "cast",
@@ -196,7 +199,7 @@
    "hitRadius": 0.02
   }
  ],
- "triangles": 21226,
+ "triangles": 23036,
  "hair": "ponytail",
  "outfit": "rags",
  "hair_color": "red",

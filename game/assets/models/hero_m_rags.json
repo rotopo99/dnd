@@ -1,7 +1,7 @@
 {
  "name": "hero_m_rags.glb",
  "sex": "male",
- "height_m": 1.79,
+ "height_m": 1.902,
  "up": "Y",
  "front": "+Z",
  "bones_vrm_humanoid": [
@@ -87,6 +87,9 @@
   "walk",
   "run",
   "crouch_walk",
+  "talk",
+  "sit",
+  "shrug",
   "attack_melee",
   "attack_shoot",
   "cast",
@@ -143,7 +146,7 @@
    "hitRadius": 0.02
   }
  ],
- "triangles": 20178,
+ "triangles": 22045,
  "hair": "spiky",
  "outfit": "rags",
  "hair_color": "blonde",

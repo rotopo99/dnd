@@ -1,4 +1,5 @@
-"""Procedural animation clips (FK by limb directions, auto-grounded legs). Clips: idle walk run attack_melee attack_shoot cast hit death crouch_walk."""
+"""Procedural animation clips (FK by limb directions, auto-grounded legs).
+Clips: loop idle walk run crouch_walk talk sit; one-shot attack_melee attack_shoot cast hit death shrug."""
 from common import *
 from skeleton import joints, bone_table, FINGERS
 
@@ -10,7 +11,7 @@ def sm(x): x = max(0, min(1, x)); return x * x * (3 - 2 * x)
 
 
 BASE = dict(hips_x=0, hips_y=0, hips_z=0, hips_rx=0, hips_ry=0, hips_rz=0, spine_rx=0, spine_ry=0, spine_rz=0, chest_rx=0, chest_ry=0, chest_rz=0,
-            uchest_rx=0, uchest_ry=0, uchest_rz=0, neck_rx=0, neck_ry=0, neck_rz=0, head_rx=0, head_ry=0, head_rz=0, ground=1, lift=0, grip=0.25, lean_y=0)
+            uchest_rx=0, uchest_ry=0, uchest_rz=0, neck_rx=0, neck_ry=0, neck_rz=0, head_rx=0, head_ry=0, head_rz=0, ground=1, ground_y=1, lift=0, grip=0.25, lean_y=0, Ls=0, Rs=0)
 for s in 'LR':
     BASE.update({s + 'f': 0, s + 'a': 3, s + 'k': 2, s + 't': 0,                     # leg: forward, abduct, knee, ankle
                  s + 'Ad': 76, s + 'Af': 4, s + 'Ac': 0, s + 'Ed': 78, s + 'Ef': 22, s + 'Ec': 0, s + 'Hd': 0})   # arm: down, forward, cross | forearm: down, fwd, cross
@@ -40,8 +41,10 @@ class Rig:
         self.par = {b.name: (b.parent.name if b.parent else None) for b in arm.data.bones}
         self.dir = {b.name: (b.tail_local - b.head_local).normalized() for b in arm.data.bones}
         self.order = [b[0] for b in bone_table(P)]
-        self.L1 = (Vector(J['upperLeg']) - Vector(J['lowerLeg'])).length; self.L2 = (Vector(J['lowerLeg']) - Vector(J['foot'])).length
-        self.zank = J['foot'][2]; self.zhip = J['hips'][2]
+        bl = arm.data.bones                       # lengths from the (leg-stretched) armature, not the raw joint table
+        self.L1 = bl['leftUpperLeg'].length; self.L2 = bl['leftLowerLeg'].length
+        self.zank = bl['leftFoot'].head_local.z; self.zhip = bl['hips'].head_local.z
+        self.kz = self.zhip / J['hips'][2]        # raw -> stretched scale of authored absolute hip heights (death)
 
     def leg_vecs(self, p, s):
         f, a, k = p[s + 'f'], p[s + 'a'], p[s + 'k']; sd = 1 if s == 'L' else -1
@@ -67,7 +70,7 @@ class Rig:
             W[side + 'Foot'] = eul(p[s + 't'], 0, 0) @ Quaternion((1, 0, 0, 0))
             W[side + 'Toes'] = W[side + 'Foot']
             ankles.append(hipsW @ (d1 * self.L1 + d2 * self.L2))
-            W[side + 'Shoulder'] = W['upperChest']
+            W[side + 'Shoulder'] = Quaternion((0, 1, 0), D(-(p[s + 's']) if s == 'L' else p[s + 's'])) @ W['upperChest']   # shrug
             Wc = W['upperChest']; sd = 1 if s == 'L' else -1
             W[side + 'UpperArm'] = Vector(self.dir[side + 'UpperArm']).rotation_difference(Wc @ vec(sd, p[s + 'Ad'], p[s + 'Af'], p[s + 'Ac']))
             W[side + 'LowerArm'] = Vector(self.dir[side + 'LowerArm']).rotation_difference(Wc @ vec(sd, p[s + 'Ed'], p[s + 'Ef'], p[s + 'Ec']))
@@ -77,8 +80,8 @@ class Rig:
         dz = dy = 0.0
         if p['ground']:
             dz = -min(a.z for a in ankles) - (self.L1 + self.L2) + p['lift'] * 0  # lowest ankle at rest height
-            dy = -sum(a.y for a in ankles) / 2
-        loc = Vector((p['hips_x'], p['hips_y'] + dy * 1.0 + p['lean_y'], p['hips_z'] + dz))
+            dy = -sum(a.y for a in ankles) / 2 * p['ground_y']
+        loc = Vector((p['hips_x'], p['hips_y'] + dy * 1.0 + p['lean_y'], p['hips_z'] * (1 if p['ground'] else self.kz) + dz))
         return W, loc
 
     def apply(self, p, frame):
@@ -193,6 +196,35 @@ def keys_death():
     return [(0, {}), (5, stag), (22, fall), (36, lie), (50, lie)]
 
 
+def clip_talk(f, n):
+    """Conversational loop: weight shift, right hand beats with an open palm, left hand half-raised, head nods on the beats."""
+    t = 2 * math.pi * f / n; b = math.sin(t); beat = max(0.0, math.sin(3 * t)) ** 2; beat2 = max(0.0, math.sin(2 * t + 1.2)) ** 2
+    p = clip_idle(f, n)
+    p.update({'RAd': 58 - 6 * beat, 'RAf': 26 + 10 * beat, 'RAc': 8, 'REd': 18 - 14 * beat, 'REf': 70 + 8 * beat, 'REc': -10 - 8 * beat,
+              'LAd': 66 - 5 * beat2, 'LAf': 18 + 6 * beat2, 'LEd': 40 - 10 * beat2, 'LEf': 60 + 6 * beat2, 'LEc': 6,
+              'head_rx': 2 + 5 * beat - 2 * b, 'head_ry': 6 * math.sin(t + 0.5), 'head_rz': 2 + 2 * math.sin(t * 2),
+              'chest_ry': -4 + 4 * math.sin(t), 'chest_rx': 2 + 1.5 * beat, 'grip': 0.12 + 0.1 * beat, 'Rs': 2 * beat})
+    return p
+
+
+def keys_shrug():
+    up = dict(Ls=16, Rs=16, LAd=68, LAf=14, LAc=-6, LEd=22, LEf=58, LEc=-38, RAd=68, RAf=14, RAc=-6, REd=22, REf=58, REc=-38,
+              head_rz=9, head_rx=-3, head_ry=-4, chest_rx=-3, uchest_rx=-2, grip=0.05, Lf=4, Rf=6, Rk=10, hips_rz=2)
+    return [(0, {}), (8, up), (22, {**up, 'Ls': 13, 'Rs': 13, 'head_rz': 11}), (36, {})]
+
+
+def clip_sit(f, n):
+    """Seated loop (seat ~0.45-0.5 m: thighs level, shins vertical, feet flat), hands on the thighs, slow breathing.
+    Feet stay at the actor position (ground_y = 0): put the seat behind the actor's origin."""
+    t = 2 * math.pi * f / n; b = math.sin(t)
+    p = dict(BASE)
+    p.update({'Lf': 86, 'Rf': 82, 'Lk': 84, 'Rk': 78, 'La': 6, 'Ra': 8, 'Lt': 0, 'Rt': 4, 'ground_y': 0,
+              'hips_rx': -4, 'spine_rx': 6, 'chest_rx': 4 + 1.2 * b, 'uchest_rx': 2 + 0.8 * b, 'head_rx': 2 - 1.2 * b, 'head_rz': 2 * math.sin(t * 0.5),
+              'LAd': 66, 'LAf': 40 + 1.5 * b, 'LAc': 6, 'LEd': 30, 'LEf': 86, 'LEc': 14, 'RAd': 66, 'RAf': 40 + 1.5 * b, 'RAc': 6, 'REd': 30, 'REf': 86, 'REc': 14,
+              'grip': 0.35, 'hips_z': 0.002 * b})
+    return p
+
+
 def author(arm, P):
     """creates all actions on the armature (no NLA); returns names."""
     rig = Rig(arm, P); names = []
@@ -206,7 +238,9 @@ def author(arm, P):
     run('walk', 32, lambda f: clip_walk(f, 32))
     run('run', 24, lambda f: clip_walk(f, 24, run=True))
     run('crouch_walk', 36, lambda f: clip_walk(f, 36, crouch=True))
-    for name, keys, n in (('attack_melee', keys_attack_melee(), 40), ('attack_shoot', keys_attack_shoot(), 42), ('cast', keys_cast(), 58), ('hit', keys_hit(), 20), ('death', keys_death(), 50)):
+    run('talk', 90, lambda f: clip_talk(f, 90))
+    run('sit', 90, lambda f: clip_sit(f, 90))
+    for name, keys, n in (('shrug', keys_shrug(), 36), ('attack_melee', keys_attack_melee(), 40), ('attack_shoot', keys_attack_shoot(), 42), ('cast', keys_cast(), 58), ('hit', keys_hit(), 20), ('death', keys_death(), 50)):
         run(name, n, lambda f, keys=keys: interp(keys, f), loop=False)
     arm.animation_data.action = None
     for pb in arm.pose.bones: pb.rotation_quaternion = (1, 0, 0, 0); pb.location = (0, 0, 0)

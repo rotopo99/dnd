@@ -1,7 +1,7 @@
 {
  "name": "hero_f_field.glb",
  "sex": "female",
- "height_m": 1.674,
+ "height_m": 1.779,
  "up": "Y",
  "front": "+Z",
  "bones_vrm_humanoid": [
@@ -85,6 +85,9 @@
   "walk",
   "run",
   "crouch_walk",
+  "talk",
+  "sit",
+  "shrug",
   "attack_melee",
   "attack_shoot",
   "cast",
@@ -463,7 +466,7 @@
    "hitRadius": 0.02
   }
  ],
- "triangles": 22588,
+ "triangles": 22830,
  "hair": "bob",
  "outfit": "field",
  "hair_color": "brown",

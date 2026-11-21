@@ -6,7 +6,7 @@
 Soft look: shells are offset from the body, decimated with the hem pinned, rippled with noise/crease displacement (folds), fabric textures
 (weave) via projected UVs, toon-friendly flat colours. Weights and shape keys are transferred from the body."""
 from common import *
-from skeleton import joints
+from skeleton import joints, stretch_mesh, stretch_bones, zinv
 from mathutils import noise
 import numpy as np
 
@@ -87,12 +87,24 @@ def shell(body, z0, z1, xarm=None, off=0.010, offfn=None, ragged=None):
     return bm
 
 
-def to_object(bm, name, ratio=None, pin_z=None, pin_eps=0.04):
-    """bm -> object; decimate keeping open boundaries (hem) pinned, then snap pinned hem verts to the cut plane(s) -> clean straight hem."""
+def slice_planes(bm, planes):
+    """Extra edge loops (no clearing) along planes [(co, normal)] -> trim colour boundaries follow a clean line."""
+    for co, no in planes:
+        g = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        bmesh.ops.bisect_plane(bm, geom=g, plane_co=co, plane_no=no)
+
+
+def to_object(bm, name, ratio=None, pin_z=None, pin_eps=0.04, protect=None):
+    """bm -> object; decimate keeping open boundaries (hem) pinned, then snap pinned hem verts to the cut plane(s) -> clean straight hem.
+    protect(co) -> True: vertex kept out of the decimation (trim bands, cuffs)."""
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     o = bpy.data.objects.new(name, me); link(o)
     if ratio:
         md = o.modifiers.new('Dec', 'DECIMATE'); md.ratio = ratio; md.use_collapse_triangulate = False
+        if protect:
+            vg = o.vertex_groups.new(name='decimate')
+            vg.add([v.index for v in me.vertices if not protect(v.co)], 1.0, 'REPLACE')
+            md.vertex_group = 'decimate'; md.vertex_group_factor = 1.0
         mode('OBJECT', o); apply_modifiers(o)
     o.vertex_groups.clear()
     if o.data.shape_keys: o.shape_key_clear()
@@ -106,6 +118,37 @@ def to_object(bm, name, ratio=None, pin_z=None, pin_eps=0.04):
         bm2.to_mesh(o.data); bm2.free()
     smooth_shade(o)
     return o
+
+
+def push_out(o, refs, margin=0.005, zone=None):
+    """Layer resolve: vertices of o that are inside / too close to the reference surfaces get pushed out along the
+    reference normal (cloth over body, coat over trousers, skirt over coat). zone(co) limits the test."""
+    from mathutils.bvhtree import BVHTree
+    trees = []
+    for r in refs:
+        bm = bmesh.new(); bm.from_mesh(r.data); bm.normal_update(); trees.append(BVHTree.FromBMesh(bm)); bm.free()
+    moved = 0
+    for v in o.data.vertices:
+        if zone and not zone(v.co): continue
+        for t in trees:
+            hit = t.find_nearest(v.co, 0.08)
+            if hit[0] is None: continue
+            loc, n = hit[0], hit[1]
+            d = (v.co - loc).dot(n)
+            if d < margin: v.co = v.co + n * (margin - d); moved += 1
+    o.data.update(); return moved
+
+
+def drape(o, br, z_from, margin=0.014, step=0.015):
+    """Hanging cloth below z_from: never closer to the axis than the body anywhere above it (up to z_from) -> the coat tail
+    falls straight from the widest point (hips / glutes) instead of tucking under them."""
+    for v in o.data.vertices:
+        c = v.co
+        if c.z >= z_from: continue
+        a = math.atan2(c.x, -c.y); r = math.hypot(c.x, c.y)
+        need = max(br(c.z + k * step, a) for k in range(int((z_from - c.z) / step) + 1)) + margin
+        if r < need and r > 1e-6: q = need / r; v.co.x *= q; v.co.y *= q
+    o.data.update()
 
 
 def fold_displace(o, P, creases=(), noise_amp=0.0012, noise_scale=14.0, seed=0.0):
@@ -161,22 +204,84 @@ def assign_mats(o, fn):
     for p in o.data.polygons: p.material_index = fn(p.center)
 
 
+def raw_proxy(body, P):
+    """Copy of the (leg-stretched) body mapped back to the raw layout: outfits are cut with raw-layout constants, then mapped."""
+    bm = bmesh.new(); bm.from_mesh(body.data)
+    for v in bm.verts: v.co.z = zinv(v.co.z, P)
+    me = bpy.data.meshes.new('RawBody'); bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new('RawBody', me); link(o); return o
+
+
+class BodyRadius:
+    """Max distance of the body surface from the vertical axis per (z slab, angle bin): cloth that hangs (skirt) stays outside."""
+    def __init__(self, rb, zlo, zhi, nb=72, dz=0.015):
+        self.zlo, self.dz, self.nb = zlo, dz, nb; nz = int((zhi - zlo) / dz) + 2
+        R = np.zeros((nz, nb))
+        for v in rb.data.vertices:
+            c = v.co
+            if c.z < zlo - dz or c.z > zhi + dz or abs(c.x) > 0.32: continue
+            zi = min(nz - 1, max(0, int((c.z - zlo) / dz))); a = math.atan2(c.x, -c.y) % (2 * math.pi)
+            bi = int(a / (2 * math.pi) * nb) % nb; R[zi, bi] = max(R[zi, bi], math.hypot(c.x, c.y))
+        R = np.maximum(R, np.maximum(np.roll(R, 1, 1), np.roll(R, -1, 1)))        # dilate one bin each way
+        R = np.maximum(R, np.maximum(np.roll(R, 1, 0), np.roll(R, -1, 0)))        # and one slab
+        self.R = R
+
+    def __call__(self, z, a):
+        zi = min(self.R.shape[0] - 1, max(0, int((z - self.zlo) / self.dz))); bi = int((a % (2 * math.pi)) / (2 * math.pi) * self.nb) % self.nb
+        return float(self.R[zi, bi])
+
+
+def tatter(bm, zcut, depth, teeth, seed=0.0, cx=0.0, side=0, band=None, up=True):
+    """Deliberate torn hem on a clean cut at zcut: vertices of the hem band are pulled up by a sawtooth of the angle around
+    (cx, 0) -> triangular tongues with varying length (zcut = tip of the longest tongue). side: +1 / -1 only x > 0 / x < 0."""
+    band = band or depth * 2.6
+    sel = [v for v in bm.verts if zcut - 1e-4 <= v.co.z < zcut + band and (side == 0 or v.co.x * side > 0)]
+    # densify the hem band first (cleaner tongues)
+    ss = set(sel); es = [e for e in bm.edges if all(v in ss for v in e.verts)]
+    if es: bmesh.ops.subdivide_edges(bm, edges=es, cuts=1, use_grid_fill=True)
+    rnd = [0.35 + 0.65 * abs(math.sin(seed * 7.1 + k * 2.39)) for k in range(teeth)]
+    for v in bm.verts:
+        if not (zcut - 1e-4 <= v.co.z < zcut + band) or (side and v.co.x * side <= 0): continue
+        a = (math.atan2(v.co.x - cx, -v.co.y) / (2 * math.pi) + 0.5 + seed * 0.13) % 1.0
+        t = a * teeth; k = int(t) % teeth; fr = t - int(t)
+        tip = 1 - abs(2 * fr - 1)                                     # 0 notch .. 1 tip
+        tip = tip ** 1.4
+        u = depth * (1 - tip * rnd[k])                                 # how much is torn away here
+        w = 1 - (v.co.z - zcut) / band
+        v.co.z += u * max(0.0, w)
+
+
 # ------------------------------------------------------------------ pleated skirt (cone, box pleats, spring bones)
-def pleated_skirt(P, zt, zb, flare, pleats=22, rows=9, seg_per=4):
+def pleated_skirt(P, zt, zb, flare, pleats=22, rows=12, seg_per=4, br=None, margin=0.016, hem_flare=0.03, fold=0.03):
+    """Box-pleated A-line skirt: ellipse grown to clear the body (br: BodyRadius, never narrower than the row above),
+    pleats deepen and the hem flares out in the lower third; the hem is turned up inside (fold) -> visible thickness."""
     hs = P['hs']; hw, ww, cw, cd = P['torso']
-    bm = bmesh.new(); seg = pleats * seg_per; rings = []
+    bm = bmesh.new(); seg = pleats * seg_per; rings = []; prev = [0.0] * seg
     for j in range(rows + 1):
         f = j / rows; z = zt + (zb - zt) * f
-        rx = (hw + 0.012) + flare * f ** 0.9; ry = 0.108 + flare * 0.95 * f ** 0.9
-        rr = []
+        rx = (hw + 0.012) + flare * f ** 0.9 + hem_flare * smooth01((f - 0.55) / 0.45); ry = 0.108 + (flare * 0.95) * f ** 0.9 + hem_flare * 0.9 * smooth01((f - 0.55) / 0.45)
+        depth = 0.065 * (f ** 0.7) * (1 if f > 0.04 else 0.0)
+        rr = []; cur = []
         for i in range(seg):
             a = 2 * math.pi * i / seg; ph = (i % seg_per) / seg_per         # phase in a pleat 0..1
             tri = abs(2 * ph - 1)                                           # 0 .. 1 .. 0
-            depth = 0.020 * (f ** 0.7) * (1 if f > 0.04 else 0.0)
             k = 1 - depth * (1 - smooth01(tri))                              # rounded fold
-            rr.append(bm.verts.new((math.sin(a) * rx * k, -math.cos(a) * ry * k, z + 0.006 * f * math.sin(a * pleats * 0.5))))
-        rings.append(rr)
-    for j in range(rows):
+            r = math.hypot(math.sin(a) * rx, math.cos(a) * ry)
+            if br is not None: r = max(r, (br(z, a) + margin) / (1 - depth))
+            # A-line: a hanging skirt never gets narrower downwards (use the max of the neighbourhood row above)
+            r = max(r, prev[i], prev[i - 1] * 0.995, prev[(i + 1) % seg] * 0.995); cur.append(r)
+            roll = 0.004 * smooth01((f - 0.9) / 0.1)                          # hem rolls slightly outward
+            rr.append(bm.verts.new((math.sin(a) * (r * k + roll), -math.cos(a) * (r * k + roll), z + 0.006 * f * math.sin(a * pleats * 0.5))))
+        prev = cur; rings.append(rr)
+    # turned-up hem: hem ring -> inner ring (thickness) -> inner ring up by `fold`
+    last = rings[-1]
+    for dz_, ins in ((0.0, 0.006), (fold, 0.008)):
+        ring = []
+        for v in last:
+            r = max(1e-6, math.hypot(v.co.x, v.co.y)); q = (r - ins) / r
+            ring.append(bm.verts.new((v.co.x * q, v.co.y * q, v.co.z + dz_)))
+        rings.append(ring)
+    for j in range(len(rings) - 1):
         for i in range(seg): bm.faces.new((rings[j][i], rings[j][(i + 1) % seg], rings[j + 1][(i + 1) % seg], rings[j + 1][i]))
     bm.normal_update()
     return bm
@@ -208,7 +313,7 @@ def skirt_springs(o, arm, P, nsec=8):
         a = math.atan2(v.co.x, -v.co.y) % (2 * math.pi); s = a / (2 * math.pi) * nsec; k0 = int(s) % nsec; fr = s - int(s)
         w = {}
         leg = 'leftUpperLeg' if v.co.x > 0 else 'rightUpperLeg'
-        w_leg = 0.7 * smooth01(f * 1.3) * (1 if abs(v.co.y) > 0.0 else 0)
+        w_leg = smooth01(f / 0.4) * (0.97 if v.co.y < 0 else 0.82)        # front panel rides on the thigh (no cut-through on a raised knee)
         if f < 0.02: w['hips'] = 1.0
         else:
             ws = smooth01(f / 0.5)                  # hips -> spring bone 0
@@ -216,7 +321,7 @@ def skirt_springs(o, arm, P, nsec=8):
             for kk, ww in ((k0, 1 - fr), ((k0 + 1) % nsec, fr)):
                 w['skirt_%d_0' % kk] = w.get('skirt_%d_0' % kk, 0) + ww * wb0 * (1 - w_leg)
                 w['skirt_%d_1' % kk] = w.get('skirt_%d_1' % kk, 0) + ww * wb1 * (1 - w_leg)
-            tt = max(-1.0, min(1.0, v.co.x / 0.07)); w['hips'] = wh * (1 - w_leg); w['leftUpperLeg'] = w_leg * (0.5 + 0.5 * tt); w['rightUpperLeg'] = w_leg * (0.5 - 0.5 * tt)
+            tt = max(-1.0, min(1.0, v.co.x / 0.045)); w['hips'] = wh * (1 - w_leg); w['leftUpperLeg'] = w_leg * (0.5 + 0.5 * tt); w['rightUpperLeg'] = w_leg * (0.5 - 0.5 * tt)
         for b, x in w.items():
             if x > 1e-4: o.vertex_groups[b].add([v.index], x, 'REPLACE')
     return [dict(name='skirt%d' % k, bones=nm, stiffness=0.35, gravityPower=0.1, gravityDir=[0, -1, 0], dragForce=0.4, hitRadius=0.04) for k, nm in enumerate(names)]
@@ -225,14 +330,17 @@ def skirt_springs(o, arm, P, nsec=8):
 # ------------------------------------------------------------------ outfits
 def build_outfit(kind, body, arm, P, sex):
     hs = P['hs']; C = COL[kind]; sw = P['sw']; J = joints(P); hw, ww, cw, cd = P['torso']
+    real_body = body; body = raw_proxy(real_body, P)          # build in the raw layout (see skeleton.LEG), map at the end
     parts = []; springs = []; hem = 0.86 * hs; neck = 1.50 * hs; xs = sw + 0.50 * hs
+    if kind == 'uniform' and sex == 'female': hem = 0.975 * hs   # blouse-coat tucked into the skirt waistband
     M = lambda n, k, kindt='weave', em=False: fab(kind + n, C[k], kindt, em)
     cloth = 'knit' if kind in ('cyber',) else 'weave'
     sex_f = sex == 'female'
     if kind in ('field', 'uniform'):
         def joff(co):
             if abs(co.x) > sw + 0.03: return 0.011 + 0.003 * min(1, (abs(co.x) - sw) / 0.3)
-            return 0.010 + (0.006 if co.z > 1.28 * hs else 0.0) * (1 if kind == 'uniform' else 0.4)
+            hip = 0.012 * smooth01((1.04 * hs - co.z) / (0.10 * hs))          # coat skirt stands off the hips / trousers
+            return 0.010 + hip + (0.006 if co.z > 1.28 * hs else 0.0) * (1 if kind == 'uniform' else 0.4)
         bm = shell(body, hem, neck, xs, offfn=joff)
         collar(bm, neck, 0.03 if kind == 'uniform' else 0.022, 0.93)
         if kind == 'uniform':
@@ -249,7 +357,8 @@ def build_outfit(kind, body, arm, P, sex):
             for sx in (1, -1):
                 band(bm, (sx * (sw + 0.14 * hs), 0, 1.435 * hs), 0.062, 0.062, 0.045, axis='X')
                 blob(bm, (sx * (sw - 0.01), 0, 1.50 * hs), 0.06, (1.2, 1.1, 0.45))                                                   # pauldron pad
-        jk = to_object(bm, 'Jacket', 0.55, pin_z=[hem, neck])
+        slice_planes(bm, [((0, 0, hem + 0.035), (0, 0, 1)), ((xs - 0.035, 0, 0), (1, 0, 0)), ((-(xs - 0.035), 0, 0), (1, 0, 0))])
+        jk = to_object(bm, 'Jacket', 0.55, pin_z=[hem, neck], protect=lambda co: co.z < hem + 0.05 or co.z > neck - 0.03 or abs(co.x) > xs - 0.05)
         fold_displace(jk, P, creases=[('z', 1.0 * hs, 0.03, 0.0035, 7, 0.3), ('x', xs * 0.52 + 0.04, 0.03, 0.0035, 3, 0.0)], seed=1.0)
         for i, (n, k, kt) in enumerate((('', 'jacket', cloth), ('Trim', 'jacket_trim', cloth), ('Accent', 'accent', 'weave'), ('Gear', 'gear', 'leather'))): jk.data.materials.append(M(n or 'Main', k, kt))
         def jm(c):
@@ -264,18 +373,25 @@ def build_outfit(kind, body, arm, P, sex):
         assign_mats(jk, jm); parts.append(jk)
         # lower body
         if kind == 'uniform' and sex_f:
-            bm = pleated_skirt(P, 1.0 * hs, 0.58 * hs, 0.05)
+            bm = pleated_skirt(P, 1.0 * hs, 0.58 * hs, 0.04, br=BodyRadius(body, 0.55 * hs, 1.02 * hs))
             sk = to_object(bm, 'Skirt'); sk.data.materials.append(M('Skirt', 'pants')); sk.data.materials.append(M('SkirtTrim', 'pants_trim'))
             assign_mats(sk, lambda c: 1 if c.z < 0.58 * hs + 0.022 else 0); parts.append(sk)
+            push_out(jk, [body], 0.006)
+            push_out(sk, [body, jk], 0.005, zone=lambda co: co.z > 0.86 * hs)                             # skirt over the tucked coat
             springs += skirt_springs(sk, arm, P)
             bpy.context.view_layer.objects.active = sk; mode('OBJECT', sk); bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
         else:
-            bm = shell(body, 0.20 * hs, 1.0 * hs, None, offfn=lambda co: 0.009 + 0.004 * (1 if co.z < 0.45 * hs else 0))
+            bm = shell(body, 0.20 * hs, 1.0 * hs, None, offfn=lambda co: 0.007 + 0.004 * (1 if co.z < 0.45 * hs else 0))
             if kind == 'field':
                 for sx in (1, -1):
                     rbox(bm, (sx * P['hx'] * 1.0, -0.062, 0.50 * hs), (0.07, 0.03, 0.09), bevel=0.012)
                     rbox(bm, (sx * (P['hx'] + 0.075), 0.0, 0.78 * hs), (0.035, 0.08, 0.11), bevel=0.01)
-            pn = to_object(bm, 'Pants', 0.4, pin_z=[0.20 * hs, 1.0 * hs])
+            stripe = P['hx'] + 0.06
+            sl = [((0, 0, 0.97 * hs), (0, 0, 1))]
+            if kind == 'uniform': sl += [((sx * (stripe + d), 0, 0), (1, 0, 0)) for sx in (1, -1) for d in (-0.012, 0.012)]
+            slice_planes(bm, sl)
+            pn = to_object(bm, 'Pants', 0.65 if kind == 'uniform' else 0.45, pin_z=[0.20 * hs, 1.0 * hs],
+                           protect=lambda co: co.z > 0.95 * hs or co.z < 0.23 * hs or (kind == 'uniform' and abs(abs(co.x) - stripe) < 0.03))
             fold_displace(pn, P, creases=[('z', 0.50 * hs, 0.03, 0.003, 5, 0.0), ('z', 0.25 * hs, 0.03, 0.003, 5, 1.0)], seed=3.0)
             for n, k, kt in (('', 'pants', cloth), ('Trim', 'pants_trim', cloth), ('Gear', 'gear', 'leather')): pn.data.materials.append(M('Pants' + n, k, kt))
             def pm(c):
@@ -284,6 +400,9 @@ def build_outfit(kind, body, arm, P, sex):
                 if kind == 'field' and (c.y < -0.05 and 0.44 * hs < c.z < 0.56 * hs or abs(abs(c.x) - P['hx'] - 0.075) < 0.04 and 0.7 * hs < c.z < 0.86 * hs and abs(c.y) < 0.09): return 2
                 return 0
             assign_mats(pn, pm); parts.append(pn)
+            push_out(pn, [body], 0.004)
+            drape(jk, BodyRadius(body, hem - 0.02, 1.02 * hs), 0.98 * hs)
+            push_out(jk, [body], 0.006); push_out(jk, [pn], 0.005, zone=lambda co: co.z < 1.06 * hs)     # coat over trousers at the hips
         zt = 0.22 * hs if kind == 'field' else 0.11 * hs
         bm = shell(body, -0.01, zt, None, offfn=lambda co: 0.016 if kind == 'field' else 0.011)
         bt = to_object(bm, 'Boots', 0.5, pin_z=[zt])
@@ -308,19 +427,18 @@ def build_outfit(kind, body, arm, P, sex):
             if abs(c.z - 1.0 * hs) < 0.02 and ax < 0.3: return 1
             if abs(ax - (hw * 0.70)) < 0.03 and False: return 1
             return 0
-        assign_mats(bs, sm_)
+        assign_mats(bs, sm_); push_out(bs, [body], 0.0025)
         parts.append(bs); bt = None
         bm = shell(body, -0.01, 0.20 * hs, None, offfn=lambda co: 0.013)
         bt = to_object(bm, 'Boots', 0.5, pin_z=[0.20 * hs])
     else:   # rags
-        jag = lambda c: 0.02 * math.sin(math.atan2(c.x, -c.y) * 9 + c.x * 7) + 0.03 * abs(math.sin(math.atan2(c.x, -c.y) * 4.3))
-        bm = shell(body, None, neck, sw + 0.13 * hs, offfn=lambda co: 0.009 + 0.004 * (1 if co.z > 1.3 * hs else 0),
-                   ragged=lambda c: hem + 0.10 * hs + jag(c) + (0.05 if abs(c.x) > sw else 0.0) * 0 if c.z < 1.3 * hs else -9)
+        zsh = hem + 0.085 * hs                                                       # shirt hem: clean cut + torn tongues
+        bm = shell(body, zsh, neck, sw + 0.13 * hs, offfn=lambda co: 0.009 + 0.004 * (1 if co.z > 1.3 * hs else 0))
+        # right sleeve torn off along a clean diagonal (armpit -> top of the shoulder)
+        g = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        bmesh.ops.bisect_plane(bm, geom=g, plane_co=(-(sw - 0.005), 0, 1.36 * hs), plane_no=Vector((-1, 0, 0.55)).normalized(), clear_outer=True)
+        tatter(bm, zsh, 0.045 * hs, 9, seed=1.3)
         bm.normal_update()
-        # left shoulder torn away: cut a diagonal piece (sleeve missing on the right)
-        bad = [f for f in bm.faces if f.calc_center_median().x < -(sw - 0.01) and f.calc_center_median().z > 1.30 * hs]
-        bmesh.ops.delete(bm, geom=bad, context='FACES')
-        loose = [v for v in bm.verts if not v.link_faces]; bmesh.ops.delete(bm, geom=loose, context='VERTS')
         band(bm, (sw + 0.18 * hs, 0, 1.435 * hs), 0.05, 0.05, 0.02, axis='X')
         sh = to_object(bm, 'Shirt', None)
         fold_displace(sh, P, creases=[('z', 1.12 * hs, 0.05, 0.004, 6, 0.0)], noise_amp=0.003, noise_scale=10.0, seed=7.0)
@@ -328,9 +446,14 @@ def build_outfit(kind, body, arm, P, sex):
         assign_mats(sh, lambda c: 1 if (c.z > neck - 0.01 or (c.z < 1.3 * hs and c.z < hem + 0.16 * hs and abs(c.x) < 0.01)) else 0)
         parts.append(sh)
         # shorts, one leg longer
-        jagp = lambda c: 0.025 * math.sin(math.atan2(c.x, -c.y) * 11 + c.z * 30) + 0.02 * math.sin(c.x * 40)
-        bm = shell(body, None, 1.0 * hs, None, offfn=lambda co: 0.010,
-                   ragged=lambda c: (0.52 * hs if c.x > 0 else 0.68 * hs) + jagp(c))
+        # shorts, one leg longer: clean cut per leg + torn tongues
+        zl, zr = 0.50 * hs, 0.66 * hs
+        bm = shell(body, zl, 1.0 * hs, None, offfn=lambda co: 0.010)
+        g = [x for x in bm.verts[:] + bm.edges[:] + bm.faces[:] if all(v.co.x < 0.0 for v in (x.verts if hasattr(x, 'verts') else [x]))]
+        bmesh.ops.bisect_plane(bm, geom=g, plane_co=(0, 0, zr), plane_no=(0, 0, 1), clear_inner=True)
+        loose = [v for v in bm.verts if not v.link_faces]; bmesh.ops.delete(bm, geom=loose, context='VERTS')
+        tatter(bm, zl, 0.05 * hs, 5, seed=2.1, cx=P['hx'], side=1)
+        tatter(bm, zr, 0.04 * hs, 5, seed=3.7, cx=-P['hx'], side=-1)
         rbox(bm, (-P['hx'] - 0.082, 0.0, 0.75 * hs), (0.03, 0.07, 0.09), bevel=0.01)     # patch pocket
         pn = to_object(bm, 'Shorts', None)
         fold_displace(pn, P, creases=[('z', 0.97 * hs, 0.03, 0.004, 8, 0.0)], noise_amp=0.003, noise_scale=9.0, seed=9.0)
@@ -360,6 +483,10 @@ def build_outfit(kind, body, arm, P, sex):
         zt_ = (0.22 * hs if kind == 'field' else (0.11 * hs if kind == 'uniform' else 0.20 * hs))
         assign_mats(bt, lambda c: 1 if (c.z < 0.03 * hs or c.z > zt_ - 0.02) else 0); parts.append(bt)
     # --- UVs, weights (transfer from body, except the skirt: own), shape keys
+    # raw layout -> stretched legs (parts + the skirt spring bones), then weights / shape keys from the real body
+    bpy.data.objects.remove(body); body = real_body
+    for o in parts: stretch_mesh(o, P)
+    stretch_bones(arm, P, {b.name for b in arm.data.bones if b.name.startswith('skirt_')})
     bones = [b.name for b in arm.data.bones]
     for o in parts:
         project_uv(o)

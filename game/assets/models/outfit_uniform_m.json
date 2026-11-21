@@ -1,7 +1,7 @@
 {
  "name": "outfit_uniform_m.glb",
  "sex": "male",
- "height_m": 1.79,
+ "height_m": 1.902,
  "up": "Y",
  "front": "+Z",
  "bones_vrm_humanoid": [
@@ -80,5 +80,5 @@
  ],
  "animations": [],
  "springBones": [],
- "triangles": 4946
+ "triangles": 6088
 }

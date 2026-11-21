@@ -130,4 +130,5 @@ def build_body(sex='female', skin='light', hair_rgb=(0.3, 0.2, 0.17), iris=(0.25
     body_shapekeys(body, P, sex)
     body['sex'] = sex
     body.parent = arm
+    stretch_mesh(body, P); stretch_bones(arm, P)          # long legs (skeleton.LEG); parts built later map themselves
     return P, arm, body, fixed

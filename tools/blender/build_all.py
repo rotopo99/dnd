@@ -51,7 +51,7 @@ def make_faces():
 def done_preview(name, objs, views=('front', 'three', 'back'), **kw):
     if args.no_preview: return
     if os.environ.get('QUICK'): views = ('three',)
-    preview.render_views(objs, os.path.join(OUT, 'blender-%s.png' % name), views=views, toon=True, engine='EEVEE', size=(380, 640), center=(0, 0, 0.9), height=1.9, **kw)
+    preview.render_views(objs, os.path.join(OUT, 'blender-%s.png' % name), views=views, toon=True, engine='EEVEE', size=(380, 640), center=(0, 0, 1.0), height=2.1, **kw)
 
 
 if args.only in ('all', 'faces'): make_faces(); log('faces done')
@@ -101,7 +101,7 @@ if args.only in ('all', 'preset'):
             for i, (n, fr) in enumerate([('idle', 1), ('walk', 8), ('run', 6), ('attack_melee', 20), ('attack_shoot', 16), ('cast', 34), ('hit', 4), ('death', 30)]):
                 arm.animation_data.action = bpy.data.actions[n]; sc.frame_set(fr); bpy.context.view_layer.update()
                 pth = os.path.join(WORK, 'a%d.png' % i)
-                preview.render_views(objs[1:], pth, views=('three',), toon=True, engine='EEVEE', size=(300, 420), center=(0, 0, 0.85), height=1.9)
+                preview.render_views(objs[1:], pth, views=('three',), toon=True, engine='EEVEE', size=(300, 420), center=(0, 0, 0.95), height=2.1)
                 im = bpy.data.images.load(pth); w, h = im.size; imgs.append(np.array(im.pixels[:]).reshape(h, w, 4)); bpy.data.images.remove(im)
             sheet = np.concatenate([np.concatenate(imgs[:4], axis=1), np.concatenate(imgs[4:], axis=1)], axis=0)
             im = bpy.data.images.new('s', sheet.shape[1], sheet.shape[0], alpha=True); im.pixels = sheet.ravel().tolist()
