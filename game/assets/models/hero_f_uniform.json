@@ -183,6 +183,258 @@
    "hitRadius": 0.02
   },
   {
+   "name": "L5",
+   "bones": [
+    "hair_L5_0",
+    "hair_L5_1",
+    "hair_L5_2",
+    "hair_L5_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L6",
+   "bones": [
+    "hair_L6_0",
+    "hair_L6_1",
+    "hair_L6_2",
+    "hair_L6_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L7",
+   "bones": [
+    "hair_L7_0",
+    "hair_L7_1",
+    "hair_L7_2",
+    "hair_L7_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L8",
+   "bones": [
+    "hair_L8_0",
+    "hair_L8_1",
+    "hair_L8_2",
+    "hair_L8_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L9",
+   "bones": [
+    "hair_L9_0",
+    "hair_L9_1",
+    "hair_L9_2",
+    "hair_L9_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L10",
+   "bones": [
+    "hair_L10_0",
+    "hair_L10_1",
+    "hair_L10_2",
+    "hair_L10_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L11",
+   "bones": [
+    "hair_L11_0",
+    "hair_L11_1",
+    "hair_L11_2",
+    "hair_L11_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L12",
+   "bones": [
+    "hair_L12_0",
+    "hair_L12_1",
+    "hair_L12_2",
+    "hair_L12_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L13",
+   "bones": [
+    "hair_L13_0",
+    "hair_L13_1",
+    "hair_L13_2",
+    "hair_L13_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L14",
+   "bones": [
+    "hair_L14_0",
+    "hair_L14_1",
+    "hair_L14_2",
+    "hair_L14_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L15",
+   "bones": [
+    "hair_L15_0",
+    "hair_L15_1",
+    "hair_L15_2",
+    "hair_L15_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L16",
+   "bones": [
+    "hair_L16_0",
+    "hair_L16_1",
+    "hair_L16_2",
+    "hair_L16_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L17",
+   "bones": [
+    "hair_L17_0",
+    "hair_L17_1",
+    "hair_L17_2",
+    "hair_L17_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "L18",
+   "bones": [
+    "hair_L18_0",
+    "hair_L18_1",
+    "hair_L18_2",
+    "hair_L18_3"
+   ],
+   "stiffness": 0.8,
+   "gravityPower": 0.05,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.5,
+   "hitRadius": 0.02
+  },
+  {
    "name": "F0",
    "bones": [
     "hair_F0_0",
@@ -265,9 +517,137 @@
    ],
    "dragForce": 0.5,
    "hitRadius": 0.02
+  },
+  {
+   "name": "skirt0",
+   "bones": [
+    "skirt_0_0",
+    "skirt_0_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt1",
+   "bones": [
+    "skirt_1_0",
+    "skirt_1_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt2",
+   "bones": [
+    "skirt_2_0",
+    "skirt_2_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt3",
+   "bones": [
+    "skirt_3_0",
+    "skirt_3_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt4",
+   "bones": [
+    "skirt_4_0",
+    "skirt_4_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt5",
+   "bones": [
+    "skirt_5_0",
+    "skirt_5_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt6",
+   "bones": [
+    "skirt_6_0",
+    "skirt_6_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "skirt7",
+   "bones": [
+    "skirt_7_0",
+    "skirt_7_1"
+   ],
+   "stiffness": 0.35,
+   "gravityPower": 0.1,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.4,
+   "hitRadius": 0.04
   }
  ],
- "triangles": 20349,
+ "triangles": 23706,
  "hair": "long",
  "outfit": "uniform",
  "hair_color": "silver",

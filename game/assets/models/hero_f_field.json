@@ -97,7 +97,8 @@
    "bones": [
     "hair_B0_0",
     "hair_B0_1",
-    "hair_B0_2"
+    "hair_B0_2",
+    "hair_B0_3"
    ],
    "stiffness": 1.0,
    "gravityPower": 0.03,
@@ -114,7 +115,8 @@
    "bones": [
     "hair_B1_0",
     "hair_B1_1",
-    "hair_B1_2"
+    "hair_B1_2",
+    "hair_B1_3"
    ],
    "stiffness": 1.0,
    "gravityPower": 0.03,
@@ -131,7 +133,8 @@
    "bones": [
     "hair_B2_0",
     "hair_B2_1",
-    "hair_B2_2"
+    "hair_B2_2",
+    "hair_B2_3"
    ],
    "stiffness": 1.0,
    "gravityPower": 0.03,
@@ -148,7 +151,224 @@
    "bones": [
     "hair_B3_0",
     "hair_B3_1",
-    "hair_B3_2"
+    "hair_B3_2",
+    "hair_B3_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B4",
+   "bones": [
+    "hair_B4_0",
+    "hair_B4_1",
+    "hair_B4_2",
+    "hair_B4_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B5",
+   "bones": [
+    "hair_B5_0",
+    "hair_B5_1",
+    "hair_B5_2",
+    "hair_B5_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B6",
+   "bones": [
+    "hair_B6_0",
+    "hair_B6_1",
+    "hair_B6_2",
+    "hair_B6_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B7",
+   "bones": [
+    "hair_B7_0",
+    "hair_B7_1",
+    "hair_B7_2",
+    "hair_B7_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B8",
+   "bones": [
+    "hair_B8_0",
+    "hair_B8_1",
+    "hair_B8_2",
+    "hair_B8_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B9",
+   "bones": [
+    "hair_B9_0",
+    "hair_B9_1",
+    "hair_B9_2",
+    "hair_B9_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B10",
+   "bones": [
+    "hair_B10_0",
+    "hair_B10_1",
+    "hair_B10_2",
+    "hair_B10_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B11",
+   "bones": [
+    "hair_B11_0",
+    "hair_B11_1",
+    "hair_B11_2",
+    "hair_B11_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B12",
+   "bones": [
+    "hair_B12_0",
+    "hair_B12_1",
+    "hair_B12_2",
+    "hair_B12_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B13",
+   "bones": [
+    "hair_B13_0",
+    "hair_B13_1",
+    "hair_B13_2",
+    "hair_B13_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B14",
+   "bones": [
+    "hair_B14_0",
+    "hair_B14_1",
+    "hair_B14_2",
+    "hair_B14_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B15",
+   "bones": [
+    "hair_B15_0",
+    "hair_B15_1",
+    "hair_B15_2",
+    "hair_B15_3"
    ],
    "stiffness": 1.0,
    "gravityPower": 0.03,
@@ -243,7 +463,7 @@
    "hitRadius": 0.02
   }
  ],
- "triangles": 20394,
+ "triangles": 22588,
  "hair": "bob",
  "outfit": "field",
  "hair_color": "brown",

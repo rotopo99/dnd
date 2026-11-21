@@ -168,10 +168,10 @@ for (const [bi, biome] of biomes.entries()) {
     const red = await page.evaluate(async () => {
       const m = await import('/game/src/gfx/settings.js'), S = window.__game.scene.S;
       m.setGfxPref('reduceFx', true); m.setGfxPref('reduceMotion', true); S.v3.lastSig = '';
-      await new Promise((r) => setTimeout(r, 400));
+      for (let t = 0; t < 40 && (S.v3.stats.shadow || S.v3.stats.particles); t++) { S.v3.lastSig = ''; await new Promise((r) => setTimeout(r, 100)); }
       const a = { ...S.v3.stats };
       m.setGfxPref('reduceFx', false); m.setGfxPref('reduceMotion', false); m.setGfxPref('shadows', 'low'); S.v3.lastSig = '';
-      await new Promise((r) => setTimeout(r, 400));
+      for (let t = 0; t < 40 && S.v3.stats.shadow !== 512; t++) { S.v3.lastSig = ''; await new Promise((r) => setTimeout(r, 100)); }
       const c = { ...S.v3.stats };
       m.setGfxPref('shadows', 'high');
       return { a, c };

@@ -216,7 +216,7 @@ def skirt_springs(o, arm, P, nsec=8):
             for kk, ww in ((k0, 1 - fr), ((k0 + 1) % nsec, fr)):
                 w['skirt_%d_0' % kk] = w.get('skirt_%d_0' % kk, 0) + ww * wb0 * (1 - w_leg)
                 w['skirt_%d_1' % kk] = w.get('skirt_%d_1' % kk, 0) + ww * wb1 * (1 - w_leg)
-            w['hips'] = wh * (1 - w_leg); w[leg] = w_leg
+            tt = max(-1.0, min(1.0, v.co.x / 0.07)); w['hips'] = wh * (1 - w_leg); w['leftUpperLeg'] = w_leg * (0.5 + 0.5 * tt); w['rightUpperLeg'] = w_leg * (0.5 - 0.5 * tt)
         for b, x in w.items():
             if x > 1e-4: o.vertex_groups[b].add([v.index], x, 'REPLACE')
     return [dict(name='skirt%d' % k, bones=nm, stiffness=0.35, gravityPower=0.1, gravityDir=[0, -1, 0], dragForce=0.4, hitRadius=0.04) for k, nm in enumerate(names)]
@@ -258,7 +258,7 @@ def build_outfit(kind, body, arm, P, sex):
             if kind == 'uniform' and abs(c.x) < 0.011 and c.y < 0: return 1
             if kind == 'field' and abs(abs(c.x) - (sw + 0.14 * hs)) < 0.03 and c.z > 1.3 * hs: return 2
             if abs(c.x) < 0.35 and c.y < -(cd + 0.012) and (c.z < 1.28 * hs and c.z > 1.15 * hs) and kind == 'field': return 3
-            if c.y > cd + 0.03 or (kind == 'uniform' and abs(abs(c.x) - sw) < 0.06 and c.z > 1.46 * hs): return 3 if kind == 'field' else 2
+            if (kind == 'field' and c.y > cd + 0.03) or (kind == 'uniform' and abs(abs(c.x) - sw) < 0.06 and c.z > 1.46 * hs): return 3 if kind == 'field' else 2
             if kind == 'uniform' and c.z > 0.97 * hs and c.z < 1.03 * hs and abs(c.x) < 0.3: return 3
             return 0
         assign_mats(jk, jm); parts.append(jk)

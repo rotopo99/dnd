@@ -85,7 +85,7 @@ for sex in SEXES:
             done_preview('outfit-%s-%s' % (k, sx(sex)), [body] + parts)
 if args.only in ('all', 'preset'):
     for name, sex, st, k, hc, skin in PRESETS:
-        if sex not in SEXES: continue
+        if sex not in SEXES or (os.environ.get('PRESETS') and name not in os.environ['PRESETS'].split(',')): continue
         P, arm, body, names = base_scene(sex, hair.HAIR_COLORS[hc], skin)
         o, sp = hair.build_hair(st, arm, P, hair.HAIR_COLORS[hc], hair.HAIR_TIPS[hc]); parts, sps = clothes.build_outfit(k, body, arm, P, sex); sp = sp + sps
         p = os.path.join(MODELS, name + '.glb'); objs = [arm, body, o] + parts

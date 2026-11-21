@@ -120,6 +120,7 @@ if (await page.evaluate(() => (window.__game.scene.S.b.metric || 0) >= 2 && wind
   await settle();
   const pc = await screenOf(aim.px, aim.py);
   await page.mouse.move(pc.x, pc.y); await wait(300);
+  for (let i = 0; i < 40 && !(await page.evaluate(() => !!window.__game.scene.S.aim?.area)); i++) await wait(100); // slow frames: hover on the next step
   const cone = await page.evaluate(async () => {
     const S = window.__game.scene.S, b = S.b, h = b.byId[S.heroId], C = await import('/game/src/rules/combat.js');
     const tc = S.targetAt(S.hover.cell), A = S.aim;
