@@ -21,7 +21,7 @@ COL = dict(
 # ------------------------------------------------------------------ materials / textures
 def fabric_image(name, hexcol, kind='weave'):
     """128 px tiling fabric: colour x thread pattern (weave / knit / leather / tech panel)."""
-    N = 128; c = np.array(srgb(hexcol)); u, v = np.meshgrid(np.arange(N), np.arange(N))
+    N = 128; h_ = hexcol.lstrip('#'); c = np.array([int(h_[i:i + 2], 16) / 255 for i in (0, 2, 4)]); u, v = np.meshgrid(np.arange(N), np.arange(N))
     if kind == 'weave': p = 0.5 + 0.5 * np.sin(u * 2 * math.pi / 4) * np.sin(v * 2 * math.pi / 4); k = 0.14
     elif kind == 'knit': p = 0.5 + 0.5 * np.sin((u + (v // 4 % 2) * 2) * 2 * math.pi / 8) ; k = 0.16
     elif kind == 'leather': p = np.random.RandomState(3).rand(N, N) * 0.5 + 0.5 * (0.5 + 0.5 * np.sin(u * 0.3 + v * 0.17)); k = 0.08
@@ -87,16 +87,12 @@ def shell(body, z0, z1, xarm=None, off=0.010, offfn=None, ragged=None):
     return bm
 
 
-def to_object(bm, name, ratio=None, pin_z=None, pin_eps=0.02):
+def to_object(bm, name, ratio=None, pin_z=None, pin_eps=0.04):
     """bm -> object; decimate keeping open boundaries (hem) pinned, then snap pinned hem verts to the cut plane(s) -> clean straight hem."""
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     o = bpy.data.objects.new(name, me); link(o)
     if ratio:
-        bm2 = bmesh.new(); bm2.from_mesh(me)
-        bnd = {v.index for e in bm2.edges if e.is_boundary for v in e.verts}; bm2.free()
-        vg = o.vertex_groups.new(name='pin'); vg.add(list(bnd), 1.0, 'REPLACE')
         md = o.modifiers.new('Dec', 'DECIMATE'); md.ratio = ratio; md.use_collapse_triangulate = False
-        md.vertex_group = 'pin'; md.vertex_group_factor = 1000.0
         mode('OBJECT', o); apply_modifiers(o)
     o.vertex_groups.clear()
     if o.data.shape_keys: o.shape_key_clear()
@@ -242,7 +238,6 @@ def build_outfit(kind, body, arm, P, sex):
         if kind == 'uniform':
             for sx in (1, -1):
                 blob(bm, (sx * (sw - 0.02), 0, 1.49 * hs), 0.05, (1.5, 1.3, 0.25))                                      # epaulettes
-                for q in range(2): band(bm, (sx * (xs - 0.05 - 0.035 * q), 0, 1.435 * hs), 0.058, 0.058, 0.012, axis='X')    # cuff stripes
             for k in range(3):
                 for sx in (1, -1): blob(bm, (sx * 0.03, -(cd + 0.018 + 0.006 * (k == 0)), (1.12 + 0.1 * k) * hs), 0.0095)
             band(bm, (0, 0.0, 1.0 * hs), hw * 0.88 + 0.012, 0.11, 0.035)
@@ -254,7 +249,7 @@ def build_outfit(kind, body, arm, P, sex):
             for sx in (1, -1):
                 band(bm, (sx * (sw + 0.14 * hs), 0, 1.435 * hs), 0.062, 0.062, 0.045, axis='X')
                 blob(bm, (sx * (sw - 0.01), 0, 1.50 * hs), 0.06, (1.2, 1.1, 0.45))                                                   # pauldron pad
-        jk = to_object(bm, 'Jacket', 0.6, pin_z=[hem, neck])
+        jk = to_object(bm, 'Jacket', 0.55, pin_z=[hem, neck])
         fold_displace(jk, P, creases=[('z', 1.0 * hs, 0.03, 0.0035, 7, 0.3), ('x', xs * 0.52 + 0.04, 0.03, 0.0035, 3, 0.0)], seed=1.0)
         for i, (n, k, kt) in enumerate((('', 'jacket', cloth), ('Trim', 'jacket_trim', cloth), ('Accent', 'accent', 'weave'), ('Gear', 'gear', 'leather'))): jk.data.materials.append(M(n or 'Main', k, kt))
         def jm(c):
@@ -264,8 +259,6 @@ def build_outfit(kind, body, arm, P, sex):
             if kind == 'field' and abs(abs(c.x) - (sw + 0.14 * hs)) < 0.03 and c.z > 1.3 * hs: return 2
             if abs(c.x) < 0.35 and c.y < -(cd + 0.012) and (c.z < 1.28 * hs and c.z > 1.15 * hs) and kind == 'field': return 3
             if c.y > cd + 0.03 or (kind == 'uniform' and abs(abs(c.x) - sw) < 0.06 and c.z > 1.46 * hs): return 3 if kind == 'field' else 2
-            if kind == 'uniform' and abs(abs(c.x) - (xs - 0.05)) < 0.03 or kind == 'uniform' and abs(abs(c.x) - (xs - 0.085)) < 0.01: return 2
-            if kind == 'uniform' and (c.z > 1.12 * hs and c.z < 1.34 * hs) and abs(c.x) < 0.04 and c.y < -(cd + 0.012): return 2
             if kind == 'uniform' and c.z > 0.97 * hs and c.z < 1.03 * hs and abs(c.x) < 0.3: return 3
             return 0
         assign_mats(jk, jm); parts.append(jk)
@@ -275,13 +268,14 @@ def build_outfit(kind, body, arm, P, sex):
             sk = to_object(bm, 'Skirt'); sk.data.materials.append(M('Skirt', 'pants')); sk.data.materials.append(M('SkirtTrim', 'pants_trim'))
             assign_mats(sk, lambda c: 1 if c.z < 0.58 * hs + 0.022 else 0); parts.append(sk)
             springs += skirt_springs(sk, arm, P)
+            bpy.context.view_layer.objects.active = sk; mode('OBJECT', sk); bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
         else:
             bm = shell(body, 0.20 * hs, 1.0 * hs, None, offfn=lambda co: 0.009 + 0.004 * (1 if co.z < 0.45 * hs else 0))
             if kind == 'field':
                 for sx in (1, -1):
                     rbox(bm, (sx * P['hx'] * 1.0, -0.062, 0.50 * hs), (0.07, 0.03, 0.09), bevel=0.012)
                     rbox(bm, (sx * (P['hx'] + 0.075), 0.0, 0.78 * hs), (0.035, 0.08, 0.11), bevel=0.01)
-            pn = to_object(bm, 'Pants', 0.5, pin_z=[0.20 * hs, 1.0 * hs])
+            pn = to_object(bm, 'Pants', 0.4, pin_z=[0.20 * hs, 1.0 * hs])
             fold_displace(pn, P, creases=[('z', 0.50 * hs, 0.03, 0.003, 5, 0.0), ('z', 0.25 * hs, 0.03, 0.003, 5, 1.0)], seed=3.0)
             for n, k, kt in (('', 'pants', cloth), ('Trim', 'pants_trim', cloth), ('Gear', 'gear', 'leather')): pn.data.materials.append(M('Pants' + n, k, kt))
             def pm(c):
@@ -302,7 +296,7 @@ def build_outfit(kind, body, arm, P, sex):
             blob(bm, (sx * (sw - 0.005), 0, 1.495 * hs), 0.06, (1.3, 1.15, 0.5))                           # pauldron
             for t in (0.30, 0.62): band(bm, (sx * (sw + t * 0.5 * hs), 0, 1.435 * hs), 0.046 * (0.88), 0.046, 0.012, axis='X')   # arm rings
             for z in (0.78, 0.30): band(bm, (sx * P['hx'], 0, z * hs), 0.082 if z > 0.5 else 0.054, 0.085 if z > 0.5 else 0.058, 0.016)     # leg rings
-        bs = to_object(bm, 'Suit', 0.42, pin_z=[0.07 * hs, 1.49 * hs])
+        bs = to_object(bm, 'Suit', 0.35, pin_z=[0.07 * hs, 1.49 * hs])
         fold_displace(bs, P, creases=[('x', xs * 0.52 + 0.04, 0.025, 0.0015, 3, 0.0), ('z', 0.50 * hs, 0.025, 0.0015, 5, 0.0)], noise_amp=0.0004, seed=5.0)
         for n, k, kt, em in (('Suit', 'jacket', 'knit', False), ('Plate', 'gear', 'tech', False), ('Glow', 'accent', 'weave', True), ('Trim', 'jacket_trim', 'knit', False)): bs.data.materials.append(fab('Cyber' + n, C[k], kt, em))
         def sm_(c):

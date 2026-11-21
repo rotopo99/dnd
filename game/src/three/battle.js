@@ -2,7 +2,7 @@
 // the world description, overlay batch, particles and unit poses come from the backend-independent gfx/scene3d.js
 // prepFrame; this module turns them into a Three scene: static chunks (MeshStandardMaterial, vertex colours + baked
 // AO + world-space value noise, glow vertices -> emissive, cut-away of walls in front of the focus), map border walls
-// (low on the near sides), horizon backdrop, barrels, units (SkinnedMesh per unit on the old templates: toon material,
+// (low on the near sides), horizon backdrop, barrels (InstancedMesh per kind), units (SkinnedMesh per unit on the old templates: toon material,
 // inverted-hull outline in the team colour, x-ray silhouette behind walls, hit flash -> emissive), floor decals
 // (highlights, path, zones, surfaces, rings, contact blobs: one dynamic translucent mesh), particles (instanced shader),
 // key light with soft shadows + fill + hemisphere, night point lights, linear fog; post chain of three/engine.js.
@@ -218,7 +218,7 @@ function createState(E, V) {
   scene.add(parts);
   const T = {
     scene, cam3, U, UU: unitUniforms(), world, hemi, key, fill, overlay, parts, ovCap: 0, ptCap: 0,
-    chunks: new Map(), edges: [], backdrop: null, backKey: '', barrels: [], units: new Map(), points: [], props: new Map(),
+    chunks: new Map(), edges: [], backdrop: null, backKey: '', barrels: new Map(), units: new Map(), points: [], props: new Map(),
     pickMesh: null, pickCells: null, proxies: new Map(), ray: new THREE.Raycaster(), gv: -1, shadowSize: -1,
   };
   T.pick = (S, px, py) => pickThree(E, V, T, S, px, py);
@@ -323,7 +323,7 @@ function overlayGeo(v, geo, cap = 0) {
 }
 
 // ---------------------------------------------------------------- units
-const IDENT = new THREE.Matrix4();
+const IDENT = new THREE.Matrix4(), BM = new THREE.Matrix4();
 function makeUnit(E, T, tpl) {
   const geo = E.geometry(`tpl:${tpl.key}`, () => geoFromMB(tpl.mb, true));
   if (!geo) return null;
@@ -417,15 +417,24 @@ export function drawBattleThree(E, game, S, opts) {
   T.U.uCutDir.value.set(view.dir[0], view.dir[1]);
   T.U.uCutH.value = 6 + (VW.cutH - 6) * view.k + GFX.three.world.cutPad;
 
-  // barrels (break mid-battle): pooled meshes
-  const brs = b.barrels || [];
-  while (T.barrels.length > brs.length) disposeObj(T.barrels.pop(), false);
-  brs.forEach((br, i) => {
-    const id = br.kind === 'toxgas' ? 'barrel-toxic' : 'barrel', geo = E.geometry(`prop:${id}`, () => geoFromMB(propModel(id)));
-    let m = T.barrels[i];
-    if (!m || m.geometry !== geo) { if (m) disposeObj(m, false); m = new THREE.Mesh(geo, T.world); m.castShadow = m.receiveShadow = true; T.scene.add(m); T.barrels[i] = m; }
-    m.position.set(br.x, Wd.floor[br.y * Wd.w + br.x] || 0, br.y);
-  });
+  // barrels (break mid-battle): one InstancedMesh per kind (capacity grows by doubling)
+  const brs = b.barrels || [], byKind = new Map();
+  for (const br of brs) { const id = br.kind === 'toxgas' ? 'barrel-toxic' : 'barrel'; if (!byKind.has(id)) byKind.set(id, []); byKind.get(id).push(br); }
+  for (const id of new Set([...byKind.keys(), ...T.barrels.keys()])) {
+    const list = byKind.get(id) || [];
+    let m = T.barrels.get(id);
+    if (!list.length) { if (m) m.count = 0; continue; }
+    if (!m || m.instanceMatrix.count < list.length) {
+      if (m) { m.parent?.remove(m); m.dispose(); }
+      const geo = E.geometry(`prop:${id}`, () => geoFromMB(propModel(id)));
+      m = new THREE.InstancedMesh(geo, T.world, Math.max(4, list.length * 2));
+      m.castShadow = m.receiveShadow = true; m.frustumCulled = false;
+      T.scene.add(m); T.barrels.set(id, m);
+    }
+    list.forEach((br, i) => { BM.makeTranslation(br.x, Wd.floor[br.y * Wd.w + br.x] || 0, br.y); m.setMatrixAt(i, BM); });
+    m.count = list.length;
+    m.instanceMatrix.needsUpdate = true;
+  }
 
   // units
   const seen = new Set(), ppm = cam.ppmFit * cam.zoom;
@@ -557,6 +566,8 @@ export function dropBattleThree(E, V) {
   if (!T) return;
   for (const o of T.units.values()) dropUnit(o);
   T.units.clear();
+  for (const m of T.barrels.values()) m.dispose();
+  T.barrels.clear();
   for (const c of T.chunks.values()) c.mesh?.geometry.dispose();
   for (const e of T.edges) { e.full?.geometry.dispose(); e.low?.geometry.dispose(); }
   for (const m of T.backdrop?.all || []) m.geometry.dispose();

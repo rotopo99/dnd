@@ -152,7 +152,8 @@ export const GFX = {
     shadow: { high: 2048, low: 1024, bias: -0.0006, normalBias: 0.025, radius: 3 },
     world: { rough: 0.86, noise: 0.16, noiseScale: [2.3, 9.0], ao: 0.55, glow: 2.6, cutPad: 0.01 },
     unit: { steps: [0.42, 0.72, 1.0], glow: 2.2, flash: 1.6 },
-    ao: { radius: 0.6, distanceExponent: 1.2, thickness: 1.0, scale: 1.0, samples: 12, intensity: 0.85 },
+    // GTAO on the orthographic camera (picked on ?hq=1: radius 0.6 gave ~1 % change, 1.5 m reads in wall / crate corners)
+    ao: { radius: 1.5, distanceExponent: 1.0, thickness: 2.0, scale: 1.5, samples: 12, intensity: 1.0 },
     bloom: { strength: 0.42, radius: 0.35, threshold: 0.92 },
     grade: { vignette: 0.22, start: 0.55, max: 0.93, sat: 0.85 },
     // night: lights x ambient, tint (palette key) x tintK outside the light holes, moonlight key / sky colours, warm pools

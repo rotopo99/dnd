@@ -122,9 +122,12 @@ def new_action(arm, name):
 
 # ------------------------------------------------------------------ clips (param dict per frame)
 def clip_idle(f, n):
-    t = 2 * math.pi * f / n; b = math.sin(t)
-    return {**BASE, 'chest_rx': 1.2 * b, 'uchest_rx': 0.8 * b, 'head_rx': -0.8 * b + 1.5, 'hips_z': 0.003 * b, 'hips_x': 0.006 * math.sin(t), 'hips_rz': 1.0 * math.sin(t),
-            'chest_rz': -1.0 * math.sin(t), 'LAf': 4 + 2 * b, 'RAf': 4 + 2 * b, 'LAd': 76 + 1.2 * b, 'RAd': 76 + 1.2 * b, 'Lf': 2, 'Rf': -2, 'Lk': 3, 'Rk': 3, 'LEf': 22 + 3 * b, 'REf': 22 + 3 * b, 'head_rz': 2 * math.sin(t)}
+    """Weight on the left leg (straight), right knee relaxed and forward, hip pushed out + tilted, counter-rotated chest, slow breathing, head drifts."""
+    t = 2 * math.pi * f / n; b = math.sin(t); b2 = math.sin(2 * t)
+    return {**BASE, 'hips_x': 0.028 + 0.004 * math.sin(t), 'hips_rz': 5 + 1.2 * math.sin(t), 'hips_ry': 3 + 0.6 * b, 'spine_rz': -3, 'chest_rz': -5 - 1.0 * math.sin(t),
+            'chest_ry': -2, 'chest_rx': 1.4 * b, 'uchest_rx': 1.0 * b, 'uchest_rz': -2, 'head_rx': 1.5 - 1.0 * b, 'head_rz': 4 + 2 * math.sin(t + 0.8), 'head_ry': 3 * math.sin(t * 0.5 + 1),
+            'hips_z': 0.003 * b, 'Lf': -3, 'Lk': 2, 'La': 2, 'Rf': 10, 'Rk': 16, 'Ra': 9, 'Rt': -6,
+            'LAf': 6 + 2 * b, 'RAf': 10 + 2 * b, 'LAd': 74 + 1.2 * b, 'RAd': 72 + 1.2 * b, 'LEf': 24 + 3 * b, 'REf': 30 + 3 * b, 'grip': 0.3 + 0.05 * b2}
 
 
 def clip_walk(f, n, run=False, crouch=False):

@@ -11,7 +11,9 @@ args = ap.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv els
 SEXES = ['female', 'male'] if args.sex == 'both' else [args.sex]
 STYLES = hair.STYLES; OUTFITS = os.environ.get('OUTFITS', ','.join(clothes.KINDS)).split(',')
 PRESETS = [('hero_f_uniform', 'female', 'long', 'uniform', 'silver', 'light'), ('hero_f_field', 'female', 'bob', 'field', 'brown', 'tan'),
-           ('hero_m_field', 'male', 'short', 'field', 'black', 'light'), ('hero_m_uniform', 'male', 'short', 'uniform', 'brown', 'tan')]
+           ('hero_f_cyber', 'female', 'twin', 'cyber', 'pink', 'light'), ('hero_f_rags', 'female', 'ponytail', 'rags', 'red', 'tan'),
+           ('hero_m_field', 'male', 'short', 'field', 'black', 'light'), ('hero_m_uniform', 'male', 'short', 'uniform', 'brown', 'tan'),
+           ('hero_m_cyber', 'male', 'spiky', 'cyber', 'blue', 'light'), ('hero_m_rags', 'male', 'spiky', 'rags', 'blonde', 'dark')]
 sx = lambda s: 'f' if s == 'female' else 'm'
 t0 = time.time(); log = lambda *a: print('[build %4ds]' % (time.time() - t0), *a, flush=True)
 
