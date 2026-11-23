@@ -40,10 +40,11 @@ for (const [cat, w] of WEAPONS) {
     if (w) { h.weapon = { ...w }; h.hide = { ...(h.hide || {}), weapon: false }; } else h.hide = { ...(h.hide || {}), weapon: true };
     await new Promise((r) => setTimeout(r, 2500));
     const m = await import('/game/src/gfx/scene3d.js'), R = S.v3.T.party.get(h.id);
-    return { key: R?.wkey, parent: R?.W?.group.parent?.name, p: m.unitScreen(S, h, S.dispOf(h)) };
+    return { key: R?.wkey, parent: R?.W?.group.parent?.name, clip: R?.C?.inst.current(), p: m.unitScreen(S, h, S.dispOf(h)) };
   }, [cat, w]);
   console.log(cat, JSON.stringify(info));
-  ok(cat === 'hidden' ? /\|1$/.test(info.key || '') && info.parent === 'hips' : info.key?.startsWith(cat + '|') && info.parent === 'rightHand', `${cat}: ${info.key} on ${info.parent}`);
+  ok(cat === 'hidden' ? (info.key || '').split('|')[2] === '1' && info.parent === 'hips' : info.key?.startsWith(cat + '|') && info.parent === 'rightHand', `${cat}: ${info.key} on ${info.parent}`);
+  if (cat === 'rifle' || cat === 'staff') ok(/_2h$/.test(info.clip || ''), `${cat}: two-handed clip ${info.clip}`);
   if (info.p) await shot(`three-weapons-${cat}`, { x: Math.max(0, info.p.x - 140), y: Math.max(0, info.p.y - 40), width: 280, height: 300 });
 }
 await shot('three-weapons-battle');

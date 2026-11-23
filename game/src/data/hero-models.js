@@ -20,6 +20,8 @@ export const HERO_MODELS = {
   tint: { hair: /^Hair/, hairGain: 12, cloth: /(Main|Suit|Shirt)$/, clothGain: 5 },
   // battle action (gfx/anim.js act kinds) -> clip; the clip is sped up to the action length within clipSpeed
   clip: { swing: 'attack_melee', shoot: 'attack_shoot', cast: 'cast', throw: 'attack_melee', use: 'cast' },
+  clip2h: { swing: 'attack_2h', shoot: 'shoot_2h', throw: 'attack_2h' }, // two-handed weapon: action clips (others as clip)
+  loop2h: { idle: 'idle_2h', walk: 'walk_2h', run: 'run_2h' },            // two-handed weapon: locomotion loops (crouch_walk stays)
   clipSpeed: [0.7, 2.6],
   walkSpeed: 1.4, runSpeed: 3.4, runAt: 2.3, // m/s of the clips at timeScale 1; faster display motion -> run
   fade: 0.18,
@@ -33,8 +35,23 @@ export const HERO_MODELS = {
       polearm: 'staff', wand: 'staff', bow: 'staff', pistol: 'pistol', smg: 'pistol', rifle: 'rifle', mg: 'rifle', crossbow: 'rifle', launcher: 'rifle', laser: 'rifle', melta: 'rifle' },
     glow: ['cyberblade', 'laser', 'melta', 'wand'], // kinds with a glowing part
     bone: 'rightHand', grip: [0, 0.07, -0.025],      // m in the hand bone (y: wrist -> knuckles; -x: thumb side; -z: palm)
+    // two-handed: categories / kinds held in both hands — *_2h clips, mounted on the model meta grip2h (tools/blender README)
+    twoHand: { cats: ['rifle', 'staff'], kinds: ['hammer'] },
+    carry2h: { staff: -Math.PI / 2, blunt: Math.PI / 2 }, // rad about x: shaft onto the rifle axis in the *_2h loops (staff: orb over the shoulder, hammer: head low)
+    carry2hNative: ['attack_2h'], carryLerp: 14,           // clips holding the shaft natively; ease 1/s
+    carry2hPos: [0.017, 0.03, 0],                          // carry: shaft between the fists (the rifle frame puts the support palm ~7 cm above the grip axis)
     holster: { bone: 'hips', pos: [-0.2, -0.08, 0.02], rot: [0, 0, Math.PI * 0.94] }, // u.hide.weapon: stowed at the right hip
     scale: 1.2,                                      // stylized oversize, readable at battle zoom
     color: { metal: 0xb4bcc8, dark: 0x343a46, wood: 0x7a5232, grip: 0x2a2320, glow: 0x4fd0ff },
+  },
+  // key characters / crowd NPCs as assembled Blender models (npc_<id>.glb; three/party.js npcSpec). sex: face atlas set.
+  npc: {
+    on: true,
+    sex: { lox: 'm', arbitrazh: 'm', ladov: 'm', cyberpriest: 'f', trader: 'f', settler: 'm', guard: 'm' },
+    byNpc: { lox: 'lox', 'lox-clone-7': 'lox', judge: 'arbitrazh', 'great-collector': 'ladov', 'cyber-priest': 'cyberpriest' }, // data/npcs.js id
+    byEnemy: { 'ai-lox-clone': 'lox', 'boss-judge-avatar': 'arbitrazh', 'boss-great-collector': 'ladov', 'cyber-priest': 'cyberpriest', 'boss-cyber-priest-prime': 'cyberpriest' },
+    // roam NPCs without a key model (team npc, human): by role; deterministic tint variety by the npc id
+    crowd: { races: ['human'], trade: 'trader', guardFactions: ['aiParty', 'tinBrotherhood', 'warprom', 'renegades'], guard: 'guard', other: 'settler' },
+    crowdTint: { cloth: ['7', '6', '4', '3', 'j', 'f', 'c', '8'], hair: ['0', '2', '7', '8', 'a', '4'] }, // palette keys
   },
 };

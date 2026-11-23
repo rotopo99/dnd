@@ -90,14 +90,14 @@ await page.mouse.wheel(0, -120); await wait(400);
 ok(z === 1 && (await st()).cam.zoom === 2, `wheel zoom 2 → ${z} → back`);
 // 5. night with point lights, cones visible
 await force({ tod: 'night', weather: 'clear' });
-await page.keyboard.down('AltLeft'); await wait(400);
+await page.keyboard.down('AltLeft'); await wait(1500); // GLB crowd: slow SwiftShader frames, stats lag a frame
 s = await st();
 ok(s.stats.lights >= 1 && s.stats.lights <= 8, `night lights ${s.stats.lights}`);
 await shot('gfx3d-roam-night');
 await page.keyboard.up('AltLeft');
 // 6. rain / snow / fog particles; «Снизить эффекты» drops them
 for (const w of ['rain', 'snow', 'fog']) {
-  await force({ tod: 'day', weather: w }); await wait(400);
+  await force({ tod: 'day', weather: w }); await wait(1500); // slow SwiftShader frames with the GLB crowd
   s = await st();
   ok(s.stats.weather && s.stats.particles > 5, `${w}: ${s.stats.particles} particles`);
   if (w !== 'fog') await shot(`gfx3d-roam-${w}`);

@@ -5,7 +5,11 @@
 // Clips: idle / walk / run / crouch_walk loops, one-shots attack_melee / attack_shoot / cast / hit / death sped up to
 // the action length (missing clip — the current loop stays). Loading is async: until the character is ready (or when
 // it failed — then for the whole session) the unit is drawn by the procedural template. Enemies stay procedural.
-//   partySpec(u)                     -> spec | null (eligible unit: data/hero-models.js teams / races, humanoid body)
+// Key characters (Lox, the Judge avatar, Ladov, the Cyber-Priest: HERO_MODELS.npc byNpc / byEnemy — companions,
+// bosses, roam NPCs) and roam crowd NPCs (trader / guard / settler by role, cloth / hair tint by the npc id) use the
+// assembled npc_<id>.glb. Two-handed weapons switch to the *_2h clips. Night tint / light holes as the procedural units.
+//   partySpec(u)                     -> spec | null (eligible unit: data/hero-models.js teams / races, humanoid body; npc models)
+//   npcModelOf(u)                    -> {nid, tint} | null (which npc_<nid>.glb a unit uses)
 //   syncParty(T, p, c)               -> true when the unit p is drawn by its GLB character this frame
 //                                       (c: {now (display clock), ppm (px per metre), prefs, hgt (unit heights)})
 //   sweepParty(T)                    hide characters not drawn this frame; drop after HERO_MODELS.keepUnseen s
@@ -14,19 +18,46 @@
 import * as THREE from 'three';
 import { HERO_MODELS as HM } from '../data/hero-models.js';
 import { CINE_FACES } from '../data/cine-play.js';
+import { NPCS } from '../data/npcs.js';
 import { GFX } from '../data/gfx.js';
 import { bodyType } from '../gfx/units3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
-import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec } from './character.js';
-import { weaponKey, attachWeapon, detachWeapon } from './weapons.js';
+import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec, npcSpec } from './character.js';
+import { weaponKey, attachWeapon, detachWeapon, isTwoHand } from './weapons.js';
+import { nightPatch } from './units.js';
 
 const failed = new Set(); // spec keys that did not load: procedural for the session
 const specs = new WeakMap();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wallNow = () => performance.now() / 1000;
+const ZERO = new THREE.Vector3(), CARRY_POS = new THREE.Vector3(...HM.weapon.carry2hPos);
+
+const hashOf = (s) => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h; };
+
+export function npcModelOf(u) {
+  const N = HM.npc;
+  if (!N?.on) return null;
+  if (u.kind === 'enemy') { const nid = N.byEnemy[String(u.enemyId || '').split('^')[0]]; return nid ? { nid, tint: null } : null; }
+  if (u.kind !== 'hero') return null;
+  // roam pseudo units carry npcId (gfx/roam3d.js); battle companions are c-<npc id> (world/state.js)
+  const id = u.npcId || (typeof u.id === 'string' && u.id.startsWith('c-') ? u.id.slice(2) : null);
+  if (!id) return null;
+  if (N.byNpc[id]) return { nid: N.byNpc[id], tint: null };
+  if (u.team !== 'npc' || !N.crowd.races.includes(u.raceId || 'human')) return null;
+  const n = NPCS[id] || {}, C = N.crowd, h = hashOf(id), T = N.crowdTint;
+  const nid = n.services?.includes('trade') ? C.trade : C.guardFactions.includes(n.faction) ? C.guard : C.other;
+  return { nid, tint: { cloth: T.cloth[h % T.cloth.length], hair: T.hair[(h >>> 8) % T.hair.length] } };
+}
 
 export function partySpec(u) {
-  if (!HM.on || u.kind !== 'hero' || !HM.teams.includes(u.team) || !HM.races.includes(u.raceId || 'human') || bodyType(u) !== 'humanoid') return null;
+  if (!HM.on) return null;
+  const nm = npcModelOf(u);
+  if (nm) {
+    let m = specs.get(u);
+    if (!m || m.sig !== 'npc') { m = { sig: 'npc', spec: npcSpec(nm.nid, nm.tint) }; specs.set(u, m); }
+    if (!failed.has(m.spec.key)) return m.spec;
+  }
+  if (u.kind !== 'hero' || !HM.teams.includes(u.team) || !HM.races.includes(u.raceId || 'human') || bodyType(u) !== 'humanoid') return null;
   const sig = `${heroLook3d(u).key}|${JSON.stringify(u.hide || 0)}|${u.armorType || ''}`;
   let m = specs.get(u);
   if (!m || m.sig !== sig) { m = { sig, spec: heroSpec(u) }; specs.set(u, m); }
@@ -51,6 +82,8 @@ function build(T, id, R, spec) {
     if (R.dead) { disposeCharacter(C); return; }
     R.hull = hullMat(); R.xray = xrayMat();
     toonify(C, { tint: spec.tint, outline: () => R.hull, xray: () => R.xray });
+    for (const m of C.mats) nightPatch(m, T.UU);
+    nightPatch(R.hull, T.UU);
     setBodyShape(C, spec.shape);
     C.bodies = [];
     C.root.traverse((o) => {
@@ -90,7 +123,8 @@ function animate(R, p, now, dt) {
     if (R.cur !== 'death' && now >= fallT) one('death', 0, now);
   } else {
     if (R.cur === 'death') R.oneEnd = 0;
-    if (st.act && st.t0 !== R.actT0 && now >= st.t0 && now < st.t0 + st.dur) { R.actT0 = st.t0; one(HM.clip[st.act] || 'attack_melee', st.dur, now); }
+    const a2 = R.two && HM.clip2h[st.act], act = a2 && I.clips.has(a2) ? a2 : HM.clip[st.act] || 'attack_melee';
+    if (st.act && st.t0 !== R.actT0 && now >= st.t0 && now < st.t0 + st.dur) { R.actT0 = st.t0; one(act, st.dur, now); }
     else if (st.hitT0 !== R.hitT0 && now >= st.hitT0 && now < st.hitT0 + 1) { R.hitT0 = st.hitT0; one('hit', 0, now); }
   }
   if (fall || now < R.oneEnd) return;
@@ -102,6 +136,8 @@ function animate(R, p, now, dt) {
     sp = clamp(R.v / (name === 'run' ? HM.runSpeed : HM.walkSpeed) / (R.k || 1), 0.6, 2);
   }
   if (!I.clips.has(name)) name = 'idle';
+  const n2 = R.two && HM.loop2h[name];
+  if (n2 && I.clips.has(n2)) name = n2;
   const a = I.play(name, { fade: HM.fade, speed: sp });
   if (a) a.timeScale = sp;
   R.cur = name;
@@ -118,7 +154,11 @@ export function syncParty(T, p, c) {
   if (!R.C) return false;
   const C = R.C, d = p.it.d, now = c.now;
   const wk = weaponKey(u);
-  if (wk !== R.wkey) { detachWeapon(C, R.W); R.W = attachWeapon(C, wk, R.hull); R.wkey = wk; }
+  if (wk !== R.wkey) {
+    detachWeapon(C, R.W); R.W = attachWeapon(C, wk, R.hull); R.wkey = wk;
+    R.two = isTwoHand(wk) && C.inst.clips.has('idle_2h');
+    if (R.W) { for (const m of R.W.mats) nightPatch(m, T.UU); if (R.W.hullMat) nightPatch(R.W.hullMat, T.UU); }
+  }
   const dt = R.lastNow == null ? 0 : clamp(now - R.lastNow, 0, 0.25);
   R.lastNow = now;
   const x = d.x + 0.5, z = d.y + 0.5, y = c.hgt[id] ?? 0;
@@ -131,6 +171,11 @@ export function syncParty(T, p, c) {
   C.root.scale.setScalar(R.k);
   C.root.visible = true;
   animate(R, p, now, dt);
+  if (R.W?.carry) { // two-handed carry <-> native shaft (attack_2h)
+    const nat = HM.weapon.carry2hNative.includes(C.inst.current()), pv = R.W.pivot, k = Math.min(1, dt * HM.weapon.carryLerp);
+    pv.rotation.x += ((nat ? 0 : R.W.carry) - pv.rotation.x) * k;
+    pv.position.lerp(nat ? ZERO : CARRY_POS, k);
+  }
   C.inst.update(dt);
   C.root.updateMatrixWorld(true);
   stepSprings(C, dt, (HM.physics[c.prefs.physics] ?? 1) * (c.prefs.reduceMotion ? 0.5 : 1));

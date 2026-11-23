@@ -4,7 +4,8 @@
 // cloth through texture luminance), body shape keys, faces (atlas swap face_<sex>_<tex>.png + expression keys, blink),
 // spring bones from the .json meta (VRM-like verlet chains, weight by the «Физика тела» setting).
 //   heroSpec(u)                      -> F {base, parts, sex, hair:null, tint {skin, hair, cloth}, shape, key} of an editor look
-//   assembleCharacter(F)             -> Promise<C> {inst, root, sex, bones, rest, springs, headY, height, faces, morph, mats}
+//   npcSpec(nid, tint)               -> F of an assembled NPC model npc_<nid> (data/hero-models.js HERO_MODELS.npc)
+//   assembleCharacter(F)             -> Promise<C> {inst, root, sex, bones, rest, springs, headY, height, faces, morph, mats, meta}
 //   toonify(C, o)                    toon materials; o {look (CINE_LOOKS entry), tint, outline: true | (mesh) => material, xray: (mesh) => material}
 //   setBodyShape(C, shape)           shape keys {bust, hips, shoulders, build, height}
 //   setFace(C, tex, keys, blink)     face atlas + expression shape keys (keys {happy: 0.8, ...})
@@ -83,6 +84,12 @@ export function heroSpec(u) {
   return { base: `body_${sex}`, parts, sex, hair: null, tint: { skin: sk, hair: hs ? hk : null, cloth: ck }, shape, key };
 }
 
+/** Assembled key-character / crowd model npc_<nid> (hair and outfit are in the GLB); tint {skin, hair, cloth} keys or null. */
+export function npcSpec(nid, tint = null) {
+  const sex = HM.npc.sex[nid] || 'm';
+  return { base: `npc_${nid}`, parts: [], sex, hair: null, tint: tint || {}, shape: {}, npc: nid, key: `npc|${nid}|${tint ? Object.values(tint).join('') : '-'}` };
+}
+
 /** Base + parts on one skeleton, idle pose applied (C.headY: head top over the feet, m). */
 export async function assembleCharacter(F) {
   const inst = await instanceGLB(`${MODEL_DIR}${F.base}.glb`);
@@ -104,6 +111,7 @@ export async function assembleCharacter(F) {
   // spring chains (rest = bind pose: the clips do not animate hair_* / skirt_* bones)
   const metas = await Promise.all(got.map(modelMeta));
   if (metas[0]?.height_m) C.height = metas[0].height_m;
+  C.meta = metas[0] || null; // grip2h (two-handed weapon frame in rightHand), loops, npc
   const seen = new Set();
   for (const m of metas) for (const sb of m?.springBones || []) {
     const joints = [];
@@ -152,7 +160,7 @@ export function toonify(C, o = {}) {
     const conv = (m) => {
       const t = new THREE.MeshToonMaterial({ name: m.name, color: m.color?.clone() || new THREE.Color(1, 1, 1), map: m.map || null, gradientMap: toonRamp(),
         side: THREE.DoubleSide, transparent: !!L?.opacity, opacity: L?.opacity ?? 1, emissive: new THREE.Color(L?.emissive ?? (/glow/i.test(m.name) ? 0x4fa0f0 : 0)) });
-      if (L?.tint) t.color.lerp(new THREE.Color(L.tint), 0.6);
+      if (L?.tint) t.color.lerp(new THREE.Color(L.tint), L.tintK ?? 0.6);
       if (m.name === 'Skin') { if (o.skinHex != null) t.color.set(o.skinHex); else if (tSkin) t.color.copy(tSkin); }
       else if (t.map && tHair && HM.tint.hair.test(m.name)) { t.color.copy(tHair); lumTint(t, HM.tint.hairGain); }
       else if (t.map && tCloth && HM.tint.cloth.test(m.name)) { t.color.copy(tCloth); lumTint(t, HM.tint.clothGain); }

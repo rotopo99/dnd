@@ -9,6 +9,8 @@
 //   syncUnitUniforms(UU, o)          per frame: light / fill dirs (world), view dir, night, lights, toon numbers
 //   unitMaterial(UU)                 body material (per unit: m.userData.faceU / tint uniforms)
 //   hullMaterial(UU)                 inverted-hull outline: dark shade of the vertex ramp + 30 % team colour
+//   nightPatch(m, UU)                the same night tint + light holes on any built-in material (GLB characters,
+//                                    three/party.js); chains an existing onBeforeCompile
 // Geometry attributes (three/battle.js geoFromMB skin): rampS, color (= base ramp, sRGB), rampL, aox (ao, glow), uvk.
 import * as THREE from 'three';
 import { GFX } from '../data/gfx.js';
@@ -191,3 +193,40 @@ export function hullMaterial(UU) {
   return m;
 }
 export function disposeUnitAtlases() { faceTex?.dispose(); matTex?.dispose(); faceTex = matTex = null; }
+
+// night tint for built-in materials (MeshToon / MeshBasic of GLB characters): outgoingLight (linear) -> sRGB -> the
+// same nightTint as the procedural units -> linear; world position from the skinned vertex
+const NIGHT_VS = 'varying vec3 vWorldP;';
+const NIGHT_FS = `varying vec3 vWorldP;
+uniform vec4 uNight; uniform vec4 uLightCol; uniform vec3 uLights[8]; uniform int uNumLights;
+vec3 l2sN(vec3 c) { return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+vec3 s2lN(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+vec3 nightTintL(vec3 l) {
+  if (uNight.a <= 0.0) return l;
+  vec3 c = l2sN(l);
+  float lit = 0.0, glow = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uNumLights) break;
+    float r = uLights[i].z, dd = length(vWorldP.xz - uLights[i].xy);
+    lit = max(lit, 1.0 - smoothstep(r * 0.6, r, dd));
+    glow = max(glow, 1.0 - smoothstep(0.0, r * 0.9, dd));
+  }
+  c = mix(c, uNight.rgb, uNight.a * (1.0 - lit));
+  return s2lN(mix(c, uLightCol.rgb, uLightCol.a * glow * glow));
+}`;
+export function nightPatch(m, UU) {
+  if (m.userData.night) return m;
+  m.userData.night = true;
+  const prev = m.onBeforeCompile, key = m.customProgramCacheKey;
+  m.onBeforeCompile = (sh, r) => {
+    prev.call(m, sh, r);
+    for (const k of ['uNight', 'uLightCol', 'uLights', 'uNumLights']) sh.uniforms[k] = UU[k];
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\n${NIGHT_VS}`)
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vWorldP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${NIGHT_FS}`)
+      .replace('#include <opaque_fragment>', 'outgoingLight = nightTintL(outgoingLight);\n#include <opaque_fragment>');
+  };
+  m.customProgramCacheKey = () => `${key.call(m)}|night`;
+  m.needsUpdate = true;
+  return m;
+}

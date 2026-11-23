@@ -67,13 +67,16 @@ export const CINE_FACES = {
   cringe: { tex: 'sad', keys: { sad: 0.45, angry: 0.35 } },
 };
 
-// Model keys of the cast -> GLB files (game/assets/models). `base` + `parts`; missing models (judge-avatar) -> stand-ins.
+// Model keys of the cast -> GLB files (game/assets/models). `npc` — assembled npc_<id>.glb (fallback `base` + `parts` when it
+// fails to load); `base` + `parts`; `skin` — skin colour; `tint` + `tintK` — whole-figure colour lerp (all materials).
 export const CINE_MODELS = {
-  'judge-avatar': { base: 'body_m', parts: ['outfit_cyber_m'], tint: 0xb9a39e, scale: 1.25 },
+  'judge-avatar': { npc: 'arbitrazh', base: 'body_m', parts: ['outfit_cyber_m'], skin: 0xb9a39e, scale: 1.25 },
   outfit_cyber_m: { base: 'body_m', parts: ['outfit_cyber_m', 'hair_short_m'] },
   outfit_cyber_f: { base: 'body_f', parts: ['outfit_cyber_f', 'hair_bob_f'] },
-  ladov: { base: 'body_m', parts: ['outfit_uniform_m', 'hair_short_m'], tint: 0xa8acb4, scale: 1.12 }, // c8: the burnt-out colonel, greyed
+  ladov: { npc: 'ladov', base: 'body_m', parts: ['outfit_uniform_m', 'hair_short_m'], tint: 0xa8acb4, tintK: 0.35, scale: 1.12 }, // c8: the burnt-out colonel, greyed
 };
+// Cast id -> key-character model npc_<id> (overrides the scene's stand-in `model`; null model — not shown, as before).
+export const CINE_CAST_NPC = { lox: 'lox', lox5: 'lox', priest: 'cyberpriest', judge: 'arbitrazh', ladov: 'ladov' };
 // Actor looks: `look: 'spirit'` — translucent cyan; `blank` — empty eyes (neutral face, no blink).
 export const CINE_LOOKS = { spirit: { opacity: 0.55, tint: 0x70d8f2, emissive: 0x1c4a5a }, blank: { noBlink: true, face: 'neutral' } };
 

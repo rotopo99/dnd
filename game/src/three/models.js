@@ -1,7 +1,7 @@
 // GLB models on Three.js (docs/specs/threejs-migration.md §6, stage 3 groundwork): GLTFLoader with a shared Promise
 // cache by URL, instances through SkeletonUtils.clone (own skeleton per unit), AnimationMixer per instance with named
-// clips (Blender contract, tools/blender/README.md: idle walk run crouch_walk loop; attack_melee attack_shoot cast hit
-// death one-shot; talk shrug sit may appear), parts (hair / outfit GLBs on the same bone names) bound to the instance
+// clips (Blender contract, tools/blender/README.md: idle walk run crouch_walk talk sit idle_2h walk_2h run_2h aim_2h loop;
+// attack_melee attack_shoot cast hit death shrug shoot_2h attack_2h one-shot), parts (hair / outfit GLBs on the same bone names) bound to the instance
 // skeleton (their own spring chains re-parented onto the instance bones).
 // Users: three/character.js (assembly shared by three/cinema.js and three/party.js).
 //   loadGLB(url)                     -> Promise<gltf> (cached; a failed load is dropped from the cache)
@@ -14,7 +14,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 const cache = new Map();
 let loader = null;
 let glbFailed = false; // a .glb 404'd once: later models load their .gltf.json twin directly
-const LOOP = new Set(['idle', 'walk', 'run', 'crouch_walk', 'talk', 'sit']);
+// loops of the Blender contract (meta `loops`); everything else is a one-shot
+const LOOP = new Set(['idle', 'walk', 'run', 'crouch_walk', 'talk', 'sit', 'idle_2h', 'walk_2h', 'run_2h', 'aim_2h']);
 
 export function loadGLB(url) {
   let p = cache.get(url);

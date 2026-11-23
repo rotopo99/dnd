@@ -104,7 +104,7 @@ function npcUnit(A, key, id, team = 'npc') {
   return pseudo(A, key, () => {
     const n = NPCS[id] || {};
     const cls = n.cls || NPC_CLASSES[[...id].reduce((a, ch) => a + ch.charCodeAt(0), 0) % NPC_CLASSES.length];
-    return { id: key, kind: 'hero', team, raceId: n.race || 'human', classId: cls, name: n.name || id, look: null, avatar: n.avatar || null };
+    return { id: key, kind: 'hero', team, npcId: id, raceId: n.race || 'human', classId: cls, name: n.name || id, look: null, avatar: n.avatar || null }; // npcId: three/party.js npc models
   });
 }
 function enemyUnit(A, key, e) {

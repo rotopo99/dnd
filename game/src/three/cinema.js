@@ -5,12 +5,12 @@
 // (world/cine.js); never writes it.
 //   createCinemaView(E) -> V { load(def, hero) Promise, ready, failed, frame(R, dt, W, H), shake(amp), dispose() }
 import * as THREE from 'three';
-import { assembleCharacter, toonify, setBodyShape, stepSprings, faceTex, disposeCharacter, heroSpec, HAIRS, MORPHS } from './character.js';
+import { assembleCharacter, toonify, setBodyShape, stepSprings, faceTex, disposeCharacter, heroSpec, npcSpec, HAIRS, MORPHS } from './character.js';
 import { gfxPrefs } from '../gfx/settings.js';
 import { HERO_MODELS } from '../data/hero-models.js';
 import { SHOT_FRAMES, SHOT_MOVES } from '../data/cinematics/index.js';
 import {
-  CINE_VIEW as CV, CLIP_FALLBACK, CINE_GESTURES, GESTURE_IN, CINE_FACES, CINE_MODELS, CINE_LOOKS, CINE_AIM, CINE_SIDE_DEG, CINE_STAGES,
+  CINE_VIEW as CV, CLIP_FALLBACK, CINE_GESTURES, GESTURE_IN, CINE_FACES, CINE_MODELS, CINE_CAST_NPC, CINE_LOOKS, CINE_AIM, CINE_SIDE_DEG, CINE_STAGES,
 } from '../data/cine-play.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -18,24 +18,39 @@ const smooth = (k) => k * k * (3 - 2 * k);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerpK = (rate, dt) => 1 - Math.exp(-rate * dt);
 
-/** GLB files of a cast entry: { base, parts, sex, hair, scale, tint } (the hero — from the appearance editor look). */
-function filesOf(c, hero) {
+/** GLB files of a cast entry: { base, parts, sex, hair, scale, skin, tint, tintK, fb } (the hero — from the appearance
+ *  editor look; key characters — npc_<id>.glb with the old stand-in as `fb` when it fails to load). */
+function filesOf(who, c, hero) {
   if (c.k === 'hero') return heroSpec(hero || {});
   if (c.model === null) return null;
-  const m = CINE_MODELS[c.model];
-  if (m) return { ...m, sex: m.base.endsWith('_f') ? 'f' : 'm', hair: c.hair || null };
-  if (/^hero_[mf]_/.test(c.model || '')) return { base: c.model, parts: [], sex: c.model[5], hair: c.hair || null };
-  return { base: 'body_m', parts: ['outfit_rags_m'], sex: 'm', hair: c.hair || null };
+  const m = CINE_MODELS[c.model], nid = m?.npc || CINE_CAST_NPC[who];
+  const scale = m?.scale, look = { skin: m?.skin ?? null, tint: m?.tint ?? null, tintK: m?.tintK };
+  let fb;
+  if (m?.base) fb = { ...look, base: m.base, parts: m.parts || [], sex: m.base.endsWith('_f') ? 'f' : 'm', hair: c.hair || null, scale };
+  else if (/^hero_[mf]_/.test(c.model || '')) fb = { base: c.model, parts: [], sex: c.model[5], hair: c.hair || null };
+  else fb = { base: 'body_m', parts: ['outfit_rags_m'], sex: 'm', hair: c.hair || null };
+  if (nid && HERO_MODELS.npc.on) return { ...npcSpec(nid), skin: null, tint: look.tint, tintK: look.tintK, scale, fb };
+  return fb;
 }
 
 async function buildActor(who, c, hero) {
-  const F = filesOf(c, hero);
+  let F = filesOf(who, c, hero);
   if (!F) return null;
-  const C = await assembleCharacter({ ...F, hair: HAIRS.includes(F.hair) ? F.hair : null });
+  let C;
+  try { C = await assembleCharacter({ ...F, hair: HAIRS.includes(F.hair) ? F.hair : null }); }
+  catch (e) {
+    if (!F.fb) throw e;
+    console.warn('cinema actor model', F.base, e?.message || e);
+    F = F.fb;
+    C = await assembleCharacter({ ...F, hair: HAIRS.includes(F.hair) ? F.hair : null });
+  }
   const A = Object.assign(C, { who, look: c.look || null,
     yaw: 0, headYaw: 0, headPitch: 0, w: Object.fromEntries(MORPHS.map((k) => [k, 0])), blinkT: 0, nextBlink: 1 + Math.random() * 3,
     face: null, act: null, clip: null, gT: 0, gesture: null, placed: false });
-  toonify(A, { look: c.look ? CINE_LOOKS[c.look] : null, skinHex: F.tint && typeof F.tint !== 'object' ? F.tint : null, tint: typeof F.tint === 'object' ? F.tint : null, outline: true });
+  // whole-figure tint (CINE_MODELS tint, e.g. greyed Ladov) rides on the look; a numeric skin only recolours the skin
+  const L0 = c.look ? CINE_LOOKS[c.look] : null, tintNum = typeof F.tint === 'number' ? F.tint : null;
+  const look = tintNum != null ? { ...(L0 || {}), tint: tintNum, tintK: F.tintK ?? 0.6 } : L0;
+  toonify(A, { look, skinHex: F.skin ?? null, tint: F.tint && typeof F.tint === 'object' ? F.tint : null, outline: true });
   if (F.shape) setBodyShape(A, F.shape);
   return A;
 }
