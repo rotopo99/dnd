@@ -17,7 +17,6 @@ import { npcsAt } from '../../game/src/world/data.js';
 import { CINEMATICS } from '../../game/src/data/cinematics/index.js';
 import * as W3 from '../../game/src/world/wave3.js';
 
-const STEP4 = false; // radio rd-w3-* and epilogue slides land in the next commit
 let seed = 13;
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 const mk = (flags = {}) => {
@@ -168,8 +167,8 @@ for (const side of SIDES) for (let k = 0; k < 10; k++) {
     if (out === 'council') assert.ok(st.counterValue(s, 'harmony-supply') >= 3, 'council needs supply ≥ 3');
     if (['ai', 'ren', 'pir', 'council'].includes(out)) {
       assert.ok(CQ.nodeMark(s, 'alpha-harmony')?.glyph, `${out}: a glyph on the hub`);
-      if (STEP4) assert.ok(RD.radioEligible(s).some((n) => n.id.startsWith(`rd-w3-${out}-`)), `${out}: a radio line rd-w3-${out}-*`);
-      if (STEP4) assert.ok(CQ.epilogueSlides(s).some((x) => x.id === `flags-${out}`), `${out}: epilogue slide`);
+      assert.ok(RD.radioEligible(s).some((n) => n.id.startsWith(`rd-w3-${out}-`)), `${out}: a radio line rd-w3-${out}-*`);
+      assert.ok(CQ.epilogueSlides(s).some((x) => x.id === `flags-${out}`), `${out}: epilogue slide`);
     }
     assert.ok(CQ.epilogueSlides(s).length <= CQ.EPI_MAX + 1, '≤ 12 slides (+ outro)');
   });

@@ -210,7 +210,8 @@ export function cqDetail(e) {
 /** Epilogue slides by flags: when.all / any / not; ≤ EPI_MAX by prio, shown by order; intro and outro always. */
 export function epilogueSlides(save, max = EPI_MAX) {
   const f = save?.flags || {};
-  const ok = (w = {}) => (!w.all || w.all.every((x) => f[x])) && (!w.any || w.any.some((x) => f[x])) && (!w.not || !w.not.some((x) => f[x]));
+  const ok = (w = {}) => (!w.all || w.all.every((x) => f[x])) && (!w.any || w.any.some((x) => f[x])) && (!w.not || !w.not.some((x) => f[x]))
+    && (!w.rel || Object.entries(w.rel).every(([n, v]) => (save.cine?.rel?.[n] || 0) >= v)); // content-wave3.md: liza-keys at rel 5
   const fixed = EPILOGUE.filter((s) => s.id === 'epi-intro' || s.id === 'epi-outro');
   const pool = EPILOGUE.filter((s) => !fixed.includes(s) && ok(s.when)).sort((a, b) => b.prio - a.prio).slice(0, Math.max(0, max - fixed.length));
   const list = [...fixed, ...pool].sort((a, b) => a.order - b.order);

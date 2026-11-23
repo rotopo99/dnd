@@ -6191,5 +6191,35 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(!sideIds(s).includes('council'));
   });
 }
+// ---------------------------------------------------------------- content-wave3.md §4–§5: epilogue slides of waves 2–3, radio rd-w3-*
+{
+  const st = await import('../game/src/world/state.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const RD = await import('../game/src/world/radio.js');
+  const { RADIO } = await import('../game/src/data/world/radio.js');
+  const { CONSEQUENCES_WAVE3 } = await import('../game/src/data/world/consequences-wave3.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, flags); return s; };
+  test('wave3 radio: ≥ 14 rd-w3 lines; every delayed radio id of wave 3 exists; Shumok every 9 days after the room', () => {
+    const ids = new Set(RADIO.news.map((n) => n.id));
+    assert.ok([...ids].filter((x) => x.startsWith('rd-w3-')).length >= 14);
+    for (const q of Object.values(CONSEQUENCES_WAVE3)) for (const e of Object.values(q)) for (const d of e.delayed || []) if (d.radio) assert.ok(ids.has(d.radio), d.radio);
+    const s = mk({ 'disp-r-shumok': true }); s.quests['w3-apology'] = { state: 'done' };
+    assert.ok(RD.radioEligible(s).some((n) => n.id === 'rd-w3-shumok-9'));
+    assert.equal(RADIO.news.find((n) => n.id === 'rd-w3-shumok-9').cd, 9);
+  });
+  test('wave3 epilogue: wave-2/3 slides by flags, liza-keys only at rel 5, Harmony slide survives, ≤ 12', () => {
+    const s = mk({ 'liza-truth': true, 'laugh-replaced': true, 'repa-block-found': true, 'cq:w3-flags:council': true });
+    let ids = CQ.epilogueSlides(s).map((x) => x.id);
+    assert.ok(ids.includes('w2-laugh-replaced') && ids.includes('w2-cold-block') && ids.includes('flags-council'));
+    assert.ok(!ids.includes('liza-keys'));
+    st.addRel(s, 'liza', 5);
+    assert.ok(CQ.epilogueSlides(s).some((x) => x.id === 'liza-keys'));
+    const many = mk(Object.fromEntries(['truth-harmony-public', 'ladov-named', 'ladov-offer-soul', 'customs-stamp', 'laugh-off', 'cold-thawed', 'repa-block-found', 'liza-lie', 'vac-split', 'sort-free', 'disp-live',
+      'cq:mq-exodus:destroy', 'cq:mq3-court:closed', 'cq:mq3-fall:save', 'cq:mq3-allies:default', 'cq:w3-flags:ai'].map((f) => [f, true])));
+    ids = CQ.epilogueSlides(many).map((x) => x.id);
+    assert.ok(ids.length <= CQ.EPI_MAX);
+    assert.ok(ids.includes('flags-ai'), 'the Harmony slide is not pushed out');
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
