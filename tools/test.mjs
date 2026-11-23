@@ -5634,8 +5634,8 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     return { R, save };
   };
 
-  test('cine: 8 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
-    assert.equal(Object.keys(CINEMATICS).length, 8);
+  test('cine: 9 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
+    assert.equal(Object.keys(CINEMATICS).length, 9);
     for (const d of Object.values(CINEMATICS)) assert.deepEqual(CN.validateCine(d), [], d.id);
     const bad = { id: 'x', start: 'a', cast: {}, beats: { a: { choice: { opts: [{ id: 'o', next: 'nope' }, { id: 'p', next: 'a' }] } }, z: { end: { result: 'r' } } } };
     const e = CN.validateCine(bad).join('\n');
@@ -6076,6 +6076,52 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     QS.claimTurnin(s, 'w3-apology', GAME_DATA);
     s.day += 5; DL.delayedTick(s, GAME_DATA);
     assert.ok(s.flags['disp-storm-calm']);
+  });
+}
+// ---------------------------------------------------------------- content-wave3.md §1: w3-liza (gate, 2 of 3 marks, c9 once, rel payoff)
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const HK = await import('../game/src/world/cine-hooks.js');
+  const W3 = await import('../game/src/world/wave3.js');
+  const { npcsAt } = await import('../game/src/world/data.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true }, flags); s.hero.level = 7; return s; };
+  const Q = 'w3-liza';
+  test('wave3 liza: no liza-freed / liza-met -> no quest and no Liza at the hatch; with it — offered there', () => {
+    const a = mk({ 'act1-done': true });
+    assert.ok(!npcsAt('bunker-lisa', a).includes('liza'));
+    assert.ok(!QS.questsOffered(a, 'liza').length);
+    const b = mk({ 'act1-done': true, 'liza-freed': true });
+    assert.ok(npcsAt('bunker-lisa', b).includes('liza'));
+    assert.ok(QS.questsOffered(b, 'liza').some((q) => q.id === Q));
+    b.hero.level = 5;
+    assert.ok(!QS.questsOffered(b, 'liza').length, 'hero level ≥ 6');
+  });
+  test('wave3 liza: 2 of 3 marks -> forge; locker fail -> rel −1; door queues c9 once; c9-done -> note', () => {
+    const s = mk({ 'act1-done': true, 'liza-met': true });
+    QS.startQuest(s, Q); QS.onTalk(s, 'liza', GAME_DATA);
+    QS.chooseOption(s, QS.slots(s, Q)[0], 'help', GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'marks');
+    const out = QS.completeSlot(s, QS.slots(s, Q).find((x) => x.goal.location === 'bunker-lisa'), GAME_DATA);
+    assert.ok(out.some((x) => x.text === 'Открыто. Не благодари'));
+    QS.completeSlot(s, QS.slots(s, Q).find((x) => x.goal.location === 'dungeons-m12'), GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'forge');
+    QS.onBattleWon(s, 'enc-w3-straight', 'dungeons-m17', GAME_DATA);
+    assert.ok(s.flags['liza-forge-done']); assert.equal(s.quests[Q].stage, 'locker');
+    QS.failSlot(s, QS.slots(s, Q)[0], GAME_DATA);
+    QS.chooseOption(s, QS.slots(s, Q)[0], 'step-back', GAME_DATA);
+    assert.equal(st.relOf(s, 'liza'), -1);
+    assert.equal(s.quests[Q].stage, 'door');
+    assert.equal(HK.takeCineQueue(s), 'c9-liza-door');
+    s.flags['liza-truth'] = true; s.flags['cine-seen:c9-liza-door'] = true; st.addRel(s, 'liza', 3);
+    QS.cineResult(s, 'c9-done', {}, GAME_DATA, 'c9-liza-door');
+    assert.equal(s.quests[Q].stage, 'note');
+    assert.deepEqual(HK.cinesAt(s, 'stage:w3-liza/door'), [], 'c9 plays once');
+    QS.onArrive(s, 'bunker-lisa', GAME_DATA);
+    assert.equal(s.quests[Q].outcome, 'truth');
+    assert.ok(W3.lizaDoorReady(s));
+    assert.ok(W3.useLizaDoor(s)); assert.ok(!W3.lizaDoorReady(s));
+    s.day += 10; assert.ok(W3.lizaDoorReady(s), 'again in 10 days');
   });
 }
 console.log(`\n${passed} passed, ${failed} failed`);

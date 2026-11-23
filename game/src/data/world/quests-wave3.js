@@ -121,10 +121,51 @@ export const QUESTS_WAVE3 = [
     ].map((s) => (s.id === 'decide' ? { ...s, end: 'done' } : s)),
     { xp: 1000, credits: 110, rep: { tekhonki: 2 } },
     { outcomeBy: [{ key: 'off', all: ['disp-off'] }, { key: 'live', all: ['disp-live'] }, { key: 'silent', all: ['disp-silent'] }] }),
+
+  // ================= w3-liza «Дверь на двоих» (личный квест ивент-напарницы, бункер №5 «Выправка», ур. 7) =================
+  // Лиза не вербуется (канон: партия — в своих ивентах): записка на люке, rel ±5 (save.cine.rel), сцена c9 на стадии door.
+  Q('w3-liza', 'Дверь на двоих', 'liza', 'neutralVillages', 7,
+    'На люке под дачей — записка почерком Лизы: «Я у отцовской двери. Не торопись. Торопись». Её отец был инженером подземного города.',
+    [
+      st('ask', 'Лиза сидит на люке и вертит отмычку: «Отец работал в Старой кузне. Там его шкаф. Я сорок лет открываю чужие двери, а свою боюсь».', talk('liza', 'bunker-lisa'), 'decide'),
+      st('decide', 'Пойти с Лизой к отцовской двери?', choice([
+        opt('help', 'Пойти. Двери на двоих открываются быстрее.', null, 'marks'),
+        opt('skip', 'Не сейчас. Не моя дверь.', null, null, { effects: { flags: ['liza-skip'] } }),
+      ]), null),
+      st('marks', 'Найти метки Лизы на дверях, по которым она шла к кузне. Хватит двух из трёх.', all([
+        { ...check(['lockpicking', 'perception'], 12), location: 'bunker-lisa', doneFlag: 'liza-m1', toast: 'Открыто. Не благодари', desc: 'Метка на люке: «Тут жили люди. Свет не выключали»' },
+        { ...check(['lockpicking', 'perception', 'tech'], 13), location: 'harmony-workshop', doneFlag: 'liza-m2', toast: 'Открыто. Не благодари', desc: 'Метка на двери мастерской Николы' },
+        { ...check(['lockpicking', 'perception', 'stealth'], 14), location: 'dungeons-m12', doneFlag: 'liza-m3', toast: 'Открыто. Не благодари', desc: 'Метка в коридорах под Кремлём' },
+      ], 2), 'forge'),
+      st('forge', 'Старая кузня. Распрямители всё ещё правят осанку тем, кто зашёл. Спины у них прямые, у гостей — нет.',
+        battle('enc-w3-straight', 'dungeons-m17', 'fled'), 'locker', { effects: { flags: ['liza-forge-done'] } }),
+      st('fled', 'Пришлось отступить. Лиза вернётся в кузню одна, когда вас не будет рядом.',
+        choice([opt('leave', 'Оставить Лизу с её дверью.', null, 'note', { effects: { flags: ['liza-silent'], rel: { liza: 1 } } })]), 'note'),
+      st('locker', 'Шкаф отца. Замок старый и упрямый, как инженер, который его ставил.', check(['lockpicking', 'hacking', 'tech'], 15, 'locker-liza'), 'door'),
+      st('locker-liza', 'Замок не поддаётся. Лиза отодвигает вас плечом: «Дай. Это моя дверь».',
+        choice([opt('step-back', 'Отойти.', null, 'door', { effects: { rel: { liza: -1 } } })]), 'door'),
+      st('door', 'Шкаф открыт. Внутри — запись отца. Что делать с ней?', choice([
+        opt('truth', 'Показать запись Лизе.', null, 'note', { effects: { flags: ['liza-truth'], rel: { liza: 3 } } }),
+        opt('self', 'Дать ей открыть и включить самой.', null, 'note', { effects: { flags: ['liza-self-open'], rel: { liza: 4 } } }),
+        opt('lie', 'Спрятать запись: пусть думает, что он запер.', null, 'note', { effects: { flags: ['liza-lie', 'ai-delisting-proof'], rel: { liza: -2 } } }),
+        opt('silent', 'Промолчать.', null, 'note', { effects: { flags: ['liza-silent'], rel: { liza: 1 } } }),
+      ]), 'note'),
+      st('note', 'Вернуться на базу: Лиза обещала оставить записку на двери.', reach('bunker-lisa'), 'done'),
+    ].map((s) => (s.id === 'decide' ? { ...s, end: 'done' } : s)),
+    { xp: 900, credits: 80, rep: { neutralVillages: 3 } },
+    { requires: { flags: ['act1-done'], level: WAVE3_RULES.lizaLevel, any: [{ flag: 'liza-freed' }, { flag: 'liza-met' }, { flag: 'met-liza' }] },
+      outcomeBy: [{ key: 'skip', all: ['liza-skip'] }, { key: 'lie', all: ['liza-lie'] }, { key: 'truth', all: ['liza-truth'] },
+        { key: 'self', all: ['liza-self-open'] }, { key: 'silent', all: ['liza-silent'] }] }),
 ];
 
 export const QUESTS_WAVE3_MAP = Object.fromEntries(QUESTS_WAVE3.map((q) => [q.id, q]));
 
 // NPC, которых волна 3 ставит на узлы по условию (world/data.js npcPlacement; потом consequences npcs.vanish/move).
 // when: { all, any, not: [flag], level, quest: { id, state: 'none'|'active'|'any'|'done' }, rel: { npc, min } } — всё AND.
-export const W3_NPC_RULES = [];
+const LIZA_GATE = { all: ['act1-done'], any: ['liza-freed', 'liza-met', 'met-liza'], level: WAVE3_RULES.lizaLevel };
+export const W3_NPC_RULES = [
+  // Лиза у люка, пока квест предложен (записка) — и до сдачи; потом — гость базы при rel = 5
+  { npc: 'liza', at: 'bunker-lisa', when: { ...LIZA_GATE, quest: { id: 'w3-liza', state: 'none' } } },
+  { npc: 'liza', at: 'bunker-lisa', when: { quest: { id: 'w3-liza', state: 'active' } } },
+  { npc: 'liza', at: 'bunker-lisa', when: { quest: { id: 'w3-liza', state: 'done' }, not: ['liza-skip'], rel: { npc: 'liza', min: WAVE3_RULES.lizaGuestRel } } },
+];

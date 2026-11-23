@@ -317,6 +317,7 @@ export function requiresOk(save, req, data = GAME_DATA) {
   // third-exodus.md §2: avgLevel (party mean level), terminalsOff (FINALE_TERMINALS not 'ritual'), visitedRegions (a node of each),
   // flags (all set), any: [Requires] (one of), not: Requires
   if (req.avgLevel && partyAvgLevel(save) < req.avgLevel) return false;
+  if (req.level && (save.hero.level || 1) < req.level) return false; // content-wave3.md: hero level
   if (req.terminalsOff && FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length < req.terminalsOff) return false;
   if (req.visitedRegions && !req.visitedRegions.every((r) => (save.visited || []).some((id) => LOCATIONS[id]?.region === r))) return false;
   if (req.flags && !req.flags.every((f) => save.flags[f])) return false;

@@ -15,6 +15,7 @@ import * as HK from '../../game/src/world/cine-hooks.js';
 import * as RD from '../../game/src/world/radio.js';
 import { npcsAt } from '../../game/src/world/data.js';
 import { CINEMATICS } from '../../game/src/data/cinematics/index.js';
+import * as W3 from '../../game/src/world/wave3.js';
 
 let seed = 13;
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -105,11 +106,46 @@ for (const [qid, ways] of Object.entries(WAYS)) for (const way of ways) for (let
   });
 }
 
+// ------------------------------------------------------------------ §1 w3-liza: every c9 pick × QTE, fallback door choice, fled / skip
+const lizaOut = new Set();
+const C9 = [['truth', 'ok'], ['self', 'ok'], ['self', 'fail'], ['lie', 'ok'], ['silence', 'ok'], [null, null]]; // null — the scene did not play
+for (const [pick, qte] of C9) for (let k = 0; k < 8; k++) {
+  check(`liza ${pick}/${qte} #${k}`, () => {
+    const s = mk({ 'liza-freed': true }); s.hero.level = 7;
+    assert.ok(npcsAt('bunker-lisa', s).includes('liza'), 'Liza waits at the hatch');
+    assert.ok(QS.questsOffered(s, 'liza').some((q) => q.id === 'w3-liza'));
+    QS.startQuest(s, 'w3-liza');
+    let played = 0;
+    const cine = (id) => {
+      assert.equal(id, 'c9-liza-door');
+      if (!pick) { s.flags[`cine-seen:${id}`] = true; return; } // skipped: the door choice stays as the fallback
+      played++;
+      const R = playCine(s, id, pick, qte);
+      assert.equal(R.result, 'c9-done');
+      QS.cineResult(s, R.result, R.ctr, GAME_DATA, id);
+    };
+    const want = { truth: 'truth', self: 'self', lie: 'lie', silence: 'silent' }[pick];
+    const pol = { pick: (ids) => (ids.includes('help') ? (k === 7 ? 'skip' : 'help') : want && ids.includes(want) ? want : ids[Math.floor(rnd() * ids.length)]),
+      ok: (x) => (x.stage.id === 'forge' ? k !== 6 : rnd() < 0.6) };
+    const out = walk(s, 'w3-liza', pol, 80, cine);
+    lizaOut.add(out);
+    assert.ok(played <= 1, 'c9 at most once');
+    const one = ['liza-truth', 'liza-self-open', 'liza-lie', 'liza-silent', 'liza-skip'].filter((f) => s.flags[f]);
+    assert.equal(one.length, 1, `exactly one Liza flag (${one})`);
+    if (pick && k < 6 && s.flags['liza-forge-done']) assert.equal(out, want, `c9 ${pick} -> ${want}`);
+    if (out === 'skip') assert.ok(!npcsAt('bunker-lisa', s).includes('liza'));
+    const rel = st.relOf(s, 'liza');
+    assert.ok(rel >= -5 && rel <= 5);
+    assert.equal(W3.lizaDoorReady(s), out !== 'skip' && rel >= 1, `Liza's door by rel ${rel}`);
+  });
+}
+
 // ------------------------------------------------------------------ coverage
 check('coverage', () => {
   for (const [qid, ways] of Object.entries(WAYS)) for (const w of ways) assert.ok(sideOut[qid].has(w), `${qid} ${w} reached (${[...sideOut[qid]]})`);
+  for (const w of ['truth', 'self', 'lie', 'silent', 'skip']) assert.ok(lizaOut.has(w), `w3-liza ${w} (${[...lizaOut]})`);
 });
 
-console.log(`wave3-flow: ${runs} walks, ${steps} steps; ${Object.entries(sideOut).map(([q, o]) => `${q}: ${[...o].sort().join('/')}`).join('; ')}`);
+console.log(`wave3-flow: ${runs} walks, ${steps} steps; w3-liza: ${[...lizaOut].sort().join('/')}; ${Object.entries(sideOut).map(([q, o]) => `${q}: ${[...o].sort().join('/')}`).join('; ')}`);
 if (fails.length) { console.log(`FAILED ${fails.length}:\n  ${[...new Set(fails)].slice(0, 30).join('\n  ')}`); process.exit(1); }
 console.log('wave3-flow: OK — no softlocks');

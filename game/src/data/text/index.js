@@ -15,6 +15,7 @@ import { NET_TEXT } from './net.js';
 import { GFX_TEXT } from './gfx.js';
 import { RUN_TEXT } from './run.js';
 import { WAVE1_TEXT } from './wave1-ui.js';
+import { WAVE3_TEXT } from './wave3-ui.js';
 import { CINE_TEXT } from './cine.js';
 
 const ru = {
@@ -845,5 +846,6 @@ Object.assign(ru, GFX_TEXT); // 3d.md
 Object.assign(ru, RUN_TEXT); // roguelike.md
 Object.assign(ru, CINE_TEXT); // cinematics.md: the cinematic player
 Object.assign(ru, WAVE1_TEXT); // content-wave1.md: radio, finds, secrets, delayed news, timers
+Object.assign(ru, WAVE3_TEXT); // content-wave3.md: Liza's door, rel toasts, Harmony supply
 
 export const t = (key) => ru[key] ?? PROLOGUE[key] ?? key;

@@ -31,6 +31,7 @@ import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
+import { lizaDoorReady, useLizaDoor } from '../world/wave3.js';
 import { createNpcActions, isTrialQuest } from '../world/npc-actions.js';
 import { hasWorldFlag, skillName } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
@@ -244,8 +245,8 @@ export function createLocationScene(rawId, opts = {}) {
     if (r.credits && sv.hero.credits < r.credits) return false;
     if (r.worldFlag && !hasFlagInParty(sv, game.data, r.worldFlag)) return false;
     // third-exodus.md §2: level / terminals / regions / any / not — the shared world check
-    const { avgLevel, terminalsOff, visitedRegions, flags, any, not } = r;
-    if ((avgLevel || terminalsOff || visitedRegions || flags || any || not) && !requiresOk(sv, { avgLevel, terminalsOff, visitedRegions, flags, any, not }, game.data)) return false;
+    const { avgLevel, terminalsOff, visitedRegions, flags, any, not, level, ctr, rel } = r; // content-wave3.md: level / ctr / rel
+    if ((avgLevel || terminalsOff || visitedRegions || flags || any || not || level || ctr || rel) && !requiresOk(sv, { avgLevel, terminalsOff, visitedRegions, flags, any, not, level, ctr, rel }, game.data)) return false;
     return true;
   };
 
@@ -286,6 +287,8 @@ export function createLocationScene(rawId, opts = {}) {
     for (const c of loc.caches) {
       if (sv.caches.includes(c.id)) continue;
       out.push({ label: t('loc.search'), sub: c.check ? `${cacheSkills(c).map((x) => t(`skill.${x}`)).join(' / ')} ${t('battle.dc')} ${c.check.dc}` : t('loc.free'), run: (g) => searchCache(g, c) });
+      // content-wave3.md §1: «Дверь Лизы» (rel ≥ 1) — a free «открыто» once per 10 days, no check
+      if (c.check && lizaDoorReady(sv)) out.push({ label: t('w3.lizaDoor'), sub: t('w3.lizaDoorSub'), run: (g) => { if (useLizaDoor(sv)) { g.toast(t('w3.lizaOpen'), 'j'); searchCache(g, c, true); } } });
     }
     // skills-v3.md: the node's skill actions — one entry opens the «Навыки» list
     const sk = skillActionsAt(sv, locId, loc);
@@ -458,14 +461,14 @@ export function createLocationScene(rawId, opts = {}) {
       }), { label: t('loc.close'), run: () => {} }] });
   }
 
-  function searchCache(game, c) {
+  function searchCache(game, c, free = false) {
     const sv = save(game);
     const loot = { items: c.loot.filter((x) => x.item), credits: c.loot.reduce((s, x) => s + (x.credits || 0), 0), ...(c.flag ? { flag: c.flag } : {}) }; // flag: codex find cx-*
     const take = (g) => {
       sv.caches.push(c.id); g.toast(t('loc.found'), 'a'); toastAll(g, grant(sv, loot, g.data)); refresh(g);
       if (c.text) g.openModal({ title: t('loc.found'), lines: [{ text: c.text }], options: [{ label: t('battle.ok'), run: () => {} }] });
     };
-    if (!c.check || hasFlagInParty(sv, game.data, 'find-cache')) return take(game);
+    if (!c.check || free || hasFlagInParty(sv, game.data, 'find-cache')) return take(game);
     openCheck(game, { title: t('loc.search'), skills: cacheSkills(c), dc: c.check.dc, members: ms(game), cancel: true, memoKey: `cache:${c.id}`,
       onDone: (g, ok) => { if (ok) take(g); else { sv.caches.push(c.id); g.toast(t('loc.notFound'), 'c'); refresh(g); } } });
   }
