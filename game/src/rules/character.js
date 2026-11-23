@@ -85,7 +85,7 @@ function collectPassives(list) {
   const out = {
     statBonus: {}, resist: {}, kb: 0, hit: 0, dmg: { melee: 0, ranged: 0, spell: 0, all: 0 },
     init: 0, speed: 0, regen: [], immuneStatus: [], critRange: 20, advantage: [], deathSave: 0,
-    maxHp: 0, maxMrl: 0, maxEnr: 0, cond: [], thorns: [],
+    maxHp: 0, maxMrl: 0, maxEnr: 0, cond: [], thorns: [], mrlGuard: 0,
   };
   for (const p of list) {
     const op = p.op || {};
@@ -113,6 +113,7 @@ function collectPassives(list) {
     if (op.critRange) out.critRange = Math.min(out.critRange, op.critRange);
     if (op.advantage) out.advantage.push(...op.advantage);
     if (op.deathSave) out.deathSave += op.deathSave;
+    if (op.mrlGuard) out.mrlGuard += op.mrlGuard; // content-wave3 «Бирка вторсырья»: −N to every MRL hit (cringe / psychic)
   }
   return out;
 }
@@ -451,6 +452,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.soulless = !!race.soulless;
   u.condBonuses = P.cond;
   u.thorns = [...P.thorns, ...EQ.gear.thorns];
+  u.mrlGuard = P.mrlGuard || 0;
   u.talents = ownTalents;
   u.asi = asiApplied.filter((e) => e && (e.level || 0) <= level).map((e) => ({ ...e }));
   u.asiOverflow = AS.overflow;
@@ -530,6 +532,7 @@ export function buildEnemy(def, { id, team = 'enemies', data, level, kind = 'ene
   u.noAttack = !!def.noAttack || !def.weapon;
   u.condBonuses = P.cond;
   u.thorns = P.thorns;
+  u.mrlGuard = P.mrlGuard || 0;
   u.maxHp += P.maxHp; u.hp = u.maxHp;
   u.decoy = !!def.decoy;
   u.boss = !!def.boss;

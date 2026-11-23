@@ -1039,6 +1039,10 @@ for (const e of LIST) {
   ENEMIES_V3[e.id] = e;
 }
 
+// content-wave3.md §3.1 vac-split: Узел-4 — временный союзник на один бой (не вербуется; флаг skirm-escort)
+ENEMIES_V3['w3-node4-ally'] = { ...ENEMIES_V3['mech-assimilator'], id: 'w3-node4-ally', name: 'Узел-4', xp: 0, loot: null,
+  desc: '«Хочу узнать, что такое „в одиночку“». Говорит «я» и каждый раз вздрагивает.' };
+
 // ------------------------------------------------------------------------- Бои v3
 // Составы на партию из 4 (порядок = приоритет, как в enemies.js). places — slug мест / тип POI канон-карты;
 // faction — для правила «бой с дружелюбной фракцией превращается в торговлю/слух» (docs/specs/world.md).
@@ -1149,9 +1153,15 @@ export const ENCOUNTERS_V3 = Object.fromEntries([
   enc('enc-w3-boxes', 'Ящики: конвоиры', 4, null, ['dungeons-m13'], ['scv-gunner', 'scv-sawman', 'scv-picker', 'scv-magnet']),
   enc('enc-w3-sorter', 'Сортировщик: ручная сортировка', 4, null, ['dungeons-m13'], ['scv-mech-pilot', 'scv-magnet', 'scv-sawman']),
   enc('enc-w3-purge', 'Диспетчер: удаление лишнего', 4, null, ['ruins-m36'], ['lis-5-turret', 'lis-drone', 'lis-sentry', 'lis-drone']),
-  enc('enc-w3-straight', 'Распрямители', 4, null, ['dungeons-m17'], ['wp-bayonet', 'wp-stormtrooper', 'wp-bolterman']),
+  // hindrance — помеха отряду в начале боя (world-battle.js → battle.js heroBuffs): «Осанка» −1 КБ до конца первого хода
+  enc('enc-w3-straight', 'Распрямители', 4, null, ['dungeons-m17'], ['wp-bayonet', 'wp-stormtrooper', 'wp-bolterman'],
+    { hindrance: { id: 'posture', stat: 'kb', value: -1, turns: 1 } }),
   enc('enc-w3-clear', 'Мародёры у поста № 2', 4, null, ['harmony-post'], ['scv-gunner', 'scv-sawman', 'scv-picker', 'scv-picker']),
   enc('enc-w3-sabotage', 'Диверсия на складе', 4, null, ['harmony-sector-d'], ['ren-saboteur', 'ren-sapper', 'pir-grenadier', 'pir-knifer']),
+  // «Цена» хозяина Гармонии (events-wave3.js): рейд Военпрома (Отступники), рэкет (пираты), кринжгоны (Совет)
+  enc('enc-w3-raid-wp', 'Рейд Военпрома', 4, null, ['alpha-harmony'], ['wp-stormtrooper', 'wp-sniper', 'wp-bayonet', 'wp-bolterman']),
+  enc('enc-w3-racket', 'Сборщики пошлины', 4, null, ['alpha-harmony'], ['pir-grenadier', 'pir-knifer', 'pir-knifer', 'pir-deckhand']),
+  enc('enc-w3-raid-crg', 'Кринжгоны у трапа', 4, null, ['alpha-harmony'], ['crg-bayanist', 'crg-toastmaster', 'crg-heckler', 'crg-brute']),
   enc('enc-lis-drones', 'Охранные дроны Бункера Лиса', 3, null, ['bunker-lisa'], ['lis-drone', 'lis-drone', 'lis-sentry', 'lis-drone']),
   enc('enc-dawn-bodies', 'Пустые тела «Рассвета»', 4, null, ['bunker-kuksiusa'], ['dawn-body', 'dawn-body', 'dawn-body', 'dawn-body']),
   enc('enc-lox-clone', 'Клон Lox и каратели', 4, 'aiParty', ['lox-5'], ['ai-lox-clone', 'ai-riot', 'ai-riot', 'ai-patrol']),

@@ -17,7 +17,7 @@ import { autoCheck, canParley, parleyDc, mutantsIn } from '../world/skill-uses.j
 import { openCheck } from '../ui/checks-ui.js';
 import { applyRep, meetFaction } from '../world/reputation.js';
 import { encounterEnemies, encounterName, encounterMap, LOCATIONS, QUESTS, FINALE_TERMINALS } from '../world/data.js';
-import { MAPS, ENEMIES, ITEMS } from '../data/index.js';
+import { MAPS, ENEMIES, ITEMS, ENCOUNTERS } from '../data/index.js';
 import { rollLoot } from '../world/loot.js';
 import { syncItems, consumeBattle, keepQuickLayout, receive, makeInst, canStash, qualityName } from '../world/inventory.js';
 import { itemTip, itemStats } from '../ui/items-ui.js';
@@ -111,6 +111,8 @@ export function startWorldBattle(game, o) {
   const escort = save.flags?.['skirm-escort'];
   if (escort && ENEMIES[escort] && o.encounter !== FINALE_ENCOUNTER) { allies.push(escort); delete save.flags['skirm-escort']; game.toast(tf('skirm.escortJoins', { name: ENEMIES[escort].name }), 'j'); }
   const rivals = o.rivals?.length ? o.rivals : null;
+  const hind = o.encounter ? ENCOUNTERS[o.encounter]?.hindrance : null;
+  if (hind) game.toast(tf('w3.hindrance', { name: t(`w3.hindrance.${hind.id}`), value: hind.value }), 'c');
   if (o.encounter === FINALE_ENCOUNTER && !exodusZeroFinale(save) && partySize(save) + allies.length < FINALE_MIN_PARTY) {
     game.openModal({ title: t('world.finaleLockedTitle'), border: 'a', titleColor: 'a',
       lines: [{ text: t('world.finaleLocked').replace('{n}', partySize(save) + allies.length).replace('{min}', FINALE_MIN_PARTY) }],
@@ -146,6 +148,7 @@ export function startWorldBattle(game, o) {
       companionEvent(S, e, save); // companions-scenes.md: barks and revives
     },
     objectives: objectiveSpec(save, o, setup.enemies),
+    heroBuffs: hind ? [hind] : [], // content-wave3.md: encounter hindrance («Осанка»)
     onRetreatExit: (g, S) => retreatExit(g, S, o),
     race: save.hero.race, ambush: !!o.ambush, surprise: !!o.surprise, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {

@@ -13,7 +13,7 @@ import * as DL from '../../game/src/world/delayed.js';
 import * as CN from '../../game/src/world/cine.js';
 import * as HK from '../../game/src/world/cine-hooks.js';
 import * as RD from '../../game/src/world/radio.js';
-import { npcsAt } from '../../game/src/world/data.js';
+import { npcsAt, EVENTS } from '../../game/src/world/data.js';
 import { CINEMATICS } from '../../game/src/data/cinematics/index.js';
 import * as W3 from '../../game/src/world/wave3.js';
 
@@ -25,13 +25,16 @@ const mk = (flags = {}) => {
   s.hero.credits = 1000;
   return s;
 };
-let runs = 0, steps = 0;
+let runs = 0, steps = 0, waits = 0;
 const fails = [];
 const check = (name, fn) => { try { fn(); } catch (e) { fails.push(`${name}: ${e.message.split('\n')[0]}`); } };
 
 /** One action on the quest: the first actionable slot, resolved by `pol` ({ pick(ids, slot) -> id, ok(slot) -> bool }). */
 function act(s, qid, pol) {
-  const sl = QS.slots(s, qid).filter((x) => !x.locked || x.gate);
+  const all = QS.slots(s, qid);
+  const sl = all.filter((x) => !x.locked || x.gate);
+  // a gated stage (w3-flags siege days +2 / +4 / +6): the party waits a day (rest / road)
+  if (!sl.length && all.length) { s.day += 1; DL.dayTick(s, GAME_DATA); waits++; return []; }
   assert.ok(sl.length, `${qid}/${s.quests[qid].stage}: no slots (softlock)`);
   const x = pol.slot ? pol.slot(sl) : sl[0], g = x.goal;
   if (x.kind === 'choice') {
@@ -86,6 +89,7 @@ function playCine(s, id, pick, qte) {
 }
 
 // ------------------------------------------------------------------ §3 side quests: every way, random rolls
+const nightSeen = [false, false];
 const sideOut = { 'w3-vacation': new Set(), 'w3-sorter': new Set(), 'w3-apology': new Set() };
 const WAYS = { 'w3-vacation': ['formal', 'split', 'resort', 'war'], 'w3-sorter': ['free', 'closed', 'sold', 'self'], 'w3-apology': ['live', 'off', 'silent'] };
 for (const [qid, ways] of Object.entries(WAYS)) for (const way of ways) for (let k = 0; k < 12; k++) {
@@ -103,11 +107,15 @@ for (const [qid, ways] of Object.entries(WAYS)) for (const way of ways) for (let
       assert.ok(st.counterValue(s, 'disp-rooms') < 5, 'apology: budget never fits all five rooms');
     }
     if (out === 'closed') assert.ok(CQ.closedLoc(s, 'dungeons-m13'), 'sort-closed closes the shaft');
+    if (out === 'split') assert.equal(s.flags['skirm-escort'], 'w3-node4-ally', 'split: Узел-4 joins for one battle');
+    if (out === 'self') assert.ok(st.requiresOk(s, { item: 'recycle-tag' }) && st.buildHero(s, GAME_DATA).mrlGuard === 1, 'self: «Бирка вторсырья»');
+    if (qid === 'w3-vacation' && out !== 'failed') nightSeen[s.flags['vac-night'] ? 1 : 0] = true;
   });
 }
 
 // ------------------------------------------------------------------ §1 w3-liza: every c9 pick × QTE, fallback door choice, fled / skip
 const lizaOut = new Set();
+let lizaKeysSeen = false;
 const C9 = [['truth', 'ok'], ['self', 'ok'], ['self', 'fail'], ['lie', 'ok'], ['silence', 'ok'], [null, null]]; // null — the scene did not play
 for (const [pick, qte] of C9) for (let k = 0; k < 8; k++) {
   check(`liza ${pick}/${qte} #${k}`, () => {
@@ -137,6 +145,9 @@ for (const [pick, qte] of C9) for (let k = 0; k < 8; k++) {
     const rel = st.relOf(s, 'liza');
     assert.ok(rel >= -5 && rel <= 5);
     assert.equal(W3.lizaDoorReady(s), out !== 'skip' && rel >= 1, `Liza's door by rel ${rel}`);
+    const keys = out !== 'skip' && rel >= 3;
+    assert.equal(W3.lizaCaches(s, 'dungeons-m12').length, keys ? 1 : 0, `Liza's cache by rel ${rel}`);
+    if (keys) lizaKeysSeen = true;
   });
 }
 
@@ -159,8 +170,28 @@ for (const side of SIDES) for (let k = 0; k < 10; k++) {
     };
     const pol = { pick: (ids) => (ids.includes(side) ? side : ids.find((x) => x !== 'council') || ids[0]),
       ok: (x) => (x.stage.id === 'envoys' ? k % 5 !== 4 : rnd() < 0.6) };
+    const d0 = s.day;
     const out = walk(s, 'w3-flags', pol, 80, cine);
     flagsOut.add(out);
+    const at = s.quests['w3-flags'].at || {};
+    if (at['siege-1'] != null && s.flags[`cq:w3-flags:${out}`]) {
+      assert.ok(at['side'] != null && at['side'] - d0 >= 0, 'siege: the side stage reached');
+      assert.ok(s.flags['harmony-ai'] || s.flags['harmony-ren'] || s.flags['harmony-pir'] || s.flags['harmony-council'] || s.flags['harmony-abstain']);
+    }
+    // the hub's price (§2): recurring events of the winner are due by their own clock
+    const evId = { ren: 'w3e-ren-raid', pir: 'w3e-pir-racket', council: 'w3e-council-raid' }[out];
+    if (evId) {
+      const ev = EVENTS[evId], cqDay = s.cq.find((x) => x.qid === 'w3-flags').day;
+      const keep = s.day; s.day = cqDay;
+      assert.ok(!W3.eventDue(s, ev), `${evId}: not right away`);
+      s.day = cqDay + ev.trigger.every; assert.ok(W3.eventDue(s, ev), `${evId}: due`);
+      W3.markEvent(s, ev); assert.ok(!W3.eventDue(s, ev), `${evId}: cooldown`); s.day = keep;
+    }
+    if (out === 'pir') {
+      s.hero.credits = 200;
+      assert.equal(W3.harmonyExitToll(s, 'alpha-harmony', 'svalka'), 10, 'pir: 5% exit toll');
+      let d = 0; for (let i = 0; i < 10; i++) d += W3.travelCut(s, 2); assert.ok(d <= 19, 'pir: travel −10%');
+    } else assert.equal(W3.harmonyExitToll(s, 'alpha-harmony', 'svalka'), 0, `${out}: no toll`);
     assert.ok(played <= 1, 'c10 at most once');
     const sides = ['harmony-ai', 'harmony-ren', 'harmony-pir', 'harmony-council', 'harmony-abstain'].filter((f) => s.flags[f]);
     assert.equal(sides.length, 1, `exactly one side flag (${sides})`);
@@ -180,8 +211,11 @@ check('coverage', () => {
   for (const w of ['truth', 'self', 'lie', 'silent', 'skip']) assert.ok(lizaOut.has(w), `w3-liza ${w} (${[...lizaOut]})`);
   for (const w of ['ai', 'ren', 'pir', 'council', 'abstain']) assert.ok(flagsOut.has(w), `w3-flags ${w} (${[...flagsOut]})`);
   for (const r of ['c10-council', 'c10-draw']) assert.ok(c10Out.has(r), `c10 ${r}`);
+  assert.ok(nightSeen[0] && nightSeen[1], 'w3-vacation with and without the night shift');
+  assert.ok(lizaKeysSeen, "Liza's keys (rel ≥ 3) reached");
+  assert.ok(waits > 0, 'the siege made the party wait');
 });
 
-console.log(`wave3-flow: ${runs} walks, ${steps} steps; w3-flags: ${[...flagsOut].sort().join('/')}; c10: ${[...c10Out].sort().join('/')}; w3-liza: ${[...lizaOut].sort().join('/')}; ${Object.entries(sideOut).map(([q, o]) => `${q}: ${[...o].sort().join('/')}`).join('; ')}`);
+console.log(`wave3-flow: ${runs} walks, ${steps} steps, ${waits} siege days waited; w3-flags: ${[...flagsOut].sort().join('/')}; c10: ${[...c10Out].sort().join('/')}; w3-liza: ${[...lizaOut].sort().join('/')}; ${Object.entries(sideOut).map(([q, o]) => `${q}: ${[...o].sort().join('/')}`).join('; ')}`);
 if (fails.length) { console.log(`FAILED ${fails.length}:\n  ${[...new Set(fails)].slice(0, 30).join('\n  ')}`); process.exit(1); }
 console.log('wave3-flow: OK — no softlocks');

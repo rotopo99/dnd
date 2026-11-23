@@ -26,6 +26,7 @@ import { passDays, exodusHud, travelWarning } from '../world/exodus.js';
 import { startExodusZero, openExodusRadio } from './exodus-zero.js';
 import { roadUses } from '../world/skill-uses.js';
 import { EXODUS_UI } from '../data/text/exodus.js';
+import { harmonyExitToll, travelCut } from '../world/wave3.js';
 import { hotspot } from '../ui/tooltip.js';
 import { openPauseMenu } from '../ui/save-ui.js';
 import { nodeMark, closedLoc, TONE_COLOR, nodeServices } from '../world/consequences.js';
@@ -101,7 +102,9 @@ function rideTo(game, x, o) {
   if (ex.marks?.length) openExodusRadio(game, ex.marks, go); else go(game);
 }
 
-const tripDays = (tr, i) => { const d = hopDays(tr.hops[i].r, tr.night); return tr.march === i ? Math.max(1, d - 1) : d; };
+const baseTripDays = (tr, i) => { const d = hopDays(tr.hops[i].r, tr.night); return tr.march === i ? Math.max(1, d - 1) : d; };
+// content-wave3 §2: pirate Harmony trade routes cut days (tr.cut[i], fixed once per hop in payHop)
+const tripDays = (tr, i) => Math.max(1, baseTripDays(tr, i) - (tr.cut?.[i] || 0));
 
 /** Sea / canoe fare (travel.js FARE): pirates friendly −50%, ally — free. */
 export function routeFare(save, r) {
@@ -290,7 +293,10 @@ export function createWorldMapScene() {
     // world-consequences.md ч.5: peaceful road uses (Survival tracking / forage, Endurance forced march)
     const ru = roadUses(members(sv, game.data), hops, !!S.night);
     for (const x of ru.log) log(x.text, x.color);
-    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night, encMod: ru.encMod, forage: ru.forage, march: ru.marchHop };
+    // content-wave3 §2: pirate Harmony — 5% toll on the way out of the hub
+    const toll = harmonyExitToll(sv, sv.location, to);
+    if (toll > 0) { sv.hero.credits -= toll; log(tf('w3.exitToll', { n: toll }), 'b'); }
+    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night, encMod: ru.encMod, forage: ru.forage, march: ru.marchHop, cut: {} };
     payHop(game);
     play('uiClick');
   }
@@ -298,6 +304,9 @@ export function createWorldMapScene() {
   function payHop(game) {
     const sv = save(game);
     const hop = S.travel.hops[S.travel.i];
+    const base = baseTripDays(S.travel, S.travel.i);
+    const cut = base - travelCut(sv, base);
+    if (cut > 0) { S.travel.cut[S.travel.i] = cut; log(tf('w3.travelCut', { n: cut }), 'j'); }
     const fare = routeFare(sv, hop.r);
     if (fare) { sv.hero.credits -= fare; log(`${t('map.fare')}: −${fare} ${t('world.credits')} (${LOCATIONS[hop.to].name})`, 'b'); }
   }

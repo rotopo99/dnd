@@ -31,7 +31,7 @@ import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
-import { lizaDoorReady, useLizaDoor } from '../world/wave3.js';
+import { lizaDoorReady, useLizaDoor, lizaCaches } from '../world/wave3.js';
 import { createNpcActions, isTrialQuest } from '../world/npc-actions.js';
 import { hasWorldFlag, skillName } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
@@ -284,9 +284,9 @@ export function createLocationScene(rawId, opts = {}) {
           onWin: (g2) => { toastAll(g2, onBattleWon(sv, bd.encounter, locId, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } }) });
     }
     // caches
-    for (const c of loc.caches) {
+    for (const c of [...loc.caches, ...lizaCaches(sv, locId, loc)]) { // content-wave3 §1 rel ≥ 3: + Liza's cache in a dungeon
       if (sv.caches.includes(c.id)) continue;
-      out.push({ label: t('loc.search'), sub: c.check ? `${cacheSkills(c).map((x) => t(`skill.${x}`)).join(' / ')} ${t('battle.dc')} ${c.check.dc}` : t('loc.free'), run: (g) => searchCache(g, c) });
+      out.push({ label: c.liza ? t('w3.lizaCacheLabel') : t('loc.search'), sub: c.check ? `${cacheSkills(c).map((x) => t(`skill.${x}`)).join(' / ')} ${t('battle.dc')} ${c.check.dc}` : t('loc.free'), run: (g) => searchCache(g, c) });
       // content-wave3.md §1: «Дверь Лизы» (rel ≥ 1) — a free «открыто» once per 10 days, no check
       if (c.check && lizaDoorReady(sv)) out.push({ label: t('w3.lizaDoor'), sub: t('w3.lizaDoorSub'), run: (g) => { if (useLizaDoor(sv)) { g.toast(t('w3.lizaOpen'), 'j'); searchCache(g, c, true); } } });
     }

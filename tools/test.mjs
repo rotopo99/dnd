@@ -6145,10 +6145,18 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     }
     while (QS.slots(s, Q).length && QS.slots(s, Q)[0].stage.id === 'envoys') { const x = QS.slots(s, Q)[0]; QS.failSlot(s, x, GAME_DATA); }
     assert.equal(s.quests[Q].stage, 'siege-1');
+    // siege timer: events on days +2 / +4, the side choice from day +6 (locked slots before)
+    assert.ok(QS.slots(s, Q).every((x) => x.locked), 'shelling waits for day +2');
+    s.day += 2;
     QS.failSlot(s, QS.slots(s, Q)[0], GAME_DATA);
     QS.chooseOption(s, QS.slots(s, Q)[0], 'accept-1', GAME_DATA);
     QS.onBattleWon(s, 'enc-w3-sabotage', 'harmony-sector-d', GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'siege-2', 'sabotage waits for day +4');
+    s.day += 2;
+    QS.onBattleWon(s, 'enc-w3-sabotage', 'harmony-sector-d', GAME_DATA);
     assert.equal(s.quests[Q].stage, 'side');
+    assert.ok(QS.slots(s, Q).every((x) => x.locked), 'the side choice waits for day +6');
+    s.day += 2;
   };
   test('wave3 flags: supply 3 + envoys − lost events; < 3 hides the council', () => {
     const s = mk(); toSide(s, true);
@@ -6189,6 +6197,98 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     QS.cineResult(s, 'c10-draw', {}, GAME_DATA, 'c10-vote');
     assert.equal(s.quests[Q].stage, 'debate-lost');
     assert.ok(!sideIds(s).includes('council'));
+  });
+}
+// ---------------------------------------------------------------- content-wave3.md gaps: night −30%, Узел-4, «Бирка», «Осанка», Liza's keys, hub price
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const W3 = await import('../game/src/world/wave3.js');
+  const CK = await import('../game/src/world/checks.js');
+  const { WAVE3_RULES } = await import('../game/src/data/world/quests-wave3.js');
+  const { EVENTS: EV } = await import('../game/src/world/data.js');
+  const { ENEMIES: EN, ENCOUNTERS: ENC, ITEMS: IT } = await import('../game/src/data/index.js');
+  const C = await import('../game/src/rules/combat.js');
+  const { t } = await import('../game/src/data/text/index.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act1-done': true }, flags); s.hero.credits = 500; return s; };
+  const choiceSlot = (s, q) => QS.slots(s, q).find((x) => x.kind === 'choice');
+  const vacation = (night) => {
+    const s = mk(); QS.startQuest(s, 'w3-vacation'); QS.onTalk(s, 'w3-node4', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA);
+    if (night) { QS.failSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA); QS.chooseOption(s, choiceSlot(s, 'w3-vacation'), 'wait', GAME_DATA); }
+    else QS.completeSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA);
+    QS.chooseOption(s, choiceSlot(s, 'w3-vacation'), 'split', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA); QS.onTalk(s, 'w3-node4', GAME_DATA);
+    const c0 = s.hero.credits, x0 = s.hero.xp || 0;
+    QS.claimTurnin(s, 'w3-vacation', GAME_DATA);
+    return { s, cr: s.hero.credits - c0, xp: (s.hero.xp || 0) - x0 };
+  };
+  test('wave3 vacation: night shift cuts the reward by 30%; split sends Узел-4 for one battle', () => {
+    const day = vacation(false), night = vacation(true);
+    assert.equal(night.cr, Math.round(day.cr * WAVE3_RULES.nightShiftMul), `credits ${night.cr} vs ${day.cr}`);
+    assert.ok(night.xp < day.xp, 'xp cut too');
+    assert.equal(day.s.flags['skirm-escort'], WAVE3_RULES.node4Ally);
+    assert.ok(EN[WAVE3_RULES.node4Ally]?.name === 'Узел-4', 'Узел-4 has a stat block');
+  });
+  test('wave3 sorter: «self» gives «Бирка вторсырья» — −1 to MRL hits, not to HP', () => {
+    assert.equal(IT['recycle-tag']?.name, 'Бирка вторсырья');
+    const s = mk(); QS.startQuest(s, 'w3-sorter'); QS.onTalk(s, 'w3-sorter', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-sorter')[0], GAME_DATA);
+    QS.chooseOption(s, choiceSlot(s, 'w3-sorter'), 'self', GAME_DATA);
+    QS.onBattleWon(s, 'enc-w3-sorter', 'dungeons-m13', GAME_DATA);
+    assert.ok(st.requiresOk(s, { item: 'recycle-tag' }), 'the tag is in the bag');
+    assert.ok(!st.requiresOk(s, { item: 'servo-parts' }));
+    const u = st.buildHero(s, GAME_DATA);
+    assert.equal(u.mrlGuard, 1);
+    const b = C.createBattle({ heroes: [u], enemies: ['crg-heckler'], data: GAME_DATA, seed: 3 });
+    const h = b.units.find((x) => x.team === 'heroes');
+    const m0 = h.mrl; C.dealDamage(b, null, h, 3, 'cringe'); assert.equal(m0 - h.mrl, 2, 'cringe 3 -> 2');
+    const hp0 = h.hp; C.dealDamage(b, null, h, 3, 'blunt'); assert.equal(hp0 - h.hp, 3, 'HP damage untouched');
+  });
+  test('wave3 liza: «Осанка» hindrance on the forge battle', () => {
+    const hd = ENC['enc-w3-straight'].hindrance;
+    assert.deepEqual([hd.stat, hd.value, hd.turns], ['kb', -1, 1]);
+    assert.ok(t(`w3.hindrance.${hd.id}`) !== `w3.hindrance.${hd.id}`);
+  });
+  test('wave3 liza: rel ≥ 3 — a free cache in every dungeon node and +1 Lockpicking for the hero', () => {
+    const s = mk(); s.quests['w3-liza'] = { state: 'done', stage: 'note', subs: {} };
+    st.addRel(s, 'liza', 2);
+    const pick = () => CK.checkInfo(st.members(s, GAME_DATA)[0], 'lockpicking').bonus;
+    const b2 = pick();
+    assert.equal(W3.lizaCaches(s, 'dungeons-m17').length, 0, 'rel 2: no cache');
+    st.addRel(s, 'liza', 1);
+    assert.equal(pick(), b2 + WAVE3_RULES.lizaPickBonus, 'rel 3: +1 Lockpicking');
+    const c = W3.lizaCaches(s, 'dungeons-m17');
+    assert.equal(c.length, 1); assert.ok(!c[0].check, 'no check'); assert.equal(c[0].id, 'liza:dungeons-m17');
+    assert.equal(W3.lizaCaches(s, 'alpha-harmony').length, 0, 'not on a hub');
+    s.flags['liza-skip'] = true; assert.equal(W3.lizaCaches(s, 'dungeons-m17').length, 0);
+  });
+  test('wave3 flags price: Военпром raid every 6 days (ren), racket every 8 (pir), one cringegon raid (council)', () => {
+    for (const [id, side, every, once] of [['w3e-ren-raid', 'ren', 6, false], ['w3e-pir-racket', 'pir', 8, false], ['w3e-council-raid', 'council', 5, true]]) {
+      const ev = EV[id];
+      assert.ok(ev && ev.trigger.flags.includes(`harmony-${side}`) && ev.trigger.every === every && (ev.once !== false) === once, id);
+      for (const c of ev.choices) for (const o of [c.success, c.fail].filter(Boolean)) if (o.battle) assert.ok(ENC[o.battle.encounter], `${id}: ${o.battle.encounter}`);
+      const s = mk({ [`harmony-${side}`]: true }); s.day = 10; s.cq = [{ qid: 'w3-flags', o: side, day: 10 }];
+      assert.ok(!W3.eventDue(s, ev), `${id}: not at once`);
+      s.day = 10 + every; assert.ok(W3.eventDue(s, ev), `${id}: due after ${every} days`);
+      W3.markEvent(s, ev); s.day += every - 1; assert.ok(!W3.eventDue(s, ev), `${id}: cooldown`);
+      s.day += 1; assert.ok(W3.eventDue(s, ev), `${id}: again`);
+    }
+    assert.ok(EV['w3e-pir-racket'].choices.some((c) => c.success.credits === -60), 'racket: pay 60');
+  });
+  test('wave3 flags price: pirate Harmony — 5% exit toll, −10% travel (banked days)', () => {
+    const s = mk(); s.hero.credits = 400;
+    assert.equal(W3.harmonyExitToll(s, 'alpha-harmony', 'svalka'), 0, 'no toll without pirates');
+    assert.equal(W3.travelCut(s, 5), 5);
+    s.flags['harmony-pir'] = true;
+    assert.equal(W3.harmonyExitToll(s, 'alpha-harmony', 'svalka'), 20);
+    assert.equal(W3.harmonyExitToll(s, 'harmony-post', 'svalka'), 20, 'from a hub district');
+    assert.equal(W3.harmonyExitToll(s, 'alpha-harmony', 'harmony-workshop'), 0, 'inside the hub');
+    assert.equal(W3.harmonyExitToll(s, 'svalka', 'alpha-harmony'), 0, 'on the way in');
+    let total = 0; for (let i = 0; i < 10; i++) total += W3.travelCut(s, 3);
+    assert.ok(total >= 27 && total <= 28, `30 days -> ${total} (−10%)`);
+    assert.equal(W3.travelCut(s, 1), 1, 'a 1-day hop stays 1 day');
   });
 }
 // ---------------------------------------------------------------- content-wave3.md §4–§5: epilogue slides of waves 2–3, radio rd-w3-*

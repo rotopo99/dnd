@@ -572,6 +572,10 @@ export const ITEMS = {
   'dawn-schematic': { id: 'dawn-schematic', name: 'Схема проекта «Рассвет»', price: 0, key: true,
     world: [{ check: 'tech', bonus: 2 }],
     desc: 'Чертёж Куксиуса. Пока в рюкзаке — Технологии +2. Никола отдал бы за неё полмастерской.' },
+  // content-wave3.md §3.2 w3-sorter «сам»: «бессилие» = урон по Морали (кринж, психика); пассивка работает, пока в рюкзаке
+  'recycle-tag': { id: 'recycle-tag', name: 'Бирка вторсырья', price: 0, key: true,
+    passives: [{ id: 'item-recycle-tag', name: 'Уже отсортирован', desc: '−1 к каждому урону по Морали (кринж, психика).', op: { mrlGuard: 1 } }],
+    desc: 'Жестяная бирка с номером 42 и словом «вторсырьё». Пока в рюкзаке — урон по Морали −1. Кого отсортировали, того не пересортировать.' },
   'lockpick-set': { id: 'lockpick-set', name: 'Набор отмычек Лизы', price: 60,
     world: [{ check: 'lockpicking', bonus: 2 }],
     desc: 'Чужие отмычки. Пока в рюкзаке — Взлом +2. Совесть −1 (не считается).' },

@@ -10,6 +10,7 @@ import { reachable, findPath, isPassable, DIRS8 } from '../rules/grid.js';
 import { isTransitHub } from './transit.js';
 import { HANDMADE_BY_LOC } from '../data/maps/handmade/index.js';
 import { loadHandmade, liveHand } from './handmade.js';
+import { lizaCaches } from './wave3.js';
 
 const cache = new Map();
 
@@ -91,7 +92,7 @@ export function placeNpcs(map, grid, ids, objects = map.objects) {
  */
 export function liveObjects(map, locId, save) {
   const loc = LOCATIONS[resolveLocation(locId)];
-  const caches = [...(loc?.caches || [])];
+  const caches = [...(loc?.caches || []), ...lizaCaches(save, resolveLocation(locId), loc)]; // content-wave3 §1: Liza's cache (rel ≥ 3)
   const out = [];
   for (const o0 of map.objects) {
     const o = { ...o0 };

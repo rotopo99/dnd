@@ -181,6 +181,8 @@ export function createBattleScene(opts) {
     const b = S.b;
     // controls-divinity.md §3: a sneak attack from behind on the free map — the enemies lose their first turn
     if (opts.surprise) for (const u of b.units) if (u.team === 'enemies' && !u.dead) combat.applyStatus(b, u, 'stun', 1, null);
+    // content-wave3.md: an encounter hindrance (`hindrance` {stat, value, turns}) — party buffs before the first turn («Осанка» −1 КБ)
+    for (const h of opts.heroBuffs || []) for (const u of b.units) if (u.team === 'heroes' && !u.dead) u.buffs.push({ stat: h.stat, value: h.value, turns: h.turns ?? 1, fresh: false, source: null });
     setBiome(ambBiome(b.map), { night: b.map.tod === 'night', weather: b.map.weather });
     S.hoverPath = null; // metric: {pts, len, cost, ok: 'move'|'dash'|'no', to}
     S.xray = false; // «Обзор»: X held / toggled

@@ -9,6 +9,7 @@ import { createDialogueScene } from './dialogue.js';
 import { startWorldBattle } from './world-battle.js';
 import { saveGame } from '../save.js';
 import { exodusExtend } from '../world/exodus.js';
+import { eventDue, markEvent } from '../world/wave3.js';
 
 function triggerOk(save, ev, when) {
   const tr = ev.trigger || {};
@@ -19,6 +20,7 @@ function triggerOk(save, ev, when) {
   if (tr.flags && !tr.flags.every((f) => save.flags[f])) return false;
   if (tr.notFlags && tr.notFlags.some((f) => save.flags[f])) return false;
   if (tr.quest && save.quests[tr.quest.id]?.state !== tr.quest.state) return false;
+  if (!eventDue(save, ev)) return false; // content-wave3: trigger.every — recurring hub events
   return true;
 }
 
@@ -42,6 +44,7 @@ const lines = (key) => {
 export function runEvent(game, ev, then) {
   const save = game.save;
   save.flags[`event:${ev.id}`] = true;
+  markEvent(save, ev);
   journal(save, `${t('event.title')}: ${storyText(ev.name)}`);
   saveGame(save);
   const hero = { race: save.hero.race, cls: save.hero.cls, look: save.hero.look || null, avatar: save.hero.avatar || null, name: save.hero.name };

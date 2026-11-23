@@ -95,6 +95,8 @@ function reward(save, qid, data) {
   // expeditions.md: a reserve companion closed the quest — reward × EXP_TYPES.quest.reward.questRewardMul (st.expMul)
   const em = save.quests[qid]?.expMul;
   if (em) { r.xp = Math.round(r.xp * em); if (r.credits) r.credits = Math.round(r.credits * em); }
+  // content-wave3.md: quest.rewardCut [{ flag, mul }] — a set flag cuts the reward (w3-vacation night shift −30%)
+  for (const c of q.rewardCut || []) if (save.flags?.[c.flag]) { r.xp = Math.round(r.xp * c.mul); if (r.credits) r.credits = Math.round(r.credits * c.mul); }
   const out = grant(save, r, data, { keyChoice: q.key });
   // third-exodus.md: rewards.exodus { ext } — the Exodus deadline moves once (flag exo-ext:<quest id>)
   const ext = (q.rewards?.exodus || q.exodus)?.ext;
@@ -157,6 +159,7 @@ function enterStage(save, qid, stageId, via = null) {
   if (via !== 'cine') cineStage(save, qid, stageId); // cinematics.md: stage flags + queued scenes (mq3-court/inside -> c6, c4)
   else st.via = stageId;
   if (q.timer && q.timer.stage === stageId && st.due == null) st.due = save.day + q.timer.days;
+  if (st.at?.[stageId] == null) (st.at ||= {})[stageId] = save.day || 0; // first day on the stage (Requires questDays)
 }
 /** Timer of an active quest on its stage: days left (≥ 0) or null. */
 export function timerLeft(save, qid) {

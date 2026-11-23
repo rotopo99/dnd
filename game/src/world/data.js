@@ -44,8 +44,9 @@ export { ROUTES, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, AMBUSH,
 export { DEED_TAGS } from '../data/world/quests.js';
 import { EVENTS as EVENTS_BASE } from '../data/world/events.js';
 import { EVENTS_DENSITY } from '../data/world/density-events.js';
+import { EVENTS_WAVE3 } from '../data/world/events-wave3.js';
 /** Events: party events + world density (density-events.js — texts are plain strings, storyText passes them through). */
-export const EVENTS = { ...EVENTS_BASE, ...EVENTS_DENSITY };
+export const EVENTS = { ...EVENTS_BASE, ...EVENTS_DENSITY, ...EVENTS_WAVE3 }; // wave 3: Harmony owner's price (recurring)
 export { ORIGINS, originAllowed } from '../data/world/origins.js';
 export { GADGETS, gadgetFor } from '../data/gadgets.js';
 export { SPECIALIZATIONS } from '../data/skills.js';

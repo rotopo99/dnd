@@ -25,6 +25,16 @@ export const WAVE3_RULES = {
   lizaDoorRel: 1,
   lizaGuestRel: 5,       // rel = 5: Лиза — гость на базе
   lizaLevel: 6,          // уровень героя для выдачи w3-liza
+  lizaKeysRel: 3,        // rel ≥ N: +1 тайник Лизы в каждом подземелье и +lizaPickBonus к «Взлому» героя
+  lizaPickBonus: 1,
+  lizaCache: { kinds: ['dungeon'], loot: [{ credits: 35 }, { item: 'servo-parts', n: 1 }] },
+  // w3-flags осада: события на дни +2 и +4 от начала осады, выбор стороны — с дня +6
+  siegeDays: { shelling: 2, sabotage: 4, end: 6 },
+  nightShiftMul: 0.7,    // w3-vacation: провал petition (ночная смена) — награда −30%
+  node4Ally: 'w3-node4-ally', // vac-split: Узел-4 идёт с отрядом на один бой (флаг skirm-escort)
+  // хаб после w3-flags (consequences §2 «Цена»/«Карта»): повторяющиеся события — events-wave3.js (trigger.every)
+  pirTravelCut: 0.1,     // harmony-pir: торговые маршруты — дорога −10% (дробные дни копятся в save.w3.travelBank)
+  pirExitToll: 0.05,     // harmony-pir: пошлина 5% кредитов на выход из Гармонии
 };
 
 // Счётчики, выводимые из флагов: value = base + Σ plus − Σ minus, в [min, max]. Требование { ctr: { id, min, max } }.
@@ -41,6 +51,9 @@ export const W3_COUNTERS = {
     plus: { 'disp-r-lamp': 1, 'disp-r-pacemaker': 1, 'disp-r-shumok': 1, 'disp-r-lift': 1, 'disp-r-laugh': 1 } },
 };
 
+// w3-flags осада: стадия открывается на день +N от начала осады (вход в siege-1; requiresOk questDays, gate — текст замка)
+const siegeAt = (n) => ({ requires: { questDays: { id: 'w3-flags', stage: 'siege-1', min: n } }, gate: { text: 'w3.siegeWait', vars: { n } } });
+
 const room = (id, text, cost, extra = {}) =>
   opt(`r-${id}`, text, null, 'rooms', { requires: { notFlag: `disp-r-${id}`, ctr: { id: 'disp-power', min: cost }, ...(extra.requires || {}) },
     effects: { flags: [`disp-r-${id}`], ...(extra.effects || {}) } });
@@ -56,11 +69,12 @@ export const QUESTS_WAVE3 = [
       st('petition', 'Контур диктует заявление по форме АИ: одиннадцать голосов, четырнадцать копий. Записать так, чтобы каждый узнал своё.',
         check(['persuasion', 'analysis', 'meditation'], 14, 'night'), 'choice'),
       st('night', 'Заявление не сошлось с формой. Контур включил ночную смену: цех затопляет до утра.',
-        choice([opt('wait', 'Переждать на трубах до утра. Мокро, но по графику.', null, 'choice', { effects: { hp: -6, flags: ['vac-night'] } })]), 'choice'),
+        choice([opt('wait', 'Переждать на трубах до утра. Мокро, но по графику.', null, 'choice', { effects: { hp: -6, flags: ['vac-night'], text: 'Ночная смена: награда за отпуск урежется на 30%.' } })]), 'choice'),
       st('choice', 'Заявление готово. Осталось решить, что с ним делать.', choice([
         opt('formal', 'Оформить отпуск: печать окошка № 7 или любой штамп.', check(['persuasion', 'analysis', 'deception'], 13, null, { easeBy: [{ flag: 'customs-stamp', n: 2 }] }), 'back',
           { effects: { flags: ['vac-formal'], items: [{ item: 'rare-parts', n: 2 }] } }),
-        opt('split', 'Расцепить контур: одиннадцать «я» вместо одного «мы».', check(['tech', 'hacking'], 16), 'back', { effects: { flags: ['vac-split'] } }),
+        opt('split', 'Расцепить контур: одиннадцать «я» вместо одного «мы».', check(['tech', 'hacking'], 16), 'back',
+          { effects: { flags: ['vac-split'], escort: WAVE3_RULES.node4Ally, text: 'Узел-4: «Хочу узнать, что такое „в одиночку“». Он идёт с вами на один бой.' } }),
         opt('resort', 'Отправить смену на курорт в Свободу, к рыбе и воде (120 кр.).', pay(120), 'back', { requires: { credits: 120 }, effects: { flags: ['vac-resort'] } }),
         opt('war', 'Отпуск — это навсегда. Выключить смену.', battle('enc-w3-brigade', 'dungeons-m16'), 'war2', { effects: { flags: ['vac-war'] } }),
       ]), 'back'),
@@ -68,7 +82,8 @@ export const QUESTS_WAVE3 = [
       st('back', 'Вернуться к Узлу-4.', talk('w3-node4', 'dungeons-m16'), 'done'),
     ],
     { xp: 650, credits: 90, rep: { mechanids: 2 } },
-    { outcomeBy: [{ key: 'war', all: ['vac-war'] }, { key: 'formal', all: ['vac-formal'] }, { key: 'split', all: ['vac-split'] }, { key: 'resort', all: ['vac-resort'] }] }),
+    { rewardCut: [{ flag: 'vac-night', mul: WAVE3_RULES.nightShiftMul }], // ночная смена: награда −30%
+      outcomeBy: [{ key: 'war', all: ['vac-war'] }, { key: 'formal', all: ['vac-formal'] }, { key: 'split', all: ['vac-split'] }, { key: 'resort', all: ['vac-resort'] }] }),
 
   // ================= w3-sorter «Сортировщик» (тёмный, бункер №9 «Вторсырьё», ур. 7) =================
   Q('w3-sorter', 'Сортировщик', 'w3-sorter', 'scavengers', 7,
@@ -87,7 +102,7 @@ export const QUESTS_WAVE3 = [
         opt('self', 'Дать отсортировать себя.', null, 'self-fight', { effects: { flags: ['sort-self'] } }),
       ]), null),
       st('self-fight', '«Вам номер ящика... о. Вы ко мне». Ведомость кончилась. Сортировщик переходит к ручной сортировке.',
-        battle('enc-w3-sorter', 'dungeons-m13'), 'done', { effects: { items: [{ item: 'servo-parts', n: 1 }], flags: ['sort-tag'] } }),
+        battle('enc-w3-sorter', 'dungeons-m13'), 'done', { effects: { items: [{ item: 'recycle-tag', n: 1 }], flags: ['sort-tag'] } }),
     ].map((s) => (s.id === 'decide' ? { ...s, end: 'done' } : s)),
     { xp: 750, credits: 60, rep: { scavengers: 1 } },
     { outcomeBy: [{ key: 'self', all: ['sort-self'] }] }),
@@ -172,10 +187,11 @@ export const QUESTS_WAVE3 = [
         ] },
       ]), 'siege-1'),
       st('siege-1', 'Осада. Сектор D под обстрелом: удержать насосы, пока не кончились снаряды. Или терпение.',
-        { ...check(['tech', 'military', 'athletics'], 14, 'siege-1-lost'), location: 'harmony-sector-d' }, 'siege-2'),
+        { ...check(['tech', 'military', 'athletics'], 14, 'siege-1-lost'), location: 'harmony-sector-d' }, 'siege-2', siegeAt(WAVE3_RULES.siegeDays.shelling)),
       st('siege-1-lost', 'Насосы сектора D пробиты. Воды меньше, злости больше.',
         choice([opt('accept-1', 'Списать потери и идти дальше.', null, 'siege-2', { effects: { flags: ['flags-ev-shelling-lost'] } })]), 'siege-2'),
-      st('siege-2', 'Диверсия на складе: кто-то хочет, чтобы хлеба не досталось никому.', battle('enc-w3-sabotage', 'harmony-sector-d', 'siege-2-lost'), 'side'),
+      st('siege-2', 'Диверсия на складе: кто-то хочет, чтобы хлеба не досталось никому.', battle('enc-w3-sabotage', 'harmony-sector-d', 'siege-2-lost'), 'side',
+        siegeAt(WAVE3_RULES.siegeDays.sabotage)),
       st('siege-2-lost', 'Склад горит. Диверсанты ушли. Хлеба стало меньше на одну неделю.',
         choice([opt('accept-2', 'Тушить, что осталось.', null, 'side', { effects: { flags: ['flags-ev-sabotage-lost'] } })]), 'side'),
       st('side', 'Осада выдохлась. Ключи от Гармонии — на столе у Серы. Чей флаг поднять?', choice([
@@ -189,7 +205,7 @@ export const QUESTS_WAVE3 = [
         opt('council', 'Совет беженцев: Сера, Парацетамол, Айнура. Вече на палубе.', null, 'debate',
           { requires: { ctr: { id: 'harmony-supply', min: 3 } }, effects: { flags: ['harmony-debate'] } }),
         opt('abstain', 'Не поднимать ничей флаг. Пусть делят сами.', null, 'back', { effects: { flags: ['harmony-abstain'] } }),
-      ]), 'back'),
+      ]), 'back', siegeAt(WAVE3_RULES.siegeDays.end)),
       st('debate', 'Вече: четыре стула из ящиков, три посла, пять тысяч номерков. Переспорить всех.',
         { kind: 'challenge', skills: ['persuasion', 'analysis', 'intimidation'], dc: 17, successes: 4, failures: 3, onFail: 'debate-lost', easeBy: [{ flag: 'truth-harmony-public', n: 2 }] },
         'council-won'),

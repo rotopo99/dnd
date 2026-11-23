@@ -27,7 +27,7 @@ import { hasWorldFlag, worldFlagValues } from './checks.js';
 import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from './inventory.js';
 import { romanceDeed } from './romance.js';
 import { coopCount } from './coop.js';
-import { W3_COUNTERS } from '../data/world/quests-wave3.js';
+import { W3_COUNTERS, WAVE3_RULES as W3R } from '../data/world/quests-wave3.js';
 import { CINE_RULES } from '../data/cinematics/index.js';
 
 export const MAX_PARTY = 3; // legacy default: companions besides the hero (real limit — squadMax(save) − 1)
@@ -113,6 +113,8 @@ function gadgetWithItems(save, data) {
   const bgWorld = backstoryWorld(h); // world-consequences.md ч.4: backstory skill bonuses ride on the merged gadget
   const bgPass = backstoryPassives(save); // and the «first battle» drawback (−1 hit until the first win)
   if (bgWorld.length || bgPass.length) items.push({ name: backstoryName(h) || 'bg', world: bgWorld, passives: bgPass });
+  // content-wave3.md §1 rel ≥ 3: Liza's keys — +1 Lockpicking for the hero
+  if (lizaKeysOn(save)) items.push({ name: t('w3.lizaKeys'), world: [{ check: 'lockpicking', bonus: W3R.lizaPickBonus, name: t('w3.lizaKeys') }] });
   if (!items.length) return { data, gadget: h.gadget || undefined };
   const id = `${h.gadget || 'none'}+items`;
   const merged = {
@@ -334,6 +336,11 @@ export function requiresOk(save, req, data = GAME_DATA) {
     if ((req.ctr.min != null && v < req.ctr.min) || (req.ctr.max != null && v > req.ctr.max)) return false;
   }
   if (req.rel && relOf(save, req.rel.npc) < (req.rel.min ?? -Infinity)) return false;
+  // { questDays: { id, stage, min } } — ≥ min days since the quest entered `stage` (quests.js st.at; unknown — passed: old saves)
+  if (req.questDays) {
+    const at = save.quests?.[req.questDays.id]?.at?.[req.questDays.stage];
+    if (at != null && (save.day || 0) - at < req.questDays.min) return false;
+  }
   return true;
 }
 
@@ -347,6 +354,9 @@ export function counterValue(save, id) {
   for (const [k, d] of Object.entries(c.minus || {})) if (f[k]) v -= d;
   return Math.max(c.min ?? -Infinity, Math.min(c.max ?? Infinity, v));
 }
+
+/** content-wave3.md §1: «Ключи Лизы» — w3-liza done (not skipped) and rel ≥ WAVE3_RULES.lizaKeysRel. */
+export const lizaKeysOn = (save) => save?.quests?.['w3-liza']?.state === 'done' && !save.flags?.['liza-skip'] && relOf(save, 'liza') >= W3R.lizaKeysRel;
 
 /** Relation of an event companion (cinematics.md rel, −5…5; the same store the cinematic env writes). */
 export const relOf = (save, npc) => save?.cine?.rel?.[npc] || 0;
@@ -379,6 +389,8 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   for (const f of r.flags || []) save.flags[f] = true;
   if (r.flag) save.flags[r.flag] = true;
   if (r.terminal) save.terminals[r.terminal.id] = r.terminal.state;
+  // { escort: enemyId } — a temporary ally for the next battle (skirmishes.md flag skirm-escort; content-wave3 Узел-4)
+  if (r.escort) save.flags['skirm-escort'] = r.escort;
   if (r.rep) for (const [f, d] of Object.entries(r.rep)) out.push(...repToasts(applyRep(save, f, repDelta(save, d, data))));
   if (r.talent && TALENTS[r.talent] && !save.hero.talents.includes(r.talent)) out.push(...learnTalent(save, r.talent, data));
   if (r.recruit && NPCS[r.recruit] && canRecruit(save, r.recruit) !== 'already') { recruit(save, r.recruit); out.push({ text: tf('fx.joined', { name: NPCS[r.recruit].name }), color: 'j' }); }

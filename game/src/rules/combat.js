@@ -889,6 +889,7 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
 
   if (MRL_TYPES[dmgType]) {
     if (tgt.maxMrl <= 0 || tgt.down) amt = 0;
+    if (tgt.mrlGuard && amt > 0) amt = Math.max(0, amt - tgt.mrlGuard); // passive op mrlGuard («бессилие» −N)
     tgt.mrl = Math.max(0, tgt.mrl - amt);
     emit(b, { type: 'damage', actor: srcId, target: tgt.id, amount: amt, dmgType, resource: 'mrl', resist: r, mult, crit, value: tgt.mrl });
     if (amt > 0) phobiaDamage(b, tgt, dmgType, src);
