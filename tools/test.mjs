@@ -5634,8 +5634,8 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     return { R, save };
   };
 
-  test('cine: 9 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
-    assert.equal(Object.keys(CINEMATICS).length, 9);
+  test('cine: 10 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
+    assert.equal(Object.keys(CINEMATICS).length, 10);
     for (const d of Object.values(CINEMATICS)) assert.deepEqual(CN.validateCine(d), [], d.id);
     const bad = { id: 'x', start: 'a', cast: {}, beats: { a: { choice: { opts: [{ id: 'o', next: 'nope' }, { id: 'p', next: 'a' }] } }, z: { end: { result: 'r' } } } };
     const e = CN.validateCine(bad).join('\n');
@@ -6122,6 +6122,73 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(W3.lizaDoorReady(s));
     assert.ok(W3.useLizaDoor(s)); assert.ok(!W3.lizaDoorReady(s));
     s.day += 10; assert.ok(W3.lizaDoorReady(s), 'again in 10 days');
+  });
+}
+// ---------------------------------------------------------------- content-wave3.md §2: w3-flags (supply, sides, hub changes, c10)
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const HK = await import('../game/src/world/cine-hooks.js');
+  const { npcsAt } = await import('../game/src/world/data.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act1-done': true, 'met-lox': true }, flags); s.hero.credits = 1000; return s; };
+  const Q = 'w3-flags';
+  const sideIds = (s) => QS.availableOptions(s, QS.slots(s, Q).find((x) => x.kind === 'choice')).map((o) => o.id);
+  const toSide = (s, envoys) => {
+    QS.startQuest(s, Q); QS.onTalk(s, 'sera', GAME_DATA);
+    assert.ok(npcsAt('harmony-post', s).includes('w3-envoy-ai'), 'envoys on the hub while the quest runs');
+    for (const x of QS.slots(s, Q)) {
+      if (!envoys) { QS.failSlot(s, x, GAME_DATA); QS.failSlot(s, x, GAME_DATA); QS.failSlot(s, x, GAME_DATA); continue; }
+      if (x.kind === 'choice') { QS.chooseOption(s, x, 'tale', GAME_DATA); QS.completeSlot(s, QS.slots(s, Q).find((y) => y.option?.id === 'tale'), GAME_DATA); }
+      else if (x.goal.kind === 'battle') QS.onBattleWon(s, x.goal.encounter, x.goal.location, GAME_DATA);
+      else QS.completeSlot(s, x, GAME_DATA);
+    }
+    while (QS.slots(s, Q).length && QS.slots(s, Q)[0].stage.id === 'envoys') { const x = QS.slots(s, Q)[0]; QS.failSlot(s, x, GAME_DATA); }
+    assert.equal(s.quests[Q].stage, 'siege-1');
+    QS.failSlot(s, QS.slots(s, Q)[0], GAME_DATA);
+    QS.chooseOption(s, QS.slots(s, Q)[0], 'accept-1', GAME_DATA);
+    QS.onBattleWon(s, 'enc-w3-sabotage', 'harmony-sector-d', GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'side');
+  };
+  test('wave3 flags: supply 3 + envoys − lost events; < 3 hides the council', () => {
+    const s = mk(); toSide(s, true);
+    assert.equal(st.counterValue(s, 'harmony-supply'), 5);
+    assert.ok(sideIds(s).includes('council'));
+    const t2 = mk(); toSide(t2, false);
+    assert.equal(st.counterValue(t2, 'harmony-supply'), 2);
+    assert.ok(!sideIds(t2).includes('council'));
+    assert.ok(sideIds(t2).includes('abstain'), 'a side is always available');
+  });
+  test('wave3 flags: each side changes NPCs, prices, the node glyph; council goes through c10', () => {
+    const want = { ai: ['w3-nedolet', 'harmony-post', '★'], ren: ['commissar-khryashch', 'harmony-post', '⚔'], pir: ['w3-dubovy', 'alpha-harmony', '⚓'], council: ['w3-bread-queue', 'alpha-harmony', '⚐'] };
+    for (const [side, [npc, at, glyph]] of Object.entries(want)) {
+      const s = mk(); toSide(s, true);
+      QS.chooseOption(s, QS.slots(s, Q)[0], side, GAME_DATA);
+      if (side === 'council') {
+        assert.equal(s.quests[Q].stage, 'debate');
+        assert.equal(HK.takeCineQueue(s), 'c10-vote');
+        QS.cineResult(s, 'c10-council', { win: 3 }, GAME_DATA, 'c10-vote');
+        assert.equal(s.quests[Q].stage, 'council-won');
+      }
+      QS.onTalk(s, 'sera', GAME_DATA);
+      assert.equal(s.quests[Q].outcome, side);
+      QS.claimTurnin(s, Q, GAME_DATA);
+      assert.ok(s.flags[`cq:${Q}:${side}`]);
+      assert.ok(npcsAt(at, s).includes(npc), `${side}: ${npc} at ${at}`);
+      assert.equal(CQ.nodeMark(s, 'alpha-harmony').glyph, glyph);
+      const vm = CQ.vendorMods(s, 'nikola');
+      if (side === 'ai') { assert.equal(vm.mult, 0.85); assert.ok(CQ.vendorMods(s, 'bosun-sukhar').closed); assert.ok(!CQ.nodeServices(s, 'alpha-harmony').includes('rest')); }
+      if (side === 'ren') assert.ok(vm.add.includes('frag-grenade'));
+      if (side === 'pir') assert.ok(CQ.vendorMods(s, 'bosun-sukhar').add.includes('rare-parts'));
+      if (side === 'council') assert.equal(CQ.vendorMods(s, 'paracetamol').mult, 0.85);
+    }
+  });
+  test('wave3 flags: c10 draw -> debate-lost without the council', () => {
+    const s = mk(); toSide(s, true);
+    QS.chooseOption(s, QS.slots(s, Q)[0], 'council', GAME_DATA);
+    QS.cineResult(s, 'c10-draw', {}, GAME_DATA, 'c10-vote');
+    assert.equal(s.quests[Q].stage, 'debate-lost');
+    assert.ok(!sideIds(s).includes('council'));
   });
 }
 console.log(`\n${passed} passed, ${failed} failed`);

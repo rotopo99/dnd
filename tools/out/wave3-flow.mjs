@@ -17,6 +17,7 @@ import { npcsAt } from '../../game/src/world/data.js';
 import { CINEMATICS } from '../../game/src/data/cinematics/index.js';
 import * as W3 from '../../game/src/world/wave3.js';
 
+const STEP4 = false; // radio rd-w3-* and epilogue slides land in the next commit
 let seed = 13;
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 const mk = (flags = {}) => {
@@ -140,12 +141,48 @@ for (const [pick, qte] of C9) for (let k = 0; k < 8; k++) {
   });
 }
 
+// ------------------------------------------------------------------ §2 w3-flags: every side; council through c10 (won / draw) or the challenge
+const flagsOut = new Set(), c10Out = new Set();
+const SIDES = ['ai', 'ren', 'pir', 'council', 'abstain', 'pir-buy', 'ai-lox'];
+for (const side of SIDES) for (let k = 0; k < 10; k++) {
+  check(`flags ${side} #${k}`, () => {
+    const s = mk({ 'met-lox': true, ...(side === 'ai-lox' ? { 'truth-harmony-quiet': true } : {}), ...(k % 3 === 0 ? { 'truth-harmony-public': true } : {}) });
+    if (side.startsWith('ai')) s.rep.aiParty = 10;
+    if (k === 9) { s.rep.aiParty = -60; s.rep.renegades = -60; s.rep.pirates = -60; s.hero.credits = 0; } // nobody likes you, no money
+    QS.startQuest(s, 'w3-flags');
+    let played = 0;
+    const cine = (id) => {
+      assert.equal(id, 'c10-vote'); played++;
+      if (k % 4 === 3) { s.flags[`cine-seen:${id}`] = true; return; } // skipped scene: the debate challenge stays
+      const R = playCine(s, id, (R2) => (k % 2 ? 'silence' : R2.choice.opts[k % R2.choice.opts.length].id), k % 3 ? 'ok' : 'fail');
+      c10Out.add(R.result);
+      QS.cineResult(s, R.result, R.ctr, GAME_DATA, id);
+    };
+    const pol = { pick: (ids) => (ids.includes(side) ? side : ids.find((x) => x !== 'council') || ids[0]),
+      ok: (x) => (x.stage.id === 'envoys' ? k % 5 !== 4 : rnd() < 0.6) };
+    const out = walk(s, 'w3-flags', pol, 80, cine);
+    flagsOut.add(out);
+    assert.ok(played <= 1, 'c10 at most once');
+    const sides = ['harmony-ai', 'harmony-ren', 'harmony-pir', 'harmony-council', 'harmony-abstain'].filter((f) => s.flags[f]);
+    assert.equal(sides.length, 1, `exactly one side flag (${sides})`);
+    if (out === 'council') assert.ok(st.counterValue(s, 'harmony-supply') >= 3, 'council needs supply ≥ 3');
+    if (['ai', 'ren', 'pir', 'council'].includes(out)) {
+      assert.ok(CQ.nodeMark(s, 'alpha-harmony')?.glyph, `${out}: a glyph on the hub`);
+      if (STEP4) assert.ok(RD.radioEligible(s).some((n) => n.id.startsWith(`rd-w3-${out}-`)), `${out}: a radio line rd-w3-${out}-*`);
+      if (STEP4) assert.ok(CQ.epilogueSlides(s).some((x) => x.id === `flags-${out}`), `${out}: epilogue slide`);
+    }
+    assert.ok(CQ.epilogueSlides(s).length <= CQ.EPI_MAX + 1, '≤ 12 slides (+ outro)');
+  });
+}
+
 // ------------------------------------------------------------------ coverage
 check('coverage', () => {
   for (const [qid, ways] of Object.entries(WAYS)) for (const w of ways) assert.ok(sideOut[qid].has(w), `${qid} ${w} reached (${[...sideOut[qid]]})`);
   for (const w of ['truth', 'self', 'lie', 'silent', 'skip']) assert.ok(lizaOut.has(w), `w3-liza ${w} (${[...lizaOut]})`);
+  for (const w of ['ai', 'ren', 'pir', 'council', 'abstain']) assert.ok(flagsOut.has(w), `w3-flags ${w} (${[...flagsOut]})`);
+  for (const r of ['c10-council', 'c10-draw']) assert.ok(c10Out.has(r), `c10 ${r}`);
 });
 
-console.log(`wave3-flow: ${runs} walks, ${steps} steps; w3-liza: ${[...lizaOut].sort().join('/')}; ${Object.entries(sideOut).map(([q, o]) => `${q}: ${[...o].sort().join('/')}`).join('; ')}`);
+console.log(`wave3-flow: ${runs} walks, ${steps} steps; w3-flags: ${[...flagsOut].sort().join('/')}; c10: ${[...c10Out].sort().join('/')}; w3-liza: ${[...lizaOut].sort().join('/')}; ${Object.entries(sideOut).map(([q, o]) => `${q}: ${[...o].sort().join('/')}`).join('; ')}`);
 if (fails.length) { console.log(`FAILED ${fails.length}:\n  ${[...new Set(fails)].slice(0, 30).join('\n  ')}`); process.exit(1); }
 console.log('wave3-flow: OK — no softlocks');

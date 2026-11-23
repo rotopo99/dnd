@@ -20,6 +20,7 @@ export const CINE_POINT_ALIAS = {
   'harmony-reactor': 'loc:harmony-reactor',        // c7: the reactor clue of w2-harmony-truth (also queued by cineFlag)
   'arena-great-collector': 'battle:v4-boss-collector', // c8: before the Great Collector arena (vyzhigatel-vayba, battles-v4)
   'liza-door': 'stage:w3-liza/door',               // c9 (content-wave3 §1): the father's locker in the Old Forge (dungeons-m17)
+  'w3-debate': 'stage:w3-flags/debate',             // c10 (content-wave3 §2): the council debate on the Harmony deck
 };
 // Flags the triggers wait for, set by quest stages (enterStage).
 export const CINE_STAGE_FLAGS = { 'mq3-court/inside': 'mq3-court' };
@@ -34,6 +35,8 @@ export const CINE_RESULT_NEXT = {
   },
   // content-wave3.md §1: c9 sets one of liza-truth / self-open / lie / silent itself — the door choice is skipped
   'w3-liza/door': { 'c9-done': 'note' },
+  // content-wave3.md §2: c10 vote won -> the council takes Harmony; draw -> the hero picks one of three flags
+  'w3-flags/debate': { 'c10-council': 'council-won', 'c10-draw': 'debate-lost' },
 };
 // Side effects of a result (quests.js cineResult): flags; ctrFlags {counter: flag} — set when the scene counter ≥ 1;
 // dead — the companion dies in the scene (leaves the party for good, save.npcs[id].dead).

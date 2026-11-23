@@ -9,6 +9,7 @@ import { C6_LOX_DOOR } from './c6-lox-door.js';
 import { C7_HA_REEL } from './c7-ha-reel.js';
 import { C8_LADOV_NAME } from './c8-ladov-name.js';
 import { C9_LIZA_DOOR } from './c9-liza-door.js';
+import { C10_VOTE } from './c10-vote.js';
 
 export const CINE_RULES = {
   subtitle: { cps: 15, minSec: 1.2, gapSec: 0.25, pauseSec: 0.6 },   // длительность реплики = max(minSec, символы / cps)
@@ -76,6 +77,6 @@ export const CINEMATICS = {
   [C1_ARRIVAL.id]: C1_ARRIVAL, [C2_PRIEST.id]: C2_PRIEST, [C3_LOX5.id]: C3_LOX5,
   [C4_COURT.id]: C4_COURT, [C5_ZARYA.id]: C5_ZARYA, [C6_LOX_DOOR.id]: C6_LOX_DOOR,
   [C7_HA_REEL.id]: C7_HA_REEL, [C8_LADOV_NAME.id]: C8_LADOV_NAME,
-  [C9_LIZA_DOOR.id]: C9_LIZA_DOOR,
+  [C9_LIZA_DOOR.id]: C9_LIZA_DOOR, [C10_VOTE.id]: C10_VOTE,
 };
 export const CINEMATIC_ORDER = Object.keys(CINEMATICS);

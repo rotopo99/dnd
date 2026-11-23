@@ -156,6 +156,58 @@ export const QUESTS_WAVE3 = [
     { requires: { flags: ['act1-done'], level: WAVE3_RULES.lizaLevel, any: [{ flag: 'liza-freed' }, { flag: 'liza-met' }, { flag: 'met-liza' }] },
       outcomeBy: [{ key: 'skip', all: ['liza-skip'] }, { key: 'lie', all: ['liza-lie'] }, { key: 'truth', all: ['liza-truth'] },
         { key: 'self', all: ['liza-self-open'] }, { key: 'silent', all: ['liza-silent'] }] }),
+
+  // ================= w3-flags «Три флага над Гармонией» (фракционная война за хаб, ур. 8) =================
+  // Снабжение harmony-supply (W3_COUNTERS): 3 + услуги послов − проваленные события осады; Совет — при ≥ 3 и дебатах (c10).
+  Q('w3-flags', 'Три флага над Гармонией', 'sera', 'technikums', 8,
+    'Три силы требуют ключи от Альфа-Гармонии: Партия, Отступники и пираты. Пять тысяч беженцев ждут, кто будет раздавать хлеб. Сера просит — тише.',
+    [
+      st('ask', 'Сера по громкой связи: «Три флага просят слова. Я прошу — тише». Потом — вам, без микрофона: «Поговорите с послами. Все врут. По-разному».', talk('sera', 'alpha-harmony'), 'envoys'),
+      st('envoys', 'Послы ждут услуги. Каждая выполненная — +1 к снабжению Гармонии.', all([
+        { ...battle('enc-w3-clear', 'harmony-post'), doneFlag: 'flags-envoy-ai', desc: 'Посол Партии: «Зачистите подходы к посту № 2. Порядок любит пустые коридоры»' },
+        { ...check(['persuasion', 'intimidation', 'religion'], 15), location: 'alpha-harmony', doneFlag: 'flags-envoy-ren', desc: 'Посланница Марты: сказать беженцам правильные слова про стену' },
+        { kind: 'choice', location: 'harmony-workshop', doneFlag: 'flags-envoy-pir', desc: 'Агент Буревестника: взнос «на общее дело» или хорошая легенда', options: [
+          opt('fee', 'Внести 120 кредов.', { ...pay(120), location: 'harmony-workshop' }, null, { requires: { credits: 120 } }),
+          opt('tale', 'Рассказать легенду, которую капитан купит.', { ...check(['deception', 'persuasion'], 16), location: 'harmony-workshop' }),
+        ] },
+      ]), 'siege-1'),
+      st('siege-1', 'Осада. Сектор D под обстрелом: удержать насосы, пока не кончились снаряды. Или терпение.',
+        { ...check(['tech', 'military', 'athletics'], 14, 'siege-1-lost'), location: 'harmony-sector-d' }, 'siege-2'),
+      st('siege-1-lost', 'Насосы сектора D пробиты. Воды меньше, злости больше.',
+        choice([opt('accept-1', 'Списать потери и идти дальше.', null, 'siege-2', { effects: { flags: ['flags-ev-shelling-lost'] } })]), 'siege-2'),
+      st('siege-2', 'Диверсия на складе: кто-то хочет, чтобы хлеба не досталось никому.', battle('enc-w3-sabotage', 'harmony-sector-d', 'siege-2-lost'), 'side'),
+      st('siege-2-lost', 'Склад горит. Диверсанты ушли. Хлеба стало меньше на одну неделю.',
+        choice([opt('accept-2', 'Тушить, что осталось.', null, 'side', { effects: { flags: ['flags-ev-sabotage-lost'] } })]), 'side'),
+      st('side', 'Осада выдохлась. Ключи от Гармонии — на столе у Серы. Чей флаг поднять?', choice([
+        opt('ai', 'Партия: порядок, комендантский час, указ № 1.', null, 'back', { requires: { rep: { faction: 'aiParty', min: 'neutral' } }, effects: { flags: ['harmony-ai'] } }),
+        opt('ai-lox', 'Партия — и отдать ей Lox в придачу.', null, 'back',
+          { requires: { flags: ['truth-harmony-quiet', 'met-lox'], rep: { faction: 'aiParty', min: 'neutral' } }, effects: { flags: ['harmony-ai', 'lox-handed'], deeds: ['cruelty'] } }),
+        opt('ren', 'Отступники: стена, ополчение, мины Яроша.', null, 'back', { requires: { rep: { faction: 'renegades', min: 'neutral' } }, effects: { flags: ['harmony-ren'] } }),
+        opt('pir', 'Пираты: торг, пошлины, счёт — потом.', null, 'back',
+          { requires: { any: [{ rep: { faction: 'pirates', min: 'neutral' } }, { flag: 'customs-closed' }] }, effects: { flags: ['harmony-pir'] } }),
+        opt('pir-buy', 'Купить пиратам ключи: 250 кредов.', pay(250), 'back', { requires: { credits: 250 }, effects: { flags: ['harmony-pir'] } }),
+        opt('council', 'Совет беженцев: Сера, Парацетамол, Айнура. Вече на палубе.', null, 'debate',
+          { requires: { ctr: { id: 'harmony-supply', min: 3 } }, effects: { flags: ['harmony-debate'] } }),
+        opt('abstain', 'Не поднимать ничей флаг. Пусть делят сами.', null, 'back', { effects: { flags: ['harmony-abstain'] } }),
+      ]), 'back'),
+      st('debate', 'Вече: четыре стула из ящиков, три посла, пять тысяч номерков. Переспорить всех.',
+        { kind: 'challenge', skills: ['persuasion', 'analysis', 'intimidation'], dc: 17, successes: 4, failures: 3, onFail: 'debate-lost', easeBy: [{ flag: 'truth-harmony-public', n: 2 }] },
+        'council-won'),
+      st('council-won', 'Вече проголосовало. Рассказать Сере, что ключи теперь у Совета.', talk('sera', 'alpha-harmony'), 'done',
+        { effects: { flags: ['harmony-council'] } }),
+      st('debate-lost', 'Вече не договорилось. Совета не будет. Выбирайте флаг сами.', choice([
+        opt('ai', 'Партия.', null, 'back', { requires: { rep: { faction: 'aiParty', min: 'neutral' } }, effects: { flags: ['harmony-ai'] } }),
+        opt('ren', 'Отступники.', null, 'back', { requires: { rep: { faction: 'renegades', min: 'neutral' } }, effects: { flags: ['harmony-ren'] } }),
+        opt('pir', 'Пираты.', null, 'back', { requires: { any: [{ rep: { faction: 'pirates', min: 'neutral' } }, { flag: 'customs-closed' }] }, effects: { flags: ['harmony-pir'] } }),
+        opt('pir-buy', 'Пираты, за 250 кредов.', pay(250), 'back', { requires: { credits: 250 }, effects: { flags: ['harmony-pir'] } }),
+        opt('abstain', 'Никто.', null, 'back', { effects: { flags: ['harmony-abstain'] } }),
+      ]), 'back'),
+      st('back', 'Рассказать Сере, чей флаг теперь над Гармонией.', talk('sera', 'alpha-harmony'), 'done'),
+    ],
+    { xp: 1300, credits: 150, rep: { technikums: 3 } },
+    { requires: { any: [{ flags: ['act1-done', 'met-lox'] }, { quest: { id: 'w2-harmony-truth', state: 'done' } }], not: { flag: 'harmony-fallen' } },
+      outcomeBy: [{ key: 'council', all: ['harmony-council'] }, { key: 'ai', all: ['harmony-ai'] }, { key: 'ren', all: ['harmony-ren'] },
+        { key: 'pir', all: ['harmony-pir'] }, { key: 'abstain', all: ['harmony-abstain'] }] }),
 ];
 
 export const QUESTS_WAVE3_MAP = Object.fromEntries(QUESTS_WAVE3.map((q) => [q.id, q]));
@@ -168,4 +220,8 @@ export const W3_NPC_RULES = [
   { npc: 'liza', at: 'bunker-lisa', when: { ...LIZA_GATE, quest: { id: 'w3-liza', state: 'none' } } },
   { npc: 'liza', at: 'bunker-lisa', when: { quest: { id: 'w3-liza', state: 'active' } } },
   { npc: 'liza', at: 'bunker-lisa', when: { quest: { id: 'w3-liza', state: 'done' }, not: ['liza-skip'], rel: { npc: 'liza', min: WAVE3_RULES.lizaGuestRel } } },
+  // w3-flags: послы трёх флагов на Гармонии, пока идёт квест
+  { npc: 'w3-envoy-ai', at: 'harmony-post', when: { quest: { id: 'w3-flags', state: 'active' } } },
+  { npc: 'w3-envoy-ren', at: 'alpha-harmony', when: { quest: { id: 'w3-flags', state: 'active' } } },
+  { npc: 'w3-envoy-pir', at: 'harmony-workshop', when: { quest: { id: 'w3-flags', state: 'active' } } },
 ];
