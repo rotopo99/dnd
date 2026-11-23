@@ -182,7 +182,9 @@ export function cinePick(R, id) {
 function openQte(R, q) {
   const QR = CINE_RULES.qte, rule = QR[q.kind] || {};
   const easy = R.prefs.qte === 'easy', mul = easy ? QR.assistMul : 1, needMul = easy ? 0.7 : 1;
-  const sec = (q.sec ?? rule.sec ?? 3) * mul;
+  // seq: the window is at least perKey s per key (QA v40: c8 G-A-L-D at 0.9 s gaps failed)
+  const base = q.sec ?? rule.sec ?? 3;
+  const sec = (q.kind === 'seq' && rule.perKey ? Math.max(base, (q.keys || []).length * rule.perKey) : base) * mul;
   let need = null;
   if (q.kind === 'hold') need = (q.need ?? rule.need) * needMul;
   if (q.kind === 'mash') need = Math.max(1, Math.ceil((q.need ?? Math.round((rule.rate || 2.5) * (q.sec ?? rule.sec))) * needMul));

@@ -25,7 +25,7 @@ import { exodusSync, passDays, serviceOff, tollMult, exodusRumor } from '../worl
 import { EXODUS_UI } from '../data/text/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
-import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, pendingTurnins, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
+import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, pendingTurnins, allSlots, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
@@ -206,7 +206,9 @@ export function createLocationScene(rawId, opts = {}) {
         options: [...opts.map((o) => {
           const ok = avail.includes(o) && (!o.requires || requires(g, o.requires));
           const miss = (o.requires?.flags || []).filter((f) => !sv.flags[f]).map(clueName).filter(Boolean);
-          return { label: o.text, disabled: !ok, sub: ok ? null : miss.length ? tf('accuse.need', { list: miss.join(', ') }) : t('loc.notAvailable'), run: (g2) => { toastAll(g2, chooseOption(sv, s, o.id, g2.data)); refresh(g2); } };
+          // QA v40 L3: an option with a check shows its skills and DC (the court verdict «closed» 15 -> 13)
+          const ck = o.goal && (o.goal.kind === 'check' || o.goal.kind === 'challenge') ? `${(o.goal.skills || []).map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goalDc(sv, o.goal)}` : null;
+          return { label: o.text, disabled: !ok, sub: ok ? ck : miss.length ? tf('accuse.need', { list: miss.join(', ') }) : t('loc.notAvailable'), run: (g2) => { toastAll(g2, chooseOption(sv, s, o.id, g2.data)); refresh(g2); } };
         }), { label: t('loc.questLater'), run: () => {} }],
       }) };
     }
@@ -685,7 +687,10 @@ export function createLocationScene(rawId, opts = {}) {
     const ox = Math.max(0, Math.floor((game.width - BASE_W) / 2)), oy = Math.max(0, Math.floor((game.height - BASE_H) / 2));
     S.ox = ox; S.oy = oy;
     const btns = [];
-    const ids = npcsAt(locId, sv);
+    // QA v40 B1: NPCs with a quest to offer, a turn-in or an active talk goal go first (a crowded bar pages them away)
+    const talkTo = new Set(allSlots(sv).filter((x) => x.goal?.kind === 'talk').map((x) => x.goal.npc));
+    const busy = (id) => (pendingTurnins(sv, id).length || talkTo.has(id) || offeredBy(game, NPCS[id]).length ? 0 : 1);
+    const ids = npcsAt(locId, sv).map((id, i) => ({ id, i, b: busy(id) })).sort((a, b) => a.b - b.b || a.i - b.i).map((x) => x.id);
     S.npcs = ids;
     S.rows = [];
     const pages = Math.max(1, Math.ceil(ids.length / PAGE));

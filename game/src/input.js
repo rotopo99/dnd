@@ -7,6 +7,7 @@ export function createInput(target, canvas) {
   const down = new Set();
   const pressed = new Set();
   const typed = [];
+  const presses = [];
   const mouse = { x: -1, y: -1, clicked: false, rightClicked: false, inside: false, down: false, released: false, wheel: 0, middle: false, right: false };
   const pending = [];
   const hoverPos = { x: -1, y: -1, inside: false };
@@ -20,6 +21,7 @@ export function createInput(target, canvas) {
   const queueClick = (c) => { if (mouse.clicked || mouse.rightClicked || pending.length) pending.push(c); else applyClick(c); };
   target.addEventListener('keydown', (e) => {
     if (!down.has(e.code) || e.code === 'Backspace') pressed.add(e.code); // Backspace auto-repeats in text fields
+    if (!e.repeat) presses.push(e.code); // every real keydown of the step, in order (QTE mash / seq do not lose fast presses)
     down.add(e.code);
     if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) typed.push(e.key);
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !/INPUT|TEXTAREA/.test(e.target?.tagName || '')) e.preventDefault(); // roam: Ctrl+A selects the party
@@ -66,10 +68,13 @@ export function createInput(target, canvas) {
     mouse,
     isDown: (code) => down.has(code),
     wasPressed: (code) => pressed.has(code),
+    /** Key codes pressed during this step, in order, one entry per keydown (a Set like wasPressed would merge them). */
+    presses: () => presses,
     /** Characters typed during this step (for text fields). */
     typed: () => typed,
     endFrame: () => {
       pressed.clear();
+      presses.length = 0;
       typed.length = 0;
       mouse.clicked = false;
       mouse.rightClicked = false;

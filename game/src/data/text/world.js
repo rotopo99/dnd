@@ -3,6 +3,7 @@
 export const WORLD_TEXT = {
   // ---------- consequences
   'cq.toast': 'Мир изменился: {text}',
+  'cq.talent': 'Новый слот таланта: +{n}. Выбрать — в окне повышения (панель отряда).',
   'cq.node': '«{loc}» изменился', 'cq.rep': 'отношение: {faction} {d}',
   'cq.vendorClose': 'лавка «{npc}» закрыта',
   'cq.vendorUp': '{npc}: цены выше',
@@ -59,7 +60,7 @@ export const WORLD_TEXT = {
   'crime.attackTitle': 'Нападение: {name}',
   'crime.killed': '{name} мёртв',
   'crime.questFailed': '«{name}»: заказчик мёртв',
-  'crime.questHeir': '«{name}» переходит к {npc}',
+  'crime.questHeir': '«{name}»: новый заказчик — {npc}',
   'crime.heat': 'розыск +{n}',
   'crime.role.civilian': 'гражданский', 'crime.role.trader': 'торговец', 'crime.role.guard': 'стража', 'crime.role.key': 'важная персона', 'crime.role.boss': 'лидер',
   'crime.noFaction': 'без фракции',

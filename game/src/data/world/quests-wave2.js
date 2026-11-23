@@ -22,11 +22,11 @@ export const QUESTS_WAVE2 = [
     'Розыскная листовка с лицом Lox висит на Гармонии третий год. Сера сверила её с журналом допуска реактора, и цифры не сходятся. Кто на самом деле взорвал узел питания?',
     [
       st('ask', 'Сера раскладывает листовку рядом с распечаткой: «Пульса в журнале нет. У Lox пульс есть. Я проверяла».', talk('sera', 'alpha-harmony'), 'clues'),
-      st('clues', 'Собрать улики теракта. Нужно три из четырёх, и без протокола Сокральни картина неполная.', all([
+      st('clues', 'Собрать улики теракта: протокол Сокральни обязателен, к нему — любые две из трёх остальных. Без протокола Сера не поверит.', all([
         { ...check(['perception', 'analysis'], 12), location: 'funicular', doneFlag: 'ha-proof-leaflet', desc: 'Листовка у фуникулёра: дописка «а если он улыбается?»' },
         { ...check(['hacking', 'tech', 'analysis'], 14), location: 'harmony-reactor', doneFlag: 'ha-proof-reactor', desc: 'Журнал допуска реактора: пульс отсутствует, голос — хором' },
         { ...check(['persuasion', 'analysis', 'perception'], 13), location: 'lox-5', doneFlag: 'ha-proof-lox5', desc: 'Письмо Lox-5 у метки в Штабцентре' },
-        { ...check(['stealth', 'religion', 'hacking'], 15), location: 'sokralnya', doneFlag: 'ha-proof-protocol', desc: 'Протокол «пробы № 1» в Сокральне' },
+        { ...check(['stealth', 'religion', 'hacking'], 15), location: 'sokralnya', doneFlag: 'ha-proof-protocol', required: true, desc: 'Протокол «пробы № 1» в Сокральне' },
       ], 3), 'accuse'),
       st('accuse', 'Что делать с правдой? Улики говорят: тело было пустым, а голос — чужим.', choice([
         opt('public', 'Обнародовать: журналы — Сере, голос — Шумку в эфир. Взрывал «Хор» Кибер-Жреца.', null, 'back', { requires: HA_TRUTH, effects: { flags: ['truth-harmony-public'] } }),
@@ -109,3 +109,9 @@ export const QUESTS_WAVE2 = [
 ];
 
 export const QUESTS_WAVE2_MAP = Object.fromEntries(QUESTS_WAVE2.map((q) => [q.id, q]));
+
+// Камео-NPC, которых волна 2 ставит на узлы (формат W3_NPC_RULES, world/data.js npcPlacement).
+// Репа (cameo, npcs.js) иначе нигде не стоит: квест w2-cold нельзя ни взять, ни сдать (QA v40 B1).
+export const W2_NPC_RULES = [
+  { npc: 'repa', at: 'lagoon-bar', when: {} },
+];

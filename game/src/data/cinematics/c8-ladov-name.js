@@ -70,7 +70,7 @@ export const C8_LADOV_NAME = {
     },
     name: {
       shot: 'close:hero>push:3',
-      qte: { kind: 'seq', keys: ['G', 'A', 'L', 'D'], sec: 3.6, label: 'Назвать: Г-А-Л-Д',
+      qte: { kind: 'seq', keys: ['G', 'A', 'L', 'D'], sec: 5.6, label: 'Назвать: G-A-L-D (Г-А-Л-Д)',
         ok: { next: 'choir', on: { rel: { 'keeper-of-history': 1 } } },
         fail: { next: 'torn' } },
     },

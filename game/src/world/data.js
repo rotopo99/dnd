@@ -20,10 +20,12 @@ import { QUEST_TURNIN_WAVE1 } from '../data/text/quest-turnin-wave1.js';
 import { CONSEQUENCES_WAVE1 } from '../data/world/consequences-wave1.js';
 import { CHECK_SCENES } from '../data/world/check-scenes.js';
 import { CHECK_SCENES_WAVE1 } from '../data/world/check-scenes-wave1.js';
-import { QUESTS_WAVE2_MAP } from '../data/world/quests-wave2.js';
+import { QUESTS_WAVE2_MAP, W2_NPC_RULES } from '../data/world/quests-wave2.js';
 import { QUEST_TURNIN_WAVE2 } from '../data/text/quest-turnin-wave2.js';
 import { CONSEQUENCES_WAVE2 } from '../data/world/consequences-wave2.js';
 import { QUESTS_WAVE3_MAP, W3_NPC_RULES } from '../data/world/quests-wave3.js';
+/** Rule-placed NPCs (wave 2 cameos + wave 3): { npc, at, when } — see npcRuleOk. */
+export const NPC_RULES = [...W2_NPC_RULES, ...W3_NPC_RULES];
 import { QUEST_TURNIN_WAVE3 } from '../data/text/quest-turnin-wave3.js';
 import { CONSEQUENCES_WAVE3, EPILOGUE_WAVE3 } from '../data/world/consequences-wave3.js';
 import { PROLOGUE } from '../data/text/prologue.js';
@@ -196,7 +198,7 @@ for (const l of Object.values(LOCATIONS)) for (const n of l.npcs || []) if (!LIS
 export function npcPlacement(save) {
   const m = new Map();
   const get = (n) => { if (!m.has(n)) m.set(n, { home: true, extra: new Set() }); return m.get(n); };
-  for (const r of W3_NPC_RULES) if (npcRuleOk(save, r.when)) get(r.npc).extra.add(resolveLocation(r.at)); // content-wave3.md
+  for (const r of NPC_RULES) if (npcRuleOk(save, r.when)) get(r.npc).extra.add(resolveLocation(r.at)); // content-wave3.md
   for (const c of save?.cq || []) {
     const e = CONSEQUENCES[c.qid]?.[c.o];
     if (!e) continue;
@@ -211,7 +213,7 @@ export function npcPlacement(save) {
 export function npcsAt(locId, save = null) {
   const id = resolveLocation(locId);
   const base = npcsAtBase(id, save);
-  if (!save?.cq?.length && !save?.npcs && !W3_NPC_RULES.length) return base;
+  if (!save?.cq?.length && !save?.npcs && !NPC_RULES.length) return base;
   const pl = npcPlacement(save);
   if (!pl.size) return base;
   const out = base.filter((n) => !pl.has(n) || pl.get(n).home);

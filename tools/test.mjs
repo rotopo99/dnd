@@ -6321,5 +6321,103 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(ids.includes('flags-ai'), 'the Harmony slide is not pushed out');
   });
 }
+// ---------------------------------------------------------------- QA v40 wave 2 fixes: Repa placed, harmony protocol required, radio, QTE timing
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const DL = await import('../game/src/world/delayed.js');
+  const RD = await import('../game/src/world/radio.js');
+  const D = await import('../game/src/world/data.js');
+  const CN = await import('../game/src/world/cine.js');
+  const { CINEMATICS } = await import('../game/src/data/cinematics/index.js');
+  const { NPCS: NN } = await import('../game/src/data/npcs.js');
+  const { createInput } = await import('../game/src/input.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true }, flags); return s; };
+  const talks = (g, out = []) => { if (!g) return out; if (g.kind === 'talk') out.push(g); for (const x of g.goals || []) talks(x, out); for (const o of g.options || []) talks(o.goal, out); return out; };
+  test('qa40 B1: Repa stands in the Lagoon bar, offers w2-cold, can take the turn-in; block -> +1 talent pick', () => {
+    const s = mk(); s.hero.level = 7;
+    assert.ok(D.npcsAt('lagoon-bar', s).includes('repa'));
+    assert.equal(D.npcHome('repa', s), D.resolveLocation('lagoon-bar'));
+    assert.ok(QS.turninReachable(s, 'repa'));
+    QS.startQuest(s, 'w2-cold'); QS.onTalk(s, 'repa', GAME_DATA);
+    s.quests['w2-cold'].stage = 'choice';
+    QS.chooseOption(s, QS.slots(s, 'w2-cold').find((x) => x.kind === 'choice'), 'block', GAME_DATA);
+    assert.ok(D.npcsAt('lagoon-bar', s).includes('repa'), 'still there for «back»');
+    QS.onTalk(s, 'repa', GAME_DATA);
+    const p0 = s.hero.pendingTalents || 0;
+    QS.claimTurnin(s, 'w2-cold', GAME_DATA);
+    assert.ok(s.flags['cq:w2-cold:block']);
+    assert.equal(s.hero.pendingTalents, p0 + 1);
+    assert.ok(RD.radioEligible(s).some((n) => n.id === 'rd-w2-repa'));
+  });
+  test('qa40 B1: every giver / talk NPC of a map quest (waves 1-3) can be met somewhere (cyberspace spirits aside)', () => {
+    const miss = [];
+    for (const q of Object.values(D.QUESTS)) {
+      const s = mk(); s.quests[q.id] = { state: 'active', stage: q.stages[0].id, subs: {} };
+      for (const n of new Set([q.giver, ...q.stages.flatMap((x) => talks(x.goal)).map((g) => g.npc)])) {
+        if (!NN[n] || NN[n].cyber || String(n).startsWith('cs-')) continue;
+        if (!D.npcHome(n, s)) miss.push(`${q.id}:${n}`);
+      }
+    }
+    assert.deepEqual(miss, []);
+  });
+  test('qa40 B2: harmony clues — three without the protocol keep the stage open, journal names the protocol; protocol closes it', () => {
+    const Q = 'w2-harmony-truth';
+    const s = mk({ 'act1-done': true }); QS.startQuest(s, Q); QS.onTalk(s, 'sera', GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'clues');
+    const sub = (flag) => QS.slots(s, Q).find((x) => x.goal.doneFlag === flag);
+    for (const f of ['ha-proof-leaflet', 'ha-proof-reactor', 'ha-proof-lox5']) QS.completeSlot(s, sub(f), GAME_DATA);
+    QS.autoProgress(s, GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'clues', 'no protocol — no accusation yet');
+    const txt = QS.currentGoalText(s, Q);
+    assert.ok(/обязательно: .*Протокол/.test(txt) && txt.includes('3 из 3'), txt);
+    assert.ok(sub('ha-proof-protocol'), 'the protocol check is still offered');
+    QS.completeSlot(s, sub('ha-proof-protocol'), GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'accuse');
+    const ids = QS.availableOptions(s, QS.slots(s, Q).find((x) => x.kind === 'choice')).map((o) => o.id);
+    assert.ok(ids.includes('public') && ids.includes('marta'));
+  });
+  test('qa40 B2: a protocol failed for good does not block the stage (quiet / clone remain)', () => {
+    const Q = 'w2-harmony-truth';
+    const s = mk({ 'act1-done': true }); QS.startQuest(s, Q); QS.onTalk(s, 'sera', GAME_DATA);
+    const sub = (flag) => QS.slots(s, Q).find((x) => x.goal.doneFlag === flag);
+    QS.completeSlot(s, sub('ha-proof-leaflet'), GAME_DATA); QS.completeSlot(s, sub('ha-proof-reactor'), GAME_DATA);
+    for (let i = 0; i < 5 && s.quests[Q].stage === 'clues' && sub('ha-proof-protocol'); i++) QS.failSlot(s, sub('ha-proof-protocol'), GAME_DATA);
+    assert.equal(s.quests[Q].stage, 'accuse');
+  });
+  test('qa40 L1/L2/L4: turn-in text avoids declension; w2-name offer -> listed in 5 days + radio; laugh kept has a radio line', () => {
+    const s = mk(); s.quests['w2-customs'] = { state: 'done', turnin: true };
+    assert.ok(!/Вернуться к /.test(QS.turninText(s, 'w2-customs')));
+    const n = mk({ 'collector-met': true }); QS.startQuest(n, 'w2-name'); n.quests['w2-name'].stage = 'choose';
+    QS.chooseOption(n, QS.slots(n, 'w2-name').find((x) => x.kind === 'choice'), 'offer', GAME_DATA);
+    QS.onTalk(n, 'keeper-of-history', GAME_DATA); QS.claimTurnin(n, 'w2-name', GAME_DATA);
+    assert.ok(n.flags['cq:w2-name:offer']);
+    n.day += 5; DL.delayedTick(n, GAME_DATA);
+    assert.ok(n.flags['ladov-soul-listed']);
+    assert.ok(RD.radioEligible(n).some((x) => x.id === 'rd-w2-ladov-offer'));
+    const k = mk(); QS.startQuest(k, 'w2-laugh'); QS.onTalk(k, 'w2-sentry', GAME_DATA);
+    QS.chooseOption(k, QS.slots(k, 'w2-laugh').find((x) => x.kind === 'choice'), 'kept', GAME_DATA);
+    QS.onTalk(k, 'w2-sentry', GAME_DATA); QS.claimTurnin(k, 'w2-laugh', GAME_DATA);
+    assert.ok(RD.radioEligible(k).some((x) => x.id === 'rd-w2-laugh-kept'));
+  });
+  test('qa40 QTE: c8 G-A-L-D passes at 1.3 s per key; mash presses within one step all count (input.presses)', () => {
+    const R = CN.createCine(CINEMATICS['c8-ladov-name'], { save: { flags: {} }, prefs: { timer: 'off' } });
+    for (let i = 0; i < 20000 && !(R.phase === 'qte' && R.qte); i++) {
+      if (R.phase === 'choice' && R.choice.t >= R.choice.lock) CN.cinePick(R, 'name');
+      CN.cineTick(R, 0.05);
+    }
+    assert.equal(R.qte.kind, 'seq');
+    assert.ok(R.qte.sec >= 4 * 1.4 - 1e-9, `window ${R.qte.sec}`);
+    for (const k of R.qte.keys) { for (let t = 0; t < 1.3; t += 0.05) CN.cineTick(R, 0.05); CN.cineKey(R, k); }
+    assert.equal(R.qte.res, 'ok');
+    const tgt = new EventTarget();
+    const inp = createInput(tgt, null);
+    const key = (type, code) => tgt.dispatchEvent(Object.assign(new Event(type), { code, key: code.slice(3).toLowerCase() }));
+    for (let i = 0; i < 4; i++) { key('keydown', 'KeyE'); key('keyup', 'KeyE'); }
+    assert.deepEqual(inp.presses(), ['KeyE', 'KeyE', 'KeyE', 'KeyE']);
+    inp.endFrame();
+    assert.deepEqual(inp.presses(), []);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

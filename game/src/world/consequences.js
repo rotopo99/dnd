@@ -91,6 +91,8 @@ export function applyConsequences(save, qid) {
   const out = [];
   for (const [f, d] of Object.entries(e.rep || {})) if (d) out.push(...repToasts(applyRep(save, f, d)));
   for (const tag of e.deeds || []) out.push(...deed(save, tag));
+  // content-wave2.md §2 w2-cold: e.talents — extra talent picks for the hero (Repa's «voice»: +1 slot)
+  if (e.talents > 0 && save.hero) { save.hero.pendingTalents = (save.hero.pendingTalents || 0) + e.talents; out.push({ text: tf('cq.talent', { n: e.talents }), color: 'h' }); }
   scheduleDelayed(save, qid, o, e);
   findsAt(save, `cq:${qid}:${o}`);
   // access.open: the place and its hidden routes become known (as state.openHidden)

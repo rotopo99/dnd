@@ -234,7 +234,11 @@ export function createCinemaScene(def, o = {}) {
         if (inp.mouse.clicked && S.hover) cinePick(R, S.hover.id);
       } else if (R.phase === 'qte' && R.qte) {
         const q = R.qte;
-        for (const L of new Set([...CV.qteKeys, ...q.keys])) if (inp.wasPressed(`Key${L}`)) cineKey(R, L);
+        // QA v40: every keydown of the step counts, in order — on a slow frame rate mash / seq presses are not merged
+        const qk = new Set([...CV.qteKeys, ...q.keys]);
+        const ev = inp.presses?.();
+        if (ev) { for (const code of ev) if (code.startsWith('Key') && qk.has(code.slice(3))) cineKey(R, code.slice(3)); }
+        else for (const L of qk) if (inp.wasPressed(`Key${L}`)) cineKey(R, L);
         if (inp.mouse.clicked && (q.kind === 'tap' || q.kind === 'mash')) cineKey(R, q.keys[0]);
         cineHold(R, inp.isDown(`Key${q.keys[0]}`) || inp.mouse.down);
       } else if (inp.mouse.clicked || inp.wasPressed('Space') || inp.wasPressed('Enter')) cineAdvance(R);

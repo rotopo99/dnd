@@ -275,7 +275,7 @@ export const EPILOGUE = [
   { id: 'court-vessel', order: 90, prio: 100, title: 'Воплощение', text: 'Судья нашёл тело. Над Руслании встаёт ровный, холодный свет.', when: { all: [F('mq3-court', 'vessel')] } },
   { id: 'court-surrender', order: 90, prio: 100, title: 'Сдача', text: 'Герой сдался Киберспейсу. Судья принял тело без торжества, как принимают посылку.', when: { all: [F('mq3-court', 'surrender')] } },
   { id: 'court-lox-leave', order: 90, prio: 95, title: 'Отпуск', text: 'Lox держал створку, пока её не заварили. Потом ушёл к морю. Открыток не шлёт, но все знают, где он.', when: { all: [F('mq3-court', 'lox-leave')] } },
-  { id: 'court-lox-alive', order: 91, prio: 70, title: 'Lox жив', text: 'Lox жив и, кажется, впервые этому не удивляется.', when: { all: [F('mq3-court', 'mod:lox-alive')] } },
+  { id: 'court-lox-alive', order: 91, prio: 70, title: 'Lox жив', text: 'Lox жив и, кажется, впервые этому не удивляется.', when: { all: [F('mq3-court', 'mod:lox-alive')], not: [F('mq3-court', 'lox-leave')] } }, // QA v40 L3: «Отпуск» already says it
   { id: 'court-lox-dead', order: 91, prio: 80, title: 'Куртка у Двери', text: 'У Двери лежит куртка Lox. Её никто не трогает: даже культисты обходят стороной.', when: { all: [F('mq3-court', 'mod:lox-dead')] } },
   { id: 'court-lox9', order: 90, prio: 95, title: 'Девятый глаз', text: 'Lox закрыл последнюю метку. Судья ушёл в тишину, а Lox — в отпуск.', when: { all: [F('mq3-court', 'lox9')] } },
   { id: 'sector-d-quiet', order: 100, prio: 30, title: 'Сектор Д', text: 'В секторе Д теперь висит расписание раздачи еды. Мелом, но по часам.', when: { any: [F('sq-sector-d', 'talk'), F('sq-sector-d', 'food')] } },

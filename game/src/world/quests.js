@@ -171,6 +171,12 @@ const timed = (save, qid, stage) => QUESTS[qid]?.timer?.stage === stage.id && sa
 const subOk = (save, st, sg, i) => st.subs[i] === true || (sg.doneFlag && !!save.flags[sg.doneFlag]);
 /** Subgoals an 'all' stage needs before it moves on by itself: a running timer waits for all of them. */
 const needNow = (save, qid, stage) => (timed(save, qid, stage) && stage.goal.min ? stage.goal.goals.length : allNeed(save, stage.goal));
+/** An 'all' stage may move on: enough subgoals done and every `required` subgoal done (or failed for good). */
+const allReady = (save, qid, stage) => {
+  const st = save.quests[qid], g = stage.goal;
+  const done = g.goals.filter((sg, i) => subDone(save, st, sg, i));
+  return done.length >= needNow(save, qid, stage) && g.goals.every((sg, i) => !sg.required || subDone(save, st, sg, i));
+};
 
 const optionsOf = (save, goal) => (goal.options || []).filter((o) => requiresOk(save, o.requires));
 
@@ -388,8 +394,7 @@ export function completeSlot(save, slot, data) {
     if (sg?.doneFlag) { save.flags[sg.doneFlag] = true; cineFlag(save, sg.doneFlag); } // the world's memory of it (mq3-fall: saved-*); c7 waits for ha-proof-reactor
     if (sg?.toast) out.push({ text: sg.toast, color: 'j' }); // content-wave3.md: Liza's marks «Открыто. Не благодари»
     const g = slot.stage.goal;
-    const done = g.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
-    if (done >= needNow(save, slot.qid, slot.stage)) {
+    if (allReady(save, slot.qid, slot.stage)) {
       out.push(...applyEffects(save, slot.stage.effects, data, q.key));
       out.push(...toStage(save, slot.qid, slot.stage.next, data));
     }
@@ -444,7 +449,7 @@ export function failSlot(save, slot, data) {
       st.subs[slot.sub] = 'failed';
       const g = slot.stage.goal;
       const out = [{ text: t('q.goalFailed'), color: 'c' }];
-      if (g.goals.filter((sg, i) => subDone(save, st, sg, i)).length >= needNow(save, slot.qid, slot.stage)) out.push(...toStage(save, slot.qid, slot.stage.next, data));
+      if (allReady(save, slot.qid, slot.stage)) out.push(...toStage(save, slot.qid, slot.stage.next, data));
       return out;
     }
     return finish(save, slot.qid, 'failed', data);
@@ -507,8 +512,7 @@ function flagStages(save, data) {
     const stage = stageOf(save, id);
     if (stage?.goal.kind !== 'all' || stageLocked(save, stage)) continue;
     const st = save.quests[id];
-    const done = stage.goal.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
-    if (!slots(save, id).length || done >= needNow(save, id, stage)) out.push(...toStage(save, id, stage.next, data));
+    if (!slots(save, id).length || allReady(save, id, stage)) out.push(...toStage(save, id, stage.next, data));
   }
   return out;
 }
@@ -543,6 +547,15 @@ export function currentGoalText(save, id) {
   let text = s.goal.kind === 'choice' && st.opt ? s.goal.options.find((o) => o.id === st.opt)?.text || s.text : s.text;
   const lock = stageLocked(save, s);
   if (lock) text += ` (${lock})`;
+  // QA v40 L6 / B2: progress of an 'all' stage with min / required subgoals and where the rest is
+  if (s.goal.kind === 'all' && (s.goal.min || s.goal.goals.some((sg) => sg.required))) {
+    const g = s.goal, left = g.goals.filter((sg, i) => !subDone(save, st, sg, i));
+    text += ` · ${tf('q.allProgress', { n: g.goals.length - left.length, need: allNeed(save, g) })}`;
+    const req = left.filter((sg) => sg.required);
+    if (req.length) text += ` · ${tf('q.allRequired', { list: req.map((sg) => sg.desc || LOCATIONS[resolveLocation(sg.location)]?.name || '?').join('; ') })}`;
+    const where = [...new Set(left.map((sg) => LOCATIONS[resolveLocation(sg.location)]?.name).filter(Boolean))];
+    if (where.length) text += ` · ${tf('q.allWhere', { list: where.join(', ') })}`;
+  }
   if (id === EXODUS.quest && exodusActive(save)) text += ` · ${tf('exodus.left', { n: Math.max(0, exodusLeft(save)) })}`;
   const tl = timerLeft(save, id);
   if (tl != null) text += ` · ${tf('timer.left', { n: tl })}`;

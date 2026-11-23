@@ -167,7 +167,8 @@ export function createNpcActions(ctx) {
     const finishTalk = (g) => {
       toastAll(g, onTalk(sv, npc.id, g.data));
       const offered = offeredBy(g, npc);
-      if (offered.length) offerQuest(g, offered[0], npc.id);
+      if (offered.length === 1) offerQuest(g, offered[0], npc.id);
+      else if (offered.length > 1) offerList(g, npc);
       ctx.refresh(g);
     };
     // third-exodus.md: once per mark the NPC mentions the Exodus (a line by faction)
@@ -178,13 +179,26 @@ export function createNpcActions(ctx) {
     }));
   }
 
-  function offerQuest(game, q, npcId) {
+  // QA v40 M1: an NPC with several quests lists them all at once; after «Взять» / «Позже» the list comes back
+  function offerList(game, npc) {
+    const list = offeredBy(game, npc);
+    if (!list.length) return;
+    game.openModal({
+      title: tf('loc.questOffers', { npc: npc.name, n: list.length }), width: 900,
+      lines: [{ text: t('loc.questOffersHint'), color: 'a' }],
+      options: [...list.map((q) => ({ label: q.name, sub: (q.summary || '').slice(0, 90) + ((q.summary || '').length > 90 ? '…' : ''),
+        run: (g) => offerQuest(g, q, npc.id, (g2) => offerList(g2, npc)) })),
+      { label: t('loc.questLater'), run: () => {} }],
+    });
+  }
+
+  function offerQuest(game, q, npcId, back = null) {
     game.openModal({
       title: `${t('loc.questOffer')}: ${q.name}`, width: 900,
       lines: [{ text: q.summary || '' }, { text: q.stages[0].text, color: 'a' }, ...(q.key ? [{ text: t('journal.key'), color: 'a' }] : [])],
       options: [
-        { label: t('loc.questTake'), run: (g) => { const sv = save(g); toastAll(g, startQuest(sv, q.id)); if (npcId) toastAll(g, onTalk(sv, npcId, g.data)); ctx.refresh(g); } },
-        { label: t('loc.questLater'), run: () => {} },
+        { label: t('loc.questTake'), run: (g) => { const sv = save(g); toastAll(g, startQuest(sv, q.id)); if (npcId) toastAll(g, onTalk(sv, npcId, g.data)); ctx.refresh(g); if (back) back(g); } },
+        { label: t('loc.questLater'), run: (g) => { if (back) back(g); } },
       ],
     });
   }

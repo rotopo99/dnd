@@ -177,16 +177,25 @@ export function renderToasts(game) {
   // anchor: a scene may say where toasts do not cover its headers (battle — under the top bar over the map);
   // default — bottom centre above the bottom bars, stacking upwards
   const a = game.scene?.toastAnchor?.(game) || { x: game.width / 2, y: game.height - 132, dir: -1 };
-  for (let i = 0; i < ts.length; i++) {
-    const to = ts[i];
+  // QA v40 L3: a long toast (the rep strip after a finale) wraps to up to 3 lines instead of being cut with «…»
+  const TL = 20, maxW = Math.min(game.width - 40, 1100);
+  ctx.font = FONT_B;
+  const rows = ts.map((to) => {
     const label = to.n > 1 ? `${to.text} ×${to.n}` : to.text;
-    ctx.font = FONT_B;
-    const w = Math.min(game.width - 40, ctx.measureText(label).width + 32);
-    const x = Math.round(a.x - w / 2);
-    const y = a.y + a.dir * (ts.length - 1 - i) * 40;
+    let lines = ctx.measureText(label).width + 32 <= maxW ? [label] : wrap(ctx, label, maxW - 24, FONT_B);
+    if (lines.length > 3) lines = [...lines.slice(0, 2), fit(ctx, lines.slice(2).join(' '), maxW - 24, FONT_B)];
+    const w = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 32);
+    return { to, lines, w, h: 32 + (lines.length - 1) * TL };
+  });
+  let off = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const { to, lines, w, h } = rows[i];
+    const x = Math.round(Math.max(20, Math.min(game.width - 20 - w, a.x - w / 2))); // an off-centre anchor keeps a wide toast on screen
+    const y = a.dir < 0 ? a.y + 32 - h - off : a.y + off;
+    off += h + 8;
     ctx.globalAlpha = to.t > 2.6 ? Math.max(0, (3.2 - to.t) / 0.6) : 1;
-    panel(ctx, x, y, w, 32, C['0'], C[to.color] || chrome());
-    text(ctx, fit(ctx, label, w - 24, FONT_B), x + w / 2, y + 8, C[to.color] || C.h, FONT_B, 'center');
+    panel(ctx, x, y, w, h, C['0'], C[to.color] || chrome());
+    lines.forEach((l, k) => text(ctx, fit(ctx, l, w - 24, FONT_B), x + w / 2, y + 8 + k * TL, C[to.color] || C.h, FONT_B, 'center'));
     ctx.globalAlpha = 1;
   }
 }
