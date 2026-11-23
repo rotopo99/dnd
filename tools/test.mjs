@@ -5994,5 +5994,89 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(s.flags['dl:w2-laugh:sentry-note']);
   });
 }
+// ---------------------------------------------------------------- content-wave3.md §3: w3-vacation, w3-sorter, w3-apology
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CQ = await import('../game/src/world/consequences.js');
+  const DL = await import('../game/src/world/delayed.js');
+  const { QUESTS: QW, ENCOUNTERS: EW, LOCATIONS: LW, npcsAt } = await import('../game/src/world/data.js');
+  const { NPCS: NW } = await import('../game/src/data/npcs.js');
+  const { CONSEQUENCES: CW } = await import('../game/src/data/world/consequences.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true }, flags); s.hero.credits = 500; return s; };
+  const choiceSlot = (s, q) => QS.slots(s, q).find((x) => x.kind === 'choice');
+  const ids = (s, q) => QS.availableOptions(s, choiceSlot(s, q)).map((o) => o.id);
+  const W3 = ['w3-vacation', 'w3-sorter', 'w3-apology'];
+  test('wave3: side quests reference existing NPCs / encounters / nodes, ≥ 2 ways, a rumor', () => {
+    for (const id of W3) {
+      const q = QW[id];
+      assert.ok(q && NW[q.giver] && npcsAt(NW[q.giver].location).includes(q.giver), id);
+      for (const sg of q.stages) {
+        const goals = [sg.goal, ...(sg.goal.options || []).map((o) => o.goal), ...(sg.goal.goals || [])].filter(Boolean);
+        for (const g of goals) {
+          if (g.encounter) assert.ok(EW[g.encounter], `${id}: ${g.encounter}`);
+          if (g.npc) assert.ok(NW[g.npc], `${id}: ${g.npc}`);
+          if (g.location) assert.ok(LW[g.location], `${id}: ${g.location}`);
+          for (const n of ['next', 'onFail']) if (g[n]) assert.ok(q.stages.some((x) => x.id === g[n]), `${id}: ${g[n]}`);
+        }
+      }
+      assert.ok(q.stages.filter((x) => x.goal.kind === 'choice').flatMap((x) => x.goal.options).length >= 3, id);
+      assert.ok(Object.values(CW[id]).some((e) => e.rumors.length), id);
+    }
+  });
+  test('wave3 vacation: petition fail -> night (trap) -> choice; resort hidden without 120 cr.; formal eased by a stamp', () => {
+    const s = mk(); QS.startQuest(s, 'w3-vacation'); QS.onTalk(s, 'w3-node4', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA);
+    assert.equal(s.quests['w3-vacation'].stage, 'petition');
+    QS.failSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA);
+    assert.equal(s.quests['w3-vacation'].stage, 'night');
+    QS.chooseOption(s, choiceSlot(s, 'w3-vacation'), 'wait', GAME_DATA);
+    assert.ok(s.flags['vac-night']); assert.equal(s.quests['w3-vacation'].stage, 'choice');
+    s.hero.credits = 50;
+    assert.ok(!ids(s, 'w3-vacation').includes('resort'));
+    const f = QW['w3-vacation'].stages.find((x) => x.id === 'choice').goal.options.find((o) => o.id === 'formal').goal;
+    s.flags['customs-stamp'] = true;
+    assert.equal(QS.goalDc(s, f), 11);
+    QS.chooseOption(s, choiceSlot(s, 'w3-vacation'), 'split', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-vacation')[0], GAME_DATA); QS.onTalk(s, 'w3-node4', GAME_DATA);
+    assert.equal(s.quests['w3-vacation'].outcome, 'split');
+    QS.claimTurnin(s, 'w3-vacation', GAME_DATA);
+    s.day += 4; DL.delayedTick(s, GAME_DATA);
+    assert.ok(s.flags['vac-postcard']);
+  });
+  test('wave3 sorter: closed shuts the shaft for good; self ends in a battle, not game over', () => {
+    const s = mk(); QS.startQuest(s, 'w3-sorter'); QS.onTalk(s, 'w3-sorter', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-sorter')[0], GAME_DATA);
+    QS.chooseOption(s, choiceSlot(s, 'w3-sorter'), 'closed', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-sorter')[0], GAME_DATA);
+    assert.equal(s.quests['w3-sorter'].outcome, 'closed');
+    CQ.applyConsequences(s, 'w3-sorter');
+    assert.ok(CQ.closedLoc(s, 'dungeons-m13'));
+    const t2 = mk(); QS.startQuest(t2, 'w3-sorter'); QS.onTalk(t2, 'w3-sorter', GAME_DATA);
+    QS.completeSlot(t2, QS.slots(t2, 'w3-sorter')[0], GAME_DATA);
+    QS.chooseOption(t2, choiceSlot(t2, 'w3-sorter'), 'self', GAME_DATA);
+    assert.equal(t2.quests['w3-sorter'].stage, 'self-fight');
+    QS.onBattleWon(t2, 'enc-w3-sorter', 'dungeons-m13', GAME_DATA);
+    assert.equal(t2.quests['w3-sorter'].outcome, 'self');
+  });
+  test('wave3 apology: budget 5 never fits all rooms (even hacked); the exit needs 3 rooms', () => {
+    const s = mk(); QS.startQuest(s, 'w3-apology'); QS.onTalk(s, 'w3-dispatcher', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-apology')[0], GAME_DATA);
+    assert.equal(s.quests['w3-apology'].stage, 'rooms');
+    assert.ok(!ids(s, 'w3-apology').includes('enough'));
+    QS.chooseOption(s, choiceSlot(s, 'w3-apology'), 'hack', GAME_DATA);
+    QS.completeSlot(s, QS.slots(s, 'w3-apology')[0], GAME_DATA);
+    assert.equal(st.counterValue(s, 'disp-power'), 6);
+    for (const r of ['r-pacemaker', 'r-lift', 'r-shumok', 'r-lamp']) QS.chooseOption(s, choiceSlot(s, 'w3-apology'), r, GAME_DATA);
+    assert.equal(st.counterValue(s, 'disp-power'), 0);
+    assert.ok(!ids(s, 'w3-apology').includes('r-laugh'));
+    QS.chooseOption(s, choiceSlot(s, 'w3-apology'), 'enough', GAME_DATA);
+    QS.chooseOption(s, choiceSlot(s, 'w3-apology'), 'live', GAME_DATA);
+    assert.equal(s.quests['w3-apology'].outcome, 'live');
+    QS.claimTurnin(s, 'w3-apology', GAME_DATA);
+    s.day += 5; DL.delayedTick(s, GAME_DATA);
+    assert.ok(s.flags['disp-storm-calm']);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

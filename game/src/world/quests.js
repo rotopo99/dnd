@@ -383,6 +383,7 @@ export function completeSlot(save, slot, data) {
     st.subs[slot.sub] = true;
     const sg = slot.stage.goal.goals?.[slot.sub];
     if (sg?.doneFlag) { save.flags[sg.doneFlag] = true; cineFlag(save, sg.doneFlag); } // the world's memory of it (mq3-fall: saved-*); c7 waits for ha-proof-reactor
+    if (sg?.toast) out.push({ text: sg.toast, color: 'j' }); // content-wave3.md: Liza's marks «Открыто. Не благодари»
     const g = slot.stage.goal;
     const done = g.goals.filter((sg, i) => subDone(save, st, sg, i)).length;
     if (done >= needNow(save, slot.qid, slot.stage)) {

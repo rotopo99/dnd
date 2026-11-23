@@ -14,7 +14,7 @@ import { QUEST_TURNIN } from '../data/text/quest-turnin.js';
 import { QUEST_TURNIN_CYBER } from '../data/text/quest-turnin-cyber.js';
 import { QUESTS_CYBER } from '../data/world/quests-cyber.js';
 import { AUTOABLE_QUESTS } from '../data/world/expeditions.js';
-import { CONSEQUENCES } from '../data/world/consequences.js';
+import { CONSEQUENCES, EPILOGUE } from '../data/world/consequences.js';
 import { QUESTS_WAVE1_MAP } from '../data/world/quests-wave1.js';
 import { QUEST_TURNIN_WAVE1 } from '../data/text/quest-turnin-wave1.js';
 import { CONSEQUENCES_WAVE1 } from '../data/world/consequences-wave1.js';
@@ -23,6 +23,9 @@ import { CHECK_SCENES_WAVE1 } from '../data/world/check-scenes-wave1.js';
 import { QUESTS_WAVE2_MAP } from '../data/world/quests-wave2.js';
 import { QUEST_TURNIN_WAVE2 } from '../data/text/quest-turnin-wave2.js';
 import { CONSEQUENCES_WAVE2 } from '../data/world/consequences-wave2.js';
+import { QUESTS_WAVE3_MAP, W3_NPC_RULES } from '../data/world/quests-wave3.js';
+import { QUEST_TURNIN_WAVE3 } from '../data/text/quest-turnin-wave3.js';
+import { CONSEQUENCES_WAVE3, EPILOGUE_WAVE3 } from '../data/world/consequences-wave3.js';
 import { PROLOGUE } from '../data/text/prologue.js';
 import { LOCATIONS, ITEMS as WORLD_ITEMS, resolveLocation } from '../data/world/locations.js';
 import { GAME_DATA } from '../data/index.js';
@@ -74,11 +77,11 @@ export function personalQuest(pq) {
   return { id: pq.id, name: pq.name, giver: pq.npc, summary: stages[0]?.text || '', personal: { npc: pq.npc, loyalty, altPath: !!unlockAltPath }, stages, rewards };
 }
 export const QUESTS_PERSONAL = Object.fromEntries(Object.values(PERSONAL_QUESTS).map((q) => [q.id, personalQuest(q)]));
-export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER, ...QUESTS_WAVE1_MAP, ...QUESTS_WAVE2_MAP };
+export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER, ...QUESTS_WAVE1_MAP, ...QUESTS_WAVE2_MAP, ...QUESTS_WAVE3_MAP };
 // cyberspace-v2.md: turn-in lines of the cyber quests; expeditions.md: mini quests a reserve companion can close (autoable)
 Object.assign(QUEST_TURNIN, QUEST_TURNIN_CYBER);
 for (const id of Object.keys(AUTOABLE_QUESTS)) if (QUESTS[id]) QUESTS[id].autoable = true;
-export const isNpcQuest = (id) => !!QUESTS_NPC[id] || !!QUESTS_D[id] || !!QUESTS_WAVE1_MAP[id] || !!QUESTS_WAVE2_MAP[id];
+export const isNpcQuest = (id) => !!QUESTS_NPC[id] || !!QUESTS_D[id] || !!QUESTS_WAVE1_MAP[id] || !!QUESTS_WAVE2_MAP[id] || !!QUESTS_WAVE3_MAP[id];
 
 // content-wave1.md §5.1: quests, turn-ins, consequences and check scenes of wave 1 join the shared tables.
 // quest.outcomeBy → turn-in outcomeBy (questOutcome); a timed quest falls back to timer.onExpire ('late') when no flag stands.
@@ -98,6 +101,29 @@ for (const q of Object.values(QUESTS_WAVE2_MAP)) {
   if (td && q.outcomeBy) td.outcomeBy = [...q.outcomeBy];
 }
 Object.assign(CONSEQUENCES, CONSEQUENCES_WAVE2);
+// content-wave3.md: wave-3 quests, turn-ins, consequences and epilogue slides (outcomeBy as wave 2)
+Object.assign(QUEST_TURNIN, QUEST_TURNIN_WAVE3);
+for (const q of Object.values(QUESTS_WAVE3_MAP)) {
+  const td = QUEST_TURNIN[q.id];
+  if (td && q.outcomeBy) td.outcomeBy = [...q.outcomeBy];
+}
+Object.assign(CONSEQUENCES, CONSEQUENCES_WAVE3);
+for (const sl of EPILOGUE_WAVE3) if (!EPILOGUE.some((x) => x.id === sl.id)) EPILOGUE.splice(EPILOGUE.length - 1, 0, sl); // before epi-outro
+
+/** content-wave3.md: W3_NPC_RULES `when` — flags all / any / not, hero level, quest state, event companion rel. */
+export function npcRuleOk(save, w = {}) {
+  const f = save?.flags || {};
+  if (w.all && !w.all.every((x) => f[x])) return false;
+  if (w.any && !w.any.some((x) => f[x])) return false;
+  if (w.not && w.not.some((x) => f[x])) return false;
+  if (w.level && (save?.hero?.level || 1) < w.level) return false;
+  if (w.quest) {
+    const st = save?.quests?.[w.quest.id], s = w.quest.state || 'any';
+    if (s === 'none' ? !!st : s === 'any' ? !st : s === 'active' ? st?.state !== 'active' : st?.state !== s) return false;
+  }
+  if (w.rel && (save?.cine?.rel?.[w.rel.npc] || 0) < w.rel.min) return false;
+  return true;
+}
 
 /** Lore of a node (locations-lore.js): { desc, spots, rumor, problem } or null. */
 export const locationLore = (id) => LOCATION_LORE[resolveLocation(id)] || null;
@@ -169,6 +195,7 @@ for (const l of Object.values(LOCATIONS)) for (const n of l.npcs || []) if (!LIS
 export function npcPlacement(save) {
   const m = new Map();
   const get = (n) => { if (!m.has(n)) m.set(n, { home: true, extra: new Set() }); return m.get(n); };
+  for (const r of W3_NPC_RULES) if (npcRuleOk(save, r.when)) get(r.npc).extra.add(resolveLocation(r.at)); // content-wave3.md
   for (const c of save?.cq || []) {
     const e = CONSEQUENCES[c.qid]?.[c.o];
     if (!e) continue;
@@ -183,7 +210,7 @@ export function npcPlacement(save) {
 export function npcsAt(locId, save = null) {
   const id = resolveLocation(locId);
   const base = npcsAtBase(id, save);
-  if (!save?.cq?.length && !save?.npcs) return base;
+  if (!save?.cq?.length && !save?.npcs && !W3_NPC_RULES.length) return base;
   const pl = npcPlacement(save);
   if (!pl.size) return base;
   const out = base.filter((n) => !pl.has(n) || pl.get(n).home);
@@ -213,8 +240,8 @@ export function npcHome(npcId, save = null) {
   const p = save ? npcPlacement(save).get(npcId) : null;
   if (p && !p.home) return [...p.extra][0] || null;
   if (LISTED_AT.has(npcId)) return LISTED_AT.get(npcId);
-  for (const l of [n.location, n.burg]) { const r = resolveLocation(l); if (r && LOCATIONS[r]) return r; }
-  return null;
+  for (const l of [n.location, n.burg]) { const r = resolveLocation(l); if (r && LOCATIONS[r] && !n.cameo) return r; }
+  return p?.extra.size ? [...p.extra][0] : null; // content-wave3.md: an NPC placed only by a rule (W3_NPC_RULES)
 }
 
 /** Enemies of an encounter for a party of `size` (enemies.js: first ceil(n × s / 4), bosses first). */

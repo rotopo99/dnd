@@ -27,6 +27,8 @@ import { hasWorldFlag, worldFlagValues } from './checks.js';
 import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from './inventory.js';
 import { romanceDeed } from './romance.js';
 import { coopCount } from './coop.js';
+import { W3_COUNTERS } from '../data/world/quests-wave3.js';
+import { CINE_RULES } from '../data/cinematics/index.js';
 
 export const MAX_PARTY = 3; // legacy default: companions besides the hero (real limit — squadMax(save) − 1)
 export { levelForXp };
@@ -325,7 +327,34 @@ export function requiresOk(save, req, data = GAME_DATA) {
     if (!p || (p.approval || 0) < req.loyalty.min) return false;
   }
   if (req.not && requiresOk(save, req.not, data)) return false;
+  // content-wave3.md: counters derived from flags (W3_COUNTERS) and the event companion's rel (save.cine.rel, ±5)
+  if (req.ctr) {
+    const v = counterValue(save, req.ctr.id);
+    if ((req.ctr.min != null && v < req.ctr.min) || (req.ctr.max != null && v > req.ctr.max)) return false;
+  }
+  if (req.rel && relOf(save, req.rel.npc) < (req.rel.min ?? -Infinity)) return false;
   return true;
+}
+
+/** content-wave3.md: a counter of W3_COUNTERS — base + Σ plus − Σ minus over the set flags, clamped to [min, max]. */
+export function counterValue(save, id) {
+  const c = W3_COUNTERS[id];
+  if (!c) return 0;
+  const f = save?.flags || {};
+  let v = c.base || 0;
+  for (const [k, d] of Object.entries(c.plus || {})) if (f[k]) v += d;
+  for (const [k, d] of Object.entries(c.minus || {})) if (f[k]) v -= d;
+  return Math.max(c.min ?? -Infinity, Math.min(c.max ?? Infinity, v));
+}
+
+/** Relation of an event companion (cinematics.md rel, −5…5; the same store the cinematic env writes). */
+export const relOf = (save, npc) => save?.cine?.rel?.[npc] || 0;
+export function addRel(save, npc, d) {
+  const RL = CINE_RULES.rel;
+  save.cine ||= {};
+  save.cine.rel ||= {};
+  save.cine.rel[npc] = Math.max(RL.min, Math.min(RL.max, relOf(save, npc) + d));
+  return save.cine.rel[npc];
 }
 
 /** Mean level of the active party (companions without their own level follow the hero). */
@@ -353,6 +382,7 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   if (r.talent && TALENTS[r.talent] && !save.hero.talents.includes(r.talent)) out.push(...learnTalent(save, r.talent, data));
   if (r.recruit && NPCS[r.recruit] && canRecruit(save, r.recruit) !== 'already') { recruit(save, r.recruit); out.push({ text: tf('fx.joined', { name: NPCS[r.recruit].name }), color: 'j' }); }
   if (r.hp || r.mrl) damageParty(save, r.hp || 0, r.mrl || 0, data);
+  if (r.rel) for (const [n, d] of Object.entries(r.rel)) if (d) { addRel(save, n, d); out.push({ text: tf('w3.rel', { name: NPCS[n]?.name || n, d: `${d > 0 ? '+' : ''}${d}` }), color: d > 0 ? 'j' : 'c' }); }
   if (r.xp) out.push(...gainXp(save, r.xp, data));
   for (const d of r.deeds || []) out.push(...deed(save, d, keyChoice));
   out.push(...companionRepCheck(save));
