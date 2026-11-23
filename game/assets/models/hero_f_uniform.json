@@ -87,12 +87,18 @@
   "crouch_walk",
   "talk",
   "sit",
+  "idle_2h",
+  "walk_2h",
+  "run_2h",
+  "aim_2h",
   "shrug",
   "attack_melee",
   "attack_shoot",
   "cast",
   "hit",
-  "death"
+  "death",
+  "shoot_2h",
+  "attack_2h"
  ],
  "springBones": [
   {
@@ -654,5 +660,42 @@
  "hair": "long",
  "outfit": "uniform",
  "hair_color": "silver",
- "skin": "light"
+ "skin": "light",
+ "grip2h": {
+  "bone": "rightHand",
+  "pos": [
+   0.0,
+   0.052,
+   -0.028
+  ],
+  "basis": [
+   [
+    0,
+    0,
+    -1
+   ],
+   [
+    -1,
+    0,
+    0
+   ],
+   [
+    0,
+    1,
+    0
+   ]
+  ]
+ },
+ "loops": [
+  "idle",
+  "walk",
+  "run",
+  "crouch_walk",
+  "talk",
+  "sit",
+  "idle_2h",
+  "walk_2h",
+  "run_2h",
+  "aim_2h"
+ ]
 }

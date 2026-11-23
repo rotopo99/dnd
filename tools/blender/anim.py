@@ -1,5 +1,6 @@
 """Procedural animation clips (FK by limb directions, auto-grounded legs).
-Clips: loop idle walk run crouch_walk talk sit; one-shot attack_melee attack_shoot cast hit death shrug."""
+Clips: loop idle walk run crouch_walk talk sit idle_2h walk_2h run_2h aim_2h; one-shot attack_melee attack_shoot cast hit death shrug shoot_2h attack_2h.
+Two-handed clips (*_2h) drive both arms by IK from a weapon frame (see GRIP2H): rifle (shoulder / low ready) or staff (both fists on the shaft)."""
 from common import *
 from skeleton import joints, bone_table, FINGERS
 
@@ -11,7 +12,13 @@ def sm(x): x = max(0, min(1, x)); return x * x * (3 - 2 * x)
 
 
 BASE = dict(hips_x=0, hips_y=0, hips_z=0, hips_rx=0, hips_ry=0, hips_rz=0, spine_rx=0, spine_ry=0, spine_rz=0, chest_rx=0, chest_ry=0, chest_rz=0,
-            uchest_rx=0, uchest_ry=0, uchest_rz=0, neck_rx=0, neck_ry=0, neck_rz=0, head_rx=0, head_ry=0, head_rz=0, ground=1, ground_y=1, lift=0, grip=0.25, lean_y=0, Ls=0, Rs=0)
+            uchest_rx=0, uchest_ry=0, uchest_rz=0, neck_rx=0, neck_ry=0, neck_rz=0, head_rx=0, head_ry=0, head_rz=0, ground=1, ground_y=1, lift=0, grip=0.25, lean_y=0, Ls=0, Rs=0,
+            ik2h=0, gx=0, gy=0, gz=0, w_yaw=0, w_pitch=0, w_roll=0, w_staff=0, w_sup=0.36, w_world=0)
+# Two-handed weapon frame (armature space): d = barrel / knuckle direction, u = weapon up (rifle) = shaft towards the tip (staff),
+# r = d x u. Right hand: thumb along u, fingers along d, back of the hand along r. Grip point of a fist in the hand bone frame:
+GRIP_LOCAL = (0.0, 0.052, -0.028)
+# -> weapon frame (game convention: grip at 0, +y up / shaft, +z barrel) in the rightHand bone frame: columns x_w, y_w, z_w
+GRIP2H = dict(bone='rightHand', pos=list(GRIP_LOCAL), basis=[[0, 0, -1], [-1, 0, 0], [0, 1, 0]])
 for s in 'LR':
     BASE.update({s + 'f': 0, s + 'a': 3, s + 'k': 2, s + 't': 0,                     # leg: forward, abduct, knee, ankle
                  s + 'Ad': 76, s + 'Af': 4, s + 'Ac': 0, s + 'Ed': 78, s + 'Ef': 22, s + 'Ec': 0, s + 'Hd': 0})   # arm: down, forward, cross | forearm: down, fwd, cross
@@ -44,7 +51,10 @@ class Rig:
         bl = arm.data.bones                       # lengths from the (leg-stretched) armature, not the raw joint table
         self.L1 = bl['leftUpperLeg'].length; self.L2 = bl['leftLowerLeg'].length
         self.zank = bl['leftFoot'].head_local.z; self.zhip = bl['hips'].head_local.z
-        self.kz = self.zhip / J['hips'][2]        # raw -> stretched scale of authored absolute hip heights (death)
+        self.kz = self.zhip / J['hips'][2]
+        self.H = {b.name: b.head_local.copy() for b in arm.data.bones}
+        self.M3 = {b.name: b.matrix_local.to_3x3() for b in arm.data.bones}
+        self.LA = {s: (bl[s + 'UpperArm'].length, bl[s + 'LowerArm'].length) for s in ('left', 'right')}        # raw -> stretched scale of authored absolute hip heights (death)
 
     def leg_vecs(self, p, s):
         f, a, k = p[s + 'f'], p[s + 'a'], p[s + 'k']; sd = 1 if s == 'L' else -1
@@ -82,7 +92,53 @@ class Rig:
             dz = -min(a.z for a in ankles) - (self.L1 + self.L2) + p['lift'] * 0  # lowest ankle at rest height
             dy = -sum(a.y for a in ankles) / 2 * p['ground_y']
         loc = Vector((p['hips_x'], p['hips_y'] + dy * 1.0 + p['lean_y'], p['hips_z'] * (1 if p['ground'] else self.kz) + dz))
+        if p['ik2h'] > 0.5: self.solve_2h(p, W, loc)
         return W, loc
+
+    def posed_head(self, W, loc, name):
+        chain = []; b = name
+        while b: chain.append(b); b = self.par[b]
+        chain.reverse(); pos = self.H[chain[0]] + loc
+        for a, b in zip(chain[:-1], chain[1:]): pos = pos + W[a] @ (self.H[b] - self.H[a])
+        return pos
+
+    def weapon_frame(self, p, W, loc):
+        """-> grip point G, d, u (armature space). Offsets / angles relative to the upper chest (w_world=1: hips position, world axes)."""
+        Q = Quaternion((0, 0, 1), D(p['w_yaw'])) @ Quaternion((1, 0, 0), D(-p['w_pitch']))
+        d = Q @ Vector((0, -1, 0)); u = Q @ Vector((0, 0, 1)); u = Quaternion(d, D(p['w_roll'])) @ u
+        Wc = W['upperChest'] if p['w_world'] < 0.5 else Quaternion((1, 0, 0, 0))
+        puc = self.posed_head(W, loc, 'upperChest')
+        G = puc + Wc @ Vector((p['gx'], p['gy'], p['gz'])) * self.hs
+        return G, (Wc @ d).normalized(), (Wc @ u).normalized()
+
+    def solve_2h(self, p, W, loc):
+        G, d, u = self.weapon_frame(p, W, loc); r = d.cross(u).normalized(); u = r.cross(d).normalized()
+        frame = lambda x, y: (lambda X, Y: Matrix((X, Y, X.cross(Y))).transposed())(x.normalized(), (y - x.normalized() * y.dot(x.normalized())).normalized())
+        gl = Vector(GRIP_LOCAL)
+        TR = frame(-u, d)                                                      # thumb (-x) along u, fingers along d
+        if p['w_staff'] > 0.5:
+            S = G - u * p['w_sup'] * self.hs; TL = frame(u, d)                 # lower fist, thumb towards the tip
+            poles = {'right': Vector((-1.0, 0.4, -0.6)), 'left': Vector((1.0, 0.4, -0.6))}
+        else:
+            S = G + d * p['w_sup'] * self.hs + u * 0.03; yl = d * math.cos(D(28)) + r * math.sin(D(28)); TL = frame(yl.cross(-u), yl)   # palm up under the fore-end, fingers across
+            poles = {'right': Vector((-1.0, 0.5, -0.8)), 'left': Vector((0.5, 0.2, -1.0))}
+        Wuc = W['upperChest']
+        for side, T, tgt in (('right', TR, G), ('left', TL, S)):
+            wrist = tgt - T @ gl
+            sh = self.posed_head(W, loc, side + 'UpperArm'); L1, L2 = self.LA[side]
+            v = wrist - sh; dist = min(max(v.length, abs(L1 - L2) + 1e-3), (L1 + L2) * 0.999); e = v.normalized()
+            a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist); h = math.sqrt(max(0.0, L1 * L1 - a * a))
+            pl = Wuc @ poles[side]; pl = (pl - e * pl.dot(e)).normalized()
+            elbow = sh + e * a + pl * h; wr = sh + e * dist
+            ua, la, hd = side + 'UpperArm', side + 'LowerArm', side + 'Hand'
+            W[ua] = Vector(self.dir[ua]).rotation_difference(elbow - sh)
+            Wla = Vector(self.dir[la]).rotation_difference(wr - elbow)
+            Wh = T.to_quaternion() @ self.M3[hd].to_quaternion().inverted()
+            res = Wla.inverted() @ Wh; ax = Vector(self.dir[la])
+            tw = 2 * math.atan2(Vector((res.x, res.y, res.z)).dot(ax), res.w)
+            if tw > math.pi: tw -= 2 * math.pi
+            if tw < -math.pi: tw += 2 * math.pi
+            W[la] = Wla @ Quaternion(ax, 0.55 * tw); W[hd] = Wh
 
     def apply(self, p, frame):
         W, loc = self.solve(p)
@@ -225,6 +281,55 @@ def clip_sit(f, n):
     return p
 
 
+# ------------------------------------------------------------------ two-handed (rifle / staff) - arms by IK, see Rig.solve_2h
+LOW = dict(ik2h=1, gx=-0.10, gy=-0.25, gz=-0.24, w_yaw=38, w_pitch=-24, w_roll=-14, grip=0.85)            # low ready, muzzle down-left
+AIM = dict(ik2h=1, gx=-0.09, gy=-0.33, gz=0.05, w_yaw=22, w_pitch=0, w_roll=0, grip=0.85)                  # shouldered (torso turned right)
+PORT = dict(ik2h=1, gx=-0.08, gy=-0.20, gz=-0.16, w_yaw=58, w_pitch=36, w_roll=-20, grip=0.9)              # port arms: diagonal across the chest
+
+
+def clip_idle_2h(f, n):
+    p = clip_idle(f, n); t = 2 * math.pi * f / n; b = math.sin(t)
+    p.update(LOW); p.update({'gz': LOW['gz'] + 0.006 * b, 'w_pitch': LOW['w_pitch'] + 1.5 * b, 'chest_rz': -3 - 1.0 * math.sin(t), 'Rf': 6, 'Rk': 12})
+    return p
+
+
+def clip_walk_2h(f, n, run=False):
+    p = clip_walk(f, n, run=run); t = 2 * math.pi * f / n; s = math.sin(t)
+    p.update(PORT if run else LOW)
+    p['chest_rz'] = -(4 if run else 3) * s; p['hips_rz'] = (8 if run else 5) * s; p['head_rz'] = -0.5 * p['chest_rz']
+    p['gz'] += (0.012 if run else 0.006) * math.cos(2 * t); p['w_pitch'] += (3 if run else 2) * math.sin(2 * t)
+    if run: p['chest_rx'] = 9; p['spine_rx'] = 6
+    return p
+
+
+def stance_aim(b=0.0):
+    return {**BASE, **AIM, 'chest_rz': -14, 'uchest_rz': -6, 'hips_rz': -10, 'spine_rx': 3, 'chest_rx': 3 + 0.8 * b, 'head_rz': 14, 'head_rx': 7, 'neck_rz': 4, 'head_ry': 6,
+            'Lf': 12, 'Lk': 12, 'Rf': -8, 'Rk': 8, 'La': 6, 'Ra': 8, 'Rt': 4, 'hips_x': -0.01, 'Rs': 3, 'gz': AIM['gz'] + 0.004 * b}
+
+
+def clip_aim_2h(f, n):
+    return stance_aim(math.sin(2 * math.pi * f / n))
+
+
+def keys_shoot_2h():
+    a = stance_aim(); kick = {**a, 'gy': a['gy'] + 0.045, 'gz': a['gz'] + 0.012, 'w_pitch': 7, 'chest_rx': -1, 'spine_rx': 0, 'head_rx': 3, 'hips_y': 0.02, 'Rs': 6}
+    return [(0, a), (2, kick), (5, {**kick, 'gy': a['gy'] + 0.02, 'w_pitch': 3}), (12, a), (20, a)]
+
+
+def keys_attack_2h():
+    """Overhead two-handed strike with a staff / heavy weapon: wind-up over the right shoulder, step in, chop down, recover."""
+    hold = dict(ik2h=1, w_staff=1, w_sup=0.30, grip=1.0, gx=-0.05, gy=-0.28, gz=-0.12, w_yaw=26, w_pitch=-40, w_roll=0)   # guard: shaft forward-up, butt past the right hip
+    st = dict(Lf=12, Rf=-8, Lk=14, Rk=10)
+    wind = {**hold, **st, 'gx': -0.14, 'gy': -0.02, 'gz': 0.26, 'w_pitch': 100, 'w_yaw': -12, 'w_roll': 10, 'chest_rz': -26, 'uchest_rz': -8, 'hips_rz': -10,
+            'chest_rx': -8, 'spine_rx': -4, 'head_rz': 14, 'head_rx': -4, 'Lf': 20, 'Lk': 24, 'Rf': -14, 'Rk': 18}
+    top = {**wind, 'w_pitch': 112, 'gz': 0.30, 'chest_rx': -10}
+    hit = {**hold, 'gx': -0.10, 'gy': -0.40, 'gz': -0.20, 'w_pitch': -80, 'w_yaw': 32, 'chest_rz': 10, 'uchest_rz': 4, 'hips_rz': 8, 'chest_rx': 18, 'spine_rx': 12,
+           'uchest_rx': 6, 'hips_rx': 8, 'head_rx': -12, 'head_rz': -4, 'Lf': 44, 'Lk': 44, 'Rf': -26, 'Rk': 26}
+    foll = {**hit, 'w_pitch': -90, 'gz': -0.26, 'gy': -0.38, 'chest_rx': 20}
+    g0 = {**hold, **st}
+    return [(0, g0), (10, wind), (16, top), (22, hit), (28, foll), (44, g0)]
+
+
 def author(arm, P):
     """creates all actions on the armature (no NLA); returns names."""
     rig = Rig(arm, P); names = []
@@ -240,7 +345,11 @@ def author(arm, P):
     run('crouch_walk', 36, lambda f: clip_walk(f, 36, crouch=True))
     run('talk', 90, lambda f: clip_talk(f, 90))
     run('sit', 90, lambda f: clip_sit(f, 90))
-    for name, keys, n in (('shrug', keys_shrug(), 36), ('attack_melee', keys_attack_melee(), 40), ('attack_shoot', keys_attack_shoot(), 42), ('cast', keys_cast(), 58), ('hit', keys_hit(), 20), ('death', keys_death(), 50)):
+    run('idle_2h', 60, lambda f: clip_idle_2h(f, 60))
+    run('walk_2h', 32, lambda f: clip_walk_2h(f, 32))
+    run('run_2h', 24, lambda f: clip_walk_2h(f, 24, run=True))
+    run('aim_2h', 40, lambda f: clip_aim_2h(f, 40))
+    for name, keys, n in (('shrug', keys_shrug(), 36), ('attack_melee', keys_attack_melee(), 40), ('attack_shoot', keys_attack_shoot(), 42), ('cast', keys_cast(), 58), ('hit', keys_hit(), 20), ('death', keys_death(), 50), ('shoot_2h', keys_shoot_2h(), 20), ('attack_2h', keys_attack_2h(), 44)):
         run(name, n, lambda f, keys=keys: interp(keys, f), loop=False)
     arm.animation_data.action = None
     for pb in arm.pose.bones: pb.rotation_quaternion = (1, 0, 0, 0); pb.location = (0, 0, 0)

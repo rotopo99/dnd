@@ -1,4 +1,4 @@
-"""Build every model: python build_all.py [--only body|hair|outfit|preset] [--sex male|female]
+"""Build every model: python build_all.py [--only faces|body|hair|outfit|preset|npc] [--sex male|female]
 Output: game/assets/models/*.glb (+ .json meta, face PNGs) and previews tools/out/blender-*.png"""
 import sys, argparse, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))) if False else None
@@ -106,4 +106,14 @@ if args.only in ('all', 'preset'):
             sheet = np.concatenate([np.concatenate(imgs[:4], axis=1), np.concatenate(imgs[4:], axis=1)], axis=0)
             im = bpy.data.images.new('s', sheet.shape[1], sheet.shape[0], alpha=True); im.pixels = sheet.ravel().tolist()
             im.filepath_raw = os.path.join(OUT, 'blender-anims.png'); im.file_format = 'PNG'; im.save()
+if args.only in ('all', 'npc'):
+    import npc as npcmod
+    for nid, cfg in npcmod.NPCS.items():
+        if cfg['sex'] not in SEXES or (os.environ.get('NPCS') and nid not in os.environ['NPCS'].split(',')): continue
+        P, arm, objs, names, sp = npcmod.build(nid); objs = [arm] + objs
+        p = os.path.join(MODELS, 'npc_%s.glb' % nid); export.glb(p, objs)
+        tris = sum(tri_count(x) for x in objs[1:])
+        export.meta(p, arm, P, cfg['sex'], [x.name for x in objs[1:]], names, sp, dict(triangles=tris, npc=nid, hair=cfg.get('hair'), outfit=cfg['base'], skin=cfg['skin']))
+        log('npc', nid, kb(p), 'tris', tris)
+        done_preview('npc-' + nid, objs[1:])
 log('ALL DONE')

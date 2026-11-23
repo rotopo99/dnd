@@ -252,7 +252,7 @@ def tatter(bm, zcut, depth, teeth, seed=0.0, cx=0.0, side=0, band=None, up=True)
 
 
 # ------------------------------------------------------------------ pleated skirt (cone, box pleats, spring bones)
-def pleated_skirt(P, zt, zb, flare, pleats=22, rows=12, seg_per=4, br=None, margin=0.016, hem_flare=0.03, fold=0.03):
+def pleated_skirt(P, zt, zb, flare, pleats=22, rows=12, seg_per=4, br=None, margin=0.016, hem_flare=0.03, fold=0.03, pleat_depth=0.065):
     """Box-pleated A-line skirt: ellipse grown to clear the body (br: BodyRadius, never narrower than the row above),
     pleats deepen and the hem flares out in the lower third; the hem is turned up inside (fold) -> visible thickness."""
     hs = P['hs']; hw, ww, cw, cd = P['torso']
@@ -260,7 +260,7 @@ def pleated_skirt(P, zt, zb, flare, pleats=22, rows=12, seg_per=4, br=None, marg
     for j in range(rows + 1):
         f = j / rows; z = zt + (zb - zt) * f
         rx = (hw + 0.012) + flare * f ** 0.9 + hem_flare * smooth01((f - 0.55) / 0.45); ry = 0.108 + (flare * 0.95) * f ** 0.9 + hem_flare * 0.9 * smooth01((f - 0.55) / 0.45)
-        depth = 0.065 * (f ** 0.7) * (1 if f > 0.04 else 0.0)
+        depth = pleat_depth * (f ** 0.7) * (1 if f > 0.04 else 0.0)
         rr = []; cur = []
         for i in range(seg):
             a = 2 * math.pi * i / seg; ph = (i % seg_per) / seg_per         # phase in a pleat 0..1
@@ -290,19 +290,20 @@ def pleated_skirt(P, zt, zb, flare, pleats=22, rows=12, seg_per=4, br=None, marg
 def smooth01(x): x = max(0, min(1, x)); return x * x * (3 - 2 * x)
 
 
-def skirt_springs(o, arm, P, nsec=8):
-    """8 sectors x 2 bones (parent hips); weights: hips (top) -> bone0 -> bone1 (hem) + a share of the thighs so legs do not cut the cloth."""
-    J = joints(P); hs = P['hs']; zt = 1.0 * hs; zb = 0.60 * hs
+def skirt_springs(o, arm, P, nsec=8, zt=None, zb=None, prefix='skirt', leg=(0.97, 0.82), stiffness=0.35, flare=0.05):
+    """8 sectors x 2 bones (parent hips); weights: hips (top) -> bone0 -> bone1 (hem) + a share of the thighs so legs do not cut the cloth.
+    zt / zb: top / hem (raw layout, default 1.0 / 0.60 hs); prefix: bone + chain names (<prefix>_<k>_<q>, chains <prefix><k>)."""
+    J = joints(P); hs = P['hs']; zt = 1.0 * hs if zt is None else zt; zb = 0.60 * hs if zb is None else zb
     mode('OBJECT', arm); mode('EDIT', arm); eb = arm.data.edit_bones; names = []
     for k in range(nsec):
         a = 2 * math.pi * k / nsec; rx = (P['torso'][0] + 0.03 + 0.03); ry = 0.12
         pts = []
         for f in (0.15, 0.55, 1.0):
-            r_ = (P['torso'][0] + 0.012 + 0.05 * f * 0.9); y_ = 0.108 + 0.0475 * f
+            r_ = (P['torso'][0] + 0.012 + flare * f * 0.9); y_ = 0.108 + flare * 0.95 * f
             pts.append(Vector((math.sin(a) * r_, -math.cos(a) * y_, zt + (zb - zt) * f)))
         prev = eb['hips']; nm = []
         for q in range(2):
-            b = eb.new('skirt_%d_%d' % (k, q)); b.head = pts[q]; b.tail = pts[q + 1]; b.parent = prev; prev = b; nm.append(b.name)
+            b = eb.new('%s_%d_%d' % (prefix, k, q)); b.head = pts[q]; b.tail = pts[q + 1]; b.parent = prev; prev = b; nm.append(b.name)
         names.append(nm)
     mode('OBJECT', arm)
     allb = [b.name for b in arm.data.bones]
@@ -312,24 +313,26 @@ def skirt_springs(o, arm, P, nsec=8):
         f = max(0.0, min(1.0, (zt - v.co.z) / (zt - zb)))
         a = math.atan2(v.co.x, -v.co.y) % (2 * math.pi); s = a / (2 * math.pi) * nsec; k0 = int(s) % nsec; fr = s - int(s)
         w = {}
-        leg = 'leftUpperLeg' if v.co.x > 0 else 'rightUpperLeg'
-        w_leg = smooth01(f / 0.4) * (0.97 if v.co.y < 0 else 0.82)        # front panel rides on the thigh (no cut-through on a raised knee)
+        w_leg = smooth01(f / 0.4) * (leg[0] if v.co.y < 0 else leg[1])        # front panel rides on the thigh (no cut-through on a raised knee)
         if f < 0.02: w['hips'] = 1.0
         else:
             ws = smooth01(f / 0.5)                  # hips -> spring bone 0
             wh = 1 - ws; wb0 = ws * (1 - smooth01((f - 0.5) / 0.5)); wb1 = ws * smooth01((f - 0.5) / 0.5)
             for kk, ww in ((k0, 1 - fr), ((k0 + 1) % nsec, fr)):
-                w['skirt_%d_0' % kk] = w.get('skirt_%d_0' % kk, 0) + ww * wb0 * (1 - w_leg)
-                w['skirt_%d_1' % kk] = w.get('skirt_%d_1' % kk, 0) + ww * wb1 * (1 - w_leg)
+                b0, b1 = '%s_%d_0' % (prefix, kk), '%s_%d_1' % (prefix, kk)
+                w[b0] = w.get(b0, 0) + ww * wb0 * (1 - w_leg)
+                w[b1] = w.get(b1, 0) + ww * wb1 * (1 - w_leg)
             tt = max(-1.0, min(1.0, v.co.x / 0.045)); w['hips'] = wh * (1 - w_leg); w['leftUpperLeg'] = w_leg * (0.5 + 0.5 * tt); w['rightUpperLeg'] = w_leg * (0.5 - 0.5 * tt)
         for b, x in w.items():
             if x > 1e-4: o.vertex_groups[b].add([v.index], x, 'REPLACE')
-    return [dict(name='skirt%d' % k, bones=nm, stiffness=0.35, gravityPower=0.1, gravityDir=[0, -1, 0], dragForce=0.4, hitRadius=0.04) for k, nm in enumerate(names)]
+    return [dict(name='%s%d' % (prefix, k), bones=nm, stiffness=stiffness, gravityPower=0.1, gravityDir=[0, -1, 0], dragForce=0.4, hitRadius=0.04) for k, nm in enumerate(names)]
 
 
 # ------------------------------------------------------------------ outfits
-def build_outfit(kind, body, arm, P, sex):
-    hs = P['hs']; C = COL[kind]; sw = P['sw']; J = joints(P); hw, ww, cw, cd = P['torso']
+def build_outfit(kind, body, arm, P, sex, pal=None, extra=None, prefix=None):
+    """pal: colour overrides of COL[kind]; extra(raw_body, arm, P, parts, springs, C): more parts in the raw layout (npc.py);
+    parts with o['own_weights'] keep their weights (o['rigid'] = bone: rigid shape-key transfer)."""
+    hs = P['hs']; C = {**COL[kind], **(pal or {})}; sw = P['sw']; J = joints(P); hw, ww, cw, cd = P['torso']
     real_body = body; body = raw_proxy(real_body, P)          # build in the raw layout (see skeleton.LEG), map at the end
     parts = []; springs = []; hem = 0.86 * hs; neck = 1.50 * hs; xs = sw + 0.50 * hs
     if kind == 'uniform' and sex == 'female': hem = 0.975 * hs   # blouse-coat tucked into the skirt waistband
@@ -374,7 +377,7 @@ def build_outfit(kind, body, arm, P, sex):
         # lower body
         if kind == 'uniform' and sex_f:
             bm = pleated_skirt(P, 1.0 * hs, 0.58 * hs, 0.04, br=BodyRadius(body, 0.55 * hs, 1.02 * hs))
-            sk = to_object(bm, 'Skirt'); sk.data.materials.append(M('Skirt', 'pants')); sk.data.materials.append(M('SkirtTrim', 'pants_trim'))
+            sk = to_object(bm, 'Skirt'); sk['own_weights'] = 1; sk.data.materials.append(M('Skirt', 'pants')); sk.data.materials.append(M('SkirtTrim', 'pants_trim'))
             assign_mats(sk, lambda c: 1 if c.z < 0.58 * hs + 0.022 else 0); parts.append(sk)
             push_out(jk, [body], 0.006)
             push_out(sk, [body, jk], 0.005, zone=lambda co: co.z > 0.86 * hs)                             # skirt over the tucked coat
@@ -403,8 +406,8 @@ def build_outfit(kind, body, arm, P, sex):
             push_out(pn, [body], 0.004)
             drape(jk, BodyRadius(body, hem - 0.02, 1.02 * hs), 0.98 * hs)
             push_out(jk, [body], 0.006); push_out(jk, [pn], 0.005, zone=lambda co: co.z < 1.06 * hs)     # coat over trousers at the hips
-        zt = 0.22 * hs if kind == 'field' else 0.11 * hs
-        bm = shell(body, -0.01, zt, None, offfn=lambda co: 0.016 if kind == 'field' else 0.011)
+        zt = 0.22 * hs if kind == 'field' else C.get('boots_h', 0.11) * hs
+        bm = shell(body, -0.01, zt, None, offfn=lambda co: 0.016 if kind == 'field' else 0.011 + 0.006 * (C.get('boots_h', 0) > 0.2) * smooth01((co.z - 0.12 * hs) / (0.06 * hs)))
         bt = to_object(bm, 'Boots', 0.5, pin_z=[zt])
     elif kind == 'cyber':
         # skin-tight suit: arms to wrists, legs to ankles, high neck; glowing seams (accent material, emissive)
@@ -412,6 +415,7 @@ def build_outfit(kind, body, arm, P, sex):
         collar(bm, 1.49 * hs, 0.028, 0.95)
         band(bm, (0, 0, 1.0 * hs), hw * 0.88 + 0.008, 0.108, 0.030)                                       # belt
         for sx in (1, -1):
+            if C.get('bare'): continue                                                                 # (npc: worn under a coat / robe)
             blob(bm, (sx * (sw - 0.005), 0, 1.495 * hs), 0.06, (1.3, 1.15, 0.5))                           # pauldron
             for t in (0.30, 0.62): band(bm, (sx * (sw + t * 0.5 * hs), 0, 1.435 * hs), 0.046 * (0.88), 0.046, 0.012, axis='X')   # arm rings
             for z in (0.78, 0.30): band(bm, (sx * P['hx'], 0, z * hs), 0.082 if z > 0.5 else 0.054, 0.085 if z > 0.5 else 0.058, 0.016)     # leg rings
@@ -480,24 +484,25 @@ def build_outfit(kind, body, arm, P, sex):
         bt = to_object(bm, 'Boots', 0.5, pin_z=[zt])
     if bt is not None:
         bt.data.materials.append(fab(kind + 'Boots', C['boots'], 'leather')); bt.data.materials.append(fab(kind + 'BootsTrim', C['boots_trim'], 'leather'))
-        zt_ = (0.22 * hs if kind == 'field' else (0.11 * hs if kind == 'uniform' else 0.20 * hs))
+        zt_ = (0.22 * hs if kind == 'field' else (C.get('boots_h', 0.11) * hs if kind == 'uniform' else 0.20 * hs))
         assign_mats(bt, lambda c: 1 if (c.z < 0.03 * hs or c.z > zt_ - 0.02) else 0); parts.append(bt)
     # --- UVs, weights (transfer from body, except the skirt: own), shape keys
     # raw layout -> stretched legs (parts + the skirt spring bones), then weights / shape keys from the real body
+    if extra: extra(body, arm, P, parts, springs, C)
     bpy.data.objects.remove(body); body = real_body
     for o in parts: stretch_mesh(o, P)
-    stretch_bones(arm, P, {b.name for b in arm.data.bones if b.name.startswith('skirt_')})
+    stretch_bones(arm, P, {b.name for b in arm.data.bones if b.name.startswith(('skirt_', 'coat_'))})
     bones = [b.name for b in arm.data.bones]
     for o in parts:
         project_uv(o)
-        if o.name == 'Skirt': continue
+        if o.get('own_weights'): continue
         for n in bones: o.vertex_groups.new(name=n)
         copy_weights_nearest(body, o, bones)
         transfer_shapekeys(body, o)
     for o in parts:
-        if o.name == 'Skirt':
-            bones2 = [b.name for b in arm.data.bones]
-            transfer_shapekeys(body, o)
+        if o.get('own_weights'):
+            if o.get('rigid'): transfer_shapekeys_rigid(body, o, arm.data.bones[o['rigid']].tail_local)
+            else: transfer_shapekeys(body, o)
         o.parent = arm; md = o.modifiers.new('Armature', 'ARMATURE'); md.object = arm
-        o.name = 'Outfit_%s_%s' % (kind, o.name)
+        o.name = 'Outfit_%s_%s' % (prefix or kind, o.name)
     return parts, springs

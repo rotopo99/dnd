@@ -4,7 +4,7 @@ import numpy as np
 from head import FW, HH, feature_layout
 
 N = 1024
-SKIN = {'light': (1.0, 0.85, 0.76), 'tan': (0.93, 0.74, 0.60), 'dark': (0.62, 0.43, 0.33)}   # sRGB 0..1
+SKIN = {'light': (1.0, 0.85, 0.76), 'tan': (0.93, 0.74, 0.60), 'dark': (0.62, 0.43, 0.33), 'ashen': (0.82, 0.80, 0.79)}   # sRGB 0..1
 
 
 def _grid(hs):

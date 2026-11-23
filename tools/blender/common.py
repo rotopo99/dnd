@@ -136,6 +136,18 @@ def transfer_shapekeys(src, dst):
             nk.data[i].co = v.co + (k.data[j].co - base[j].co)
 
 
+def transfer_shapekeys_rigid(src, dst, anchor):
+    """dst (rigid prop: hat, mask) gets the shape keys of src as a pure translation = delta of the src vertex nearest to anchor."""
+    if not src.data.shape_keys: return
+    kd = kd_of([v.co.copy() for v in src.data.vertices]); j = kd.find(Vector(anchor))[1]
+    if not dst.data.shape_keys: dst.shape_key_add(name='Basis')
+    base = src.data.shape_keys.key_blocks[0].data
+    for k in src.data.shape_keys.key_blocks[1:]:
+        nk = dst.shape_key_add(name=k.name, from_mix=False); nk.slider_min, nk.slider_max = k.slider_min, k.slider_max; nk.value = 0.0
+        dl = k.data[j].co - base[j].co
+        for i, v in enumerate(dst.data.vertices): nk.data[i].co = v.co + dl
+
+
 def save_blend(name):
     p = os.path.join(WORK, name + '.blend')
     bpy.ops.wm.save_as_mainfile(filepath=p); return p

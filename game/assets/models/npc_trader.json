@@ -1,0 +1,520 @@
+{
+ "name": "npc_trader.glb",
+ "sex": "female",
+ "height_m": 1.779,
+ "up": "Y",
+ "front": "+Z",
+ "bones_vrm_humanoid": [
+  "hips",
+  "spine",
+  "chest",
+  "upperChest",
+  "neck",
+  "head",
+  "leftShoulder",
+  "leftUpperArm",
+  "leftLowerArm",
+  "leftHand",
+  "leftUpperLeg",
+  "leftLowerLeg",
+  "leftFoot",
+  "leftToes",
+  "leftIndexProximal",
+  "leftIndexIntermediate",
+  "leftIndexDistal",
+  "leftMiddleProximal",
+  "leftMiddleIntermediate",
+  "leftMiddleDistal",
+  "leftRingProximal",
+  "leftRingIntermediate",
+  "leftRingDistal",
+  "leftLittleProximal",
+  "leftLittleIntermediate",
+  "leftLittleDistal",
+  "leftThumbMetacarpal",
+  "leftThumbProximal",
+  "leftThumbDistal",
+  "rightShoulder",
+  "rightUpperArm",
+  "rightLowerArm",
+  "rightHand",
+  "rightUpperLeg",
+  "rightLowerLeg",
+  "rightFoot",
+  "rightToes",
+  "rightIndexProximal",
+  "rightIndexIntermediate",
+  "rightIndexDistal",
+  "rightMiddleProximal",
+  "rightMiddleIntermediate",
+  "rightMiddleDistal",
+  "rightRingProximal",
+  "rightRingIntermediate",
+  "rightRingDistal",
+  "rightLittleProximal",
+  "rightLittleIntermediate",
+  "rightLittleDistal",
+  "rightThumbMetacarpal",
+  "rightThumbProximal",
+  "rightThumbDistal"
+ ],
+ "expressions": [
+  "blink",
+  "happy",
+  "angry",
+  "sad",
+  "surprised"
+ ],
+ "body_shape_keys": [
+  "bust",
+  "hips",
+  "shoulders",
+  "build",
+  "legs_long",
+  "height"
+ ],
+ "parts": [
+  "Body",
+  "Hair_bob",
+  "Outfit_trader_Jacket",
+  "Outfit_trader_Pants",
+  "Outfit_trader_Boots",
+  "Outfit_trader_Apron",
+  "Outfit_trader_Satchel",
+  "Outfit_trader_Headgear"
+ ],
+ "animations": [
+  "idle",
+  "walk",
+  "run",
+  "crouch_walk",
+  "talk",
+  "sit",
+  "idle_2h",
+  "walk_2h",
+  "run_2h",
+  "aim_2h",
+  "shrug",
+  "attack_melee",
+  "attack_shoot",
+  "cast",
+  "hit",
+  "death",
+  "shoot_2h",
+  "attack_2h"
+ ],
+ "springBones": [
+  {
+   "name": "B0",
+   "bones": [
+    "hair_B0_0",
+    "hair_B0_1",
+    "hair_B0_2",
+    "hair_B0_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B1",
+   "bones": [
+    "hair_B1_0",
+    "hair_B1_1",
+    "hair_B1_2",
+    "hair_B1_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B2",
+   "bones": [
+    "hair_B2_0",
+    "hair_B2_1",
+    "hair_B2_2",
+    "hair_B2_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B3",
+   "bones": [
+    "hair_B3_0",
+    "hair_B3_1",
+    "hair_B3_2",
+    "hair_B3_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B4",
+   "bones": [
+    "hair_B4_0",
+    "hair_B4_1",
+    "hair_B4_2",
+    "hair_B4_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B5",
+   "bones": [
+    "hair_B5_0",
+    "hair_B5_1",
+    "hair_B5_2",
+    "hair_B5_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B6",
+   "bones": [
+    "hair_B6_0",
+    "hair_B6_1",
+    "hair_B6_2",
+    "hair_B6_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B7",
+   "bones": [
+    "hair_B7_0",
+    "hair_B7_1",
+    "hair_B7_2",
+    "hair_B7_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B8",
+   "bones": [
+    "hair_B8_0",
+    "hair_B8_1",
+    "hair_B8_2",
+    "hair_B8_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B9",
+   "bones": [
+    "hair_B9_0",
+    "hair_B9_1",
+    "hair_B9_2",
+    "hair_B9_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B10",
+   "bones": [
+    "hair_B10_0",
+    "hair_B10_1",
+    "hair_B10_2",
+    "hair_B10_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B11",
+   "bones": [
+    "hair_B11_0",
+    "hair_B11_1",
+    "hair_B11_2",
+    "hair_B11_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B12",
+   "bones": [
+    "hair_B12_0",
+    "hair_B12_1",
+    "hair_B12_2",
+    "hair_B12_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B13",
+   "bones": [
+    "hair_B13_0",
+    "hair_B13_1",
+    "hair_B13_2",
+    "hair_B13_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B14",
+   "bones": [
+    "hair_B14_0",
+    "hair_B14_1",
+    "hair_B14_2",
+    "hair_B14_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "B15",
+   "bones": [
+    "hair_B15_0",
+    "hair_B15_1",
+    "hair_B15_2",
+    "hair_B15_3"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F0",
+   "bones": [
+    "hair_F0_0",
+    "hair_F0_1"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F1",
+   "bones": [
+    "hair_F1_0",
+    "hair_F1_1"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "F2",
+   "bones": [
+    "hair_F2_0",
+    "hair_F2_1"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "SL",
+   "bones": [
+    "hair_SL_0",
+    "hair_SL_1",
+    "hair_SL_2"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  },
+  {
+   "name": "SR",
+   "bones": [
+    "hair_SR_0",
+    "hair_SR_1",
+    "hair_SR_2"
+   ],
+   "stiffness": 1.0,
+   "gravityPower": 0.03,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.02
+  }
+ ],
+ "triangles": 23590,
+ "npc": "trader",
+ "hair": "bob",
+ "outfit": "field",
+ "skin": "tan",
+ "grip2h": {
+  "bone": "rightHand",
+  "pos": [
+   0.0,
+   0.052,
+   -0.028
+  ],
+  "basis": [
+   [
+    0,
+    0,
+    -1
+   ],
+   [
+    -1,
+    0,
+    0
+   ],
+   [
+    0,
+    1,
+    0
+   ]
+  ]
+ },
+ "loops": [
+  "idle",
+  "walk",
+  "run",
+  "crouch_walk",
+  "talk",
+  "sit",
+  "idle_2h",
+  "walk_2h",
+  "run_2h",
+  "aim_2h"
+ ]
+}
