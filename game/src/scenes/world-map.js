@@ -7,6 +7,7 @@ import { baseOpen, BASE_LOC, modFx as baseFx } from '../world/base.js';
 import { t } from '../data/text/index.js';
 import { drawSprite, heroSpriteIds, idleFrame, drawMapIcon } from '../assets/sprites.js';
 import { play, stopAmbience } from '../audio/sfx.js';
+import { drawMapGlyph } from '../ui/map-glyphs.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, fit, wrap, panel, button, hitButton, clear, flowButtons, buttonWidth } from '../ui/draw.js';
 import { LOCATIONS, REGIONS, ROUTES, ENCOUNTER_MODS, MAP_SPACE, MAP_NODES, FARE, TIER_NAMES, encounterName, resolveLocation, locationLore } from '../world/data.js';
 import { checkInfo, checkChance, rollCheck } from '../world/checks.js';
@@ -617,7 +618,7 @@ export function createWorldMapScene() {
     ctx.fillStyle = 'rgba(16,16,24,0.92)';
     ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
-    text(ctx, m.glyph, x, y - 7, col, 'bold 12px monospace', 'center');
+    if (!drawMapGlyph(ctx, m.glyph, x, y, col, 5.5)) text(ctx, m.glyph, x, y - 7, col, 'bold 12px monospace', 'center');
   }
 
   function prio(sv, id) {
@@ -655,7 +656,7 @@ export function createWorldMapScene() {
       ctx.fillStyle = 'rgba(16,16,24,0.92)';
       ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = blink ? C['5'] : C.c; ctx.lineWidth = S.hoverClash === c ? 3 : 2; ctx.stroke();
-      text(ctx, '⚔', p.x, p.y - 8, blink ? C['5'] : C.c, 'bold 14px monospace', 'center');
+      drawMapGlyph(ctx, 'swords', p.x, p.y, blink ? C['5'] : C.c, 6.5);
     }
     ctx.restore();
   }
@@ -665,7 +666,7 @@ export function createWorldMapScene() {
     if (!p) return;
     const here = c.loc === sv.location || c.route?.includes(sv.location);
     const lines = [
-      { text: `⚔ ${clashName(c)}`, color: C.c, font: FONT_B },
+      { text: clashName(c), color: C.c, font: FONT_B },
       ...clashLines(sv, c).map((l) => ({ text: l.text, color: C[l.color] || C['5'] })),
       { text: c.loc ? tf('skirm.atNode', { loc: clashWhere(c) }) : tf('skirm.onRoute', { a: LOCATIONS[c.route[0]].name, b: LOCATIONS[c.route[1]].name }), color: C['4'] },
       { text: here ? t('skirm.clickHere') : t('skirm.clickGo'), color: here ? C.j : C['3'] },

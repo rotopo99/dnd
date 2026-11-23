@@ -39,6 +39,6 @@ export const SKIRM_TEXT = {
   'skirm.quest': '{name} просят о помощи — запись в журнале',
   'skirm.questJournal': 'Стычка: {name} просили помочь ({quest}).',
   'skirm.titleBattle': 'Стычка: {name}',
-  'skirm.legend': '⚔ стычка',
+  'skirm.legend': 'стычка',
   'skirm.weakWord': 'слабая',
 };
