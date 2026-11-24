@@ -81,7 +81,7 @@ for (const f of fs.readdirSync(mapDir).filter((x) => x.endsWith('.js')).sort()) 
       if (errors <= 5) console.error(`ERROR map ${f} seed ${SEED + i}:`, e.stack.split('\n').slice(0, 4).join('\n'));
     }
   }
-  rows.push(`map ${map.id.padEnd(12)} win ${(100 * wins / N).toFixed(0).padStart(3)}%  (enemies ${JSON.stringify(map.enemies)}, allies ${JSON.stringify(map.allies || [])}, win ${map.win})`);
+  rows.push(`map ${map.id.padEnd(12)} win ${(100 * wins / N).toFixed(0).padStart(3)}%  (enemies ${JSON.stringify(map.enemies.map((e) => (e && typeof e === "object" ? (e.enemy || e.id) : e)))}, allies ${JSON.stringify(map.allies || [])}, win ${map.win})`);
 }
 
 // v3 / v3.1: every weapon of items/weapons.js on a hero vs v3 encounters (GAME_DATA: ENEMIES + ENEMIES_V3, ITEMS)

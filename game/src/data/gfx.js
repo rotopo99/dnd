@@ -30,6 +30,8 @@ export const GFX = {
     // (corners may leave the screen: the camera leans to the active unit); 2 — level 1 x `closer`
     widthFill: 0.85, closer: 1.4,
     zoomDefault: 1, follow: 6, // 1/s, camera centre lerp
+    // QA v48 #5: at the hero's turn start — frame hero + nearest foe: margin (m) around both, part of the area they may fill
+    frameMargin: 2.5, frameFill: 0.8,
     // stage 3: pan — drag with the middle / right button (right: after dragMin px, a right click stays a click), arrows px/s
     dragMin: 6, panSpeed: 720,
     maxDt: 0.25, // s per drawn frame for camera / animation tweens (= main loop cap: slow frames keep real-time tweens)
@@ -43,7 +45,7 @@ export const GFX = {
   },
   // anime toon shading of units (gfx/gl.js SKIN_FS): soft band edge, rim strength, shadow hue-shift amount, outline darkness
   toon: { soft: 0.07, rimK: 0.55, rim2: 0.3, hue: 0.2, outline: 0.62, shadeHue: 'o', rim: '4', rust: '8' },
-  unit: { scale: 1.2, scaleAnime: 1.05, outlinePx: 1.5, outlineTargetPx: 2.4, r: 0.26, body: 0.95, head: 0.26, ring: [0.36, 0.46], hull: 1.07, xray: 0.3, headScale: 0.27, lerpH: 10, bossScale: 1.3, grow: 0.022, growTarget: 0.035 },
+  unit: { scale: 1.2, scaleAnime: 1.05, outlinePx: 1.5, outlineTargetPx: 2.4, r: 0.26, body: 0.95, head: 0.26, ring: [0.36, 0.46], activeRing: { grow: 0.03, gap: 0.04, band: 0.07, bandAlpha: 0.85, halo: 0.16, haloAlpha: 0.3 }, hull: 1.07, xray: 0.3, headScale: 0.27, lerpH: 10, bossScale: 1.3, grow: 0.022, growTarget: 0.035 },
   // enemy silhouettes (gfx/units3d.js): first rule that matches the enemy id (regexp) or tag wins; else humanoid
   bodies: [
     { re: 'spirit|hologram|cyber-demon|soul|scriptlet|ghost|glitch', tag: 'digital', type: 'spirit' },

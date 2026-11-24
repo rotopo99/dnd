@@ -46,7 +46,7 @@ export const GFX_TEXT = {
   'settings.metric.on': 'по метрам',
   'settings.metric.off': 'по клеткам (классика)',
   'battle.metres': 'м',
-  'battle.needDash': 'Дальше бюджета хода: сначала Рывок',
+  'battle.needDash': 'Слишком далеко. «Рывок» (действие) даст ещё ход движения.',
   'settings.on': 'вкл.',
   'settings.off': 'выкл.',
   'settings.close': 'Закрыть',

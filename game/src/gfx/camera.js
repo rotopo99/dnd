@@ -7,6 +7,8 @@
 //                                          follow — centre on focus (roam: the leader), else lean to it when zoomed in
 //   panCamera(cam, dx, dy)                 drag / keys: move the view by screen pixels (offset cam.px/pz, kept on the map)
 //   centerCamera(cam, x, z)                pan so that (x, z) is in the centre («к активному юниту»)
+//   frameCamera(cam, a, b)                 QA v48 #5: closest zoom level that fits points a, b ({x, z}; a — the focus
+//                                          unit) + GFX.camera.frameMargin, view centred between them
 //   viewProj(cam, W, H)                    -> Float32Array(16) (column-major, for gl)
 //   project(cam, x, y, z)                  -> {x, y, d} screen px + depth
 //   rayAt(cam, px, py)                     -> {o:[3], d:[3]} picking ray;  basis(cam) -> {r, u, f}
@@ -111,6 +113,21 @@ export function panCamera(cam, dx, dy) {
 export function centerCamera(cam, x, z) {
   cam.px = x - cam.bx; cam.pz = z - cam.bz;
   clampPan(cam);
+}
+
+export function frameCamera(cam, a, b) {
+  const C = GFX.camera, m = C.frameMargin ?? 2.5;
+  const { r, u } = basis({ yaw: cam.yawTo, pitch: cam.pitch });
+  const d = [a.x - b.x, 0, a.z - b.z];
+  const sx = Math.abs(dot(d, r)) + 2 * m, sy = Math.abs(dot(d, u)) + 2 * m + 1.6 * Math.abs(u[1]);
+  const zmax = Math.min((cam.area.w * (C.frameFill ?? 0.8)) / sx, (cam.area.h * (C.frameFill ?? 0.8)) / sy) / cam.ppmFit;
+  let idx = 0;
+  for (let i = 0; i < cam.zooms.length; i++) if (cam.zooms[i] <= zmax) idx = i;
+  cam.zoomIdx = idx;
+  const z = cam.zooms[idx], mx = cam.mapW / 2, mz = cam.mapH / 2;
+  const lean = Math.max(0, Math.min(1, (1 - 1 / z) * 1.5));
+  const bx = mx + (a.x - mx) * lean, bz = mz + (a.z - mz) * lean;
+  cam.px = (a.x + b.x) / 2 - bx; cam.pz = (a.z + b.z) / 2 - bz;
 }
 
 const ppm = (cam) => cam.ppmFit * cam.zoom * (cam.fx?.z || 1);

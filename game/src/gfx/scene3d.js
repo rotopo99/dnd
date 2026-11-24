@@ -768,8 +768,13 @@ export function prepFrame(game, S, { hl = [], units = [], cur = null, overlay = 
     if (it.noRing) continue;
     const d = it.d, c = keyRGB(it.teamKey || GFX.team[TEAM(it.u)]), y = (V.hgt[it.u.id] ?? 0) + G.overlay + 0.004;
     const [r0, r1] = GFX.unit.ring;
-    ob.ring(d.x + 0.5, d.y + 0.5, y, r0, r1, [c[0], c[1], c[2], it.u === cur ? 0.95 * pulse : 0.7]);
-    if (it.u === cur) ob.ring(d.x + 0.5, d.y + 0.5, y, r1 + 0.04, r1 + 0.08, [c[0], c[1], c[2], 0.5 * pulse]);
+    if (it.u === cur) {
+      // QA v48 #5: the active unit stands out in a clump — solid wide ring, bright outer band, soft halo
+      const A = GFX.unit.activeRing;
+      ob.ring(d.x + 0.5, d.y + 0.5, y, r0 - A.grow, r1 + A.grow, [c[0], c[1], c[2], 1]);
+      ob.ring(d.x + 0.5, d.y + 0.5, y, r1 + A.gap, r1 + A.gap + A.band, [1, 1, 1, A.bandAlpha * pulse]);
+      ob.ring(d.x + 0.5, d.y + 0.5, y, r1 + A.gap + A.band, r1 + A.gap + A.band + A.halo, [c[0], c[1], c[2], A.haloAlpha * pulse]);
+    } else ob.ring(d.x + 0.5, d.y + 0.5, y, r0, r1, [c[0], c[1], c[2], 0.7]);
   }
   // render on demand: unchanged frame -> keep the last image (15 fps idle refresh: breathing, slow surface motion);
   // actions, hits, falls, projectiles, walking and camera tweens — every frame

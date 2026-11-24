@@ -25,6 +25,7 @@ import { juiceShake, juiceZoom, drawPop } from './juice.js';
 import { JUICE } from '../data/juice.js';
 import { project } from '../gfx/camera.js';
 import { gfxPrefs } from '../gfx/settings.js';
+import { drawTutorial } from './battle-tutorial.js';
 
 const PANEL_W = 340;
 const BOTTOM_H = 232;
@@ -259,6 +260,7 @@ export function renderBattle(game, S) {
     panel(ctx, x, L.mapY + 8, w, 32, C['1'], C.a);
     text(ctx, fit(ctx, S.message.text, w - 16), x + w / 2, L.mapY + 16, C.a, FONT, 'center');
   }
+  drawTutorial(ctx, S); // QA v48 #3: radio hints over the map (non-blocking)
   if (S.banner) drawBanner(ctx, S);
   if (S.result) drawResult(ctx, S);
 }
@@ -765,6 +767,8 @@ function abilityCard(ctx, S, btn, x, y, w) {
   return y;
 }
 
+const PANEL_IDLE = 'Наведи на юнита — здесь его карточка и шанс попасть. Наведи на кнопку — что она делает. Клик по врагу — атака, по полу — шаг.';
+
 function drawPanel(ctx, S, preview) {
   const L = S.L, b = S.b;
   const p = L.panel;
@@ -814,6 +818,10 @@ function drawPanel(ctx, S, preview) {
   else if (S.opts.hint) {
     text(ctx, t('battle.hint'), x, y, C['4'], FONT_B);
     textBlock(ctx, t(S.opts.hint), x, y + 24, w, C['4'], FONT, LINE, 9);
+  } else {
+    // nothing selected and no battle hint (run / world battles): a short how-to instead of an empty box
+    text(ctx, t('battle.hint'), x, y, C['4'], FONT_B);
+    textBlock(ctx, PANEL_IDLE, x, y + 24, w, C['3'], FONT, LINE, 9);
   }
   // initiative order
   y = cardY + cardH + 12;
@@ -869,6 +877,7 @@ function drawResult(ctx, S) {
   const body = win ? [S.opts.winText ? t(S.opts.winText) : t('battle.victoryText')]
     : (S.opts.defeatLines || [{ text: t('battle.defeatText') }]).map((l) => l.text);
   for (const s of body) y = textBlock(ctx, s, r.x + 32, y, r.w - 64, C['5'], FONT, LINE, 4) + 6;
+  if (!win && S.defeatTip) textBlock(ctx, S.defeatTip, r.x + 32, y + 4, r.w - 64, C.h, FONT_B, LINE, 3); // QA v48 #1
   for (const btn of S.resultButtons) button(ctx, btn, S.hover.button === btn);
 }
 

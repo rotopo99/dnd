@@ -161,7 +161,17 @@ export function drawHelp(ctx, S) {
   const y = L.area.y + L.area.h - 20;
   if (S.sel && S.playerTurn) return; // the selection hint lives there
   const wx = weatherLine(S.b.map); // battlefields.md §4: time of day / weather / sight range
-  const s0 = S.skip ? t('battle.skipping') : S.fast ? `${t('battle.fastOn')} · ${t('battle.help')}` : t('battle.help');
-  const s = wx ? `${wx} · ${s0}` : s0;
-  text(ctx, fit(ctx, s, L.area.w - 24), L.area.w / 2, y, S.fast || S.skip ? C.a : C['3'], FONT, 'center');
+  // QA v48 #10/#11: the line was clipped (one fit() over the whole width) and promised a menu on RMB. Now: parts that
+  // fit, dropped from the end, on a dark strip centred on the map area.
+  const parts = [...(wx ? [wx] : []), ...(S.skip ? [t('battle.skipping')] : S.fast ? [t('battle.fastOn')] : []), ...HELP_PARTS];
+  const maxW = L.area.w - 32;
+  ctx.font = FONT;
+  let s = parts.join(' · ');
+  while (parts.length > 1 && ctx.measureText(s).width > maxW) { parts.pop(); s = parts.join(' · '); }
+  s = fit(ctx, s, maxW);
+  const tw = ctx.measureText(s).width, cx = L.area.x + L.area.w / 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(Math.round(cx - tw / 2 - 10), y - 3, Math.round(tw + 20), 22);
+  text(ctx, s, cx, y, S.fast || S.skip ? C.a : C['4'], FONT, 'center');
 }
+const HELP_PARTS = ['Клик по врагу — атака', 'ПКМ по юниту — карточка и действия', 'Tab — закрепить карточку', 'F — ускорить врагов', 'Enter — пропустить ход врагов'];

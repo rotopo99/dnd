@@ -11,7 +11,7 @@ import { playCinematic } from './cinema.js';
 import { menuScene } from './menu.js';
 import { C } from '../ui/draw.js';
 import { newSave, gainXp, journal } from '../world/state.js';
-import { LOCATIONS, START_LOCATION } from '../world/data.js';
+import { LOCATIONS, START_LOCATION, starterKit } from '../world/data.js';
 import { saveGame } from '../save.js';
 import { createNodeScene } from './roam.js';
 
@@ -56,7 +56,11 @@ function storyHooks(race) {
 export function startPrologue(game, hero) {
   const flags = { cine: { flags: {}, cine: {} } }; // cinematics.md: c1 writes here, startWorld merges into the save
   const race = hero.race;
-  const H = { race: hero.race, cls: hero.cls, look: hero.look || null, avatar: hero.avatar || null, name: hero.name };
+  const H = { race: hero.race, cls: hero.cls, look: hero.look || null, avatar: hero.avatar || null, hide: hero.hide || null, name: hero.name };
+  // QA v48 #2: the belt promised at creation («На поясе: …») goes to the quick slots; every battle — a fresh copy
+  const belt = hero.belt || starterKit(hero.cls, hero.path)?.belt || [];
+  const kit = () => { const inv = {}; for (const id of belt) inv[id] = (inv[id] || 0) + 1; return inv; };
+  const tutorial = {}; // QA v48 #3: battle-1 hints, shown once (kept across retries)
   const dlg = (title, ls, next, wounds = null) => game.setScene(createDialogueScene({ title, lines: ls, hero: H, wounds, onDone: next }));
   // portraits v2: hp/mrl of the hero and allies right after a battle ('npc-gans' -> speaker 'gans')
   const hurtAfter = (S) => Object.fromEntries(S.b.units.filter((u) => u.team !== 'enemies').map((u) => [u.kind === 'hero' && !u.enemyId ? 'hero' : String(baseOf(u)).replace(/^npc-/, ''), wounds(u)]));
@@ -64,7 +68,7 @@ export function startPrologue(game, hero) {
   const battle = (n, next) => {
     const map = MAPS[`prologue-${n}`];
     const scene = createBattleScene({
-      hero, map, title: t(`b${n}_name`), intro: map.intro || `b${n}_intro`, hint: `b${n}_hint`, winText: `b${n}_win`,
+      hero: { ...hero, inventory: kit() }, map, tutorial: n === 1 ? tutorial : null, defeatTips: true, title: t(`b${n}_name`), intro: map.intro || `b${n}_intro`, hint: `b${n}_hint`, winText: `b${n}_win`,
       defeatLines: toLines(line('lose_hero', race)), barks: BARKS, onEvent: storyHooks(race),
       onWin: (g, S) => next(g, S), onExit: toMenu,
     });

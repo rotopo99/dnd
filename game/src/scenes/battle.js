@@ -50,6 +50,8 @@ import { TRICKS2, trick2, listens } from '../world/skill-uses.js';
 import { interactions, retreatWhy } from '../rules/objectives.js';
 import { fogHiddenIds } from '../world/battlefields.js';
 import { BATTLE_SKILL_TRICKS } from '../data/world/node-skill-actions.js';
+import { createTutorial, tutorialEvent, tutorialTick, noteHit, tickStatusOf, defeatTip, quickLine } from '../ui/battle-tutorial.js';
+import { frameCamera } from '../gfx/camera.js';
 
 /** v7: quick slots on 1–6, abilities on letters (inventory-mods.md §2). */
 const QUICK_KEYS = 6;
@@ -135,12 +137,14 @@ const RETREAT_WHY = { locked: 'obj.exitLocked', notOnExit: 'obj.notOnExit', turn
 
 /** A level-1-style hero spec (create / save format) → battle creature (same build as a single-hero battle). */
 export function buildHeroUnit(game, h, id = 'hero') {
-  const base = { race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id, anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id };
+  // QA v48 #2: a plain {itemId: n} belt (prologue: the starter kit) lands in the quick slots
+  const inventory = h.inventory && typeof h.inventory === 'object' && !Array.isArray(h.inventory) ? h.inventory : undefined;
+  const base = { race: h.race, cls: h.cls, path: h.path, name: h.name, data: game.data, id, anyStat: h.anyStat || undefined, talents: h.talents || [], gadget: gadgetFor(h.cls)?.id, inventory };
   // v3 flexible build (prologue hero): stats, skills, proficiencies, phobias, chosen gear
   const flex = { stats: h.stats || undefined, skills: h.skills || undefined, proficiencies: h.proficiencies || undefined, phobia: h.phobia || undefined, equipment: h.equipment || undefined };
   let u;
   try { u = buildCreature({ ...base, ...flex }); } catch { u = buildCreature(base); }
-  u.look = h.look || null; u.avatar = h.avatar || null;
+  u.look = h.look || null; u.avatar = h.avatar || null; u.hide = h.hide || null;
   return u;
 }
 
@@ -228,6 +232,9 @@ export function createBattleScene(opts) {
     S.dirty = true;
     S.flags = {};
     S.tricksUsed = {};
+    // QA v48 #3: tutorial hints (opts.tutorial — a `seen` object kept across retries), defeat tip bookkeeping
+    S.tut = opts.tutorial ? createTutorial(opts.tutorial) : null;
+    S.lastHit = null; S.lastTick = null; S.defeatTip = null;
     layoutBattle(game, S);
     refresh();
   }
@@ -389,7 +396,9 @@ export function createBattleScene(opts) {
       const it = id && items[id];
       const why = !S.playerTurn ? 'turn' : id ? combat.itemUsable(b, hero, id) : null;
       const none = id && !why && !(S.specs[`item:${id}`] || []).length;
+      // QA v48 #2: the hover card says what the item does (abilityCard reads a.desc)
       out.push({ id: `q:${i}`, quick: id, n: id ? hero.inventory[id] : 0, label: it ? it.name : '', key: String(i + 1),
+        a: it ? { ...combat.itemAbility(it), desc: quickLine(it) } : null,
         w: 46, h: 44, disabled: !id || !!why || none, reason: !id ? t('inv.quickEmpty') : why ? t(REASONS[why] || 'battle.notAllowedHere') : none ? t('battle.noTargets') : null,
         selected: !!id && S.sel?.item === id });
     }
@@ -857,7 +866,15 @@ export function createBattleScene(opts) {
     const b = S.b;
     const T = e.target ? b.byId[e.target] : null;
     const A = e.actor ? b.byId[e.actor] : null;
-    if (e.type !== 'move' && e.type !== 'turnEnd' && e.type !== 'battleStart' && e.type !== 'initiative') pushLog(formatEvent(S, e));
+    if (e.type !== 'move' && e.type !== 'turnEnd' && e.type !== 'battleStart' && e.type !== 'initiative') {
+      const segs = formatEvent(S, e);
+      // QA v48 #6: a DoT tick names its status in the log line («−3 ЗДР (огонь) — Горение»)
+      const ts = tickStatusOf(S, e);
+      if (segs && ts && b.data.statuses[ts]) segs.push([` — ${b.data.statuses[ts].name}`, C.a]);
+      pushLog(segs);
+    }
+    noteHit(S, e);
+    tutorialEvent(S.tut, S, e);
     eventSound(S, e);
     switch (e.type) {
       case 'move': {
@@ -938,6 +955,7 @@ export function createBattleScene(opts) {
       }
       case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? C.j : C.a); break;
       case 'turnStart': {
+        if (A && A.kind === 'hero' && A.team === 'heroes' && A.control !== 'ai') frameTurn(A);
         const bk = A && opts.barks ? opts.barks[String(A.enemyId || '').split('^')[0]] : null;
         if (A && A.team !== 'heroes' && bk && Math.random() < 0.35) storyBubble(A, bk);
         break;
@@ -948,6 +966,19 @@ export function createBattleScene(opts) {
     if (S.v3) animEvent3d(S, e); // 3D view: unit animations, projectiles (read-only)
     opts.onEvent?.(S, e);
     S.dirty = true;
+  }
+
+  /** QA v48 #5: at the hero's turn start the 3D camera frames the hero and the nearest standing foe. */
+  function frameTurn(hero) {
+    const cam = S.v3?.cam;
+    if (!cam || S.net) return;
+    let best = null, bd = Infinity;
+    for (const u of S.b.units) {
+      if (u.team === 'heroes' || u.team === 'allies' || !isStanding(u) || isHiddenFoe(u)) continue;
+      const d = chebyshev(hero.x, hero.y, u.x, u.y);
+      if (d < bd) { bd = d; best = u; }
+    }
+    if (best) frameCamera(cam, { x: hero.x + 0.5, z: hero.y + 0.5 }, { x: best.x + 0.5, z: best.y + 0.5 });
   }
 
   function processQueue() {
@@ -1139,6 +1170,7 @@ export function createBattleScene(opts) {
       if (S.dirty) refresh();
       handleInput(game);
       if (S.dirty) refresh();
+      tutorialTick(S.tut, S, dt);
       const b = S.b;
       if (S.queue.length || busy()) return;
       syncDisp();
@@ -1153,6 +1185,7 @@ export function createBattleScene(opts) {
       if (b.winner) {
         if (!S.result && (S.resultTimer += dt) > 0.7) {
           S.result = b.winner === 'heroes' ? 'win' : 'lose';
+          if (S.result === 'lose' && opts.defeatTips) S.defeatTip = defeatTip(S); // QA v48 #1
           layoutBattle.result(game, S);
         }
         return;
