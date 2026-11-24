@@ -150,21 +150,40 @@ const LIST = [
         dcFrom: 'dossier', easeBy: ['victor-soul-freed', 'saved-people', 'saved-terminal', 'arsenal-sealed', 'burner-off', 'lox-alive-door'] }, 'verdict'), dossier: true },
       st('judge-fight', 'Приговор вынесен. Бой с Судьёй.', fight('enc-judge', 'kiberspeys'), 'verdict'),
       st('judge-fight-hard', 'Суд проигран. Судья исполняет приговор лично.', { ...fight('enc-judge-hard', 'kiberspeys'), onFail: 'crushed' }, 'verdict'),
-      st('verdict', 'Финал.', choice(
-        opt('closed', '«Дело закрыто»: разрушить Дверь.', { ...check(['tech', 'athletics', 'judge'], 15), easeBy: [{ flag: 'court-precedent', n: 2 }, { flag: 'lox-alive-door', n: 2 }] }, { flags: ['ending-closed'] }),
-        opt('oldgod', '«Старый бог»: прокси-буря по всему миру.', null, { flags: ['ending-oldgod'] }, null, { flag: 'sputnik-owner-tekhonki' }),
-        opt('order', '«Порядок»: Судья в карантин, мир под контроль АИ.', null, { flags: ['ending-order'], deeds: ['serve-ai'] }, null, { flag: 'sputnik-owner-ai' }),
-        opt('reflash', '«Перепрошивка»: вернуть Киберспейсу первый смысл.', { ...check(['hacking', 'judge'], 19, 'closed'), easeBy: [{ flag: 'court-precedent', n: 2 }] }, { flags: ['ending-reflash'], deeds: ['mercy'] }, null,
-          { notFlag: 'court-lost', any: [{ flag: 'lis-online' }, { flags: ['court-won', 'court-proof'] }] }),
-        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel'], deeds: ['cult-deal'] }, null, { any: [{ alignment: 'evil' }, { flag: 'court-lost' }] }),
-        opt('lox9', '«Приманка»: Lox-9 займёт место героя.', null, { flags: ['ending-lox9'], deeds: ['honor'] }, null, { notFlag: 'lox-alive-door', any: [{ flag: 'lox9-free' }, { flag: 'lox-leaflet' }] }),
-        opt('lox-leave', '«Отпуск»: Lox держит створку, а потом уходит смотреть на море.', null, { flags: ['ending-lox-leave'] }, null, { flag: 'lox-alive-door' }),
+      // content-wave4.md §1: four endings, each sets its fin-* flag (epilogue / c12); the old ending-* flags stay
+      { ...st('verdict', 'Финал. Судья ждёт решения подсудимого.', choice(
+        // A «Дело закрыто» (+ lox-leave): always; −1 DC per 3 dossier points, sputnik-destroyed −2; a failure seals the door crooked
+        opt('closed', '«Дело закрыто»: разрушить Дверь.', { ...check(['tech', 'athletics', 'judge'], 15, 'crooked'), dossierPer: 3,
+          easeBy: [{ flag: 'court-precedent', n: 2 }, { flag: 'lox-alive-door', n: 2 }, { flag: 'sputnik-destroyed', n: 2 }] }, { flags: ['ending-closed', 'fin-closed'] }),
+        opt('lox-leave', '«Отпуск»: Lox держит створку, а потом уходит смотреть на море.', null, { flags: ['ending-lox-leave', 'fin-closed', 'fin-lox-leave'] }, null, { flag: 'lox-alive-door' }),
+        // B «Перепрошивка»: dossier ≥ 6 and (Лис / technikums own the Sputnik / court won); not after a lost court; failure -> A
+        opt('reflash', '«Перепрошивка»: вернуть Киберспейсу первый смысл.', { ...check(['hacking', 'judge'], 19, 'closed'), dossierPer: 3, easeBy: [{ flag: 'court-precedent', n: 2 }] },
+          { flags: ['ending-reflash', 'fin-reflash'], deeds: ['mercy'] }, null,
+          { notFlag: 'court-lost', dossier: { min: 6 }, any: [{ flag: 'lis-online' }, { flag: 'sputnik-owner-technikums' }, { flag: 'court-won' }] }),
+        // C «Новый администратор»: by the Sputnik owner; a destroyed Sputnik hides all three
+        opt('oldgod', '«Старый бог»: Диспетчер включает баланс по всему миру.', null, { flags: ['ending-oldgod', 'fin-admin', 'fin-admin-oldgod'] }, null,
+          { flag: 'sputnik-owner-tekhonki', notFlag: 'sputnik-destroyed' }),
+        opt('order', '«Порядок»: Судья в карантин, мир под контроль АИ.', null, { flags: ['ending-order', 'fin-admin', 'fin-admin-order'], deeds: ['serve-ai'] }, null,
+          { flag: 'sputnik-owner-ai', notFlag: 'sputnik-destroyed' }),
+        opt('scrap', '«Приёмка металлолома»: Судья принят по весу.', null, { flags: ['ending-scrap', 'fin-admin', 'fin-admin-scrap'], deeds: ['greed'] }, null,
+          { flag: 'sputnik-owner-scavengers', notFlag: 'sputnik-destroyed' }),
+        // D «Сосуд»: evil, a lost court or a signed blank (c11); a torn blank closes it for good
+        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel', 'fin-vessel'], deeds: ['cult-deal'] }, null,
+          { notFlag: 'consent-torn', any: [{ alignment: 'evil' }, { flag: 'court-lost' }, { flag: 'consent-signed' }] }),
+        opt('lox9', '«Приманка»: Lox-9 займёт место героя.', null, { flags: ['ending-lox9', 'fin-lox9'], deeds: ['honor'] }, null, { notFlag: 'lox-alive-door', any: [{ flag: 'lox9-free' }, { flag: 'lox-leaflet' }] }),
+      ), 'done'), showDossier: true,
+        // BIBLE §8.3 temptation: a thin dossier or a lost court — the Judge offers the shortcut (A / D)
+        notes: [{ requires: { any: [{ dossier: { max: 3 } }, { flag: 'court-lost' }] }, text: 'Судья, тихо: «Очередь в сорок один миллион. Вы можете это закончить». Дверь или сосуд — выбирайте.' }] },
+      // A failed: the door is sealed crooked (as c6), the Judge knocks after 6 days (COURT_MODS halfsealed)
+      st('crooked', 'Створка дрогнула и встала криво. Шов держится, но не весь.', choice(
+        opt('closed', 'Заварить как есть: створка держится на одном шве.', null, { flags: ['ending-closed', 'fin-closed', 'door-halfsealed'] }),
       ), 'done'),
       // judge-fight-hard lost: no game over — the court is over, only the Judge's terms remain
       st('crushed', 'Партия пала. Судья наклоняется: «Предлагаю договориться».', choice(
-        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel'], deeds: ['cult-deal'] }),
-        opt('surrender', 'Сдаться Киберспейсу.', null, { flags: ['ending-vessel-forced'] }),
-        opt('oldgod', '«Старый бог»: прокси-буря по всему миру.', null, { flags: ['ending-oldgod'] }, null, { flag: 'sputnik-owner-tekhonki' }),
+        opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel', 'fin-vessel'], deeds: ['cult-deal'] }, null, { notFlag: 'consent-torn' }),
+        opt('surrender', 'Сдаться Киберспейсу.', null, { flags: ['ending-vessel-forced', 'fin-vessel'] }),
+        opt('oldgod', '«Старый бог»: Диспетчер включает баланс по всему миру.', null, { flags: ['ending-oldgod', 'fin-admin', 'fin-admin-oldgod'] }, null,
+          { flag: 'sputnik-owner-tekhonki', notFlag: 'sputnik-destroyed' }),
       ), 'done'),
     ],
     { xp: 1000, flags: ['game-complete'] }, { key: true, requires: { flags: ['act2-done', 'eve-done'] } }),

@@ -5834,11 +5834,14 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.equal(other.quests['mq3-court'].stage, 'door', 'only from the inside stage');
   });
   test('wave2: verdict options by c4/c6 flags (reflash, vessel, lox9, lox-leave) and DC', () => {
-    const won = atInside({ 'court-won': true, 'court-proof': true }); QS.cineResult(won, 'court-won', { proof: 1 }, GAME_DATA);
+    const thin = atInside({ 'court-won': true, 'court-proof': true }); QS.cineResult(thin, 'court-won', { proof: 1 }, GAME_DATA);
+    assert.ok(!verdictIds(thin).includes('reflash'), 'content-wave4: reflash needs dossier ≥ 6');
+    // content-wave4.md: dossier 6 (public log 2 + Ladov named 2 + dawn archive 2) opens reflash and lowers closed by 2
+    const won = atInside({ 'court-won': true, 'court-proof': true, 'truth-harmony-public': true, 'ladov-named': true, 'dawn-archive': true }); QS.cineResult(won, 'court-won', { proof: 1 }, GAME_DATA);
     let ids = verdictIds(won);
     assert.ok(ids.includes('reflash') && ids.includes('closed') && !ids.includes('vessel') && !ids.includes('lox-leave'));
     const closed = QW['mq3-court'].stages.find((x) => x.id === 'verdict').goal.options.find((o) => o.id === 'closed');
-    assert.equal(QS.goalDc(won, closed.goal), 13);
+    assert.equal(QS.goalDc(won, closed.goal), 11);
     const lost = atInside({ 'court-lost': true, 'lis-online': true, 'lox-dead': true, 'lox-leaflet': true }); lost.quests['mq3-court'].stage = 'verdict';
     ids = verdictIds(lost);
     assert.ok(!ids.includes('reflash') && ids.includes('vessel') && ids.includes('lox9'));
@@ -6503,6 +6506,33 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     // ≥ 6: court-lost -> the usual Judge fight
     QS.cineResult(eight, 'court-lost', {}, GAME_DATA);
     assert.equal(eight.quests['mq3-court'].stage, 'judge-fight');
+  });
+  const atVerdict = (flags) => { const s = mk(flags); QS.startQuest(s, 'mq3-court'); s.quests['mq3-court'].stage = 'verdict'; return s; };
+  const vIds = (s) => QS.availableOptions(s, QS.slots(s, 'mq3-court').find((x) => x.kind === 'choice')).map((o) => o.id);
+  test('wave4 verdict: C by the Sputnik owner (scrap is new), destroyed hides C; D by consent-signed, torn closes it; fin-* flags', () => {
+    for (const [f, o] of [['sputnik-owner-tekhonki', 'oldgod'], ['sputnik-owner-ai', 'order'], ['sputnik-owner-scavengers', 'scrap']]) {
+      const s = atVerdict({ [f]: true });
+      assert.ok(vIds(s).includes(o), o);
+      QS.chooseOption(s, QS.slots(s, 'mq3-court')[0], o, GAME_DATA);
+      assert.ok(s.flags['fin-admin'] && s.flags[`fin-admin-${o}`] && s.flags['game-complete'], o);
+      assert.ok(!vIds(atVerdict({ [f]: true, 'sputnik-destroyed': true })).includes(o), `${o} hidden by sputnik-destroyed`);
+    }
+    assert.ok(vIds(atVerdict({ 'consent-signed': true })).includes('vessel'));
+    assert.ok(!vIds(atVerdict({ 'consent-signed': true, 'consent-torn': true, 'court-lost': true })).includes('vessel'));
+    const d = atVerdict({ 'sputnik-destroyed': true });
+    const cl = QW['mq3-court'].stages.find((x) => x.id === 'verdict').goal.options.find((o) => o.id === 'closed');
+    assert.equal(QS.goalDc(d, cl.goal), 13, 'sputnik-destroyed: A −2');
+    const tech = atVerdict({ 'sputnik-owner-technikums': true, 'truth-harmony-public': true, 'ladov-named': true, 'consent-known': true });
+    assert.ok(vIds(tech).includes('reflash'), 'technikums owner + dossier 6 -> B');
+    // A failed -> crooked: door-halfsealed, still fin-closed
+    const a = atVerdict({});
+    QS.chooseOption(a, QS.slots(a, 'mq3-court')[0], 'closed', GAME_DATA);
+    QS.failSlot(a, QS.slots(a, 'mq3-court')[0], GAME_DATA);
+    assert.equal(a.quests['mq3-court'].stage, 'crooked');
+    QS.chooseOption(a, QS.slots(a, 'mq3-court')[0], 'closed', GAME_DATA);
+    assert.ok(a.flags['fin-closed'] && a.flags['door-halfsealed'] && a.quests['mq3-court'].state === 'done');
+    // the temptation note at a thin dossier
+    assert.ok(QS.stageNotes(atVerdict({}), QW['mq3-court'].stages.find((x) => x.id === 'verdict')).some((n) => /41|сорок один/.test(n.text)));
   });
   test('wave4 G11: mq3-court is level 18 and waits for eve-done', () => {
     assert.equal(QW['mq3-court'].level, 18);

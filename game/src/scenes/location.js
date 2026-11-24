@@ -25,7 +25,7 @@ import { exodusSync, passDays, serviceOff, tollMult, exodusRumor } from '../worl
 import { EXODUS_UI } from '../data/text/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
-import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, goalLimits, pendingTurnins, allSlots, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
+import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, goalLimits, stageNotes, pendingTurnins, allSlots, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
@@ -203,7 +203,7 @@ export function createLocationScene(rawId, opts = {}) {
       const clues = [...new Set(s.choice.options.filter(isClue).flatMap((o) => o.requires.flags))];
       const evidence = clues.length ? [{ text: clues.some((f) => sv.flags[f]) ? tf('accuse.clues', { list: clues.filter((f) => sv.flags[f]).map(clueName).filter(Boolean).join(', ') }) : t('accuse.noClues'), color: 'f' }] : [];
       return { label: `${t('loc.decide')}: ${q.name}`, sub: s.gate || s.stage.text, run: (g) => g.openModal({
-        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
+        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...stageNotes(sv, s.stage), ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
         options: [...opts.map((o) => {
           const ok = avail.includes(o) && (!o.requires || requires(g, o.requires));
           const miss = (o.requires?.flags || []).filter((f) => !sv.flags[f]).map(clueName).filter(Boolean);

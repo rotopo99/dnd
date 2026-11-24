@@ -38,7 +38,7 @@ import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
 import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag, CINE_RESULT_SOFTEN } from './cine-hooks.js';
-import { dossierDc, courtLimits, applyDossier } from './dossier.js';
+import { dossierDc, courtLimits, applyDossier, dossierPoints } from './dossier.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -552,6 +552,18 @@ export function questTimerTick(save, data) {
 }
 
 /** Text of the current goal for the journal. */
+/**
+ * content-wave4.md: extra lines of a stage — stage.notes [{ requires?, text }] (the Judge's temptation in verdict) and the
+ * dossier score (stage.dossier / stage.showDossier). → [{ text, color }].
+ */
+export function stageNotes(save, stage) {
+  if (!stage) return [];
+  const out = [];
+  if (stage.dossier || stage.showDossier) out.push({ text: tf('w4.dossier', { n: dossierPoints(save) }), color: 'f' });
+  for (const n of stage.notes || []) if (requiresOk(save, n.requires)) out.push({ text: n.text, color: n.color || 'c' });
+  return out;
+}
+
 export function currentGoalText(save, id) {
   const s = stageOf(save, id);
   if (!s) return '';
@@ -559,6 +571,7 @@ export function currentGoalText(save, id) {
   let text = s.goal.kind === 'choice' && st.opt ? s.goal.options.find((o) => o.id === st.opt)?.text || s.text : s.text;
   const lock = stageLocked(save, s);
   if (lock) text += ` (${lock})`;
+  for (const n of stageNotes(save, s)) text += ` · ${n.text}`;
   // QA v40 L6 / B2: progress of an 'all' stage with min / required subgoals and where the rest is
   if (s.goal.kind === 'all' && (s.goal.min || s.goal.goals.some((sg) => sg.required))) {
     const g = s.goal, left = g.goals.filter((sg, i) => !subDone(save, st, sg, i));

@@ -118,15 +118,18 @@ export const CONSEQUENCES = {
   },
   'mq3-court': {
     default: E({ rep: { cult: -10 }, slides: ['court-default'] }),
-    closed: E({ rep: { cult: -30, technikums: 15 }, access: { close: ['cc-temple'] }, slides: ['court-closed'] }),
-    oldgod: E({ rep: { tekhonki: 30, cult: -25, aiParty: -10 }, slides: ['court-oldgod'] }),
-    order: E({ rep: { aiParty: 25, cult: -25, renegades: -15 }, slides: ['court-order'] }),
-    reflash: E({ rep: { cult: 20, technikums: -25 }, slides: ['court-reflash'] }),
+    // content-wave4.md §1 «Репутация по концовкам»: A / B / C ×3 / D (+ the older lox9 / lox-leave / surrender)
+    closed: E({ rep: { cult: -30, technikums: 15, neutralVillages: 10, tinBrotherhood: 10 }, access: { close: ['cc-temple'] }, slides: ['court-closed'] }),
+    oldgod: E({ rep: { tekhonki: 30, cult: -25, aiParty: -10, mechanids: -10 }, slides: ['court-oldgod'] }),
+    order: E({ rep: { aiParty: 25, warprom: 15, agrozone: 10, cult: -25, renegades: -15, mutantsBeast: -10 }, slides: ['court-order'] }),
+    scrap: E({ rep: { scavengers: 30, pirates: 10, technikums: -10, cult: -25 }, slides: ['court-scrap'],
+      rumors: ['Король свалок взвесил Судью. Говорят, вышло сорок один миллион — и ещё немного сверху, на тару.'] }),
+    reflash: E({ rep: { cult: 20, technikums: 20, mechanids: 10, mutantsPlant: 10, warprom: -10 }, slides: ['court-reflash'] }),
     vessel: E({ rep: { cult: 40, aiParty: -20, technikums: -30, neutralVillages: -15 }, slides: ['court-vessel'] }),
     lox9: E({ rep: { aiParty: -15, renegades: 10 }, slides: ['court-lox9'] }),
     // content-wave2.md §1.2–1.3: new finale options
     surrender: E({ rep: { cult: 20, aiParty: -20, technikums: -30, neutralVillages: -15 }, slides: ['court-surrender'] }),
-    'lox-leave': E({ rep: { renegades: 10, aiParty: -5 }, slides: ['court-lox-leave'],
+    'lox-leave': E({ rep: { renegades: 10, aiParty: -5, cult: -30, technikums: 15, neutralVillages: 10, tinBrotherhood: 10 }, slides: ['court-lox-leave'],
       rumors: ['Lox ушёл смотреть на море. Говорят, сидит на берегу и извиняется перед чайками за всех клонов сразу.'] }),
   },
   // ------------------------------------------------------------ побочные сюжетные
@@ -277,6 +280,7 @@ export const EPILOGUE = [
   { id: 'court-lox-leave', order: 90, prio: 95, title: 'Отпуск', text: 'Lox держал створку, пока её не заварили. Потом ушёл к морю. Открыток не шлёт, но все знают, где он.', when: { all: [F('mq3-court', 'lox-leave')] } },
   { id: 'court-lox-alive', order: 91, prio: 70, title: 'Lox жив', text: 'Lox жив и, кажется, впервые этому не удивляется.', when: { all: [F('mq3-court', 'mod:lox-alive')], not: [F('mq3-court', 'lox-leave')] } }, // QA v40 L3: «Отпуск» already says it
   { id: 'court-lox-dead', order: 91, prio: 80, title: 'Куртка у Двери', text: 'У Двери лежит куртка Lox. Её никто не трогает: даже культисты обходят стороной.', when: { all: [F('mq3-court', 'mod:lox-dead')] } },
+  { id: 'court-scrap', order: 90, prio: 95, title: 'Принято по весу', text: 'Судья сдан в металлолом. Квитанция выдана, печать стоит, сдача — мелочью.', when: { all: [F('mq3-court', 'scrap')] } },
   { id: 'court-lox9', order: 90, prio: 95, title: 'Девятый глаз', text: 'Lox закрыл последнюю метку. Судья ушёл в тишину, а Lox — в отпуск.', when: { all: [F('mq3-court', 'lox9')] } },
   { id: 'sector-d-quiet', order: 100, prio: 30, title: 'Сектор Д', text: 'В секторе Д теперь висит расписание раздачи еды. Мелом, но по часам.', when: { any: [F('sq-sector-d', 'talk'), F('sq-sector-d', 'food')] } },
   { id: 'sector-d-crushed', order: 100, prio: 40, title: 'Тишина в секторе Д', text: 'Двери заколочены. Из-за них слышно, как кто-то считает дни.', when: { all: [F('sq-sector-d', 'force')] } },
