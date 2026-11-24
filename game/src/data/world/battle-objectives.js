@@ -33,6 +33,7 @@ export const BATTLE_OBJECTIVES = {
     'enc-border-clash': 'hold',
     'v4-ren-host': 'hold',
     'v4-wp-host': 'hold',
+    'w-eve-1': 'hold', 'w-eve-2': 'hold', 'w-eve-3': 'hold', // content-wave4.md §2: hold the Raytsentr wall
     // kill the target before it flees
     'w-harmony-cult-cell': 'assassinate',
     'v3-scv-kings-yard': 'assassinate',

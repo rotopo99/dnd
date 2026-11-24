@@ -401,6 +401,9 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   if (r.talent && TALENTS[r.talent] && !save.hero.talents.includes(r.talent)) out.push(...learnTalent(save, r.talent, data));
   if (r.recruit && NPCS[r.recruit] && canRecruit(save, r.recruit) !== 'already') { recruit(save, r.recruit); out.push({ text: tf('fx.joined', { name: NPCS[r.recruit].name }), color: 'j' }); }
   if (r.hp || r.mrl) damageParty(save, r.hp || 0, r.mrl || 0, data);
+  // content-wave4.md §2: { healPct } — the party heals a share of max ЗДР; { loyalty: { npc: d } } — a companion's approval
+  if (r.healPct) for (const m of members(save, data)) { const e = m.isHero ? save.hero : m.p; e.hp = Math.min(m.unit.maxHp, m.unit.hp + Math.round(m.unit.maxHp * r.healPct)); }
+  if (r.loyalty) for (const [n, d] of Object.entries(r.loyalty)) { const p = save.party.find((x) => x.npc === n && x.state !== 'left'); if (p && d) out.push(...adjustApproval(save, p, d)); }
   if (r.rel) for (const [n, d] of Object.entries(r.rel)) if (d) { addRel(save, n, d); out.push({ text: tf('w3.rel', { name: NPCS[n]?.name || n, d: `${d > 0 ? '+' : ''}${d}` }), color: d > 0 ? 'j' : 'c' }); }
   if (r.xp) out.push(...gainXp(save, r.xp, data));
   for (const d of r.deeds || []) out.push(...deed(save, d, keyChoice));

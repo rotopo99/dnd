@@ -39,6 +39,7 @@ import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
 import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag, CINE_RESULT_SOFTEN } from './cine-hooks.js';
 import { dossierDc, courtLimits, applyDossier, dossierPoints } from './dossier.js';
+import { doorFarewell, npcName } from './wave4.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -106,6 +107,9 @@ function reward(save, qid, data) {
   if (q.personal) out.push(...personalQuestDone(save, q)); // companions-scenes.md: +loyalty, alternative path
   out.push(...applyConsequences(save, qid)); // world-consequences.md: flag cq:<qid>:<outcome>, rep, world changes (once)
   markFinale(save);
+  // content-wave4.md §2: rewards.startQuest — the next quest begins at once (mq4-eve -> mq3-court: the court is at the Door)
+  const nq = q.rewards?.startQuest;
+  if (nq && QUESTS[nq] && !save.quests[nq] && requiresOk(save, QUESTS[nq].requires)) out.push(...startQuest(save, nq));
   return out;
 }
 
@@ -158,6 +162,8 @@ function enterStage(save, qid, stageId, via = null) {
   const q = QUESTS[qid], st = save.quests[qid];
   findsAt(save, `stage:${qid}/${stageId}`);
   if (stageDef(q, stageId)?.dossier) applyDossier(save); // content-wave4.md §1: the court reads the dossier on entry
+  if (stageDef(q, stageId)?.farewell) for (const x of doorFarewell(save)) // content-wave4.md §5: companions at the Door
+    journal(save, tf(x.kind === 'leave' ? 'w4.doorLeave' : 'w4.doorSupport', { name: npcName(x.npc), line: x.line }));
   if (via !== 'cine') cineStage(save, qid, stageId); // cinematics.md: stage flags + queued scenes (mq3-court/inside -> c6, c4)
   else st.via = stageId;
   if (q.timer && q.timer.stage === stageId && st.due == null) st.due = save.day + q.timer.days;

@@ -6472,6 +6472,7 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   const st = await import('../game/src/world/state.js');
   const QS = await import('../game/src/world/quests.js');
   const DS = await import('../game/src/world/dossier.js');
+  const W4 = await import('../game/src/world/wave4.js');
   const { DOSSIER, DOSSIER_RULES } = await import('../game/src/data/world/dossier.js');
   const { QUESTS: QW } = await import('../game/src/world/data.js');
   const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act2-done': true }, flags); return s; };
@@ -6533,6 +6534,42 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(a.flags['fin-closed'] && a.flags['door-halfsealed'] && a.quests['mq3-court'].state === 'done');
     // the temptation note at a thin dossier
     assert.ok(QS.stageNotes(atVerdict({}), QW['mq3-court'].stages.find((x) => x.id === 'verdict')).some((n) => /41|сорок один/.test(n.text)));
+  });
+  test('wave4 mq4-eve: offered by Sera only after act2-done + arsenal at level 17; every wave lost still ends; the court starts', () => {
+    const s = mk(); s.flags['act2-done'] = false; s.hero.level = 17; s.quests['mq3-arsenal'] = { state: 'done' };
+    assert.ok(!QS.questsOffered(s, 'sera').some((q) => q.id === 'mq4-eve'), 'no act2-done');
+    s.flags['act2-done'] = true; s.hero.level = 16;
+    assert.ok(!QS.questsOffered(s, 'sera').some((q) => q.id === 'mq4-eve'), 'level gate');
+    s.hero.level = 17;
+    assert.ok(QS.questsOffered(s, 'sera').some((q) => q.id === 'mq4-eve'));
+    QS.startQuest(s, 'mq4-eve');
+    for (let i = 0; i < 60 && s.quests['mq4-eve'].state === 'active'; i++) {
+      const x = QS.slots(s, 'mq4-eve')[0]; const g = x.goal;
+      if (x.kind === 'choice') QS.chooseOption(s, x, QS.availableOptions(s, x).map((o) => o.id).at(-1), GAME_DATA);
+      else if (g.kind === 'talk') QS.onTalk(s, g.npc, GAME_DATA);
+      else QS.failSlot(s, x, GAME_DATA);
+    }
+    assert.equal(s.quests['mq4-eve'].state, 'done');
+    assert.ok(s.flags['eve-done'] && s.flags['eve-wave-3-lost'] && s.flags['priest-at-door']);
+    assert.equal(s.quests['mq3-court']?.stage, 'door', 'rewards.startQuest');
+  });
+  test('wave4 mq4-eve: defence mods by earlier flags (allies, mines, barricades, Ladov one wave)', () => {
+    const s = mk({ 'harmony-ren': true, 'harmony-council': true, 'saved-workshop': true, 'ally-tin': true, 'mech-ally': true, 'ladov-named': true });
+    const w1 = W4.eveSetup(s, 'w-eve-1', ['a', 'b']);
+    assert.deepEqual(w1.enemies.map((e) => e.hpPct), [0.75, 0.75]);
+    assert.ok(w1.allies.includes('lis-5-turret-l15') && w1.allies.includes('tin-elite-l16') && !w1.allies.includes('mech-elite-l16'));
+    assert.equal(w1.buffs[0].stat, 'kb');
+    assert.equal(W4.eveSetup(s, 'w-eve-2', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 3);
+    assert.equal(W4.eveSetup(s, 'w-eve-3', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 0);
+    assert.deepEqual(W4.eveSetup(mk(), 'w-eve-1', ['a']), { enemies: ['a'], allies: [], buffs: [], notes: [] });
+    for (const id of W4.eveMods(mk(Object.fromEntries(['harmony-ai', 'saved-sector-d', 'plague-cured'].map((f) => [f, true]))), 'w-eve-1').flatMap((m) => m.allies || [])) assert.ok(GAME_DATA.ENEMIES[id], id);
+  });
+  test('wave4 §5: at the Door loy ≥ 20 supports, loy < −20 leaves', () => {
+    const s = mk(); st.recruit(s, 'lox'); st.recruit(s, 'tik');
+    s.party.find((p) => p.npc === 'lox').approval = 30; s.party.find((p) => p.npc === 'tik').approval = -30;
+    const r = W4.doorFarewell(s);
+    assert.deepEqual(r.map((x) => `${x.npc}:${x.kind}`).sort(), ['lox:support', 'tik:leave']);
+    assert.equal(s.party.find((p) => p.npc === 'tik').state, 'left');
   });
   test('wave4 G11: mq3-court is level 18 and waits for eve-done', () => {
     assert.equal(QW['mq3-court'].level, 18);

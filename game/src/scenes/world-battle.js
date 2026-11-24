@@ -4,6 +4,7 @@
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
 import { cineBefore } from './cinema.js';
+import { eveSetup } from '../world/wave4.js';
 import { cineEncounter, cineBattleSkip } from '../world/cine-hooks.js';
 import { radioBattle } from '../world/radio.js';
 import { applyWithdrawal } from '../rules/aftermath.js';
@@ -53,7 +54,9 @@ export function encounterSetup(save, encId) {
     reduce = FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length;
     for (const m of QUESTS['mq-exodus']?.finaleMods || []) if (m.flag && save.flags[m.flag]) allies.push(...(m.allies || []));
   }
-  return { enemies: cineEncounter(save, encId, encounterEnemies(encId, partySize(save), { reduce })), allies };
+  // content-wave4.md §2: the Raytsentr waves of mq4-eve — allies, enemy ЗДР and party buffs by earlier choices
+  const eve = eveSetup(save, encId, cineEncounter(save, encId, encounterEnemies(encId, partySize(save), { reduce })));
+  return { enemies: eve.enemies, allies: [...allies, ...eve.allies], buffs: eve.buffs, notes: eve.notes };
 }
 
 /** content-wave2.md §3 c8: a scene result replaced the battle (CINE_BATTLE_SKIP) — it counts as done, onWin runs. */
@@ -113,6 +116,7 @@ export function startWorldBattle(game, o) {
   const rivals = o.rivals?.length ? o.rivals : null;
   const hind = o.encounter ? ENCOUNTERS[o.encounter]?.hindrance : null;
   if (hind) game.toast(tf('w3.hindrance', { name: t(`w3.hindrance.${hind.id}`), value: hind.value }), 'c');
+  if (setup.notes?.length) game.toast(tf('w4.eveAllies', { list: setup.notes.join(', ') }), 'j'); // content-wave4.md §2
   if (o.encounter === FINALE_ENCOUNTER && !exodusZeroFinale(save) && partySize(save) + allies.length < FINALE_MIN_PARTY) {
     game.openModal({ title: t('world.finaleLockedTitle'), border: 'a', titleColor: 'a',
       lines: [{ text: t('world.finaleLocked').replace('{n}', partySize(save) + allies.length).replace('{min}', FINALE_MIN_PARTY) }],
@@ -148,7 +152,7 @@ export function startWorldBattle(game, o) {
       companionEvent(S, e, save); // companions-scenes.md: barks and revives
     },
     objectives: objectiveSpec(save, o, setup.enemies),
-    heroBuffs: hind ? [hind] : [], // content-wave3.md: encounter hindrance («Осанка»)
+    heroBuffs: [...(hind ? [hind] : []), ...(setup.buffs || [])], // content-wave3.md: encounter hindrance («Осанка»); wave 4: barricades
     onRetreatExit: (g, S) => retreatExit(g, S, o),
     race: save.hero.race, ambush: !!o.ambush, surprise: !!o.surprise, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {

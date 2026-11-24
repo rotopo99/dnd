@@ -494,6 +494,11 @@ list.push(
   enc('v4-boss-wolf-0', 'Волк-0 «Альфа»: полная сила', 16, 'warprom', ['dungeons-m12'], [wolfFull, 'wolf-5-matyorny-l16', 'wolf-4-howler-l16', 'wolf-1-grey-l16']),
   enc('v4-boss-ai-general', 'Генерал ИИ', 19, 'aiParty', ['putinlyandiya'], ['boss-ai-general', V('ai', 'elite', 19), V('ai', 'vet', 19), N('ai-political-officer', 19)]),
   enc('v4-boss-cyber-priest', 'Кибер-Жрец в силе', 19, 'cult', ['sokralnya'], ['boss-cyber-priest-prime', V('cult', 'elite', 19), N('cult-skrilet-prime', 19), N('cult-soul-reaper', 19)]),
+  // content-wave4.md §2: «Последняя ночь» — три волны у вала Райцентра (mq4-eve) и Кибер-Жрец «в силе» у ворот
+  enc('w-eve-1', 'Последняя ночь: души у вала', 17, 'cult', ['raytsentr'], [lift('acolyte-5', 17), lift('skrilet-5', 17), lift('skrilet-5', 17), lift('scriptlet', 17)]),
+  enc('w-eve-2', 'Последняя ночь: хор скриптлетов', 17, 'cult', ['raytsentr'], [N('cult-skrilet-prime', 17), lift('scriptlet', 17), lift('scriptlet', 17), V('cult', 'vet', 17), lift('skrilet-5', 17)]),
+  enc('w-eve-3', 'Последняя ночь: палачи у ворот', 18, 'cult', ['raytsentr'], [lift('cult-executioner', 18), N('cult-soul-reaper', 18), N('cult-skrilet-prime', 18), lift('scriptlet', 18)]),
+  enc('enc-cyber-priest-strong', 'Кибер-Жрец в силе: хор у ворот', 18, 'cult', ['raytsentr'], ['boss-cyber-priest-prime', V('cult', 'elite', 18), N('cult-skrilet-prime', 18)]),
   enc('v4-boss-crg-chief', 'Кринж-Вождь', 15, 'cringegons', ['baza-predlozhki'], ['boss-crg-chief', V('crg', 'elite', 15), N('crg-banner-bearer', 15), N('crg-stage-diver', 15), N('crg-stage-diver', 15)]),
   enc('v4-boss-collector', 'Великий Собиратель', 16, 'cringegons', ['vyzhigatel-vayba'], ['boss-great-collector', V('crg', 'elite', 16), N('crg-meme-lord', 16), N('crg-banner-bearer', 16)]),
   enc('v4-mon-hill', 'Удазазаги, гидра холмов (старая)', 9, null, ['hill-monsters-m20'], [MON('uda', 8), spawn(9), spawn(9)], { scale: 0.6 }),

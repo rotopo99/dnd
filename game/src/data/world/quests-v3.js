@@ -143,7 +143,7 @@ const LIST = [
   Q('mq3-court', 'Суд', 'mixed', 'cult', 'sera', 18,
     'Дверь у маркера «Киберспейс» открыта. Войти, выстоять суд Судьи и решить судьбу Киберспейса.',
     [
-      st('door', 'Штурм Двери с союзниками.', fight('enc-kiberspeys-door', 'kiberspeys'), 'inside'),
+      { ...st('door', 'Штурм Двери с союзниками.', fight('enc-kiberspeys-door', 'kiberspeys'), 'inside'), farewell: true }, // content-wave4.md §5
       // content-wave2.md §1: c4 (cine-hooks CINE_RESULT_NEXT) moves the quest from 'inside' by its result; the challenge is the fallback
       // content-wave4.md §1: the DC comes from the dossier (dcFrom; easeBy — the old list, kept as data); dossier: snapshot on entry
       { ...st('inside', 'Киберспейс. Суд над «идеальным телом». Досье защиты приобщено к делу.', { kind: 'challenge', skills: ['persuasion', 'judge', 'meditation', 'religion'], dc: 17, successes: 5, failures: 3, onFail: 'judge-fight',

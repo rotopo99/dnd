@@ -24,8 +24,11 @@ import { QUESTS_WAVE2_MAP, W2_NPC_RULES } from '../data/world/quests-wave2.js';
 import { QUEST_TURNIN_WAVE2 } from '../data/text/quest-turnin-wave2.js';
 import { CONSEQUENCES_WAVE2 } from '../data/world/consequences-wave2.js';
 import { QUESTS_WAVE3_MAP, W3_NPC_RULES } from '../data/world/quests-wave3.js';
-/** Rule-placed NPCs (wave 2 cameos + wave 3): { npc, at, when } — see npcRuleOk. */
-export const NPC_RULES = [...W2_NPC_RULES, ...W3_NPC_RULES];
+import { QUESTS_WAVE4_MAP, W4_NPC_RULES } from '../data/world/quests-wave4.js';
+/** Rule-placed NPCs (wave 2 cameos + wave 3 + wave 4 Sera in Raytsentr): { npc, at, when } — see npcRuleOk. */
+export const NPC_RULES = [...W2_NPC_RULES, ...W3_NPC_RULES, ...W4_NPC_RULES];
+import { QUEST_TURNIN_WAVE4 } from '../data/text/quest-turnin-wave4.js';
+import { CONSEQUENCES_WAVE4, EPILOGUE_WAVE4 } from '../data/world/consequences-wave4.js';
 import { QUEST_TURNIN_WAVE3 } from '../data/text/quest-turnin-wave3.js';
 import { CONSEQUENCES_WAVE3, EPILOGUE_WAVE3 } from '../data/world/consequences-wave3.js';
 import { PROLOGUE } from '../data/text/prologue.js';
@@ -80,7 +83,7 @@ export function personalQuest(pq) {
   return { id: pq.id, name: pq.name, giver: pq.npc, summary: stages[0]?.text || '', trial: true, personal: { npc: pq.npc, loyalty, altPath: !!unlockAltPath }, stages, rewards };
 }
 export const QUESTS_PERSONAL = Object.fromEntries(Object.values(PERSONAL_QUESTS).map((q) => [q.id, personalQuest(q)]));
-export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER, ...QUESTS_WAVE1_MAP, ...QUESTS_WAVE2_MAP, ...QUESTS_WAVE3_MAP };
+export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER, ...QUESTS_WAVE1_MAP, ...QUESTS_WAVE2_MAP, ...QUESTS_WAVE3_MAP, ...QUESTS_WAVE4_MAP };
 // cyberspace-v2.md: turn-in lines of the cyber quests; expeditions.md: mini quests a reserve companion can close (autoable)
 Object.assign(QUEST_TURNIN, QUEST_TURNIN_CYBER);
 for (const id of Object.keys(AUTOABLE_QUESTS)) if (QUESTS[id]) QUESTS[id].autoable = true;
@@ -112,6 +115,14 @@ for (const q of Object.values(QUESTS_WAVE3_MAP)) {
 }
 Object.assign(CONSEQUENCES, CONSEQUENCES_WAVE3);
 for (const sl of EPILOGUE_WAVE3) if (!EPILOGUE.some((x) => x.id === sl.id)) EPILOGUE.splice(EPILOGUE.length - 1, 0, sl); // before epi-outro
+// content-wave4.md: «Последняя ночь» turn-in / consequences and the finale epilogue slides (§4; fixedFinal — never pushed out)
+Object.assign(QUEST_TURNIN, QUEST_TURNIN_WAVE4);
+for (const q of Object.values(QUESTS_WAVE4_MAP)) {
+  const td = QUEST_TURNIN[q.id];
+  if (td && q.outcomeBy) td.outcomeBy = [...q.outcomeBy];
+}
+Object.assign(CONSEQUENCES, CONSEQUENCES_WAVE4);
+for (const sl of EPILOGUE_WAVE4) if (!EPILOGUE.some((x) => x.id === sl.id)) EPILOGUE.splice(EPILOGUE.length - 1, 0, sl);
 
 /** content-wave3.md: W3_NPC_RULES `when` — flags all / any / not, hero level, quest state, event companion rel. */
 export function npcRuleOk(save, w = {}) {
