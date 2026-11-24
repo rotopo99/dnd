@@ -1,5 +1,6 @@
 import { PROLOGUE } from './prologue.js';
 import { SKILLS } from '../talents.js';
+import { FACTIONS } from '../factions.js';
 import { INVENTORY_TEXT } from './inventory.js';
 import { COMPANION_TEXT } from './companions.js';
 import { WORLD_TEXT } from './world.js';
@@ -182,6 +183,8 @@ const ru = {
   'buff.kb': 'к КБ',
   'buff.str': 'к СИЛ',
   'buff.wil': 'к ТВД',
+  'buff.speed': 'к скорости',
+  'buff.init': 'к инициативе',
   'area.radius': 'радиус',
   'area.cone': 'конус',
   'area.line': 'линия',
@@ -833,6 +836,7 @@ const ru = {
 // Fallback to story texts (prologue keys) so map `intro` keys resolve via t().
 // Note: dialogue keys return arrays of { who, text }.
 for (const [id, sk] of Object.entries(SKILLS)) ru[`skill.${id}`] = sk.name;
+for (const [id, f] of Object.entries(FACTIONS)) ru[`faction.${id}`] ??= f.name; // unit card: t(`faction.${id}`)
 Object.assign(ru, INVENTORY_TEXT); // v7 inventory strings (override older gear/battle item keys)
 Object.assign(ru, COMPANION_TEXT); // companions-scenes.md
 Object.assign(ru, WORLD_TEXT); // world-consequences.md: consequences, epilogue, crime

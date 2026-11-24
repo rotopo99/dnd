@@ -6817,5 +6817,59 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(st.requiresOk(mk({ 'ladov-named': true }), { dossier: { min: 2 } }) && !st.requiresOk(mk(), { dossier: { min: 1 } }));
   });
 }
+// QA v48 #5: no raw text keys in the battle log / unit cards (t() falls back to the key itself).
+{
+  const { t } = await import('../game/src/data/text/index.js');
+  const { formatEvent } = await import('../game/src/ui/battle-log.js');
+  const { ENCOUNTERS: ENC, CLASSES: CLS, CLASS_ORDER: CO } = await import('../game/src/data/index.js');
+  const { isAllowed } = await import('../game/src/rules/character.js');
+  test('text audit: every buff / dmg / area / action / save / faction / rank / arch key in data resolves via t()', () => {
+    const keys = new Map(), seen = new Set();
+    const add = (k, where) => { if (!keys.has(k)) keys.set(k, where); };
+    const walk = (o, path) => {
+      if (!o || typeof o !== 'object' || seen.has(o)) return;
+      seen.add(o);
+      if (Array.isArray(o)) { o.forEach((x, i) => walk(x, `${path}[${i}]`)); return; }
+      if (o.op === 'buff' && o.stat) add(`buff.${o.stat}`, path);
+      if (o.op === 'status' && o.id) assert.ok(GAME_DATA.STATUSES[o.id]?.name, `${path}: status ${o.id} has no name`);
+      if (typeof o.dmgType === 'string') add(`dmg.${o.dmgType}`, path);
+      if (typeof o.area?.shape === 'string') add(`area.${o.area.shape}`, path);
+      if (typeof o.action === 'string' && (o.effects || o.range != null)) add(`act.${o.action}`, path);
+      if (typeof o.save?.stat === 'string') add(`stat.${o.save.stat}`, path);
+      if (o.resist && typeof o.resist === 'object') for (const k of Object.keys(o.resist)) add(`dmg.${k}`, `${path}.resist`);
+      for (const [k, v] of Object.entries(o)) walk(v, `${path}.${k}`);
+    };
+    walk(GAME_DATA, 'DATA');
+    for (const e of Object.values(GAME_DATA.ENEMIES)) for (const k of ['faction', 'rank', 'arch']) if (e[k]) add(`${k}.${e[k]}`, e.id);
+    for (const [id, s] of Object.entries(GAME_DATA.STATUSES)) assert.ok(s.name, `status ${id} has no name`);
+    const miss = [...keys].filter(([k]) => t(k) === k).map(([k, w]) => `${k} (${w})`);
+    assert.deepEqual(miss, [], 'raw text keys');
+    assert.notEqual(t('buff.speed'), 'buff.speed');
+  });
+  test('text audit: AI battles over every encounter log no raw keys and no unnamed statuses', () => {
+    const RAW = /(^|[\s(«:])([a-z][a-zA-Z0-9]*\.[a-zA-Z0-9_.-]*[a-zA-Z])(?=$|[\s),»:])/;
+    const bad = new Map();
+    Object.values(ENC).forEach((enc, i) => {
+      if (!enc.enemies?.length) return;
+      const level = Math.max(1, Math.min(10, enc.level || 1));
+      const heroes = [0, 5].map((k) => {
+        const cid = CO[(i + k) % CO.length];
+        return buildCreature({ race: isAllowed('human', CLS[cid]) ? 'human' : CLS[cid].allowedRaces[0], cls: cid, level, data: GAME_DATA });
+      });
+      const b = createBattle({ heroes, enemies: enc.enemies, data: GAME_DATA, seed: 7 + i, log: true });
+      for (const u of b.units) u.control = 'ai';
+      let guard = 0;
+      while (!b.winner && b.turn && b.round <= 8 && guard++ < 1500) playTurn(b);
+      const S = { b, name: (id) => String(id) };
+      for (const e of b.log) {
+        if (/^status/.test(e.type) && !b.data.statuses[e.id]?.name) bad.set(`status ${e.id}`, enc.id);
+        const seg = formatEvent(S, e);
+        const m = seg && seg.map((x) => x[0]).join('').match(RAW);
+        if (m) bad.set(`${m[2]} <${e.type}>`, enc.id);
+      }
+    });
+    assert.deepEqual([...bad.keys()], []);
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
