@@ -20,7 +20,7 @@ import { outfitOf, skinRamp, hairRamp } from '../ui/look-data.js';
 import { keyRGB } from '../gfx/mesh.js';
 
 export const MODEL_DIR = new URL('../../assets/models/', import.meta.url).href;
-export const HAIRS = ['bob', 'long', 'ponytail', 'short', 'spiky', 'twin'];
+export const HAIRS = ['bob', 'long', 'ponytail', 'short', 'spiky', 'twin', 'crop', 'fringe', 'bun', 'mohawk', 'dreads', 'afro'];
 export const MORPHS = ['blink', 'happy', 'angry', 'sad', 'surprised'];
 
 const texLoader = new THREE.TextureLoader();

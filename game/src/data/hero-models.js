@@ -8,7 +8,7 @@ export const HERO_MODELS = {
   xSex: 'm',                         // gender 'x' (not set) -> this body
   height: { f: 1.674, m: 1.79 },     // fallback when the .json meta is missing (m)
   // editor hair (OPT.hair) -> GLB style; null — bald (no hair part)
-  hair: { bald: null, crop: 'short', short: 'short', fringe: 'bob', long: 'long', tail: 'ponytail', bun: 'ponytail', mohawk: 'spiky', spiky: 'spiky', dreads: 'long', afro: 'bob' },
+  hair: { bald: null, crop: 'crop', short: 'short', fringe: 'fringe', long: 'long', tail: 'ponytail', bun: 'bun', mohawk: 'mohawk', spiky: 'spiky', dreads: 'dreads', afro: 'afro' }, // 1:1 (docs/hair-mapping.md)
   hairDefault: 'short',
   // editor outfit (OUTFITS id) -> GLB outfit; 'auto' — by the armour type
   outfit: { wanderer: 'field', scout: 'field', warden: 'uniform', bulwark: 'uniform', cultist: 'rags', pirate: 'rags', technician: 'cyber', tin: 'uniform', renegade: 'rags' },

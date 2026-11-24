@@ -49,14 +49,44 @@ class HairBuilder:
         self.hf = HeadFrame(P); self.P = P; self.verts = []; self.faces = []; self.uvs = []; self.w = []   # w: per vertex (chain_id or None, s)
         self.chains = {}; self.rgb = rgb
 
-    def add_cap(self, hairline, rows=8, cols=40, off=0.006, lift=0.0):
+    def add_cap(self, hairline, rows=8, cols=40, off=0.006, lift=0.0, prof=None):
         hf = self.hf; base = len(self.verts)
         for j in range(rows + 1):
             for i in range(cols):
                 phi = 2 * math.pi * i / cols; th = hairline(phi)
                 t = th + (1 - th) * j / rows
                 o = off + lift * math.sin(math.pi * min(1, (j / rows) * 1.0)) + 0.004 * (1 - j / rows)
+                if prof: o = prof(j / rows, phi)
                 self.verts.append(hf.P(phi, min(t, 0.999), o)); self.uvs.append((i / cols, 0.5 * t)); self.w.append((None, 0))
+        for j in range(rows):
+            for i in range(cols):
+                a = base + j * cols + i; b = base + j * cols + (i + 1) % cols
+                self.faces.append((a, b, b + cols, a + cols))
+
+    def add_cloud(self, cz, rh, rv, thmax, rows=16, cols=60, bump=0.04):
+        """Sphere shell around the head (centre at head z0 + cz*hh): theta from the crown down to thmax(phi), hem tucked in, bumpy."""
+        hf = self.hf; hs = self.P['hs']; base = len(self.verts)
+        cx, cy, cz0 = 0.0, hf.y0 + 0.008 * hs, hf.z0 + cz * hf.hh
+        for j in range(rows + 1):
+            for i in range(cols):
+                phi = 2 * math.pi * i / cols; tm = thmax(phi); f = j / rows; th = tm * f
+                k = (1 + bump * math.sin(phi * 9 + th * 5) * math.sin(math.pi * min(1, f * 1.3))) * (1 - 0.40 * sm(0.55, 1.0, f))
+                self.verts.append(Vector((cx + math.sin(th) * math.sin(phi) * rh * hs * k, cy - math.sin(th) * math.cos(phi) * rh * hs * k, cz0 + math.cos(th) * rv * hs * k)))
+                self.uvs.append((i / cols, 0.5 * (1 - 0.35 * f))); self.w.append((None, 0))
+        for j in range(rows):
+            for i in range(cols):
+                a = base + j * cols + i; b = base + j * cols + (i + 1) % cols
+                self.faces.append((a, b, b + cols, a + cols))
+
+    def add_blob(self, c, rx, ry, rz, rows=8, cols=14, bumps=0.0):
+        """Ellipsoid (bun / knot) centred at c, skinned to the head bone."""
+        base = len(self.verts)
+        for j in range(rows + 1):
+            th = math.pi * j / rows
+            for i in range(cols):
+                a = 2 * math.pi * i / cols; k = 1 + bumps * math.sin(a * 3 + th * 4)
+                self.verts.append(Vector((c.x + math.cos(a) * math.sin(th) * rx * k, c.y + math.sin(a) * math.sin(th) * ry * k, c.z + math.cos(th) * rz * k)))
+                self.uvs.append((i / cols, 0.2 + 0.25 * j / rows)); self.w.append((None, 0))
         for j in range(rows):
             for i in range(cols):
                 a = base + j * cols + i; b = base + j * cols + (i + 1) % cols
@@ -205,7 +235,7 @@ def hair_material(name, rgb, tip=None):
 
 
 SPRING_DEFAULT = dict(stiffness=0.9, gravityPower=0.05, gravityDir=[0, -1, 0], dragForce=0.45, hitRadius=0.02)
-STYLES = os.environ.get('HAIR_STYLES', 'long,bob,short,ponytail,twin,spiky').split(',')
+STYLES = os.environ.get('HAIR_STYLES', 'long,bob,short,ponytail,twin,spiky,crop,fringe,bun,mohawk,dreads,afro').split(',')
 
 
 def lerp_line(phi, front, side, back):
@@ -284,6 +314,51 @@ def build_hair(style, arm, P, rgb, tip=None):
             tie = hf.P(sgn * r(112), 0.68, 0.035)
             tail(hb, nm, tie, 0.46 * hs + 0.10, spread=0.020, side=sgn, n=6, curl=0.02, wid=0.080)
             cfg[nm] = dict(SPRING_DEFAULT, stiffness=0.5, dragForce=0.32, gravityPower=0.09)
+    elif style == 'crop':   # editor crop: tight cap, short stubby front locks, no length anywhere
+        hb.add_cap(lambda phi: lerp_line(phi, 0.84, 0.64, 0.52), rows=9, cols=44, lift=0.004, off=0.005)
+        bangs(hb, width=42, nl=8, depth=0.86, tip=0.30, flare=0.018, n=5, off=0.008)
+        cfg['default'].update(stiffness=1.6, dragForce=0.7, gravityPower=0.0)
+    elif style == 'fringe':   # editor fringe: heavy bangs down to the brows, back and sides stay short
+        hb.add_cap(lambda phi: lerp_line(phi, 0.88, 0.52, 0.36), rows=9, cols=44, lift=0.010)
+        bangs(hb, width=58, nl=6, depth=0.60, tip=0.16, flare=0.040, n=9, off=0.010)
+        for sgn in (1, -1):
+            pts = hb.hang(r(sgn * 84), 0.72, 0.42, hf.z0 + 0.20 * hf.hh, n=6, off0=0.008, flare=0.020, shoulder=(0, 0))
+            hb.add_strand(pts, 0.050, 0.010, 0.016, chain=None)
+        cfg['default'].update(stiffness=1.0, dragForce=0.55, gravityPower=0.03)
+    elif style == 'bun':   # editor bun: top knot ball + short front locks
+        hb.add_cap(lambda phi: lerp_line(phi, 0.82, 0.58, 0.42), rows=9, cols=44, lift=0.012)
+        bangs(hb, width=46, nl=5, depth=0.77, tip=0.16)
+        side_locks(hb, hf.z0 + 0.10 * hf.hh, ang=(80,), shoulder=(0.096, 0.0), nb=3, t1=0.42, flare=0.024)
+        c = hf.P(math.pi, 0.93, 0.0) + Vector((0, 0.045, 0.045 * hs))
+        hb.add_blob(c, 0.062, 0.062, 0.056, rows=9, cols=16, bumps=0.06)
+        cfg['default'].update(stiffness=1.0)
+    elif style == 'mohawk':   # editor mohawk: shaved sides (tiny cap) + fin of tapered blades along the midline, front to back
+        hb.add_cap(lambda phi: 0.93 + 0.0 * phi, rows=4, cols=44, lift=0.0, off=0.004)
+        n = 17
+        for i in range(n):
+            u = i / (n - 1); front = u < 0.5
+            t = 0.84 + 0.16 * (u / 0.5) if front else 1.0 - 0.42 * (u - 0.5) / 0.5
+            base = hf.P(0 if front else math.pi, min(t, 0.999), 0.004)
+            h = (0.085 + 0.055 * math.sin(math.pi * u)) * hs
+            lean = -0.55 + 1.5 * u    # + = back (character faces -y)
+            pts = [base + Vector((0, 0.5 * h * lean * f * f, h * f)) for f in (0, 0.25, 0.5, 0.75, 1.0)]
+            hb.add_strand(pts, 0.105, 0.010, 0.026, chain=None, up=lambda p, s: Vector((1, 0, 0)))
+        cfg['default'].update(stiffness=1.4)
+    elif style == 'dreads':   # editor dreads: thick ropes falling to the shoulder blades, short bangs
+        hb.add_cap(lambda phi: lerp_line(phi, 0.84, 0.56, 0.36), rows=9, cols=44, lift=0.012)
+        bangs(hb, width=44, nl=5, depth=0.74, tip=0.28, flare=0.040, n=6)
+        nd = 15
+        for i in range(nd):
+            f = i / (nd - 1); phi = r(58 + 244 * f + 5 * math.sin(i * 2.3))
+            ln = zhips + (0.30 + 0.07 * math.sin(i * 1.9)) * hs + 0.14 * hs * (1 - abs(math.cos(phi)))
+            pts = hb.hang(phi, 0.80, 0.36, ln, shoulder=(0.112, 0.108), n=11, off0=0.012, flare=0.022, wave=0.012, sway_phase=i * 1.3)
+            cn = 'D%d' % (i // 2)
+            hb.add_strand(pts, 0.050, 0.030, 0.040, chain=cn)
+            if i % 2 == 0: hb.chain_from(cn, pts, 4, 0.40)
+        cfg['default'].update(stiffness=0.9, dragForce=0.5, gravityPower=0.07)
+    elif style == 'afro':   # editor afro: big round cloud (sphere shell with a tucked hem and a front hairline) around the head
+        hb.add_cloud(0.70, 0.205, 0.205, lambda phi: lerp_line(phi, 54.0, 112.0, 130.0) * math.pi / 180.0)
+        cfg['default'].update(stiffness=1.6, dragForce=0.7, gravityPower=0.0)
     else:  # spiky
         hb.add_cap(lambda phi: lerp_line(phi, 0.80, 0.60, 0.50), rows=9, cols=44, lift=0.010)
         bangs(hb, width=52, nl=7, depth=0.76, tip=0.34, flare=0.044, n=7)
