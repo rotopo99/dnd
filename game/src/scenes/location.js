@@ -32,7 +32,8 @@ import { heroBuild } from '../ui/portrait-of.js';
 import { eventsFor, runEvent } from './event.js';
 import { saveGame } from '../save.js';
 import { lizaDoorReady, useLizaDoor, lizaCaches } from '../world/wave3.js';
-import { createNpcActions, isTrialQuest } from '../world/npc-actions.js';
+import { createNpcActions } from '../world/npc-actions.js';
+import { questOpen } from '../world/quest-access.js';
 import { hasWorldFlag, skillName } from '../world/checks.js';
 import { WORLD_RULES } from '../data/world/rules.js';
 import { openLevelUp } from './levelup.js';
@@ -270,7 +271,7 @@ export function createLocationScene(rawId, opts = {}) {
     for (const qid of loc.quests || []) {
       const q = QUESTS[qid];
       if (!q || sv.quests[qid] || (q.giver && npcsAt(locId, sv).includes(q.giver)) || !requires(game, q.requires || {})) continue;
-      if (tier === 'hostile' || (tier === 'suspicious' && !isTrialQuest(q) && !hasFlagInParty(sv, game.data, 'bribe'))) {
+      if (!questOpen(q, tier, hasFlagInParty(sv, game.data, 'bribe'))) {
         out.push({ label: `${t('loc.questOffer')}: ${q.name}`, sub: tier === 'hostile' ? t('loc.closedHostile') : t('loc.onlyTrial'), disabled: true });
         continue;
       }

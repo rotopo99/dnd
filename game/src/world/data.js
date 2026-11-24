@@ -64,7 +64,7 @@ const QUESTS_D = Object.fromEntries(QUESTS_DENSITY.map((q) => [q.id, q]));
 /**
  * companions-scenes.md: personal quests (data/companions.js PERSONAL_QUESTS) in the quest schema. giver = the companion;
  * stages run in order, `loyaltyMin` → stage gate requires { loyalty: { npc, min } } (state.js requiresOk); rewards.loyalty /
- * unlockAltPath → q.personal (quests.js reward → world/companions.js personalQuestDone).
+ * unlockAltPath → q.personal (quests.js reward → world/companions.js personalQuestDone). trial: offered by a suspicious companion too.
  */
 export function personalQuest(pq) {
   const name = NPCS[pq.npc]?.name || pq.npc;
@@ -77,7 +77,7 @@ export function personalQuest(pq) {
     return st;
   });
   const { loyalty, unlockAltPath, ...rewards } = pq.rewards || {};
-  return { id: pq.id, name: pq.name, giver: pq.npc, summary: stages[0]?.text || '', personal: { npc: pq.npc, loyalty, altPath: !!unlockAltPath }, stages, rewards };
+  return { id: pq.id, name: pq.name, giver: pq.npc, summary: stages[0]?.text || '', trial: true, personal: { npc: pq.npc, loyalty, altPath: !!unlockAltPath }, stages, rewards };
 }
 export const QUESTS_PERSONAL = Object.fromEntries(Object.values(PERSONAL_QUESTS).map((q) => [q.id, personalQuest(q)]));
 export const QUESTS = { ...QUESTS_V1, ...QUESTS_V3, ...QUESTS_NPC, ...QUESTS_D, ...QUESTS_PERSONAL, ...QUESTS_CYBER, ...QUESTS_WAVE1_MAP, ...QUESTS_WAVE2_MAP, ...QUESTS_WAVE3_MAP };

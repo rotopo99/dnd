@@ -12,7 +12,8 @@ import { repTier, factionName, normFaction, tierAtLeast, meetFaction } from './r
 import { buildHero, recruit, hireInfo, grant, tf, locFaction, hasFlagInParty, effectiveRep, discover, learnTalent, members } from './state.js';
 import { serviceOff, exodusNpcLine } from './exodus.js';
 import { backstoryTopics, useBackstoryTopic } from './backstory.js';
-import { questsOffered, startQuest, onTalk } from './quests.js';
+import { startQuest, onTalk } from './quests.js';
+import { offeredQuests } from './quest-access.js';
 import { saveGame } from '../save.js';
 import { VENDORS } from './vendors.js';
 import { WORLD_RULES } from '../data/world/rules.js';
@@ -30,8 +31,7 @@ import { openRecruit } from '../ui/recruit-ui.js';
 import { startWorldBattle, openLoot } from '../scenes/world-battle.js';
 import { cardActs, doCardAct } from '../scenes/card-hub.js'; // cards-casino.md: «Сыграть в карты», card shop, casino
 
-/** «Trial» quests for suspicious factions: side quests (sq-*) without key (no explicit mark in the data). */
-export const isTrialQuest = (q) => !q.key && (q.trial ?? q.id.startsWith('sq-'));
+export { isTrialQuest } from './quest-access.js';
 
 const ORIGIN_FACTIONS = { tinBrotherhood: 1, pirates: 1, neutralVillages: 1, technikums: 1 };
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
@@ -60,18 +60,8 @@ export function createNpcActions(ctx) {
       && talentAllowed(x, { ...hc, level: 5 }));
   }
 
-  /**
-   * Quests an NPC offers under the reputation rules (world.md §3): hostile — none; suspicious — only «trial» ones
-   * (side quests sq-* without key); bribe (social check replaced by a bribe) lifts the suspicious limit.
-   */
-  function offeredBy(game, npc) {
-    const sv = save(game);
-    const tier = facTier(game, npcRepFaction(npc));
-    const list = questsOffered(sv, npc.id);
-    if (tier === 'hostile') return [];
-    if (tier === 'suspicious' && !hasFlagInParty(sv, game.data, 'bribe')) return list.filter((q) => isTrialQuest(q));
-    return list;
-  }
+  /** Quests an NPC offers under the reputation rules (world.md §3) — world/quest-access.js offeredQuests. */
+  const offeredBy = (game, npc) => offeredQuests(save(game), game.data, npc);
 
   /** Trade under the reputation rules: hostile — closed, except black-market (always) and bribe (pay to trade). */
   function tradeAccess(game, npc) {

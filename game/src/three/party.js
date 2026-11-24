@@ -25,6 +25,7 @@ import { heroLook3d } from '../ui/hero-avatar.js';
 import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec, npcSpec } from './character.js';
 import { weaponKey, attachWeapon, detachWeapon, isTwoHand } from './weapons.js';
 import { nightPatch } from './units.js';
+import { keyRGB } from '../gfx/mesh.js';
 
 const failed = new Set(); // spec keys that did not load: procedural for the session
 const specs = new WeakMap();
@@ -32,6 +33,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wallNow = () => performance.now() / 1000;
 const ZERO = new THREE.Vector3(), CARRY_POS = new THREE.Vector3(...HM.weapon.carry2hPos);
 
+const srgbKey = (k) => { const c = keyRGB(k); return new THREE.Color().setRGB(c[0], c[1], c[2], THREE.SRGBColorSpace); };
 const hashOf = (s) => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h; };
 
 export function npcModelOf(u) {
@@ -45,8 +47,9 @@ export function npcModelOf(u) {
   if (N.byNpc[id]) return { nid: N.byNpc[id], tint: null };
   if (u.team !== 'npc' || !N.crowd.races.includes(u.raceId || 'human')) return null;
   const n = NPCS[id] || {}, C = N.crowd, h = hashOf(id), T = N.crowdTint;
-  const nid = n.services?.includes('trade') ? C.trade : C.guardFactions.includes(n.faction) ? C.guard : C.other;
-  return { nid, tint: { cloth: T.cloth[h % T.cloth.length], hair: T.hair[(h >>> 8) % T.hair.length] } };
+  const role = n.services?.includes('trade') ? 'trade' : C.guardFactions.includes(n.faction) ? 'guard' : 'other';
+  const pal = T[role][h % T[role].length];
+  return { nid: C[role], tint: { cloth: pal[0], coat: pal[1], skin: T.skin[(h >>> 12) % T.skin.length], pants: T.pants[(h >>> 16) % T.pants.length], hair: T.hair[(h >>> 8) % T.hair.length] } };
 }
 
 export function partySpec(u) {
@@ -82,6 +85,11 @@ function build(T, id, R, spec) {
     if (R.dead) { disposeCharacter(C); return; }
     R.hull = hullMat(); R.xray = xrayMat();
     toonify(C, { tint: spec.tint, outline: () => R.hull, xray: () => R.xray });
+    const L = spec.npc && HM.npc.lift?.[spec.npc];
+    if (L) { // QA v42 L3: lighter key model + light rim (Ladov: dark grey on a grey dais)
+      for (const m of C.mats) { if (m.name === 'Face') continue; m.color.multiplyScalar(L.gain); m.userData.emissive0.addScalar(L.emissive); }
+      R.rim = { c: srgbKey(L.rim), k: L.rimK, grow: L.grow };
+    }
     for (const m of C.mats) nightPatch(m, T.UU);
     nightPatch(R.hull, T.UU);
     setBodyShape(C, spec.shape);
@@ -191,8 +199,10 @@ export function syncParty(T, p, c) {
   }
   for (const o of C.bodies) o.castShadow = !p.trans;
   const tm = p.team;
-  R.hull.color.set(HM.outline).lerp(new THREE.Color().setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace), HM.outlineTeam);
-  R.hull.userData.grow.value = p.grow / c.ppm / R.k;
+  // QA v42 L2: roam NPCs keep a near-dark hull — the team yellow over a thick hull turned the crowd into gold silhouettes
+  R.hull.color.set(HM.outline).lerp(new THREE.Color().setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace), p.it.u.team === 'npc' ? HM.outlineTeamNpc : HM.outlineTeam);
+  if (R.rim) R.hull.color.lerp(R.rim.c, R.rim.k);
+  R.hull.userData.grow.value = p.grow / c.ppm / R.k * (R.rim?.grow || 1);
   R.W?.hullMat?.color.copy(R.hull.color);
   R.xray.color.setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace);
   for (const o of C.extra) o.visible = o.userData.hull ? !p.trans : !p.trans && !p.dead;

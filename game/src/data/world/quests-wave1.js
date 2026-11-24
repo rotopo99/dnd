@@ -13,8 +13,9 @@ const choice = (options) => ({ kind: 'choice', options });
 const all = (goals, min) => ({ kind: 'all', goals, ...(min ? { min } : {}) });
 const opt = (id, text, goal, next, extra = {}) => ({ id, text, ...(goal ? { goal } : {}), next, ...extra });
 const st = (id, text, goal, next) => ({ id, text, goal, ...(next === 'done' || next === 'failed' ? { end: next } : { next }) });
+// trial: a «trial» quest — offered by a suspicious faction too (a way to earn its trust, world/quest-access.js; QA v42 M1)
 const Q = (id, name, giver, region, level, summary, stages, rewards, extra = {}) => ({
-  id, name, type: 'mixed', key: false, giver, region, level, requires: null, summary, wave1: true, stages, rewards, ...rewards, ...extra,
+  id, name, type: 'mixed', key: false, giver, region, level, requires: null, summary, wave1: true, trial: true, stages, rewards, ...rewards, ...extra,
 });
 
 export const QUESTS_WAVE1 = [

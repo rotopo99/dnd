@@ -15,14 +15,15 @@ const SHAPES = {
     }
     g.closePath(); g.fill();
   },
-  // Отступники: spear (diagonal shaft, leaf head) crossed with a blade
+  // Отступники: broken chain (QA v42 L1 — the old crossed spear and blade read as an X «cancel»): two horizontal links,
+  // each open towards the other, spark ticks (a V above, a Λ below) at the break. Reads as «freedom» at map size (r ≈ 5.5).
   swords(g, r) {
-    g.lineWidth = 2; g.lineCap = 'butt';
-    g.beginPath(); g.moveTo(-r * 0.8, r * 0.8); g.lineTo(r * 0.55, -r * 0.55); g.stroke();
-    g.beginPath(); g.moveTo(r * 0.8, r * 0.8); g.lineTo(-r * 0.55, -r * 0.55); g.stroke();
-    g.beginPath(); g.moveTo(r * 0.95, -r * 0.95); g.lineTo(r * 0.35, -r * 0.7); g.lineTo(r * 0.7, -r * 0.35); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(-r * 0.95, -r * 0.95); g.lineTo(-r * 0.35, -r * 0.7); g.lineTo(-r * 0.7, -r * 0.35); g.closePath(); g.fill();
-    g.fillRect(-r * 0.85, r * 0.45, r * 0.5, 2); g.fillRect(r * 0.35, r * 0.45, r * 0.5, 2);
+    g.lineWidth = 2; g.lineCap = 'round';
+    g.beginPath(); g.ellipse(-r * 0.58, 0, r * 0.4, r * 0.36, 0, 1.15, Math.PI * 2 - 1.15); g.stroke(); // left link, open to the right
+    g.beginPath(); g.ellipse(r * 0.58, 0, r * 0.4, r * 0.36, 0, Math.PI + 1.15, Math.PI * 3 - 1.15); g.stroke(); // right link, open left
+    g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(-r * 0.12, -r * 0.5); g.lineTo(-r * 0.3, -r * 0.92); g.moveTo(r * 0.12, -r * 0.5); g.lineTo(r * 0.3, -r * 0.92); g.stroke();
+    g.beginPath(); g.moveTo(-r * 0.12, r * 0.5); g.lineTo(-r * 0.3, r * 0.92); g.moveTo(r * 0.12, r * 0.5); g.lineTo(r * 0.3, r * 0.92); g.stroke();
   },
   // Пираты: anchor
   anchor(g, r) {

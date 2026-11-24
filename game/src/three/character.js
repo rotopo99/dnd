@@ -148,12 +148,13 @@ function lumTint(m, gain) {
 
 /**
  * Plain PBR from Blender -> toon per instance (the Face material is kept for the atlas swap). o: {look} — CINE_LOOKS
- * entry (opacity / tint / emissive), {tint} — {skin, hair, cloth} palette keys or C.tint, {skinHex} — cinematics tint,
+ * entry (opacity / tint / emissive), {tint} — {skin, hair, cloth, coat?, pants?} palette keys or C.tint, {skinHex} — cinematics tint,
  * outline: true — shared dark hull, or (mesh) => material per unit; xray: (mesh) => material (GreaterDepth silhouette).
  */
 export function toonify(C, o = {}) {
   const L = o.look || null, T = o.tint || C.tint || {};
   const tSkin = T.skin ? srgb(T.skin) : null, tHair = T.hair ? srgb(T.hair) : null, tCloth = T.cloth ? srgb(T.cloth) : null;
+  const tCoat = T.coat ? srgb(T.coat) : null, tPants = T.pants ? srgb(T.pants) : null; // crowd NPCs: apron / vest / hat, pants (HM.tint)
   const meshes = [];
   C.root.traverse((m) => { if (m.isMesh) meshes.push(m); });
   for (const mesh of meshes) {
@@ -164,6 +165,8 @@ export function toonify(C, o = {}) {
       if (m.name === 'Skin') { if (o.skinHex != null) t.color.set(o.skinHex); else if (tSkin) t.color.copy(tSkin); }
       else if (t.map && tHair && HM.tint.hair.test(m.name)) { t.color.copy(tHair); lumTint(t, HM.tint.hairGain); }
       else if (t.map && tCloth && HM.tint.cloth.test(m.name)) { t.color.copy(tCloth); lumTint(t, HM.tint.clothGain); }
+      else if (t.map && tCoat && HM.tint.coat.test(m.name)) { t.color.copy(tCoat); lumTint(t, HM.tint.coatGain); }
+      else if (t.map && tPants && HM.tint.pants.test(m.name)) { t.color.copy(tPants); lumTint(t, HM.tint.pantsGain); }
       t.userData.emissive0 = t.emissive.clone();
       if (m.name === 'Face') C.faces.push(t);
       C.mats.push(t);

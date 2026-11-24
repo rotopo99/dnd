@@ -6419,5 +6419,50 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.deepEqual(inp.presses(), []);
   });
 }
+// ---------------------------------------------------------------- QA v42 M1: story / companion / wave quests reachable for every race × origin
+{
+  const st = await import('../game/src/world/state.js');
+  const QA = await import('../game/src/world/quest-access.js');
+  const { QUESTS: QR, npcRepFaction } = await import('../game/src/world/data.js');
+  const { NPCS: NR } = await import('../game/src/data/npcs.js');
+  const { COMPANIONS: CR } = await import('../game/src/data/companions.js');
+  const { ORIGINS: OR } = await import('../game/src/data/world/origins.js');
+  const { PLAYABLE_RACES } = await import('../game/src/data/index.js');
+  const story = Object.values(QR).filter((q) => q.giver && (q.key || q.personal || q.wave1 || q.wave2 || q.wave3));
+  // intentional locks: a personal quest of a companion whose faction is hostile starts on recruitment (world/companions.js
+  // recruit) — needs a recruit path (conditions or alt) without a reputation condition
+  const recruitPath = (npc) => { const r = CR[npc]?.recruit; return !!r && [r.conditions, r.alt].some((p) => p?.length && p.every((c) => c.kind !== 'rep')); };
+  test('qa42 M1: every key / personal / wave 1–3 quest giver offers it to every race × origin (or a documented recruit path)', () => {
+    const miss = [];
+    for (const race of PLAYABLE_RACES) for (const o of Object.values(OR)) {
+      if (o.races && !o.races.includes(race)) continue;
+      const s = st.newSave({ name: 'T', race, cls: 'ranger', path: null, origin: o.id, alignment: 'good', anyStat: null, talents: [] });
+      for (const q of story) {
+        const tier = QA.trustTier(s, npcRepFaction(NR[q.giver] || { id: q.giver }), GAME_DATA);
+        if (QA.questOpen(q, tier)) continue;
+        if (q.personal && recruitPath(q.personal.npc)) continue;
+        miss.push(`${q.id}@${race}/${o.id}:${tier}`);
+      }
+    }
+    assert.deepEqual(miss, []);
+  });
+  test('qa42 M1: w3-vacation offered by a suspicious Node-4 (human pirate); plain side quests still need trust', () => {
+    const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+    assert.equal(QA.trustTier(s, 'mechanids', GAME_DATA), 'suspicious');
+    assert.ok(QA.offeredQuests(s, GAME_DATA, NR['w3-node4'] || { id: 'w3-node4' }).some((q) => q.id === 'w3-vacation'));
+    assert.ok(!QA.questOpen({ id: 'q-x' }, 'suspicious'));
+    assert.ok(QA.questOpen({ id: 'q-x' }, 'suspicious', true), 'bribe lifts the limit');
+    assert.ok(!QA.questOpen({ id: 'w3-x', trial: true }, 'hostile'));
+    assert.ok(QA.questOpen({ id: 'mq-x', key: true }, 'hostile'), 'the story spine never locks');
+  });
+  test('qa42 L5: w3-liza needs hero level ≥ 6 (level 1 hero with all flags — not offered)', () => {
+    const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+    Object.assign(s.flags, { 'prologue-done': true, 'act1-done': true, 'liza-freed': true });
+    assert.equal(s.hero.level, 1);
+    assert.ok(!QA.offeredQuests(s, GAME_DATA, NR.liza || { id: 'liza' }).some((q) => q.id === 'w3-liza'));
+    s.hero.level = 6;
+    assert.ok(QA.offeredQuests(s, GAME_DATA, NR.liza || { id: 'liza' }).some((q) => q.id === 'w3-liza'));
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
