@@ -11,30 +11,32 @@ NPCS = {
     # ex-agent: black bodysuit with cyan seams, long open agent coat, wrap-around cyan shades
     'lox': dict(sex='male', hair='short', hc='black', skin='light', iris=(0.30, 0.80, 0.95), base='cyber',
                 pal=dict(jacket='#1b1d25', jacket_trim='#2e3240', pants='#1b1d25', gear='#3c3f4f', boots='#121318', boots_trim='#0b0b10', accent='#70d8f2', bare=True),
-                coat=dict(col='#23252f', trim='#70d8f2', zb=0.38, slit=46, flare=0.07, collar=0.05, hem=0.90, glow_trim=True), head=['visor']),
+                coat=dict(col='#23252f', trim='#70d8f2', zb=0.38, slit=46, flare=0.07, collar=0.05, hem=0.90, glow_trim=True), head=['visor'],
+                gait='robe', face=dict(angry=0.15)),
     # the Judge's avatar: bureaucratic court robe to the ankles, stiff mantle, white mask with an amber slit, tall cap, seal
     'arbitrazh': dict(sex='male', hair='bob', hc='silver', skin='light', base='cyber', robe_body=True,
                       pal=dict(jacket='#24162c', jacket_trim='#3a2446', pants='#24162c', gear='#5c2a6c', boots='#140c18', boots_trim='#0b090c', accent='#f0b050', bare=True),
                       coat=dict(col='#2a1830', trim='#f0b050', zb=0.07, slit=16, flare=0.13, collar=0.07, hem=0.94, pleats=0.03, off=0.022, glow_trim=False),
-                      head=['judge_mask', 'judge_cap'], body=['mantle', 'seal']),
+                      head=['judge_mask', 'judge_cap'], body=['mantle', 'seal'], gait='robe'),
     # colonel Ladov: ashen skin and hair, grey greatcoat below the knee, peaked cap, medals
     'ladov': dict(sex='male', hair='short', hc='ash', skin='ashen', iris=(0.55, 0.58, 0.62), base='uniform',
                   pal=dict(jacket='#5a5e5c', jacket_trim='#8a3a2e', pants='#3c3f44', pants_trim='#8a3a2e', boots='#1d1b1a', boots_trim='#0e0d0c', accent='#c9a24a', gear='#3c3f44', strap='#c9a24a', boots_h=0.30),
-                  tail=dict(col='#5a5e5c', trim='#8a3a2e', zb=0.34, slit=26, flare=0.08), head=['officer_cap'], body=['medals']),
+                  tail=dict(col='#5a5e5c', trim='#8a3a2e', zb=0.34, slit=26, flare=0.08), head=['officer_cap', 'marks_old'], body=['medals'],
+                  gait='robe', face=dict(angry=0.4, sad=0.3)),
     # cyber-priest of the cult: purple hooded robe with glowing circuit lines, choir speaker grille, halo of cables
     'cyberpriest': dict(sex='female', hair=None, hc='black', skin='light', iris=(0.80, 0.30, 0.90), base='cyber', robe_body=True,
                         pal=dict(jacket='#2a1430', jacket_trim='#3c1f46', pants='#2a1430', gear='#5c2a6c', boots='#140c18', boots_trim='#0b090c', accent='#70d8f2', bare=True),
                         coat=dict(col='#5c2a6c', trim='#70d8f2', zb=0.07, slit=20, flare=0.10, collar=0.03, hem=0.94, pleats=0.04, glow_trim=True, circuit=True),
-                        head=['hood', 'grille', 'halo']),
+                        head=['hood', 'grille', 'halo'], gait='robe', face=dict(sad=0.2)),
     # crowd: trader (field kit in warm browns, goggles, apron, satchel), settler (rags + ushanka), guard (olive field kit, helmet, plate vest)
     'trader': dict(sex='female', hair='bob', hc='blonde', skin='tan', base='field',
                    pal=dict(jacket='#8a5a34', jacket_trim='#5e3a20', pants='#4b4a42', pants_trim='#34332d', accent='#f0b050', gear='#5e4630', strap='#d8c9a0'),
-                   head=['goggles'], body=['apron', 'satchel']),
+                   head=['goggles'], body=['apron', 'satchel'], face=dict(happy=0.3)),
     'settler': dict(sex='male', hair='short', hc='brown', skin='tan', base='rags',
-                    pal=dict(jacket='#6e6a4c', jacket_trim='#4f4c36', pants='#4b4038', accent='#8a3a2e'), head=['ushanka']),
+                    pal=dict(jacket='#6e6a4c', jacket_trim='#4f4c36', pants='#4b4038', accent='#8a3a2e'), head=['ushanka'], face=dict(happy=0.25, sad=0.15)),
     'guard': dict(sex='male', hair='short', hc='black', skin='light', base='field',
                   pal=dict(jacket='#4b5a2f', jacket_trim='#323d1f', pants='#3c4428', pants_trim='#2a301c', accent='#c42828', gear='#2e3328', strap='#8d95a8'),
-                  head=['helmet'], body=['vest']),
+                  head=['helmet'], body=['vest'], face=dict(angry=0.3)),
 }
 
 
@@ -134,7 +136,9 @@ def coat_tail(body, arm, P, cfg, parts, springs, name='CoatTail', zt=None):
     others = [p for p in parts if p.name in ('Jacket', 'Coat', 'Pants', 'Suit')]
     push_out(o, [body] + others, 0.006)
     long_ = cfg['zb'] < 0.3
-    springs += skirt_springs(o, arm, P, zt=zt, zb=zb, prefix='coat', leg=(0.62, 0.40) if long_ else (0.85, 0.6), stiffness=0.5, flare=cfg.get('flare', 0.07))
+    ss = skirt_springs(o, arm, P, zt=zt, zb=zb, prefix='coat', leg=(0.62, 0.50) if long_ else (0.85, 0.6), stiffness=0.5, flare=cfg.get('flare', 0.07))
+    for c_ in ss: c_.update(stiffness=0.9 if long_ else 0.7, gravityPower=0.35, dragForce=0.55)      # heavy cloth: no bell flare on the run
+    springs += ss
     bpy.context.view_layer.objects.active = o; mode('OBJECT', o); bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
     return o
 
@@ -155,7 +159,12 @@ def head_geo(body, P, hair=None):
     if hair is not None:
         from skeleton import zinv
         hv += [Vector((v.co.x, v.co.y, zinv(v.co.z, P))) for v in hair.data.vertices if abs(v.co.x) < 0.2]
-    return dict(zc=zc, ze=ze, zt=zt, hx=hx, fy=fy, by=by, cy=(fy + by) / 2, hs=hs, hv=hv)
+    from mathutils.bvhtree import BVHTree
+    bvh = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    def face_y(x, z):
+        hit = bvh.ray_cast(Vector((x, -1.0, z)), Vector((0, 1, 0)))
+        return hit[0].y if hit[0] is not None else fy
+    return dict(zc=zc, ze=ze, zt=zt, hx=hx, fy=fy, by=by, cy=(fy + by) / 2, hs=hs, hv=hv, face_y=face_y)
 
 
 def hg_visor(H, C):
@@ -243,19 +252,78 @@ def hg_helmet(H, C):
 
 
 def hg_ushanka(H, C):
-    bm = bmesh.new(); hs = H['hs']; z0 = H['ze'] + 0.025 * hs
-    r0, ry0, cy, top = hat_fit(H, z0, H['zt'] + 0.1, 0.018)
-    ellipsoid(bm, (0, cy, z0), (r0, ry0, max(H['zt'], top) - z0 + 0.035), seg=28, rings=14, keep=lambda c: c.z > z0 - 0.004)
-    band(bm, (0, cy, z0 + 0.012), r0 + 0.014, ry0 + 0.014, 0.05, seg=28)                          # fur band
-    for s in (1, -1):                                                                             # ear flaps (tied up = side bulges)
-        blob(bm, (s * (r0 + 0.006), cy + 0.01, z0 - 0.045), 0.05, (0.35, 0.85, 1.0), seg=12, rings=8)
-    blob(bm, (0, cy - ry0 - 0.012, z0 + 0.035), 0.012, (1.2, 0.4, 1.2), seg=8, rings=6)          # tin star
-    mats = [fab('UshankaTop', '#6e5a44', 'leather'), fab('UshankaFur', '#b09a7a', 'knit'), fab('UshankaStar', '#c42828', 'leather')]
+    """fur hat: puffy lumpy crown, fur roll with the front flap turned up, soft ear flaps hanging down beside the ears (with ties), tin star"""
+    bm = bmesh.new(); hs = H['hs']; z0 = H['ze'] + 0.02 * hs
+    r0, ry0, cy, top = hat_fit(H, z0, H['zt'] + 0.1, 0.022)
+    hz = max(H['zt'], top) + 0.045 - z0
+    vs = ellipsoid(bm, (0, cy, z0), (r0 + 0.006, ry0 + 0.006, hz), seg=32, rings=16, keep=lambda c: c.z > z0 - 0.004)
+    for v in vs:                                                                                  # flat-ish puffy top, fur lumps
+        if not v.is_valid: continue
+        rel = max(0.0, (v.co.z - z0) / hz); a = math.atan2(v.co.x, v.co.y - cy)
+        box = min(1.5, (max(0.0, 1 - rel ** 4)) ** 0.25 / max(0.05, math.sqrt(max(0.0, 1 - rel * rel))))   # straight sides, flat top
+        if rel > 0.8: v.co.z = z0 + hz * (0.8 + (rel - 0.8) * 0.5)
+        k = box * (1 + 0.03 * math.sin(7 * a + 5 * rel) * math.sin(11 * rel + 3 * a) + 0.025 * math.sin(19 * a + 13 * rel) * math.sin(23 * rel - 7 * a))   # fur tufts
+        v.co.x *= k; v.co.y = cy + (v.co.y - cy) * k
+    ring_pts = [Vector((math.sin(2 * math.pi * q / 40) * (r0 + 0.014), cy - math.cos(2 * math.pi * q / 40) * (ry0 + 0.014), z0 + 0.006)) for q in range(41)]
+    tube(bm, ring_pts, 0.025, seg=10)                                                             # fur roll
+    blob(bm, (0, cy - ry0 - 0.02, z0 + 0.045), 0.062, (1.15, 0.32, 0.72), seg=16, rings=10)      # front flap turned up
+    zf = z0 - 0.085                                                                               # ear flaps down, beside the ears
+    ex = max([abs(v.x) for v in H['hv'] if abs(v.z - zf) < 0.035] or [H['hx']])
+    for s in (1, -1):
+        res = bmesh.ops.create_uvsphere(bm, u_segments=14, v_segments=10, radius=1.0)
+        for v in res['verts']:
+            p = Vector((v.co.x * 0.020, v.co.y * 0.050, v.co.z * 0.080))
+            p.x += 0.035 * max(0.0, -v.co.z) * 0.35 + 0.004 * math.sin(9 * v.co.y + 4 * v.co.z)      # flares out at the bottom, soft lumps
+            v.co = Vector((s * (max(ex, r0 - 0.01) + 0.018 + p.x), cy + 0.008 + p.y, zf + 0.012 + p.z))
+        tube(bm, [Vector((s * (max(ex, r0 - 0.01) + 0.026), cy + 0.008, zf - 0.066 - 0.012 * q)) for q in range(5)], 0.0035, seg=6)   # ties
+    blob(bm, (0, cy - ry0 - 0.042, z0 + 0.05), 0.012, (1.2, 0.4, 1.2), seg=8, rings=6)          # tin star
+    mats = [fab('UshankaTop', '#7d6a52', 'knit'), fab('UshankaFur', '#a8916f', 'knit'), fab('UshankaStar', '#c42828', 'leather')]
     def mf(c):
-        if c.y < cy - ry0 - 0.004 and abs(c.z - z0 - 0.035) < 0.014: return 2
-        if c.z < z0 + 0.04 or abs(c.x) > r0 - 0.01: return 1
+        if c.y < cy - ry0 - 0.035 and abs(c.z - z0 - 0.05) < 0.014 and abs(c.x) < 0.016: return 2
+        if c.z < z0 + 0.032 or c.y < cy - ry0 - 0.005: return 1
         return 0
     return bm, mats, mf
+
+
+def hg_marks_old(H, C):
+    """age / battle marks as flat strips just above the face (no outline hull): scar over the left eye, nasolabial folds,
+    eye bags, forehead lines. Rigid on the head; the face atlas swap in the game keeps them."""
+    from head import feature_layout
+    bm = bmesh.new(); hs = H['hs']; fl = feature_layout(hs); zc = H['zc']
+    ex, ez, bz, nz, mz = fl['eye_x'] * hs, fl['eye_z'] * hs, fl['brow_z'] * hs, fl['nose_z'] * hs, fl['mouth_z'] * hs
+    def strip(pts, w, n=10):
+        P_ = []
+        for k in range(n + 1):                                    # Catmull-free: piecewise linear resample
+            u = k / n * (len(pts) - 1); i = min(int(u), len(pts) - 2); f = u - i
+            x = pts[i][0] * (1 - f) + pts[i + 1][0] * f; z = pts[i][1] * (1 - f) + pts[i + 1][1] * f
+            P_.append((x, z, w * (0.35 + 0.65 * math.sin(math.pi * k / n))))
+        prev = None
+        for k, (x, z, ww) in enumerate(P_):
+            j = min(k + 1, n); i0 = max(k - 1, 0)
+            tx, tz = P_[j][0] - P_[i0][0], P_[j][1] - P_[i0][1]; L = math.hypot(tx, tz) or 1; nx, nz_ = -tz / L * ww, tx / L * ww
+            pr = [bm.verts.new((x + sx * nx, H['face_y'](x + sx * nx, zc + z + sx * nz_) - 0.0009, zc + z + sx * nz_)) for sx in (-1, 1)]
+            if prev: bm.faces.new((prev[0], prev[1], pr[1], pr[0]))
+            prev = pr
+    groups = []
+    f0 = len(bm.faces)
+    strip([(ex + 0.012, bz + 0.022), (ex + 0.002, ez + 0.004), (ex - 0.010, ez - 0.038)], 0.0026, 12)     # scar
+    groups.append((f0, len(bm.faces), 1)); f0 = len(bm.faces)
+    for s in (1, -1):
+        strip([(s * 0.015, nz - 0.002), (s * 0.023, mz + 0.008), (s * 0.026, mz - 0.004)], 0.0010, 8)    # nasolabial
+        strip([(s * (ex - 0.017), ez - 0.024), (s * ex, ez - 0.030), (s * (ex + 0.016), ez - 0.024)], 0.0009, 8)  # eye bags
+        strip([(s * (ex + 0.031), ez + 0.004), (s * (ex + 0.036), ez - 0.002)], 0.0008, 3)              # crow's feet
+    for dz in (0.026, 0.040):
+        strip([(-0.030, bz + dz), (0, bz + dz + 0.003), (0.030, bz + dz)], 0.0008, 10)                  # forehead lines
+    f0 = len(bm.faces)
+    strip([(-0.026, nz - 0.020), (-0.012, nz - 0.011), (0.0, nz - 0.012), (0.012, nz - 0.011), (0.026, nz - 0.020)], 0.0042, 14)   # grey moustache
+    groups.append((f0, len(bm.faces), 2))
+    mats = [fab('MarksLine', '#5a4c48', 'leather'), fab('MarksScar', '#c9a8a0', 'leather'), fab('MarksMoustache', C.get('moustache', '#8e8c88'), 'knit')]
+    bm.faces.ensure_lookup_table(); bm.normal_update()
+    for f in bm.faces:
+        if f.normal.y > 0: f.normal_flip()
+    for a, b, m in groups:
+        for q in range(a, b): bm.faces[q].material_index = m
+    return bm, mats, None
 
 
 def hg_goggles(H, C):
@@ -296,7 +364,7 @@ def hg_halo(H, C):
     return bm, mats, lambda p: 1 if ((p - c).length > R + 0.008 or abs((p - c).length - R) < 0.0 ) else 0
 
 
-HEADGEAR = dict(visor=hg_visor, judge_mask=hg_judge_mask, judge_cap=hg_judge_cap, officer_cap=hg_officer_cap, helmet=hg_helmet, ushanka=hg_ushanka,
+HEADGEAR = dict(marks_old=hg_marks_old, visor=hg_visor, judge_mask=hg_judge_mask, judge_cap=hg_judge_cap, officer_cap=hg_officer_cap, helmet=hg_helmet, ushanka=hg_ushanka,
                 goggles=hg_goggles, grille=hg_grille, halo=hg_halo)
 
 
@@ -456,13 +524,27 @@ def make_extra(npc, hair=None):
     return extra
 
 
+def bias_face(body, keys):
+    """bake a fraction of the expression shape keys into the rest face (stern / tired / friendly look per NPC): every key block moves by the
+    same delta, so the morph targets stay the same and the game's face atlas swap keeps the look."""
+    kb = body.data.shape_keys.key_blocks; base = kb['Basis']; d = {}
+    for k, w in keys.items():
+        for i, (a, b) in enumerate(zip(kb[k].data, base.data)):
+            dv = a.co - b.co
+            if dv.length_squared > 1e-12: d[i] = d.get(i, Vector()) + dv * w
+    for blk in kb:
+        for i, dv in d.items(): blk.data[i].co += dv
+    for i, dv in d.items(): body.data.vertices[i].co += dv
+
+
 def build(nid):
     """fresh scene -> (P, arm, objs [body, hair?, parts...], clip names, springs) of NPCS[nid]"""
     import rig, anim, hair as hairmod
     cfg = NPCS[nid]; reset()
     hc = hairmod.HAIR_COLORS[cfg['hc']]
     P, arm, body, fixed = rig.build_body(cfg['sex'], skin=cfg['skin'], hair_rgb=hc, iris=cfg.get('iris', (0.25, 0.62, 0.75)))
-    names = anim.author(arm, P)
+    if cfg.get('face'): bias_face(body, cfg['face'])
+    names = anim.author(arm, P, gait=cfg.get('gait'))
     objs = [body]; sp = []; o = None
     if cfg.get('hair'): o, sp = hairmod.build_hair(cfg['hair'], arm, P, hc, hairmod.HAIR_TIPS[cfg['hc']]); objs.append(o)
     parts, sps = clothes.build_outfit(cfg['base'], body, arm, P, cfg['sex'], pal=cfg.get('pal'), extra=make_extra(cfg, o), prefix=nid)

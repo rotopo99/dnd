@@ -158,14 +158,14 @@
     "coat_0_0",
     "coat_0_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -174,14 +174,14 @@
     "coat_1_0",
     "coat_1_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -190,14 +190,14 @@
     "coat_2_0",
     "coat_2_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -206,14 +206,14 @@
     "coat_3_0",
     "coat_3_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -222,14 +222,14 @@
     "coat_4_0",
     "coat_4_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -238,14 +238,14 @@
     "coat_5_0",
     "coat_5_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -254,14 +254,14 @@
     "coat_6_0",
     "coat_6_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   },
   {
@@ -270,18 +270,18 @@
     "coat_7_0",
     "coat_7_1"
    ],
-   "stiffness": 0.5,
-   "gravityPower": 0.1,
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
    "gravityDir": [
     0,
     -1,
     0
    ],
-   "dragForce": 0.4,
+   "dragForce": 0.55,
    "hitRadius": 0.04
   }
  ],
- "triangles": 25432,
+ "triangles": 25600,
  "npc": "ladov",
  "hair": "short",
  "outfit": "uniform",

@@ -189,10 +189,12 @@ def clip_idle(f, n):
             'LAf': 6 + 2 * b, 'RAf': 10 + 2 * b, 'LAd': 74 + 1.2 * b, 'RAd': 72 + 1.2 * b, 'LEf': 24 + 3 * b, 'REf': 30 + 3 * b, 'grip': 0.3 + 0.05 * b2}
 
 
-def clip_walk(f, n, run=False, crouch=False):
+def clip_walk(f, n, run=False, crouch=False, robe=False):
+    """robe: shorter stride and back kick for long robes / coats (the hem follows the thighs; no boots through the cloth)."""
     t = 2 * math.pi * f / n; s, c = math.sin(t), math.cos(t)
     A = 52 if run else (20 if crouch else 28); K = 95 if run else (30 if crouch else 42)
     base = 62 if crouch else (10 if run else 0); kb = 100 if crouch else (20 if run else 8)
+    if robe and not crouch: A, K, base, kb = (30, 30, 6, 10) if run else (21, 28, 0, 8)
     p = dict(BASE)
     for sd, ph in (('L', 0.0), ('R', math.pi)):
         sn, cs = math.sin(t + ph), math.cos(t + ph)
@@ -256,8 +258,8 @@ def clip_talk(f, n):
     """Conversational loop: weight shift, right hand beats with an open palm, left hand half-raised, head nods on the beats."""
     t = 2 * math.pi * f / n; b = math.sin(t); beat = max(0.0, math.sin(3 * t)) ** 2; beat2 = max(0.0, math.sin(2 * t + 1.2)) ** 2
     p = clip_idle(f, n)
-    p.update({'RAd': 58 - 6 * beat, 'RAf': 26 + 10 * beat, 'RAc': 8, 'REd': 18 - 14 * beat, 'REf': 70 + 8 * beat, 'REc': -10 - 8 * beat,
-              'LAd': 66 - 5 * beat2, 'LAf': 18 + 6 * beat2, 'LEd': 40 - 10 * beat2, 'LEf': 60 + 6 * beat2, 'LEc': 6,
+    p.update({'RAd': 68 - 4 * beat, 'RAf': 24 + 10 * beat, 'RAc': 12, 'REd': 30 - 10 * beat, 'REf': 70 + 8 * beat, 'REc': 16 - 6 * beat,
+              'LAd': 72 - 4 * beat2, 'LAf': 16 + 6 * beat2, 'LEd': 46 - 8 * beat2, 'LEf': 58 + 6 * beat2, 'LEc': 18,
               'head_rx': 2 + 5 * beat - 2 * b, 'head_ry': 6 * math.sin(t + 0.5), 'head_rz': 2 + 2 * math.sin(t * 2),
               'chest_ry': -4 + 4 * math.sin(t), 'chest_rx': 2 + 1.5 * beat, 'grip': 0.12 + 0.1 * beat, 'Rs': 2 * beat})
     return p
@@ -293,8 +295,8 @@ def clip_idle_2h(f, n):
     return p
 
 
-def clip_walk_2h(f, n, run=False):
-    p = clip_walk(f, n, run=run); t = 2 * math.pi * f / n; s = math.sin(t)
+def clip_walk_2h(f, n, run=False, robe=False):
+    p = clip_walk(f, n, run=run, robe=robe); t = 2 * math.pi * f / n; s = math.sin(t)
     p.update(PORT if run else LOW)
     p['chest_rz'] = -(4 if run else 3) * s; p['hips_rz'] = (8 if run else 5) * s; p['head_rz'] = -0.5 * p['chest_rz']
     p['gz'] += (0.012 if run else 0.006) * math.cos(2 * t); p['w_pitch'] += (3 if run else 2) * math.sin(2 * t)
@@ -330,8 +332,9 @@ def keys_attack_2h():
     return [(0, g0), (10, wind), (16, top), (22, hit), (28, foll), (44, g0)]
 
 
-def author(arm, P):
-    """creates all actions on the armature (no NLA); returns names."""
+def author(arm, P, gait=None):
+    """creates all actions on the armature (no NLA); returns names. gait='robe': shorter walk / run strides (long robes, coats)."""
+    rb = gait == 'robe'
     rig = Rig(arm, P); names = []
     def run(name, n, fn, loop=True):
         act = new_action(arm, name)
@@ -340,14 +343,14 @@ def author(arm, P):
         act.use_frame_range = True; act['loop'] = loop
         names.append(name)
     run('idle', 60, lambda f: clip_idle(f, 60))
-    run('walk', 32, lambda f: clip_walk(f, 32))
-    run('run', 24, lambda f: clip_walk(f, 24, run=True))
+    run('walk', 32, lambda f: clip_walk(f, 32, robe=rb))
+    run('run', 24, lambda f: clip_walk(f, 24, run=True, robe=rb))
     run('crouch_walk', 36, lambda f: clip_walk(f, 36, crouch=True))
     run('talk', 90, lambda f: clip_talk(f, 90))
     run('sit', 90, lambda f: clip_sit(f, 90))
     run('idle_2h', 60, lambda f: clip_idle_2h(f, 60))
-    run('walk_2h', 32, lambda f: clip_walk_2h(f, 32))
-    run('run_2h', 24, lambda f: clip_walk_2h(f, 24, run=True))
+    run('walk_2h', 32, lambda f: clip_walk_2h(f, 32, robe=rb))
+    run('run_2h', 24, lambda f: clip_walk_2h(f, 24, run=True, robe=rb))
     run('aim_2h', 40, lambda f: clip_aim_2h(f, 40))
     for name, keys, n in (('shrug', keys_shrug(), 36), ('attack_melee', keys_attack_melee(), 40), ('attack_shoot', keys_attack_shoot(), 42), ('cast', keys_cast(), 58), ('hit', keys_hit(), 20), ('death', keys_death(), 50), ('shoot_2h', keys_shoot_2h(), 20), ('attack_2h', keys_attack_2h(), 44)):
         run(name, n, lambda f, keys=keys: interp(keys, f), loop=False)
