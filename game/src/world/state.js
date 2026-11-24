@@ -29,6 +29,7 @@ import { romanceDeed } from './romance.js';
 import { coopCount } from './coop.js';
 import { W3_COUNTERS, WAVE3_RULES as W3R } from '../data/world/quests-wave3.js';
 import { CINE_RULES } from '../data/cinematics/index.js';
+import { dossierPoints } from './dossier.js';
 
 export const MAX_PARTY = 3; // legacy default: companions besides the hero (real limit — squadMax(save) − 1)
 export { levelForXp };
@@ -336,6 +337,11 @@ export function requiresOk(save, req, data = GAME_DATA) {
     if ((req.ctr.min != null && v < req.ctr.min) || (req.ctr.max != null && v > req.ctr.max)) return false;
   }
   if (req.rel && relOf(save, req.rel.npc) < (req.rel.min ?? -Infinity)) return false;
+  // content-wave4.md §1: { dossier: { min?, max? } } — points of the court dossier (world/dossier.js, live from flags)
+  if (req.dossier) {
+    const v = dossierPoints(save);
+    if ((req.dossier.min != null && v < req.dossier.min) || (req.dossier.max != null && v > req.dossier.max)) return false;
+  }
   // { questDays: { id, stage, min } } — ≥ min days since the quest entered `stage` (quests.js st.at; unknown — passed: old saves)
   if (req.questDays) {
     const at = save.quests?.[req.questDays.id]?.at?.[req.questDays.stage];

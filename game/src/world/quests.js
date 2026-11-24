@@ -37,7 +37,8 @@ import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
-import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag } from './cine-hooks.js';
+import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag, CINE_RESULT_SOFTEN } from './cine-hooks.js';
+import { dossierDc, courtLimits, applyDossier } from './dossier.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -156,6 +157,7 @@ export function startQuest(save, id) {
 function enterStage(save, qid, stageId, via = null) {
   const q = QUESTS[qid], st = save.quests[qid];
   findsAt(save, `stage:${qid}/${stageId}`);
+  if (stageDef(q, stageId)?.dossier) applyDossier(save); // content-wave4.md §1: the court reads the dossier on entry
   if (via !== 'cine') cineStage(save, qid, stageId); // cinematics.md: stage flags + queued scenes (mq3-court/inside -> c6, c4)
   else st.via = stageId;
   if (q.timer && q.timer.stage === stageId && st.due == null) st.due = save.day + q.timer.days;
@@ -237,11 +239,18 @@ export function allNeed(save, g) {
   return g.goals.length;
 }
 
-/** DC of a check / challenge goal: v3 easeBy — every set flag from the list lowers the DC by 1 ({flag, n} — by n). */
+/**
+ * DC of a check / challenge goal: v3 easeBy — every set flag from the list lowers the DC by 1 ({flag, n} — by n).
+ * content-wave4.md §1: dcFrom 'dossier' — the DC comes from the dossier (easeBy stays as data, not applied);
+ * dossierPer N — easeBy, then −1 per N dossier points.
+ */
 export function goalDc(save, goal) {
+  if (goal.dcFrom === 'dossier') return dossierDc(save, goal);
   const ease = (goal.easeBy || []).reduce((a, f) => a + (typeof f === 'string' ? (save.flags[f] ? 1 : 0) : (save.flags[f.flag] ? f.n ?? 1 : 0)), 0);
-  return (goal.dc || 0) - ease;
+  return goal.dossierPer ? dossierDc(save, goal, (goal.dc || 0) - ease) : (goal.dc || 0) - ease;
 }
+/** Successes / failures of a challenge goal (content-wave4.md: the court by the dossier and the c11 consent). */
+export const goalLimits = (save, goal) => courtLimits(save, goal);
 
 const subDone = (save, st, sg, i) => st.subs[i] === true || st.subs[i] === 'failed' || (sg.doneFlag && save.flags[sg.doneFlag]);
 const slotKey = (slot) => `${slot.stage.id}:${slot.sub ?? '-'}:${slot.option?.id ?? '-'}`;
@@ -349,7 +358,10 @@ export function cineResult(save, result, ctr = {}, data = null, id = null) {
   }
   for (const key of Object.keys(CINE_RESULT_NEXT)) {
     const [qid, sid] = key.split('/');
-    const st = save.quests[qid], next = cineResultStage(qid, sid, result);
+    const st = save.quests[qid];
+    let next = cineResultStage(qid, sid, result);
+    const soft = CINE_RESULT_SOFTEN[next]; // content-wave4.md §1: a thick dossier turns the hard Judge fight into the usual one
+    if (soft && save.flags?.[soft.flag]) next = soft.to;
     if (!next || st?.state !== 'active' || st.stage !== sid) continue;
     out.push(...toStage(save, qid, next, data, 'cine'));
   }

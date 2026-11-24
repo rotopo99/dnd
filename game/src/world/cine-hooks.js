@@ -38,6 +38,8 @@ export const CINE_RESULT_NEXT = {
   // content-wave3.md §2: c10 vote won -> the council takes Harmony; draw -> the hero picks one of three flags
   'w3-flags/debate': { 'c10-council': 'council-won', 'c10-draw': 'debate-lost' },
 };
+// content-wave4.md §1: a result stage replaced while a flag stands (dossier ≥ 6 — the Judge fights without his edge).
+export const CINE_RESULT_SOFTEN = { 'judge-fight-hard': { flag: 'dossier-6', to: 'judge-fight' } };
 // Side effects of a result (quests.js cineResult): flags; ctrFlags {counter: flag} — set when the scene counter ≥ 1;
 // dead — the companion dies in the scene (leaves the party for good, save.npcs[id].dead).
 export const CINE_RESULT_FX = {

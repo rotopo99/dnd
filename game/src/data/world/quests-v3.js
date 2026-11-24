@@ -139,13 +139,15 @@ const LIST = [
     ],
     { xp: 900, rep: { cult: -20 }, flags: ['arsenal-sealed'] }, { key: true, requires: { flag: 'act2-done' } }),
 
-  Q('mq3-court', 'Суд', 'mixed', 'cult', 'sera', 5,
+  // content-wave4.md G11: the finale is a level 18 quest after «Последняя ночь» (mq4-eve, quests-wave4.js)
+  Q('mq3-court', 'Суд', 'mixed', 'cult', 'sera', 18,
     'Дверь у маркера «Киберспейс» открыта. Войти, выстоять суд Судьи и решить судьбу Киберспейса.',
     [
       st('door', 'Штурм Двери с союзниками.', fight('enc-kiberspeys-door', 'kiberspeys'), 'inside'),
       // content-wave2.md §1: c4 (cine-hooks CINE_RESULT_NEXT) moves the quest from 'inside' by its result; the challenge is the fallback
-      st('inside', 'Киберспейс. Суд над «идеальным телом».', { kind: 'challenge', skills: ['persuasion', 'judge', 'meditation', 'religion'], dc: 17, successes: 5, failures: 3, onFail: 'judge-fight',
-        easeBy: ['victor-soul-freed', 'saved-people', 'saved-terminal', 'arsenal-sealed', 'burner-off', 'lox-alive-door'] }, 'verdict'),
+      // content-wave4.md §1: the DC comes from the dossier (dcFrom; easeBy — the old list, kept as data); dossier: snapshot on entry
+      { ...st('inside', 'Киберспейс. Суд над «идеальным телом». Досье защиты приобщено к делу.', { kind: 'challenge', skills: ['persuasion', 'judge', 'meditation', 'religion'], dc: 17, successes: 5, failures: 3, onFail: 'judge-fight',
+        dcFrom: 'dossier', easeBy: ['victor-soul-freed', 'saved-people', 'saved-terminal', 'arsenal-sealed', 'burner-off', 'lox-alive-door'] }, 'verdict'), dossier: true },
       st('judge-fight', 'Приговор вынесен. Бой с Судьёй.', fight('enc-judge', 'kiberspeys'), 'verdict'),
       st('judge-fight-hard', 'Суд проигран. Судья исполняет приговор лично.', { ...fight('enc-judge-hard', 'kiberspeys'), onFail: 'crushed' }, 'verdict'),
       st('verdict', 'Финал.', choice(
@@ -165,7 +167,7 @@ const LIST = [
         opt('oldgod', '«Старый бог»: прокси-буря по всему миру.', null, { flags: ['ending-oldgod'] }, null, { flag: 'sputnik-owner-tekhonki' }),
       ), 'done'),
     ],
-    { xp: 1000, flags: ['game-complete'] }, { key: true, requires: { flag: 'act2-done' } }),
+    { xp: 1000, flags: ['game-complete'] }, { key: true, requires: { flags: ['act2-done', 'eve-done'] } }),
 
   // ============================================================ ЦЕПОЧКИ АВТОРСКИХ МАРКЕРОВ
   Q('ch3-kalostok', 'Калостокский треугольник', 'mixed', 'neutralVillages', 'kl-sulema', 3,

@@ -25,7 +25,7 @@ import { exodusSync, passDays, serviceOff, tollMult, exodusRumor } from '../worl
 import { EXODUS_UI } from '../data/text/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { startExodusZero } from './exodus-zero.js';
-import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, pendingTurnins, allSlots, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
+import { questsOffered, slotsAt, onBattleWon, completeSlot, chooseOption, failSlot, autoProgress, availableOptions, goalDc, goalLimits, pendingTurnins, allSlots, claimTurnin, turninFallback, turninLines } from '../world/quests.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { createDialogueScene } from './dialogue.js';
 import { heroBuild } from '../ui/portrait-of.js';
@@ -227,8 +227,9 @@ export function createLocationScene(rawId, opts = {}) {
           onDone: (g2, ok) => { if (ok) findsAt(sv, `scene:${questScene(s).key}`); return ok ? done(g2) : failed(g2); } }) };
     }
     if (goal.kind === 'challenge') {
-      return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.successes}/${goal.failures} · ${t('battle.dc')} ${goalDc(sv, goal)}`,
-        run: (g) => openChallenge(g, { title: q.name, skills: goal.skills, dc: goalDc(sv, goal), successes: goal.successes, failures: goal.failures, members: ms(g),
+      const lim = goalLimits(sv, goal); // content-wave4.md §1: the court dossier / c11 consent move the limits
+      return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${lim.successes}/${lim.failures} · ${t('battle.dc')} ${goalDc(sv, goal)}`,
+        run: (g) => openChallenge(g, { title: q.name, skills: goal.skills, dc: goalDc(sv, goal), successes: lim.successes, failures: lim.failures, members: ms(g),
           forgiveFirst: hasFlagInParty(sv, g.data, 'challenge-forgive'), onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
     if (goal.kind === 'pay') {

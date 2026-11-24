@@ -17,6 +17,7 @@ import { findsAt } from './lore.js';
 
 export { CQ_FLAG };
 export const EPI_MAX = 12;           // spec: no more than 12 slides by prio (intro and outro always)
+export const EPI_MAX_FINAL = 18;     // content-wave4.md §4: after the finale (game-complete) — up to 18
 export const CQ_TOASTS = 3;          // spec: max 3 toast lines per quest
 export const VENDOR_MULT = [0.7, 1.5];
 export const FINAL_FLAG = 'game-complete'; // mq3-court rewards — the finale opens the epilogue
@@ -210,7 +211,7 @@ export function cqDetail(e) {
 }
 
 /** Epilogue slides by flags: when.all / any / not; ≤ EPI_MAX by prio, shown by order; intro and outro always. */
-export function epilogueSlides(save, max = EPI_MAX) {
+export function epilogueSlides(save, max = save?.flags?.[FINAL_FLAG] ? EPI_MAX_FINAL : EPI_MAX) {
   const f = save?.flags || {};
   const ok = (w = {}) => (!w.all || w.all.every((x) => f[x])) && (!w.any || w.any.some((x) => f[x])) && (!w.not || !w.not.some((x) => f[x]))
     && (!w.rel || Object.entries(w.rel).every(([n, v]) => (save.cine?.rel?.[n] || 0) >= v)); // content-wave3.md: liza-keys at rel 5

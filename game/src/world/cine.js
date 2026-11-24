@@ -15,6 +15,7 @@ import { CINE_RULES, SHOT_FRAMES, SHOT_MOVES, CLIPS, EMOS } from '../data/cinema
 import { CINE_VIEW, CINE_SKILL_ALIAS } from '../data/cine-play.js';
 import { t } from '../data/text/index.js';
 import { cineResult } from './quests.js';
+import { dossierPoints } from './dossier.js';
 
 const tf = (k, v = {}) => t(k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -50,11 +51,12 @@ export function condOk(R, c) {
   return true;
 }
 
-/** Check DC: base + Σ mod (ctr: value × dc, flag: dc when set); at least 2. */
+/** Check DC: base + Σ mod (ctr: value × dc, flag: dc when set, dossier N: dc per N court dossier points); at least 2. */
 export function checkDc(R, c) {
   let dc = c.dc;
   for (const m of c.mod || []) {
     if (m.ctr) dc += (R.ctr[m.ctr] || 0) * m.dc;
+    else if (m.dossier) dc += (R.save ? Math.floor(dossierPoints(R.save) / m.dossier) : 0) * m.dc; // content-wave4.md §1
     else if (m.flag && hasFlag(R, m.flag)) dc += m.dc;
   }
   return Math.max(2, dc);

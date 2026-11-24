@@ -2722,7 +2722,7 @@ console.log('base / backstories / neutral / skill uses 2');
     finish(s, 'mq3-court', ['verdict', 'vessel']);
     const sl = CQ.epilogueSlides(s);
     assert.ok(sl.some((x) => x.id === 'court-vessel'));
-    assert.ok(sl.length <= 12);
+    assert.ok(sl.length <= 18 + 3, 'content-wave4: ≤ 18 after the finale (+ romance)');
     assert.equal(sl[0].id, 'epi-intro');
     assert.equal(sl.at(-1).id, 'epi-outro');
     assert.ok(s.flags['game-complete'] && s.pendingEpilogue);
@@ -6462,6 +6462,53 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(!QA.offeredQuests(s, GAME_DATA, NR.liza || { id: 'liza' }).some((q) => q.id === 'w3-liza'));
     s.hero.level = 6;
     assert.ok(QA.offeredQuests(s, GAME_DATA, NR.liza || { id: 'liza' }).some((q) => q.id === 'w3-liza'));
+  });
+}
+// ---------------------------------------------------------------- content-wave4.md §1: dossier «защита по форме»
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const DS = await import('../game/src/world/dossier.js');
+  const { DOSSIER, DOSSIER_RULES } = await import('../game/src/data/world/dossier.js');
+  const { QUESTS: QW } = await import('../game/src/world/data.js');
+  const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act2-done': true }, flags); return s; };
+  const inside = () => QW['mq3-court'].stages.find((x) => x.id === 'inside').goal;
+  test('wave4 dossier: every row counts its points; consent-torn voids the dawn blank; cap 12', () => {
+    for (const r of DOSSIER) {
+      const s = mk();
+      if (r.flag) s.flags[r.flag] = true; else if (r.any) s.flags[r.any[0]] = true;
+      assert.equal(DS.dossierPoints(s), r.pts, r.id);
+    }
+    const it = mk(); it.hero.items['dawn-schematic'] = 1; assert.equal(DS.dossierPoints(it), 2, 'dawn-schematic item');
+    it.flags['consent-torn'] = true; assert.equal(DS.dossierPoints(it), 0, 'torn blank');
+    const all = mk(Object.fromEntries(DOSSIER.flatMap((r) => [r.flag, ...(r.any || [])]).filter(Boolean).map((f) => [f, true])));
+    assert.equal(DS.dossierPoints(all), DOSSIER_RULES.cap);
+    const w = mk(); st.recruit(w, 'telifon'); w.party.find((p) => p.npc === 'telifon').approval = 40;
+    assert.equal(DS.dossierPoints(w), 1, 'telifon witness');
+  });
+  test('wave4 dossier: inside DC 17 at 0, 11 at 12; failures 3 -> 4 at ≥ 6; court-proof at ≥ 8 on entry', () => {
+    assert.equal(QS.goalDc(mk(), inside()), 17);
+    const full = mk(Object.fromEntries(DOSSIER.map((r) => [r.flag || r.any[0], true])));
+    assert.equal(QS.goalDc(full, inside()), 11);
+    const six = mk({ 'truth-harmony-public': true, 'ladov-named': true, 'consent-known': true });
+    assert.equal(DS.dossierPoints(six), 6);
+    assert.equal(QS.goalDc(six, inside()), 14);
+    assert.deepEqual(QS.goalLimits(six, inside()), { successes: 5, failures: 4 });
+    assert.deepEqual(QS.goalLimits(mk({ 'judge-has-signature': true }), inside()), { successes: 5, failures: 2 });
+    assert.deepEqual(QS.goalLimits(mk({ 'consent-torn': true }), inside()), { successes: 4, failures: 3 });
+    const eight = mk({ 'truth-harmony-public': true, 'ladov-named': true, 'consent-known': true, 'dawn-archive': true });
+    QS.startQuest(eight, 'mq3-court'); QS.onBattleWon(eight, 'enc-kiberspeys-door', 'kiberspeys', GAME_DATA);
+    assert.equal(eight.quests['mq3-court'].stage, 'inside');
+    assert.ok(eight.flags['court-proof'] && eight.flags['dossier-8'] && eight.dossier === 8);
+    // ≥ 6: court-lost -> the usual Judge fight
+    QS.cineResult(eight, 'court-lost', {}, GAME_DATA);
+    assert.equal(eight.quests['mq3-court'].stage, 'judge-fight');
+  });
+  test('wave4 G11: mq3-court is level 18 and waits for eve-done', () => {
+    assert.equal(QW['mq3-court'].level, 18);
+    const s = mk(); assert.ok(!st.requiresOk(s, QW['mq3-court'].requires));
+    s.flags['eve-done'] = true; assert.ok(st.requiresOk(s, QW['mq3-court'].requires));
+    assert.ok(st.requiresOk(mk({ 'ladov-named': true }), { dossier: { min: 2 } }) && !st.requiresOk(mk(), { dossier: { min: 1 } }));
   });
 }
 console.log(`\n${passed} passed, ${failed} failed`);
