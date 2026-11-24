@@ -32,9 +32,13 @@ export const WAVE4_RULES = {
   // balance-finale.md §1: потолок флагов на волну — союзных юнитов и залпов; лишние флаги — только тост.
   // Приоритет — снизу вверх по строкам EVE_MODS (нижняя строка первой).
   allyCap: { units: 1, volleys: 2 },
-  // balance-finale.md §3: отряд из ≤ size — союзник(и) и −ЗДР боссам в поздних боях (вне allyCap; 2 героя — 2 союзника)
+  // balance-finale.md §3: отряд из ≤ size — −ЗДР боссам в поздних боях (enc); союзник(и) — только в allyEnc (Жрец, Судья;
+  // решение режиссёра 2026-11-24: на волнах mq4-eve и у Собирателя союзник делал партию 3 легче партии 4). Вне allyCap.
   smallParty: { size: 3, ally: 'wp-vet-l16', count: 1, countBySize: { 2: 2, 1: 2 }, bossHpPct: 0.9,
-    enc: ['w-eve-1', 'w-eve-2', 'w-eve-3', 'enc-cyber-priest-strong', 'v4-boss-cyber-priest', 'v4-boss-collector', 'w-cc-finale'] },
+    enc: ['w-eve-1', 'w-eve-2', 'w-eve-3', 'enc-cyber-priest-strong', 'v4-boss-cyber-priest', 'v4-boss-collector', 'w-cc-finale'],
+    allyEnc: ['enc-cyber-priest-strong', 'v4-boss-cyber-priest', 'w-cc-finale'],
+    // без союзника партия 3 на волнах (боссов нет) — цепочка 33%, у Собирателя 35–42%: ЗДР не-боссов волн и свиты Собирателя
+    foeHpPct: { 'w-eve-1': 0.75, 'w-eve-2': 0.75, 'w-eve-3': 0.75, 'v4-boss-collector': 0.7 } },
   terminalRevivePct: 0.25, // saved-terminal: терминал хаба поднимает первого павшего (1 раз за миссию, флаг eve-revive-used)
   ladovWave: 'w-eve-2',  // ladov-named: Предложка приходит строем на одну волну
   card: { free: 5, together: 2, stay: -3, devotedAt: 60 }, // «Последняя ночь»: лояльность по выбору (devoted: «Останься» — 0)

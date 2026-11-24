@@ -17,6 +17,7 @@ import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHe
 import { drawObjectiveMarkers, drawObjectivePanel, objectiveStripBottom } from './battle-objectives.js';
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
+import { unitAuras } from '../rules/battle-triggers.js';
 import { battle3d, drawBattle3d, cellScreen, unitScreen, camButtons } from '../gfx/scene3d.js';
 import { drawMovePath2d, movePathOverlay3d, drawMovePill, aimShapes } from './move-path.js';
 import { budgetM } from '../rules/metric.js';
@@ -475,9 +476,10 @@ function drawUnits(ctx, S, preview, tms) {
     // status icons (Stage B: palette colour per status, max 4, then «+N»)
     let sx = bx;
     const pip = 14; // pixel icons (assets/status-icons.js), bare 14x14 with outline; 3 fit the bar, then «+N»
-    u.statuses.forEach((s, i) => {
+    const icons = [...unitAuras(b, u), ...u.statuses]; // boss phase auras first (balance-finale.md)
+    icons.forEach((s, i) => {
       if (i > 3 || sx + pip > bx + bw + 2) return;
-      if (i === 3 && u.statuses.length > 3) { text(ctx, `+${u.statuses.length - 3}`, sx, by - pip - 2, C['5'], '10px monospace'); return; }
+      if (i === 3 && icons.length > 3) { text(ctx, `+${icons.length - 3}`, sx, by - pip - 2, C['5'], '10px monospace'); return; }
       drawStatusIcon(ctx, s.id, sx, by - pip - 2, pip, { bare: true });
       sx += pip;
     });

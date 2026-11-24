@@ -201,6 +201,9 @@ function voxOf(u) {
   return { gender: u.look?.gender || (Math.abs(h) % 10 < 4 ? 'f' : 'm'), race: u.raceId || 'human' };
 }
 
+/** Trigger ids of boss phases (data/enemies-v4.js BOSS_PHASES: '<boss>-p2|p3'). */
+export const PHASE_ID = /-p(\d)$/;
+
 export function eventSound(S, e) {
   const b = S.b;
   switch (e.type) {
@@ -234,7 +237,9 @@ export function eventSound(S, e) {
     case 'objectLoot': play('loot', { rarity: 'common' }); break;
     case 'chestOpen': if (e.success) play('loot', { rarity: 'rare' }); break;
     case 'broken': play('debuff'); break;
-    case 'summon': play('summon'); break;
+    case 'summon': play(e.spawn && !e.prop ? 'phaseSpawn' : 'summon'); break; // trigger spawn (boss phase) vs ability summon
+    case 'trigger': if (PHASE_ID.test(e.id || '')) play('phaseChange'); break; // balance-finale.md boss phase
+    case 'aura': if (e.on && e.id === 'choir-shield') play('choirAura'); break;
     case 'overcast': play('overcast'); break;
     case 'trapTriggered': play('hit'); break;
     case 'surfaceCombo': play(e.result === 'explosion' ? 'crit' : e.result === 'electrify' || e.result === 'overvolt' ? 'electric' : e.result === 'burnout' || e.result === 'cringeProxy' ? 'cringe' : e.result === 'steam' || e.result === 'dissolve' ? 'toxin' : 'fire'); break;

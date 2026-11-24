@@ -3,7 +3,7 @@
 // (colour-blind safe); colour only reinforces it. statusIcon(id) -> 16x16 canvas: glyph on a dark plate with a frame
 // (buff = green frame, debuff = red frame, neutral/surface = glyph colour). { bare: true } -> 14x14 glyph with a black
 // outline (for the small overhead pips). Ids: status id | 'surface:<id>' | 'tmp' | 'cover-half' | 'cover-full' |
-// 'height' | 'intent:<melee|ranged|zone|heal|buff|flee|summon>'.
+// 'height' | 'intent:<melee|ranged|zone|heal|buff|flee|summon>' | 'aura:<choir-shield|exhibits|empty-shelf>'.
 import { PALETTE, PALETTE_KEYS } from './sprites.js';
 import { STATUSES } from '../data/effects.js';
 
@@ -86,6 +86,10 @@ const RAW = {
   'intent:buff': ['.....jj.....', '....jjjj....', '...jjjjjj...', '..jjjjjjjj..', '.jjjjjjjjjj.', '....jjjj....', '....jjjj....', '....jjjj....', '....jjjj....', '............', '............', '............'],
   'intent:flee': ['....5.......', '...55.......', '..555.......', '.55555555555', '..555.....55', '...55.....55', '....5.....55', '..........55', '..........55', '.....55555..'.slice(0, 12), '............', '............'],
   'intent:summon': ['....ffff....', '..ff....ff..', '.f..f55f..f.', 'f...f55f...f', 'f.ff5555ff.f', 'f...f55f...f', '.f..f55f..f.', '..ff....ff..', '....ffff....', '............', '............', '............'],
+  // ---- boss phase auras (balance-finale.md; rules/battle-triggers.js aura ops): 'aura:<id>'
+  'aura:choir-shield': ['.hhhhhhhhhh.', '.hhhhh55hhh.', '.hhhhh5h5hh.', '.hhhhh5hh5h.', '.hhhhh5hhhh.', '.hhh555hhhh.', '.hh5555hhhh.', '..hh55hhhh..', '...hhhhhh...', '....hhhh....', '.....hh.....', '............'],
+  'aura:exhibits': ['bbbbbbbbbbbb', 'b4444444444b', 'b44nn44nn44b', 'b444nnnn444b', 'b444n55n444b', 'b444nnnn444b', 'b4444nn4444b', 'b444nnnn444b', 'b444n44n444b', 'b4444444444b', 'bbbbbbbbbbbb', '..b......b..'],
+  'aura:empty-shelf': ['666666666666', '6..........6', '6..........6', '666666666666', '6...5555...6', '6..5c55c5..6', '6..555555..6', '6...5..5...6', '666666666666', '6..........6', '6..........6', '666666666666'],
   // ---- free-map objects (ui/roam-highlight.js): drawn bare over the object
   'obj:coin': ['....bbbb....', '..bbbbbbbb..', '.bbaaaaaabb.', '.ba5bbbbbab.', 'bba5bbbbbabb', 'bba5bbbbbabb', 'bbabbbbbbabb', 'bbabbbbbbabb', '.babbbbbbab.', '.bbaaaaaabb.', '..bbbbbbbb..', '....bbbb....'],
   'obj:crate': ['............', '.6666666666.', '.6888888886.', '.6877777786.', '.6878888786.', '.6666666666.', '.6888888886.', '.6878hh8786.', '.6878hh8786.', '.6877777786.', '.6666666666.', '............'],
@@ -133,6 +137,7 @@ function mk(w, h) {
 
 function frameColor(id) {
   if (id.startsWith('surface:')) return null;
+  if (id.startsWith('aura:')) return 'c'; // a boss aura — a threat to the party
   const k = kindOf(id);
   return k === 'buff' ? 'j' : k === 'debuff' ? 'c' : '4';
 }

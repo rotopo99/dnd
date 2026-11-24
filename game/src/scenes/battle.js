@@ -25,7 +25,7 @@ import { combatMetric, gfxPrefs } from '../gfx/settings.js';
 import { CELL_M, dispPos, navPath, budgetM, posM } from '../rules/metric.js';
 import { METRIC } from '../data/combat.js';
 import { ambBiome, stepSurface } from '../ui/field-view.js';
-import { formatEvent, eventSound, teamColor } from '../ui/battle-log.js';
+import { formatEvent, eventSound, teamColor, PHASE_ID } from '../ui/battle-log.js';
 import { createScroll, updateScroll } from '../ui/scroll.js';
 import { ITEMS } from '../data/index.js';
 import { PACE } from '../data/combat.js';
@@ -931,6 +931,11 @@ export function createBattleScene(opts) {
       case 'unsummon': if (T) dispOf(T).fade = 1; break;
       case 'summon': if (T) { const d = addDisp(T); d.x = e.x; d.y = e.y; } break;
       case 'triggerLog': if (A && e.bark) bubble(A, e.bark, true); if (A && e.phase) emote(A, 'angry'); break; // balance-finale.md boss phase
+      case 'trigger': { // balance-finale.md: a boss phase — a toast «Фаза N: …»
+        const m = PHASE_ID.exec(e.id || ''), name = m && t(`phase.${e.id}`);
+        if (name && name !== `phase.${e.id}`) S.game?.toast?.(t('phase.toast').replace('{n}', m[1]).replace('{name}', name), 'c');
+        break;
+      }
       case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? C.j : C.a); break;
       case 'turnStart': {
         const bk = A && opts.barks ? opts.barks[String(A.enemyId || '').split('^')[0]] : null;

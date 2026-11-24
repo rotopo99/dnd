@@ -159,6 +159,25 @@ const SOUNDS = {
     tone({ type: 'sawtooth', f: NOTE(-18), at: 0.1, dur: 0.22, peak: 0.14, filter: f }); // Eb3 (tritone)
     tone({ type: 'sine', f: NOTE(-30), at: 0.1, dur: 0.25, peak: 0.15 });
   },
+  // balance-finale.md boss phases: phase change (low brass hit + rising sweep), choir aura (low vocal pad), phase spawn
+  phaseChange() {
+    const f = { type: 'lowpass', f: 900, f1: 2400, q: 3 };
+    tone({ type: 'sawtooth', f: NOTE(-24), dur: 0.55, peak: 0.2, attack: 0.01, filter: f }); // A2
+    tone({ type: 'sawtooth', f: NOTE(-18), dur: 0.55, peak: 0.12, attack: 0.01, filter: f, detune: 8 }); // Eb3 tritone
+    tone({ type: 'sine', f: 70, f1: 40, dur: 0.5, peak: 0.3 });
+    noise({ type: 'bandpass', f: 400, f1: 3000, q: 1.5, at: 0.05, dur: 0.45, peak: 0.08, attack: 0.2 });
+  },
+  choirAura() {
+    // «ааа» of the choir: detuned saws through a vowel-like bandpass, slow attack
+    for (const [s, d] of [[-21, -7], [-14, 6], [-9, -4]]) // C3, G3, C4 minor-ish stack
+      tone({ type: 'sawtooth', f: NOTE(s), dur: 1.4, peak: 0.07, attack: 0.45, detune: d, vib: { rate: 5, depth: 3 }, filter: { type: 'bandpass', f: 700, q: 4 } });
+    tone({ type: 'sine', f: NOTE(-33), dur: 1.4, peak: 0.12, attack: 0.4 });
+  },
+  phaseSpawn() {
+    noise({ type: 'bandpass', f: 1800, f1: 300, q: 3, dur: 0.3, peak: 0.16, attack: 0.002, sat: true }); // digital tear
+    steps([NOTE(15), NOTE(8), NOTE(3)], 0.05, { type: 'square', peak: 0.07 });
+    tone({ type: 'sine', f: 140, f1: 60, at: 0.12, dur: 0.25, peak: 0.22 }); // landing thud
+  },
   // opts: { dmgType, weapon?: swing type, armor?: 'cloth'|'leather'|'metal'|'fur', vox?: {gender, race} (grunt) }
   hit(opts = {}) {
     if (opts.weapon) FOLEY.swing({ weapon: opts.weapon });

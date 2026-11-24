@@ -30,6 +30,9 @@ for (const [enc, boss, tags] of [['enc-cyber-priest-strong', 'boss-cyber-priest-
   }, { boss, pct });
   await step(0.6);
   ok(await until((t) => window.__game.scene.S.b.units.some((u) => u.trigTag === t), tags[0], 20000), `${enc}: phase 2 spawned ${tags[0]}`);
+  ok(await until(() => [...window.__game.toasts, ...(window.__game.toastsHeld || [])].some((x) => x.text.startsWith('Фаза 2')), null, 5000), `${enc}: toast «Фаза 2: …»`);
+  ok(await page.evaluate(async (boss) => { const { unitAuras } = await import('/game/src/rules/battle-triggers.js'); const b = window.__game.scene.S.b;
+    return unitAuras(b, b.units.find((u) => String(u.enemyId).startsWith(boss))).length > 0; }, boss), `${enc}: boss aura icon active`);
   await wait(800); await shot(`boss-phase-${boss}-2`);
   await step(0.3);
   ok(await until((t) => window.__game.scene.S.b.units.some((u) => u.trigTag === t), tags[1], 20000), `${enc}: phase 3 prop ${tags[1]}`);

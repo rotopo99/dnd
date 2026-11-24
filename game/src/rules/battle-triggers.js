@@ -24,7 +24,7 @@
 // Extra triggers may come from the battle options (createBattle `triggers`, content-wave4.md mq4-eve waves); a trigger's
 // `flag` is not read here — the world reads fired triggers after the battle (scenes/world-battle.js).
 // Events are only noted while emitted (triggerEvent); ops run at safe points (runTriggers: end of perform, round start).
-//   initTriggers(b) · triggerEvent(b, ev) · runTriggers(b, emit) · auraDmgMul(b, src, tgt) · auraKb(b, u)
+//   initTriggers(b) · triggerEvent(b, ev) · runTriggers(b, emit) · auraDmgMul(b, src, tgt) · auraKb(b, u) · auraOn(b, a) · unitAuras(b, u)
 import { bridgeAt, collapseBridge } from './terrain.js';
 
 const WATCH = new Set(['roundStart', 'move', 'push', 'damage', 'teleport', 'summon', 'geoCollapse', 'death', 'down']);
@@ -63,11 +63,15 @@ const unitOf = (b, sel) => b.units.find((u) => standing(u) && isUnit(u, sel || '
 /** Standing units of a trigger tag. */
 export const tagged = (b, tag) => b.units.filter((u) => u.trigTag === tag && standing(u)).length;
 
-function auraOn(b, a) {
+/** An aura of a unit works now (its whileAlive tag stands / whileDown team has a fallen unit). */
+export function auraOn(b, a) {
   if (a.whileAlive && !tagged(b, a.whileAlive)) return false;
   if (a.whileDown && !b.units.some((u) => fallen(u, a.whileDown))) return false;
   return true;
 }
+/** Active auras of a unit as icon entries { id: 'aura:<id>', aura } (ui/battle-view.js, unit-pin.js). */
+export const unitAuras = (b, u) => (u.auras || []).filter((a) => auraOn(b, a)).map((a) => ({ id: `aura:${a.id}`, aura: a.id }));
+
 /** Damage factor of trigger auras (combat.js dealDamage): the target's reduce, the source's dmgMul. */
 export function auraDmgMul(b, src, tgt) {
   let k = 1;

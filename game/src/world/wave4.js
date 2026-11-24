@@ -65,16 +65,19 @@ export function bossPhases(save, enemies = []) {
   return out;
 }
 
-/** balance-finale.md §3: a party of ≤ smallParty.size in the late fights — allies (2 for a duo) and bosses at bossHpPct.
+/** balance-finale.md §3: a party of ≤ smallParty.size in the late fights — bosses at bossHpPct (bossHpPctBy[enc]),
+ *  other enemies at foeHpPct[enc]; allies (2 for a duo) only in allyEnc.
  *  The finale (flagAllies — finaleMods allies already there) gets no extra ally. ENEMIES — enemy defs (boss flag). */
 export function smallParty(size, encId, enemies = [], ENEMIES = {}, flagAllies = 0) {
   const S = R.smallParty;
   if (!S || size > S.size || !S.enc.includes(encId)) return { enemies, allies: [] };
-  const n = encId === 'w-cc-finale' && flagAllies > 0 ? 0 : S.countBySize?.[size] ?? S.count;
+  const n = (S.allyEnc && !S.allyEnc.includes(encId)) || (encId === 'w-cc-finale' && flagAllies > 0) ? 0 : S.countBySize?.[size] ?? S.count;
+  const bossK = S.bossHpPctBy?.[encId] ?? S.bossHpPct, foeK = S.foeHpPct?.[encId] ?? 1;
   const out = enemies.map((e) => {
     const id = baseOf(e);
-    if (!ENEMIES[String(id).split('^')[0]]?.boss && !ENEMIES[id]?.boss) return e;
-    return { ...(typeof e === 'object' ? e : {}), enemy: id, hpPct: Math.round((e?.hpPct || 1) * S.bossHpPct * 100) / 100 };
+    const k = ENEMIES[String(id).split('^')[0]]?.boss || ENEMIES[id]?.boss ? bossK : foeK;
+    if (k === 1) return e;
+    return { ...(typeof e === 'object' ? e : {}), enemy: id, hpPct: Math.round((e?.hpPct || 1) * k * 100) / 100 };
   });
   return { enemies: out, allies: Array(n).fill(S.ally) };
 }

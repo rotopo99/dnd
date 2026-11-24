@@ -12,6 +12,7 @@ import { drawStatusIcon } from '../assets/status-icons.js';
 import { drawUnitPortrait } from './portrait-of.js';
 import { unitView, isDeathAbility } from '../rules/combat.js';
 import { intentOf } from '../rules/archetypes.js';
+import { unitAuras } from '../rules/battle-triggers.js';
 import { teamColor } from './battle-log.js';
 
 const W = 330;
@@ -94,7 +95,12 @@ export function drawPin(ctx, S) {
   // statuses with duration
   y += 4;
   text(ctx, t('pin.statuses'), x, y, C['4'], FONT_B); y += LINE;
-  if (!u.statuses.length) line(t('pin.none'), C['3']);
+  for (const a of unitAuras(b, u)) { // boss phase auras (balance-finale.md)
+    drawStatusIcon(ctx, a.id, x, y, 14, { bare: true });
+    text(ctx, fit(ctx, t(`aura.${a.aura}`), w - 18), x + 18, y, C.c);
+    y += LINE;
+  }
+  if (!u.statuses.length && !unitAuras(b, u).length) line(t('pin.none'), C['3']);
   for (const st of u.statuses) {
     const sd = b.data.statuses[st.id];
     const s = `${sd?.name || st.id}${st.turns != null ? ` (${st.turns})` : ''}`;

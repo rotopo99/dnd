@@ -6478,6 +6478,7 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   const QS = await import('../game/src/world/quests.js');
   const DS = await import('../game/src/world/dossier.js');
   const W4 = await import('../game/src/world/wave4.js');
+  const W4R = (await import('../game/src/data/world/quests-wave4.js')).WAVE4_RULES.smallParty;
   const CQX = await import('../game/src/world/consequences.js');
   const MD = await import('../game/src/ui/modal.js'); // QA v44 M3
   const CI = await import('../game/src/scenes/cinema.js'); // QA v44 M1
@@ -6593,8 +6594,13 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     const torn = W4.bossPhases(mk({ 'ladov-torn': true }), [{ enemy: 'boss-great-collector', hpPct: 0.8 }]);
     assert.equal(torn[0].do.find((o) => o.op === 'spawn').count, 1);
     const sp = W4.smallParty(3, 'v4-boss-collector', ['boss-great-collector', 'crg-elite-l16'], GAME_DATA.ENEMIES);
-    assert.deepEqual(sp, { enemies: [{ enemy: 'boss-great-collector', hpPct: 0.9 }, 'crg-elite-l16'], allies: ['wp-vet-l16'] });
-    assert.equal(W4.smallParty(2, 'w-eve-1', ['a'], GAME_DATA.ENEMIES).allies.length, 2);
+    assert.deepEqual(sp.allies, [], 'Collector: no ally');
+    assert.equal(sp.enemies[0].hpPct, W4R.bossHpPct);
+    assert.deepEqual(sp.enemies[1], { enemy: 'crg-elite-l16', hpPct: W4R.foeHpPct['v4-boss-collector'] });
+    assert.deepEqual(W4.smallParty(3, 'w-eve-1', ['a'], GAME_DATA.ENEMIES), { enemies: [{ enemy: 'a', hpPct: W4R.foeHpPct['w-eve-1'] }], allies: [] }, 'eve waves: no ally, foe HP');
+    assert.deepEqual(W4.smallParty(3, 'v4-boss-cyber-priest', ['boss-cyber-priest-prime'], GAME_DATA.ENEMIES).enemies, [{ enemy: 'boss-cyber-priest-prime', hpPct: 0.9 }]);
+    assert.deepEqual(W4.smallParty(3, 'v4-boss-cyber-priest', ['a'], GAME_DATA.ENEMIES).allies, ['wp-vet-l16']);
+    assert.equal(W4.smallParty(2, 'enc-cyber-priest-strong', ['a'], GAME_DATA.ENEMIES).allies.length, 2);
     assert.equal(W4.smallParty(4, 'w-eve-1', ['a'], GAME_DATA.ENEMIES).allies.length, 0);
     assert.equal(W4.smallParty(3, 'w-cc-finale', ['a'], GAME_DATA.ENEMIES, 1).allies.length, 0, 'finale: flag allies replace it');
   });

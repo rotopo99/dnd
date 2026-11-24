@@ -18,4 +18,13 @@ export const WAVE4_TEXT = {
   'w4.terrain.breach': 'Баррикада пробита: укрытий в середине поля нет, пролом открыт для шагохода.',
   'w4.terrain.dark': 'Терминалы погасли: темно, видно только у огня и рядом со своими.',
   'w4.choirLeave': 'Сестра Помеха ушла в Хор. Шум за ней стих.',
+  // balance-finale.md: boss phases — toast per trigger id (scenes/battle.js), aura icons (ui/battle-view.js, unit-pin.js)
+  'phase.toast': 'Фаза {n}: {name}',
+  'phase.priest-p2': 'Хор вступает — убей хористов',
+  'phase.priest-p3': 'Сеть — разбей узел копии',
+  'phase.collector-p2': 'Витрины — экспонаты дают КБ',
+  'phase.collector-p3': 'Пустая полка — разбей каталог',
+  'aura.choir-shield': 'Щит хора: −урон, пока поёт хор',
+  'aura.exhibits': 'Витрины: +КБ за экспонат',
+  'aura.empty-shelf': 'Пустая полка: урон ×1.25, пока герой лежит',
 };
