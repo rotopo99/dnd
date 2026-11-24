@@ -1,0 +1,73 @@
+{
+ "name": "enemy_drone.glb",
+ "up": "Y",
+ "front": "+Z",
+ "bones": [
+  "body",
+  "gun",
+  "barrel",
+  "eye",
+  "rotor0",
+  "rotor1",
+  "rotor2",
+  "rotor3"
+ ],
+ "parents": {
+  "body": null,
+  "gun": "body",
+  "barrel": "gun",
+  "eye": "body",
+  "rotor0": "body",
+  "rotor1": "body",
+  "rotor2": "body",
+  "rotor3": "body"
+ },
+ "parts": [
+  "Drone"
+ ],
+ "animations": [
+  "idle",
+  "move",
+  "shoot",
+  "hit",
+  "death"
+ ],
+ "loops": [
+  "idle",
+  "move"
+ ],
+ "fps": 30,
+ "triangles": 2024,
+ "enemy": "drone",
+ "kind": "drone",
+ "height_m": 1.465,
+ "length_m": 1.16,
+ "width_m": 1.28,
+ "anchors": {
+  "muzzle": {
+   "bone": "barrel",
+   "pos": [
+    0,
+    1.1,
+    0.53
+   ]
+  },
+  "eye": {
+   "bone": "eye",
+   "pos": [
+    0,
+    1.32,
+    0.345
+   ]
+  },
+  "core": {
+   "bone": "body",
+   "pos": [
+    0,
+    1.3,
+    0
+   ]
+  }
+ },
+ "root": "body"
+}

@@ -1,0 +1,279 @@
+{
+ "name": "enemy_cultist.glb",
+ "sex": "male",
+ "height_m": 1.902,
+ "up": "Y",
+ "front": "+Z",
+ "bones_vrm_humanoid": [
+  "hips",
+  "spine",
+  "chest",
+  "upperChest",
+  "neck",
+  "head",
+  "leftShoulder",
+  "leftUpperArm",
+  "leftLowerArm",
+  "leftHand",
+  "leftUpperLeg",
+  "leftLowerLeg",
+  "leftFoot",
+  "leftToes",
+  "leftIndexProximal",
+  "leftIndexIntermediate",
+  "leftIndexDistal",
+  "leftMiddleProximal",
+  "leftMiddleIntermediate",
+  "leftMiddleDistal",
+  "leftRingProximal",
+  "leftRingIntermediate",
+  "leftRingDistal",
+  "leftLittleProximal",
+  "leftLittleIntermediate",
+  "leftLittleDistal",
+  "leftThumbMetacarpal",
+  "leftThumbProximal",
+  "leftThumbDistal",
+  "rightShoulder",
+  "rightUpperArm",
+  "rightLowerArm",
+  "rightHand",
+  "rightUpperLeg",
+  "rightLowerLeg",
+  "rightFoot",
+  "rightToes",
+  "rightIndexProximal",
+  "rightIndexIntermediate",
+  "rightIndexDistal",
+  "rightMiddleProximal",
+  "rightMiddleIntermediate",
+  "rightMiddleDistal",
+  "rightRingProximal",
+  "rightRingIntermediate",
+  "rightRingDistal",
+  "rightLittleProximal",
+  "rightLittleIntermediate",
+  "rightLittleDistal",
+  "rightThumbMetacarpal",
+  "rightThumbProximal",
+  "rightThumbDistal"
+ ],
+ "expressions": [
+  "blink",
+  "happy",
+  "angry",
+  "sad",
+  "surprised"
+ ],
+ "body_shape_keys": [
+  "bust",
+  "hips",
+  "shoulders",
+  "build",
+  "legs_long",
+  "height"
+ ],
+ "parts": [
+  "Body",
+  "Outfit_cultist_Suit",
+  "Outfit_cultist_Boots",
+  "Outfit_cultist_Coat",
+  "Outfit_cultist_CoatTail",
+  "Outfit_cultist_Cord",
+  "Outfit_cultist_Hood",
+  "Outfit_cultist_Headgear"
+ ],
+ "animations": [
+  "idle",
+  "walk",
+  "run",
+  "crouch_walk",
+  "talk",
+  "sit",
+  "idle_2h",
+  "walk_2h",
+  "run_2h",
+  "aim_2h",
+  "shrug",
+  "attack_melee",
+  "attack_shoot",
+  "cast",
+  "hit",
+  "death",
+  "shoot_2h",
+  "attack_2h"
+ ],
+ "springBones": [
+  {
+   "name": "coat0",
+   "bones": [
+    "coat_0_0",
+    "coat_0_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat1",
+   "bones": [
+    "coat_1_0",
+    "coat_1_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat2",
+   "bones": [
+    "coat_2_0",
+    "coat_2_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat3",
+   "bones": [
+    "coat_3_0",
+    "coat_3_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat4",
+   "bones": [
+    "coat_4_0",
+    "coat_4_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat5",
+   "bones": [
+    "coat_5_0",
+    "coat_5_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat6",
+   "bones": [
+    "coat_6_0",
+    "coat_6_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  },
+  {
+   "name": "coat7",
+   "bones": [
+    "coat_7_0",
+    "coat_7_1"
+   ],
+   "stiffness": 0.7,
+   "gravityPower": 0.35,
+   "gravityDir": [
+    0,
+    -1,
+    0
+   ],
+   "dragForce": 0.55,
+   "hitRadius": 0.04
+  }
+ ],
+ "triangles": 25424,
+ "enemy": "cultist",
+ "hair": null,
+ "outfit": "cyber",
+ "skin": "light",
+ "scale": 1.0,
+ "grip2h": {
+  "bone": "rightHand",
+  "pos": [
+   0.0,
+   0.052,
+   -0.028
+  ],
+  "basis": [
+   [
+    0,
+    0,
+    -1
+   ],
+   [
+    -1,
+    0,
+    0
+   ],
+   [
+    0,
+    1,
+    0
+   ]
+  ]
+ },
+ "loops": [
+  "idle",
+  "walk",
+  "run",
+  "crouch_walk",
+  "talk",
+  "sit",
+  "idle_2h",
+  "walk_2h",
+  "run_2h",
+  "aim_2h"
+ ]
+}

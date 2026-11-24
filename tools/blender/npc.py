@@ -21,8 +21,8 @@ NPCS = {
     # colonel Ladov: ashen skin and hair, grey greatcoat below the knee, peaked cap, medals
     'ladov': dict(sex='male', hair='short', hc='ash', skin='ashen', iris=(0.55, 0.58, 0.62), base='uniform',
                   pal=dict(jacket='#5a5e5c', jacket_trim='#8a3a2e', pants='#3c3f44', pants_trim='#8a3a2e', boots='#1d1b1a', boots_trim='#0e0d0c', accent='#c9a24a', gear='#3c3f44', strap='#c9a24a', boots_h=0.30),
-                  tail=dict(col='#5a5e5c', trim='#8a3a2e', zb=0.34, slit=26, flare=0.08), head=['officer_cap', 'marks_old'], body=['medals'],
-                  gait='robe', face=dict(angry=0.4, sad=0.3)),
+                  tail=dict(col='#5a5e5c', trim='#8a3a2e', zb=0.34, slit=26, flare=0.08), head=['officer_cap', 'marks_old', 'age_marks'], body=['medals'],
+                  gait='robe', face=dict(angry=0.4, sad=0.3, blink=0.34), age=1.0),
     # cyber-priest of the cult: purple hooded robe with glowing circuit lines, choir speaker grille, halo of cables
     'cyberpriest': dict(sex='female', hair=None, hc='black', skin='light', iris=(0.80, 0.30, 0.90), base='cyber', robe_body=True,
                         pal=dict(jacket='#2a1430', jacket_trim='#3c1f46', pants='#2a1430', gear='#5c2a6c', boots='#140c18', boots_trim='#0b090c', accent='#70d8f2', bare=True),
@@ -164,7 +164,11 @@ def head_geo(body, P, hair=None):
     def face_y(x, z):
         hit = bvh.ray_cast(Vector((x, -1.0, z)), Vector((0, 1, 0)))
         return hit[0].y if hit[0] is not None else fy
-    return dict(zc=zc, ze=ze, zt=zt, hx=hx, fy=fy, by=by, cy=(fy + by) / 2, hs=hs, hv=hv, face_y=face_y)
+    def face_hit(x, z):
+        hit = bvh.ray_cast(Vector((x, -1.0, z)), Vector((0, 1, 0)))
+        if hit[0] is None or hit[0].y > fy + 0.06: return None
+        n = hit[1].normalized(); return hit[0], (n if n.y < 0 else -n)
+    return dict(zc=zc, ze=ze, zt=zt, hx=hx, fy=fy, by=by, cy=(fy + by) / 2, hs=hs, hv=hv, face_y=face_y, hit=face_hit)
 
 
 def hg_visor(H, C):
@@ -364,7 +368,71 @@ def hg_halo(H, C):
     return bm, mats, lambda p: 1 if ((p - c).length > R + 0.008 or abs((p - c).length - R) < 0.0 ) else 0
 
 
-HEADGEAR = dict(marks_old=hg_marks_old, visor=hg_visor, judge_mask=hg_judge_mask, judge_cap=hg_judge_cap, officer_cap=hg_officer_cap, helmet=hg_helmet, ushanka=hg_ushanka,
+def hg_age_marks(H, C):
+    """older face on the shared atlas: heavy grey brows over the painted ones, gaunt cheek lines under the cheekbones, deeper
+    nasolabial folds, grey stubble as tiny flecks on the jaw / chin / upper lip (no base patch: no skin tone to match)"""
+    from head import feature_layout
+    import random
+    bm = bmesh.new(); hs = H['hs']; fl = feature_layout(hs); zc = H['zc']
+    ex, ez, bz, nz, mz = fl['eye_x'] * hs, fl['eye_z'] * hs, fl['brow_z'] * hs, fl['nose_z'] * hs, fl['mouth_z'] * hs
+    def surf(x, z, lift=0.0010):
+        hit = H['hit'](x, zc + z)
+        if hit is None: return None
+        loc, nrm = hit
+        return loc + nrm * lift, nrm
+    def strip(pts, w, n=10, taper=0.35, lift=0.0011):
+        P_ = []
+        for k in range(n + 1):
+            u = k / n * (len(pts) - 1); i = min(int(u), len(pts) - 2); f = u - i
+            P_.append((pts[i][0] * (1 - f) + pts[i + 1][0] * f, pts[i][1] * (1 - f) + pts[i + 1][1] * f, w * (taper + (1 - taper) * math.sin(math.pi * k / n))))
+        prev = None
+        for k, (x, z, ww) in enumerate(P_):
+            j = min(k + 1, n); i0 = max(k - 1, 0)
+            tx, tz = P_[j][0] - P_[i0][0], P_[j][1] - P_[i0][1]; L = math.hypot(tx, tz) or 1; nx, nz_ = -tz / L * ww, tx / L * ww
+            pr = []
+            for sx in (-1, 1):
+                r = surf(x + sx * nx, z + sx * nz_, lift)
+                pr.append(bm.verts.new(r[0] if r else (x + sx * nx, H['fy'] - 0.002, zc + z + sx * nz_)))
+            if prev: bm.faces.new((prev[0], prev[1], pr[1], pr[0]))
+            prev = pr
+    groups = []; f0 = 0
+    def grp(m):
+        nonlocal f0; groups.append((f0, len(bm.faces), m)); f0 = len(bm.faces)
+    for s in (1, -1):                                                                                   # heavy brows (bushy, low, inner ends down)
+        zb_ = ez + fl['eye_rz'] * hs + 0.006                                                           # low, just over the lids (the bangs hide bz)
+        strip([(s * (ex - 0.030), zb_ - 0.007), (s * (ex - 0.010), zb_ + 0.000), (s * (ex + 0.012), zb_ + 0.003), (s * (ex + 0.030), zb_ - 0.004)], 0.0062, 14, taper=0.6, lift=0.0018)
+    grp(0)
+    for s in (1, -1):
+        strip([(s * (ex + 0.026), ez - 0.026), (s * (ex + 0.018), ez - 0.040), (s * (ex + 0.010), ez - 0.052)], 0.0016, 8)    # gaunt cheek line
+        strip([(s * 0.014, nz + 0.004), (s * 0.022, nz - 0.010), (s * 0.028, mz + 0.002), (s * 0.030, mz - 0.010)], 0.0017, 10)  # deep nasolabial
+        strip([(s * 0.020, mz - 0.010), (s * 0.024, mz - 0.020)], 0.0010, 4)                                # marionette line
+    grp(1)
+    rnd = random.Random(7)
+    def jaw_ok(x, z):
+        if z < -0.004 or z > nz - 0.004: return False
+        if abs(z - mz) < 0.009 and abs(x) < 0.030: return False                                         # mouth
+        if z > mz + 0.002 and abs(x) > 0.030: return False                                              # upper lip only under the nose
+        return abs(x) < 0.062 - 0.25 * max(0.0, z - 0.03)
+    n = 0
+    while n < 520:
+        x = rnd.uniform(-0.07, 0.07); z = rnd.uniform(-0.006, nz)
+        if not jaw_ok(x, z): continue
+        r = surf(x, z, 0.0009)
+        if r is None or r[1].y > -0.35: continue
+        loc, nrm = r; t = nrm.orthogonal().normalized(); b = nrm.cross(t); a = rnd.uniform(0, math.pi)
+        d1 = (t * math.cos(a) + b * math.sin(a)) * 0.0011; d2 = (b * math.cos(a) - t * math.sin(a)) * 0.0007
+        bm.faces.new([bm.verts.new(loc + d1), bm.verts.new(loc + d2), bm.verts.new(loc - d1), bm.verts.new(loc - d2)]); n += 1
+    grp(2)
+    mats = [fab('AgeBrow', '#86827d', 'knit'), fab('AgeLine', '#6a5a56', 'leather'), fab('AgeStubble', '#7c7a78', 'leather')]
+    bm.faces.ensure_lookup_table(); bm.normal_update()
+    for f in bm.faces:
+        if f.normal.y > 0: f.normal_flip()
+    for a, b_, m in groups:
+        for q in range(a, b_): bm.faces[q].material_index = m
+    return bm, mats, None
+
+
+HEADGEAR = dict(marks_old=hg_marks_old, age_marks=hg_age_marks, visor=hg_visor, judge_mask=hg_judge_mask, judge_cap=hg_judge_cap, officer_cap=hg_officer_cap, helmet=hg_helmet, ushanka=hg_ushanka,
                 goggles=hg_goggles, grille=hg_grille, halo=hg_halo)
 
 
@@ -537,13 +605,71 @@ def bias_face(body, keys):
     for i, dv in d.items(): body.data.vertices[i].co += dv
 
 
-def build(nid):
-    """fresh scene -> (P, arm, objs [body, hair?, parts...], clip names, springs) of NPCS[nid]"""
+def age_face(body, P, amt=1.0):
+    """older head geometry (rest face + every key block, like bias_face): heavier brow ridge, deeper eye sockets, sunken cheeks
+    under higher cheekbones, longer chin. Front of the head only; the planar face UV moves with the vertices."""
+    from head import feature_layout, gauss
+    from skeleton import zmap
+    hs = P['hs']; J = joints(P); fl = feature_layout(hs); zchin = zmap(J['head'][2], P); y0 = J['head'][1]
+    bz, ex, ez = fl['brow_z'] * hs, fl['eye_x'] * hs, fl['eye_z'] * hs
+    d = {}
+    for v in body.data.vertices:
+        c = v.co; x = c.x; ax = abs(x); z = c.z - zchin; sg = 1 if x >= 0 else -1
+        if c.y > y0 or z < -0.03 or z > 0.24 * hs or ax > 0.12: continue
+        dv = Vector()
+        wb = gauss((z - bz + 0.006) ** 2, 0.008) * gauss(max(0.0, ax - 0.045) ** 2, 0.012)                 # brow ridge
+        dv += Vector((0, -0.0065, -0.0022)) * wb
+        dv += Vector((0, 0.0022, 0)) * gauss((ax - ex) ** 2 + (z - ez) ** 2, 0.016)                         # sockets
+        wc = gauss((ax - 0.050 * hs) ** 2 + (z - 0.042 * hs) ** 2, 0.013)                                     # hollow cheeks
+        dv += Vector((-sg * 0.0035, 0.0060, 0)) * wc
+        wk = gauss((ax - 0.064 * hs) ** 2 + (z - 0.074 * hs) ** 2, 0.010)                                     # cheekbones
+        dv += Vector((sg * 0.0025, -0.0025, 0)) * wk
+        wj = smooth01((0.032 * hs - z) / (0.032 * hs)) * gauss(x * x, 0.028)                                  # longer, firmer chin
+        dv += Vector((0, -0.0015, -0.0065)) * wj
+        if dv.length_squared > 1e-12: d[v.index] = dv * amt
+    kb = body.data.shape_keys.key_blocks
+    for blk in kb:
+        for i, dv in d.items(): blk.data[i].co += dv
+    for i, dv in d.items(): body.data.vertices[i].co += dv
+
+
+def bulk_body(body, P, amt=1.0, head_scale=1.0):
+    """heavy build (enemy brute): body pushed out along the normals (chest / back / trapezius most, arms, legs less; hands and head
+    untouched), head scaled about the chin; every key block moves by the same delta (like bias_face)."""
+    from skeleton import zmap
+    hs = P['hs']; sw = P['sw']; J = joints(P); g = lambda d, s_: math.exp(-d * d / (2 * s_ * s_))
+    zc = zmap(J['head'][2], P); zn = zmap(J['neck'][2], P); zh = zmap(J['hips'][2], P); az = zmap(J['upperArm'][2], P); hand = sw + 0.47 * hs
+    yh = J['head'][1]; d = {}
+    for v in body.data.vertices:
+        c = v.co; n = v.normal; ax = abs(c.x)
+        if c.z >= zc - 0.005:
+            if head_scale != 1.0: d[v.index] = (Vector((c.x, c.y - yh, c.z - zc)) * (head_scale - 1.0))
+            continue
+        if ax > sw + 0.04 and abs(c.z - az) < 0.16 * hs:                                               # arm
+            w = 0.026 * (1 - smooth01((ax - hand + 0.06 * hs) / (0.06 * hs))) * (0.75 + 0.25 * g(ax - sw - 0.12 * hs, 0.12 * hs))
+            dv = n * w
+        elif c.z > zh:                                                                                 # torso, neck
+            w = 0.016 + 0.034 * g(c.z - zmap(1.30 * hs, P), 0.13 * hs) + 0.012 * max(0.0, -n.y) * g(c.z - zmap(1.08 * hs, P), 0.08 * hs)
+            w *= 1 - 0.45 * smooth01((c.z - zn + 0.02) / 0.06)
+            dv = n * w + Vector((0, 0, 0.03 * g(c.z - zn, 0.05 * hs) * g(ax - 0.10, 0.06) * (n.z > -0.2)))   # trapezius lifts towards the ears
+        else:                                                                                          # legs
+            dv = n * 0.012 * (0.5 + 0.5 * smooth01((c.z - zmap(0.5 * hs, P)) / (0.3 * hs)))
+        d[v.index] = dv * amt
+    for blk in body.data.shape_keys.key_blocks:
+        for i, dv in d.items(): blk.data[i].co += dv
+    for i, dv in d.items(): body.data.vertices[i].co += dv
+
+
+def build(nid, cfg=None):
+    """fresh scene -> (P, arm, objs [body, hair?, parts...], clip names, springs) of NPCS[nid] (or cfg: enemy.py humanoids)"""
     import rig, anim, hair as hairmod
-    cfg = NPCS[nid]; reset()
+    cfg = cfg or NPCS[nid]; reset()
     hc = hairmod.HAIR_COLORS[cfg['hc']]
     P, arm, body, fixed = rig.build_body(cfg['sex'], skin=cfg['skin'], hair_rgb=hc, iris=cfg.get('iris', (0.25, 0.62, 0.75)))
     if cfg.get('face'): bias_face(body, cfg['face'])
+    if cfg.get('shape'): bias_face(body, cfg['shape'])          # body sliders baked into the rest shape (enemy brute: build / shoulders)
+    if cfg.get('bulk'): bulk_body(body, P, cfg['bulk'], cfg.get('head_scale', 1.0))
+    if cfg.get('age'): age_face(body, P, cfg['age'])
     names = anim.author(arm, P, gait=cfg.get('gait'))
     objs = [body]; sp = []; o = None
     if cfg.get('hair'): o, sp = hairmod.build_hair(cfg['hair'], arm, P, hc, hairmod.HAIR_TIPS[cfg['hc']]); objs.append(o)

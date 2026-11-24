@@ -25,6 +25,13 @@ def fabric_image(name, hexcol, kind='weave'):
     if kind == 'weave': p = 0.5 + 0.5 * np.sin(u * 2 * math.pi / 4) * np.sin(v * 2 * math.pi / 4); k = 0.14
     elif kind == 'knit': p = 0.5 + 0.5 * np.sin((u + (v // 4 % 2) * 2) * 2 * math.pi / 8) ; k = 0.16
     elif kind == 'leather': p = np.random.RandomState(3).rand(N, N) * 0.5 + 0.5 * (0.5 + 0.5 * np.sin(u * 0.3 + v * 0.17)); k = 0.08
+    elif kind.startswith('stripe'):                                                          # 'stripe:#rrggbb': horizontal stripes (telnyashka)
+        h2 = kind.split(':')[1].lstrip('#'); c2 = np.array([int(h2[i:i + 2], 16) / 255 for i in (0, 2, 4)])
+        st = ((v // 14) % 2 == 1)[..., None]; img = np.ones((N, N, 4)); w = 0.94 + 0.06 * (0.5 + 0.5 * np.sin(u * 2 * math.pi / 4) * np.sin(v * 2 * math.pi / 4))[..., None]
+        img[..., :3] = np.clip(np.where(st, c2[None, None, :], c[None, None, :]) * w, 0, 1)
+        tmp = bpy.data.images.new(name + '_t', N, N, alpha=True); tmp.pixels = img.ravel().tolist()
+        pth = os.path.join(WORK, name + '.png'); tmp.filepath_raw = pth; tmp.file_format = 'PNG'; tmp.save(); bpy.data.images.remove(tmp)
+        im = bpy.data.images.load(pth); im.name = name; im.pack(); return im
     else: p = ((u // 16 + v // 16) % 2) * 0.4 + 0.3 * (u % 16 == 0) + 0.3 * (v % 16 == 0); k = 0.07      # tech panels
     img = np.ones((N, N, 4)); img[..., :3] = np.clip(c[None, None, :] * (1 - k + k * p[..., None] * 2 * 0.5 + k * 0.5), 0, 1)
     tmp = bpy.data.images.new(name + '_t', N, N, alpha=True); tmp.pixels = img.ravel().tolist()
@@ -446,7 +453,7 @@ def build_outfit(kind, body, arm, P, sex, pal=None, extra=None, prefix=None):
         band(bm, (sw + 0.18 * hs, 0, 1.435 * hs), 0.05, 0.05, 0.02, axis='X')
         sh = to_object(bm, 'Shirt', None)
         fold_displace(sh, P, creases=[('z', 1.12 * hs, 0.05, 0.004, 6, 0.0)], noise_amp=0.003, noise_scale=10.0, seed=7.0)
-        for n, k, kt in (('Shirt', 'jacket', 'weave'), ('Trim', 'jacket_trim', 'weave')): sh.data.materials.append(fab('Rags' + n, C[k], kt))
+        for n, k, kt in (('Shirt', 'jacket', C.get('shirt_tex', 'weave')), ('Trim', 'jacket_trim', 'weave')): sh.data.materials.append(fab('Rags' + n, C[k], kt))
         assign_mats(sh, lambda c: 1 if (c.z > neck - 0.01 or (c.z < 1.3 * hs and c.z < hem + 0.16 * hs and abs(c.x) < 0.01)) else 0)
         parts.append(sh)
         # shorts, one leg longer

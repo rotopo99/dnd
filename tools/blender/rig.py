@@ -6,7 +6,7 @@ from sculpt import sculpt_body
 from head import build_head, add_expressions, HH
 import face_atlas
 
-SKIN_RGB = {'light': '#ffd9c2', 'tan': '#edbd99', 'dark': '#9e6e54', 'ashen': '#d2ccc9'}
+SKIN_RGB = {'light': '#ffd9c2', 'tan': '#edbd99', 'dark': '#9e6e54', 'ashen': '#d2ccc9', 'mutant': '#a9b38f'}
 
 
 def bones_of(arm): return [b.name for b in arm.data.bones]

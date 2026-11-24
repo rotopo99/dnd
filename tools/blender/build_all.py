@@ -1,4 +1,4 @@
-"""Build every model: python build_all.py [--only faces|body|hair|outfit|preset|npc] [--sex male|female]
+"""Build every model: python build_all.py [--only faces|body|hair|outfit|preset|npc|enemy] [--sex male|female]
 Output: game/assets/models/*.glb (+ .json meta, face PNGs) and previews tools/out/blender-*.png"""
 import sys, argparse, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))) if False else None
@@ -116,4 +116,13 @@ if args.only in ('all', 'npc'):
         export.meta(p, arm, P, cfg['sex'], [x.name for x in objs[1:]], names, sp, dict(triangles=tris, npc=nid, hair=cfg.get('hair'), outfit=cfg['base'], skin=cfg['skin']))
         log('npc', nid, kb(p), 'tris', tris)
         done_preview('npc-' + nid, objs[1:])
+if args.only in ('all', 'enemy'):
+    import enemy as enemymod
+    for eid in enemymod.IDS:
+        if os.environ.get('ENEMIES') and eid not in os.environ['ENEMIES'].split(','): continue
+        r = enemymod.build(eid); objs = [r['arm']] + r['objs']
+        p = os.path.join(MODELS, 'enemy_%s.glb' % eid); export.glb(p, objs)
+        tris = sum(tri_count(x) for x in objs[1:]); enemymod.write_meta(p, r, tris)
+        log('enemy', eid, kb(p), 'tris', tris)
+        if r['kind'] == 'humanoid': done_preview('enemyrest-' + eid, objs[1:])
 log('ALL DONE')
