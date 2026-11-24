@@ -109,7 +109,17 @@ export function applyConsequences(save, qid) {
     if (!save.discovered.includes(id)) save.discovered.push(id);
     for (const r of ROUTES) if ((r.from === id || r.to === id) && r.hidden) save.flags[`route:${r.from}:${r.to}`] = true;
   }
-  // content-wave2.md §1.3: finale modifiers of the court by c4/c6 flags — extra entries { qid, o: 'mod:<id>' }
+  const modEntries = courtMods(save, qid, o, out);
+  const lines = [e, ...modEntries].flatMap(cqLines);
+  const name = QUESTS[qid]?.name || qid;
+  for (const l of lines) journal(save, tf('cq.journal', { name, text: l }));
+  for (const l of lines.slice(0, CQ_TOASTS)) out.push({ text: tf('cq.toast', { text: l }), color: 'h' });
+  return out;
+}
+
+/** content-wave2.md §1.3: finale modifiers of the court by c4/c6 flags — extra entries { qid, o: 'mod:<id>' } (each once). */
+function courtMods(save, qid, o, out) {
+  const c = CONSEQUENCES[qid];
   const mods = qid === 'mq3-court' ? COURT_MOD_WHEN.filter((m) => m.all.every((f) => save.flags[f]) && (!m.outcome || m.outcome === o)) : [];
   if (mods.some((m) => m.id === 'lox9-grave')) save.flags['lox9-via-leaflet'] = true;
   const modEntries = [];
@@ -122,7 +132,19 @@ export function applyConsequences(save, qid) {
     scheduleDelayed(save, qid, k, me);
     modEntries.push(me);
   }
-  const lines = [e, ...modEntries].flatMap(cqLines);
+  return modEntries;
+}
+
+/**
+ * Late court modifiers: a flag set after the consequences were applied (content-wave4.md §3 — c12 QTE «Удержать створку»
+ * failed → door-halfsealed after the verdict). Applies the not yet applied mods of the recorded outcome. → toasts.
+ */
+export function lateCourtMods(save, qid = 'mq3-court') {
+  if (!cqApplied(save, qid)) return [];
+  const o = (save.cq || []).find((x) => x.qid === qid && !String(x.o).startsWith('mod:'))?.o;
+  if (!o) return [];
+  const out = [];
+  const lines = courtMods(save, qid, o, out).flatMap(cqLines);
   const name = QUESTS[qid]?.name || qid;
   for (const l of lines) journal(save, tf('cq.journal', { name, text: l }));
   for (const l of lines.slice(0, CQ_TOASTS)) out.push({ text: tf('cq.toast', { text: l }), color: 'h' });

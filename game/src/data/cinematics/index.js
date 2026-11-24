@@ -69,7 +69,7 @@ export const SHOT_MOVES = {
 };
 
 // Сцены-площадки (строит art-director/программист из готовых кусков; `stage` в данных сцены).
-export const STAGES = ['dock-riot', 'server-hall', 'reactor-log', 'court-cyber', 'roof-night', 'door-hall', 'collector-hall'];
+export const STAGES = ['dock-riot', 'server-hall', 'reactor-log', 'court-cyber', 'roof-night', 'door-hall', 'collector-hall', 'wall-night'];
 // Клипы: есть в Blender-пайплайне (idle walk run crouch_walk attack_melee attack_shoot cast hit death)
 // и НУЖНЫЕ новые для сцен (нет в tools/blender/anim.py): talk shrug point lean sit nod shake laugh cry hands_up stagger reach.
 export const CLIPS = ['idle','walk','run','crouch_walk','attack_melee','attack_shoot','cast','hit','death','talk','shrug','point','lean','sit','nod','shake','laugh','cry','hands_up','stagger','reach'];

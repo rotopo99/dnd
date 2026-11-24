@@ -501,7 +501,7 @@ export const unitAt = (b, x, y) => {
  * The list defines the side ('heroes' / 'enemies'). Units are cloned: callers' objects are not mutated.
  * Start points 'P' / 'E' / 'A' are taken row by row, left to right.
  */
-export function createBattle({ map, heroes = [], enemies, allies, rivals = null, partyLose = false, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null, metric = 0 } = {}) {
+export function createBattle({ map, heroes = [], enemies, allies, rivals = null, partyLose = false, data, seed = 1, log = true, onEvent = null, autoReactions = true, objectives = null, metric = 0, triggers = null } = {}) {
   const D = normalizeData(data);
   const enemyList = enemies || (map && map.enemies) || [];
   const mapDef = map || makeArena({ heroes: heroes.length, enemies: enemyList.length });
@@ -546,7 +546,8 @@ export function createBattle({ map, heroes = [], enemies, allies, rivals = null,
   }
   // combat rework: destructible objects get HP from the battle level, AI archetypes (terrain.js, archetypes.js)
   initTerrain(b);
-  initTriggers(b);
+  b.trigFx = { healUnit, reviveUnit, dealDamage, rollDice }; // battle-triggers.js ops (no import cycle)
+  initTriggers(b, triggers); // + extra triggers of the battle options (content-wave4.md: the mq4-eve waves)
   assignArchetypes(b);
   // combat rework §6 (stage 2): optional objective, chests, exits for retreat (rules/objectives.js)
   if (objectives) initObjectives(b, objectives);

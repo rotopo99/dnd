@@ -56,7 +56,12 @@ export function encounterSetup(save, encId) {
   }
   // content-wave4.md §2: the Raytsentr waves of mq4-eve — allies, enemy ЗДР and party buffs by earlier choices
   const eve = eveSetup(save, encId, cineEncounter(save, encId, encounterEnemies(encId, partySize(save), { reduce })));
-  return { enemies: eve.enemies, allies: [...allies, ...eve.allies], buffs: eve.buffs, notes: eve.notes };
+  return { enemies: eve.enemies, allies: [...allies, ...eve.allies], buffs: eve.buffs, notes: eve.notes, triggers: eve.triggers };
+}
+
+/** content-wave4.md §2: a fired battle trigger with `flag` marks the save (the hub terminal revives once per mission). */
+function firedFlags(save, S) {
+  for (const tr of S?.b?.triggers || []) if (tr.fired && tr.flag) save.flags[tr.flag] = true;
 }
 
 /** content-wave2.md §3 c8: a scene result replaced the battle (CINE_BATTLE_SKIP) — it counts as done, onWin runs. */
@@ -153,9 +158,11 @@ export function startWorldBattle(game, o) {
     },
     objectives: objectiveSpec(save, o, setup.enemies),
     heroBuffs: [...(hind ? [hind] : []), ...(setup.buffs || [])], // content-wave3.md: encounter hindrance («Осанка»); wave 4: barricades
+    triggers: setup.triggers?.length ? setup.triggers : null, // content-wave4.md §2: barge volley, hub terminal revive
     onRetreatExit: (g, S) => retreatExit(g, S, o),
     race: save.hero.race, ambush: !!o.ambush, surprise: !!o.surprise, tricks: true, enemyInit: o.enemyInit || 0, heroInit: (mil.success ? MIL.init : 0) + (o.heroInit || 0),
     onWin: (g, S) => {
+      firedFlags(save, S);
       roamCut?.after?.(g, S); // the party stays where the battle ended, corpses on the node map
       queueBark('victory');
       for (const x of writeBack(g, S, true, o)) g.toast(x.text, x.color);
@@ -174,7 +181,7 @@ export function startWorldBattle(game, o) {
       if (g.coop?.host) g.coop.loot(g, loot, () => afterBattle(g, S, o), openLoot);
       else openLoot(g, loot, () => afterBattle(g, S, o));
     },
-    onLose: (g, S) => { writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
+    onLose: (g, S) => { firedFlags(save, S); writeBack(g, S, false, o); saveGame(save); (o.onLose || defaultLose)(g, S); },
     onExit: (g) => (o.onLose || defaultLose)(g),
     // world flag 'retreat': leave a non-boss battle — back to the previous node, no loot
     onRetreat: o.encounter !== FINALE_ENCOUNTER && !o.boss && hasFlagInParty(save, data, 'retreat') ? (g, S) => {

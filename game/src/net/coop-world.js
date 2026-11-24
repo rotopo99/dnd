@@ -28,7 +28,7 @@ const LOCAL = new Set(['panels', 'net']);
 const FULL_INPUT = new Set(['panels', 'net', 'battle', 'create']);
 const VIEW_KEYS = new Set(['KeyP', 'KeyR', 'KeyJ', 'KeyG', 'KeyB', 'KeyN']);
 const ROAM_KEYS = new Set([...VIEW_KEYS, 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyE', 'AltLeft', 'AltRight']);
-const BATTLE_OPTS = ['allies', 'rivals', 'partyLose', 'objectives', 'ambush', 'enemyInit', 'heroInit', 'race', 'tricks', 'hint', 'intro'];
+const BATTLE_OPTS = ['allies', 'rivals', 'partyLose', 'objectives', 'ambush', 'enemyInit', 'heroInit', 'race', 'tricks', 'hint', 'intro', 'triggers'];
 
 let mods = null; // scene modules (dynamic: they import the whole world)
 const loadMods = () => mods || (mods = Promise.all([import('../scenes/world-map.js'), import('../scenes/roam.js'), import('../scenes/location.js')])

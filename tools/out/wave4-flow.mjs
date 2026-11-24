@@ -14,6 +14,7 @@ import * as DL from '../../game/src/world/delayed.js';
 import * as CN from '../../game/src/world/cine.js';
 import * as HK from '../../game/src/world/cine-hooks.js';
 import * as DS from '../../game/src/world/dossier.js';
+import * as W4 from '../../game/src/world/wave4.js';
 import { CINEMATICS } from '../../game/src/data/cinematics/index.js';
 
 let seed = 41;
@@ -126,11 +127,11 @@ const ENDINGS = {
   oldgod: { opt: 'oldgod', fin: ['fin-admin', 'fin-admin-oldgod'], c4: 'court-draw', flags: { 'sputnik-owner-tekhonki': true, 'oldgod-doubt': true } },
   order: { opt: 'order', fin: ['fin-admin', 'fin-admin-order'], c4: null, flags: { 'sputnik-owner-ai': true } },
   scrap: { opt: 'scrap', fin: ['fin-admin', 'fin-admin-scrap'], c4: 'court-won', flags: { 'sputnik-owner-scavengers': true } },
-  vessel: { opt: 'vessel', fin: ['fin-vessel'], c4: 'court-won', c11: ['sign', 'ok'] },
+  vessel: { opt: 'vessel', fin: ['fin-vessel'], c4: 'court-won', c11: ['sign', 'ok'], pomekha: true },
   lox9: { opt: 'lox9', fin: ['fin-lox9'], c4: 'court-draw', flags: { 'lox-dead': true, 'lox-leaflet': true } },
   surrender: { opt: 'surrender', fin: ['fin-vessel'], c4: 'court-lost', crushed: true, thin: true }, // thin dossier: the hard fight stays hard
 };
-const finSeen = new Set(), c12Seen = new Set();
+const finSeen = new Set(), c12Seen = new Set(), halfLate = new Set();
 function court(s, e) {
   const qid = 'mq3-court';
   assert.equal(s.quests[qid].stage, 'door');
@@ -163,12 +164,21 @@ function court(s, e) {
   const R = playCine(s, 'c12-verdict', 'silence', rnd() < 0.7 ? 'ok' : 'fail');
   c12Seen.add(R.visited.find((b) => ['a', 'b', 'c-oldgod', 'c-order', 'c-scrap', 'd', 'd-lox9'].includes(b)));
   assert.equal(R.result, 'c12-done');
+  // c12 QTE «Удержать створку» failed after the consequences: the halfsealed mod still applies (late), once
+  if (s.flags['door-halfsealed'] && s.quests[qid].outcome !== 'lox-leave' && s.cq.some((x) => x.qid === qid && x.o === 'closed')) {
+    assert.ok(s.cq.some((x) => x.qid === qid && x.o === 'mod:halfsealed'), 'late halfsealed mod');
+    halfLate.add(R.visited.includes('a-crooked') ? 'qte' : 'stage');
+  }
+  // ending D: Сестра Помеха in the party rolled meditation (stays or leaves into the Choir)
+  if (s.flags['fin-vessel'] && e.pomekha) assert.ok(s.flags['pomekha-stayed'] || s.flags['pomekha-choir'], 'choir check');
+  assert.equal(s.cq.filter((x) => x.o === 'mod:halfsealed').length <= 1, true);
   assert.deepEqual(HK.cinesAt(s, 'final:mq3-court'), [], 'c12 once');
   for (const f of e.fin) finSeen.add(f);
 }
 
 function epilogue(s, e) {
   for (let d = 0; d < 8; d++) { s.day += 1; DL.delayedTick(s, GAME_DATA); }
+  if (s.cq.some((x) => x.o === 'mod:halfsealed')) assert.ok(s.flags['judge-knocks'], 'the Judge knocks 6 days after a crooked seal');
   const sl = CQ.epilogueSlides(s);
   const ids = sl.map((x) => x.id);
   assert.ok(sl.length <= 18 + 3, `≤ 18 (+ romance): ${sl.length}`);
@@ -197,6 +207,7 @@ for (const [name, e] of Object.entries(ENDINGS)) for (let v = 0; v < 4; v++, k++
     const s = clone(prepared);
     Object.assign(s.flags, e.flags || {});
     if (e.thin) for (const f of [...Object.keys(DOSSIER), 'arsenal-sealed']) delete s.flags[f];
+    if (e.pomekha) { st.recruit(s, 'sister-pomekha'); Object.assign(s.party.find((p) => p.npc === 'sister-pomekha'), { approval: 30, state: 'active' }); }
     if (e.opt === 'vessel') assert.notEqual(s.hero.alignment, 'evil', 'D without evil');
     const c11 = e.c11 || (v === 3 ? null : C11[(k + v) % C11.length]);
     // vessel needs a signed blank; other runs may tear it (then vessel is closed — not their ending)
@@ -227,7 +238,10 @@ check('mq4-eve: every flag set / none set, all waves lost — still ends', () =>
     'saved-sector-d': true, 'saved-terminal': true, 'ally-tin': true, 'mech-ally': true, 'plague-cured': true, 'mechanids-wounded': true, 'ladov-named': true }]) {
     const s = base(flags);
     eve(s, null, false, 'lose');
-    if (flags['saved-terminal']) assert.ok(s.flags['eve-revive-used']);
+    // the hub terminal is a battle trigger now (rules/battle-triggers.js), the quest only holds a lost wave
+    assert.ok(!s.flags['eve-revive-used'] && s.flags['eve-wave-3-lost']);
+    const tr = W4.eveSetup(s, 'w-eve-1', []).triggers.map((x) => x.id);
+    assert.deepEqual(tr, flags['saved-terminal'] ? ['eve-barges', 'eve-terminal'] : []);
   }
 });
 check('coverage', () => {
@@ -235,6 +249,7 @@ check('coverage', () => {
   for (const r of ['c11-known', 'c11-torn', 'c11-signed', 'c11-signed-bad', 'c11-silent']) assert.ok(seenCine.get('c11-consent')?.has(r), `c11 ${r}`);
   for (const b of ['a', 'b', 'c-oldgod', 'c-order', 'c-scrap', 'd', 'd-lox9']) assert.ok(c12Seen.has(b), `c12 ${b}`);
   for (const o of ['turned', 'beaten', 'default']) assert.ok(eveOut.has(o), `mq4-eve ${o}`);
+  assert.ok(halfLate.has('qte'), `late halfsealed by the c12 QTE: ${[...halfLate]}`);
 });
 
 console.log(`wave4-flow: ${runs} walks, ${steps} steps; endings: ${[...endingsDone].sort().join(', ')}; fin: ${[...finSeen].sort().join(', ')}; c11: ${[...(seenCine.get('c11-consent') || [])].sort().join(', ')}; c12: ${[...c12Seen].sort().join(', ')}`);

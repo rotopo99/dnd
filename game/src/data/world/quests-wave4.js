@@ -2,7 +2,8 @@
 // mq4-eve «Последняя ночь» — ключевой квест Райцентра перед судом (mq3-court requires eve-done). Стадии:
 //   omen → twist (сцена c11 «Согласие»; без сцены — тот же выбор кнопками) → wall-1..3 (волны, между ними отдых)
 //   → priest (аргумент или бой) → last-night (по карточке на напарника в отряде) → go (награда, суд начинается сам).
-// Волна проиграна — не конец: стадия wall-N-lost (вал удержан ценой флага; терминал хаба может вернуть павших).
+// Волна проиграна — не конец: стадия wall-N-lost (вал удержан ценой флага). Терминал хаба (saved-terminal) поднимает павшего
+//   прямо в бою (триггер eve-terminal, раз за миссию), залп барж (harmony-pir) — триггер eve-barges.
 // Эффекты обороны по флагам прежних решений — EVE_MODS (world/wave4.js eveSetup → scenes/world-battle.js encounterSetup).
 // Новое в схеме: Effects { healPct } — лечит отряд на долю макс. ЗДР; { loyalty: { npc: d } } — лояльность напарника;
 //   rewards.startQuest — квест, который начинается сразу после награды (если его requires выполнены).
@@ -22,10 +23,12 @@ export const WAVE4_RULES = {
   hub: 'raytsentr',      // Райцентр — хаб «Последней ночи»
   restHealPct: 0.1,      // saved-people: ополченцы лечат отряд на 10% ЗДР между волнами
   renHpPct: 0.75,        // harmony-ren: мины — первая волна −25% ЗДР врагов
-  pirHpPct: 0.9,         // harmony-pir: залп барж (3d8 по области раз за волну) — как −10% ЗДР врагов волны
+  pirVolley: { dice: '3d8', radius: 1, round: 2, dmgType: 'fire' }, // harmony-pir: залп барж раз за волну, по скоплению врагов
+  terminalRevivePct: 0.25, // saved-terminal: терминал хаба поднимает первого павшего (1 раз за миссию, флаг eve-revive-used)
   ladovWave: 'w-eve-2',  // ladov-named: Предложка приходит строем на одну волну
   card: { free: 5, together: 2, stay: -3, devotedAt: 60 }, // «Последняя ночь»: лояльность по выбору (devoted: «Останься» — 0)
-  door: { support: 20, leave: -20 },                        // у Двери: поддержка при loy ≥ 20, уход при loy < −20
+  door: { support: 20, leave: -20, bonus: 1 },              // у Двери: поддержка при loy ≥ 20 (+1 к броскам досье по специальности), уход при loy < −20
+  choir: { quest: 'mq3-court', fin: 'fin-vessel', npc: 'sister-pomekha', skill: 'meditation', dc: 14 }, // §5: Помеха при D — не уйти в Хор
 };
 
 // Оборона Райцентра по флагам прежних решений (§2, все суммируются). waves — к каким волнам (нет — ко всем).
@@ -35,7 +38,13 @@ export const EVE_WAVES = W;
 export const EVE_MODS = [
   { flag: 'harmony-ai', allies: ['wp-vet-l16', 'wp-vet-l16'], text: 'Стрелки Военпрома на валу' },
   { flag: 'harmony-ren', waves: ['w-eve-1'], hpPct: WAVE4_RULES.renHpPct, text: 'Мины Яроша на подходах' },
-  { flag: 'harmony-pir', hpPct: WAVE4_RULES.pirHpPct, text: 'Залп пиратских барж' },
+  { flag: 'harmony-pir', text: 'Залп пиратских барж',
+    triggers: [{ id: 'eve-barges', when: { event: 'round', round: WAVE4_RULES.pirVolley.round },
+      do: [{ op: 'volley', team: 'enemies', ...WAVE4_RULES.pirVolley, text: 'Баржи дают залп по скоплению врагов.' }] }] },
+  // terminal of the hub: the first fallen party member is back at 25% ЗДР — once for the whole mission (all three waves)
+  { flag: 'saved-terminal', notFlag: 'eve-revive-used', text: 'Терминал хаба на связи',
+    triggers: [{ id: 'eve-terminal', flag: 'eve-revive-used', when: { event: 'down', team: 'heroes' },
+      do: [{ op: 'revive', pct: WAVE4_RULES.terminalRevivePct }, { op: 'log', text: 'Терминал хаба вернул павшего: четверть сил.' }] }] },
   { flag: 'harmony-council', buff: { id: 'barricade', stat: 'kb', value: 1, turns: 99 }, text: 'Беженцы на баррикадах' },
   { flag: 'saved-workshop', allies: ['lis-5-turret-l15'], text: 'Турель Николы' },
   { flag: 'saved-sector-d', allies: ['nv-cmd-l16'], text: 'Бородач Тушёнкин на левом фланге' },
@@ -65,8 +74,6 @@ const wave = (n) => [
     'Третья волна: палачи Судьи у ворот. Последняя.',
   ][n - 1], battle(W[n - 1], WAVE4_RULES.hub, `wall-${n}-lost`), n < 3 ? `rest-${n}` : 'priest'),
   st(`wall-${n}-lost`, 'Вал прогнулся. Души прошли до второй баррикады и встали — им тоже нужен приказ.', choice([
-    opt('revive', 'Терминал хаба: вернуть павших (один раз за ночь).', null, n < 3 ? `rest-${n}` : 'priest',
-      { requires: { flag: 'saved-terminal', notFlag: 'eve-revive-used' }, effects: { flags: ['eve-revive-used'], text: 'Терминал хаба вернул павшего. Волна удержана.' } }),
     opt('hold', 'Отойти ко второй баррикаде и держать.', null, n < 3 ? `rest-${n}` : 'priest', { effects: { flags: [`eve-wave-${n}-lost`], mrl: -4 } }),
   ]), n < 3 ? `rest-${n}` : 'priest'),
   ...(n < 3 ? [st(`rest-${n}`, 'Затишье между волнами. Короткое, без смены дня.', choice([

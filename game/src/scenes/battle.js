@@ -176,6 +176,7 @@ export function createBattleScene(opts) {
       rivals, partyLose: !!opts.partyLose, // skirmishes.md: the third side (team 'rivals'), lose when the party is down
       onEvent: (e) => S.queue.push(e),
       objectives: opts.objectives || null, // combat rework §6: optional objective, chests, exits
+      triggers: opts.triggers || null, // content-wave4.md §2: extra battle triggers (barge volley, hub terminal)
       metric: opts.metric ?? combatMetric(), // metric-combat.md stage 1 (settings «Бой: по клеткам» -> 0)
     });
     const b = S.b;

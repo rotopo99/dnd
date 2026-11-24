@@ -32,14 +32,14 @@ import { questXp } from '../rules/progression.js';
 import { EXODUS } from '../data/world/exodus.js';
 import { exodusActive, exodusLeft, exodusExtend } from './exodus.js';
 import { personalStage, personalQuestDone } from './companions.js';
-import { applyConsequences, markFinale } from './consequences.js';
+import { applyConsequences, markFinale, lateCourtMods } from './consequences.js';
 import { ATTACK_RULES } from '../data/world/crime.js';
 import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
 import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag, CINE_RESULT_SOFTEN } from './cine-hooks.js';
 import { dossierDc, courtLimits, applyDossier, dossierPoints } from './dossier.js';
-import { doorFarewell, npcName } from './wave4.js';
+import { doorFarewell, npcName, doorBonus, finaleChoir } from './wave4.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -105,6 +105,8 @@ function reward(save, qid, data) {
   if (ext) out.push(...exodusExtend(save, qid, ext));
   if (r.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), r.talentChoice];
   if (q.personal) out.push(...personalQuestDone(save, q)); // companions-scenes.md: +loyalty, alternative path
+  const choir = finaleChoir(save, qid); // content-wave4.md §5: ending D — Сестра Помеха rolls not to go into the Choir
+  if (choir) { journal(save, t(choir.line)); out.push({ text: t(choir.line), color: choir.ok ? 'j' : 'c' }); }
   out.push(...applyConsequences(save, qid)); // world-consequences.md: flag cq:<qid>:<outcome>, rep, world changes (once)
   markFinale(save);
   // content-wave4.md §2: rewards.startQuest — the next quest begins at once (mq4-eve -> mq3-court: the court is at the Door)
@@ -251,9 +253,11 @@ export function allNeed(save, g) {
  * dossierPer N — easeBy, then −1 per N dossier points.
  */
 export function goalDc(save, goal) {
-  if (goal.dcFrom === 'dossier') return dossierDc(save, goal);
+  // content-wave4.md §5: a supporting companion at the Door — +1 to the court («dossier») rolls of his specialty (as DC −1)
+  const door = goal.dcFrom === 'dossier' || goal.dossierPer ? doorBonus(save, goal.skills)?.n || 0 : 0;
+  if (goal.dcFrom === 'dossier') return dossierDc(save, goal) - door;
   const ease = (goal.easeBy || []).reduce((a, f) => a + (typeof f === 'string' ? (save.flags[f] ? 1 : 0) : (save.flags[f.flag] ? f.n ?? 1 : 0)), 0);
-  return goal.dossierPer ? dossierDc(save, goal, (goal.dc || 0) - ease) : (goal.dc || 0) - ease;
+  return goal.dossierPer ? dossierDc(save, goal, (goal.dc || 0) - ease) - door : (goal.dc || 0) - ease;
 }
 /** Successes / failures of a challenge goal (content-wave4.md: the court by the dossier and the c11 consent). */
 export const goalLimits = (save, goal) => courtLimits(save, goal);
@@ -348,6 +352,8 @@ export function cineResult(save, result, ctr = {}, data = null, id = null) {
   const after = id && CINE_AFTER[id];
   if (after && save?.flags && (!after.ifFlag || save.flags[after.ifFlag])) for (const f of after.flags || []) save.flags[f] = true;
   if (after && save?.quests) out.push(...flagStages(save, data)); // a clue flag may finish an 'all' stage
+  // content-wave4.md §3: c12 plays after the court consequences — a flag it set (door-halfsealed) applies its mod late
+  if (save?.quests?.['mq3-court']?.state === 'done') out.push(...lateCourtMods(save));
   if (!result || !save?.quests) return out;
   const fx = CINE_RESULT_FX[result];
   if (fx) {
@@ -567,6 +573,13 @@ export function stageNotes(save, stage) {
   const out = [];
   if (stage.dossier || stage.showDossier) out.push({ text: tf('w4.dossier', { n: dossierPoints(save) }), color: 'f' });
   for (const n of stage.notes || []) if (requiresOk(save, n.requires)) out.push({ text: n.text, color: n.color || 'c' });
+  return out;
+}
+
+/** content-wave4.md §1: option ids a live stage note marks (the Judge's temptation highlights A and D). → Set. */
+export function stageHighlights(save, stage) {
+  const out = new Set();
+  for (const n of stage?.notes || []) if (n.highlight && requiresOk(save, n.requires)) for (const id of n.highlight) out.add(id);
   return out;
 }
 

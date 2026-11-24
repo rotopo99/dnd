@@ -179,7 +179,8 @@ export const C4_COURT = {
         skills: ['persuasion', 'analysis', 'hack'], dc: 19,
         mod: [{ ctr: 'witness', dc: -2 }, { ctr: 'proof', dc: -1 }, { ctr: 'counsel', dc: -1 }, { ctr: 'polite', dc: -1 }, { ctr: 'silent', dc: 2 }, { flag: 'door-halfsealed', dc: 2 },
           // content-wave4.md: the dossier (−1 per 3 points) and the c11 consent (torn blank −1, the Judge holds a signature +2)
-          { dossier: 3, dc: -1 }, { flag: 'consent-torn', dc: -1 }, { flag: 'judge-has-signature', dc: 2 }],
+          { dossier: 3, dc: -1 }, { flag: 'consent-torn', dc: -1 }, { flag: 'judge-has-signature', dc: 2 },
+          { door: 1, dc: -1 }], // content-wave4.md §5: a supporting companion of the specialty (world/wave4.js doorBonus)
         ok: { next: 'won' }, fail: { next: 'fail-gate' },
       },
     },

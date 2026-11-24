@@ -4,7 +4,7 @@
 // Рассказчик по приоритету: Куксиус (kuksius-helped / dawn-archive), иначе Архонт (archon-ally), иначе Сера (лог ретранслятора).
 // Исходы (cine-hooks CINE_RESULT_NEXT: любой → стадия wall-1): c11-known / c11-torn / c11-signed / c11-signed-bad / c11-silent. ~2 мин.
 export const C11_CONSENT = {
-  id: 'c11-consent', title: 'Согласие', mins: 2, music: 'cyberspace', stage: 'roof-night',
+  id: 'c11-consent', title: 'Согласие', mins: 2, music: 'cyberspace', stage: 'wall-night',
   trigger: { at: 'mq4-twist', once: true },
   cast: {
     hero: { k: 'hero' },

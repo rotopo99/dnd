@@ -8,4 +8,8 @@ export const WAVE4_TEXT = {
   'w4.doorSupport': '{name}: «{line}»',
   'w4.doorLeave': '{name} уходит перед Дверью: «{line}»',
   'w4.hindrance.barricade': 'Баррикады',
+  'w4.tempt': 'Судья подсказывает этот выход',
+  'w4.doorBonus': '{name} рядом: −1 к СЛ ({skill})',
+  'w4.choirStay': 'Сестра Помеха слышит Хор. Заткнула уши и осталась: «Это громче».',
+  'w4.choirLeave': 'Сестра Помеха ушла в Хор. Шум за ней стих.',
 };

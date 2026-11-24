@@ -19,6 +19,7 @@ import { createSurface, radiusTiles, floorAt, gasAt, surfaceHarm, surfaceEnterPr
 import { SURFACES, SURFACE_RULES } from '../game/src/data/surfaces.js';
 import { DATA } from './fixtures/rules-data.mjs';
 import { getReachable } from '../game/src/rules/combat.js';
+import { runTriggers } from '../game/src/rules/battle-triggers.js';
 const getReachable_ = (b, u) => getReachable(b, u.id);
 import { rollLoot } from '../game/src/world/loot.js';
 import { GAME_DATA } from '../game/src/data/index.js';
@@ -6566,8 +6567,52 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.equal(w1.buffs[0].stat, 'kb');
     assert.equal(W4.eveSetup(s, 'w-eve-2', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 3);
     assert.equal(W4.eveSetup(s, 'w-eve-3', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 0);
-    assert.deepEqual(W4.eveSetup(mk(), 'w-eve-1', ['a']), { enemies: ['a'], allies: [], buffs: [], notes: [] });
+    assert.deepEqual(W4.eveSetup(mk(), 'w-eve-1', ['a']), { enemies: ['a'], allies: [], buffs: [], notes: [], triggers: [] });
+    // harmony-pir: a barge volley trigger each wave (no −% ЗДР); saved-terminal: a revive trigger until it was used once
+    const pir = W4.eveSetup(mk({ 'harmony-pir': true, 'saved-terminal': true }), 'w-eve-3', ['a']);
+    assert.deepEqual(pir.enemies, ['a']);
+    assert.deepEqual(pir.triggers.map((x) => x.id).sort(), ['eve-barges', 'eve-terminal']);
+    assert.deepEqual(W4.eveSetup(mk({ 'saved-terminal': true, 'eve-revive-used': true }), 'w-eve-2', ['a']).triggers, []);
     for (const id of W4.eveMods(mk(Object.fromEntries(['harmony-ai', 'saved-sector-d', 'plague-cured'].map((f) => [f, true]))), 'w-eve-1').flatMap((m) => m.allies || [])) assert.ok(GAME_DATA.ENEMIES[id], id);
+  });
+  test('wave4 battle triggers: barge volley hits the densest enemy cluster, the hub terminal raises the fallen at 25%', () => {
+    const tr = W4.eveSetup(mk({ 'harmony-pir': true, 'saved-terminal': true }), 'w-eve-1', []).triggers;
+    const b = createBattle({ map: makeArena({ heroes: 2, enemies: 3 }), heroes: [hero(), hero()], enemies: ['thug', 'thug', 'thug'], data: DATA, seed: 5, autoReactions: false, triggers: tr });
+    const foes = b.units.filter((u) => u.team === 'enemies');
+    foes.forEach((u, i) => { u.maxHp = u.hp = 500; b.occ[u.y * b.grid.w + u.x] = 0; });
+    const base = { x: foes[0].x, y: foes[0].y };
+    [[0, 0], [1, 0], [8, 8]].forEach(([dx, dy], i) => { foes[i].x = Math.min(b.grid.w - 2, base.x + dx); foes[i].y = Math.min(b.grid.h - 2, base.y + dy); });
+    const far = foes[2]; far.x = 1; far.y = 1;
+    b.round = 2; b.trigCheck = true; runTriggers(b, () => {});
+    assert.ok(foes[0].hp < 500 && foes[1].hp < 500 && far.hp === 500, `volley: ${foes.map((u) => u.hp)}`);
+    const h = b.units.find((u) => u.kind === 'hero');
+    dealDamage(b, null, h, 9999, 'blunt');
+    assert.ok(h.down || h.dead);
+    b.trigCheck = true; runTriggers(b, () => {});
+    assert.ok(!h.down && !h.dead && h.hp === Math.ceil(h.maxHp * 0.25), `revived ${h.hp}/${h.maxHp}`);
+    assert.ok(b.triggers.find((x) => x.id === 'eve-terminal').fired && b.triggers.find((x) => x.id === 'eve-terminal').flag === 'eve-revive-used');
+  });
+  test('wave4 §5: a supporting companion — court DC −1 for his specialty (once); ending D — Помеха rolls meditation', () => {
+    const s = mk({ 'door-support-sister-pomekha': true, 'door-support-telifon': true }); st.recruit(s, 'sister-pomekha'); st.recruit(s, 'telifon');
+    const goal = QW['mq3-court'].stages.find((x) => x.id === 'inside').goal;
+    const b = W4.doorBonus(s, goal.skills);
+    assert.ok(b && b.n === 1, 'a bonus for persuasion/judge/meditation/religion');
+    const s0 = mk();
+    assert.equal(QS.goalDc(s, goal), QS.goalDc(s0, goal) - 1);
+    assert.equal(W4.doorBonus(s, ['stealth']), null);
+    // ending D: stays (rng 0.99 → high roll) or leaves into the Choir (rng 0 → low roll)
+    const d1 = mk({ 'fin-vessel': true }); st.recruit(d1, 'sister-pomekha');
+    assert.ok(W4.finaleChoir(d1, 'mq3-court', () => 0.999).ok && d1.flags['pomekha-stayed']);
+    assert.equal(W4.finaleChoir(d1, 'mq3-court', () => 0), null, 'once');
+    const d2 = mk({ 'fin-vessel': true }); st.recruit(d2, 'sister-pomekha');
+    assert.ok(!W4.finaleChoir(d2, 'mq3-court', () => 0).ok && d2.flags['pomekha-choir'] && d2.party.find((p) => p.npc === 'sister-pomekha').state === 'left');
+    assert.equal(W4.finaleChoir(mk({ 'fin-closed': true }), 'mq3-court'), null, 'not D');
+  });
+  test('wave4 §1: the Judge\'s temptation highlights A and D (not B) only at a thin dossier', () => {
+    const v = QW['mq3-court'].stages.find((x) => x.id === 'verdict');
+    assert.deepEqual([...QS.stageHighlights(mk(), v)].sort(), ['closed', 'lox-leave', 'lox9', 'vessel']);
+    const thick = mk(Object.fromEntries(DOSSIER.filter((r) => r.flag).map((r) => [r.flag, true])));
+    assert.equal(QS.stageHighlights(thick, v).size, 0);
   });
   test('wave4 §5: at the Door loy ≥ 20 supports, loy < −20 leaves', () => {
     const s = mk(); st.recruit(s, 'lox'); st.recruit(s, 'tik');

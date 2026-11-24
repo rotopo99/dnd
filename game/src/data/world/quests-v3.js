@@ -173,7 +173,8 @@ const LIST = [
         opt('lox9', '«Приманка»: Lox-9 займёт место героя.', null, { flags: ['ending-lox9', 'fin-lox9'], deeds: ['honor'] }, null, { notFlag: 'lox-alive-door', any: [{ flag: 'lox9-free' }, { flag: 'lox-leaflet' }] }),
       ), 'done'), showDossier: true,
         // BIBLE §8.3 temptation: a thin dossier or a lost court — the Judge offers the shortcut (A / D)
-        notes: [{ requires: { any: [{ dossier: { max: 3 } }, { flag: 'court-lost' }] }, text: 'Судья, тихо: «Очередь в сорок один миллион. Вы можете это закончить». Дверь или сосуд — выбирайте.' }] },
+        notes: [{ requires: { any: [{ dossier: { max: 3 } }, { flag: 'court-lost' }] }, text: 'Судья, тихо: «Очередь в сорок один миллион. Вы можете это закончить». Дверь или сосуд — выбирайте.',
+          highlight: ['closed', 'lox-leave', 'vessel', 'lox9'] }] }, // the A / D options are marked in the choice (not B)
       // A failed: the door is sealed crooked (as c6), the Judge knocks after 6 days (COURT_MODS halfsealed)
       st('crooked', 'Створка дрогнула и встала криво. Шов держится, но не весь.', choice(
         opt('closed', 'Заварить как есть: створка держится на одном шве.', null, { flags: ['ending-closed', 'fin-closed', 'door-halfsealed'] }),
