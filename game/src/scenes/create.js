@@ -67,9 +67,9 @@ export function createCreateScene(opts = {}) {
       buttons.push({ kind: 'class', id, label: c.name, sub: ok ? t(`role.${c.role}`) : t('create.locked'), subColor: ok ? undefined : C.c, x: ox + 256, y: oy + 100 + i * 50, w: 220, h: 46, disabled: !ok });
     });
     D.CLASSES[st.cls].paths.forEach((p, i) => buttons.push({ kind: 'path', id: p.id, label: p.name, font: FONT, sub: t(`role.${p.role || D.CLASSES[st.cls].role}`), x: ox + 488, y: oy + 100 + i * 64, w: 270, h: 56 }));
-    buttons.push({ kind: 'name', id: 'name', label: '', x: ox + 488, y: oy + 340, w: 270, h: 40 });
+    buttons.push({ kind: 'name', id: 'name', label: '', x: ox + 488, y: oy + 334, w: 270, h: 40 });
     // v3: recommended (fast) or flexible build («Свободная раскладка» → create-build.js)
-    buttons.push({ kind: 'mode', id: 'rec', label: t('create.mode.rec'), sub: t('create.mode.recSub'), font: FONT_B, x: ox + 488, y: oy + 420, w: 270, h: 52, selected: st.mode === 'rec' });
+    buttons.push({ kind: 'mode', id: 'rec', label: t('create.mode.rec'), sub: t('create.mode.recSub'), font: FONT_B, x: ox + 488, y: oy + 422, w: 270, h: 52, selected: st.mode === 'rec' });
     buttons.push({ kind: 'mode', id: 'flex', label: t('create.mode.flex'), sub: t('create.mode.flexSub'), font: FONT_B, x: ox + 488, y: oy + 480, w: 270, h: 52, selected: st.mode === 'flex' });
     buttons.push({ kind: 'back', id: 'back', label: t('create.back'), x: ox + 488, y: oy + 652, w: 128, h: 48 });
     buttons.push({ kind: 'start', id: 'start', label: t('create.next'), x: ox + 630, y: oy + 652, w: 128, h: 48 });
@@ -92,12 +92,13 @@ export function createCreateScene(opts = {}) {
 
   function begin(game) {
     const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName') };
-    const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { if (opts.onDone) { opts.onDone(g, full); return; } g.hero = full; startPrologue(g, full); });
+    const of = st.mode === 'flex' ? 4 : 3; // QA v48 #8: steps count per mode
+    const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { if (opts.onDone) { opts.onDone(g, full); return; } g.hero = full; startPrologue(g, full); }, { n: of, of });
     // steps: [build (flex)] -> look (3D avatar) -> talents
-    const look = (h, backTo) => { let lk; lk = createLookScene(h, backTo, (g, full) => g.setScene(talents(full, lk))); return lk; };
+    const look = (h, backTo) => { let lk; lk = createLookScene(h, backTo, (g, full) => g.setScene(talents(full, lk)), { n: of - 1, of }); return lk; };
     if (st.mode === 'flex') {
       let build;
-      build = createBuildScene(hero, self, (g, full) => g.setScene(look(full, build)));
+      build = createBuildScene(hero, self, (g, full) => g.setScene(look(full, build)), { n: 2, of });
       game.setScene(build);
     } else game.setScene(look(hero, self));
   }
@@ -236,17 +237,18 @@ export function createCreateScene(opts = {}) {
       const { ctx, width: W, height: H } = game;
       clear(ctx, W, H);
       text(ctx, t('create.title'), ox + 24, oy + 20, C.h, FONT_L);
+      text(ctx, t('create.stepOf').replace('{n}', 1).replace('{m}', st.mode === 'flex' ? 4 : 3), ox + 24 + ctx.measureText(t('create.title')).width + 16, oy + 28, C['3'], FONT);
       text(ctx, t('create.race'), ox + 24, oy + 72, C['4'], FONT_B);
       text(ctx, t('create.class'), ox + 256, oy + 72, C['4'], FONT_B);
       text(ctx, t('create.path'), ox + 488, oy + 72, C['4'], FONT_B);
-      text(ctx, t('create.name'), ox + 488, oy + 314, C['4'], FONT_B);
-      text(ctx, t('create.mode'), ox + 488, oy + 396, C['4'], FONT_B);
+      text(ctx, t('create.name'), ox + 488, oy + 308, C['4'], FONT_B);
+      text(ctx, t('create.mode'), ox + 488, oy + 400, C['4'], FONT_B);
       for (const b of buttons) {
         if (b.kind === 'name') {
           panel(ctx, b.x, b.y, b.w, b.h, C['0'], hover === b ? C.h : C['3']);
           const caret = Math.floor(st.time * 2) % 2 === 0 ? '_' : ' ';
           text(ctx, st.name ? st.name + caret : t('create.defaultName'), b.x + 12, b.y + 11, st.name ? C['5'] : C['3'], FONT_B);
-          text(ctx, t('create.nameHint'), b.x, b.y + b.h + 6, C['3']);
+          text(ctx, t('create.nameHint'), b.x, b.y + b.h + 3, C['3'], '13px monospace'); // QA v48 #7: clear of «Режим»
           continue;
         }
         if (b.kind === 'race' || b.kind === 'class') {

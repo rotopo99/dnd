@@ -61,7 +61,7 @@ export function kitOptions(cls, pathId, prof) {
   return { kit, weapons: [kit.weapon, ...wAlt.map((w) => w.id)].filter(Boolean), armor: [kit.armor, ...aAlt.map((a) => a.id)].filter(Boolean) };
 }
 
-export function createBuildScene(hero, back, onNext) {
+export function createBuildScene(hero, back, onNext, step = { n: 2, of: 4 }) {
   const st = {
     stats: Object.fromEntries(STATS.map((k) => [k, STAT_MIN])), base: [], extra: [], chosen: { weaponTypes: {}, dmgTypes: {}, armor: {} },
     phobia: [], look: null, story: '', bg: hero.bg || null, focus: null, weapon: null, armor: null, time: 0,
@@ -368,6 +368,7 @@ export function createBuildScene(hero, back, onNext) {
       const { ctx, width: W, height: H } = game;
       clear(ctx, W, H);
       text(ctx, t('create.flexTitle'), ox + 24, oy + 20, C.h, FONT_L);
+      text(ctx, t('create.stepOf').replace('{n}', step.n).replace('{m}', step.of), ox + 24 + ctx.measureText(t('create.flexTitle')).width + 16, oy + 28, C['3'], FONT);
       text(ctx, `${hero.name} · ${game.data.RACES[hero.race].name} · ${game.data.CLASSES[hero.cls].name}`, ox + 1256, oy + 28, C['4'], FONT, 'right');
       drawStats(ctx);
       drawMiddle(ctx);

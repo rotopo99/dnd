@@ -6,7 +6,9 @@ import { TALENTS, CREATION_SLOTS, COMBAT_TALENT_LIMIT, talentsForSlot, isCombatT
 import { buildCreature, STATS } from '../rules/character.js';
 import { ORIGINS, originAllowed, gadgetFor } from '../world/data.js';
 import { play } from '../audio/sfx.js';
-import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear, fit } from '../ui/draw.js';
+import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear, fit, wrap } from '../ui/draw.js';
+
+const HELP_FONT = '12px monospace';
 import { openBackstoryPick, backstoryLabel } from '../ui/backstory-ui.js';
 import { createDetails, updateDetails, drawDetails as drawDetailsPanel } from '../ui/details.js';
 import { talentTip, abilityTip } from '../ui/tips.js';
@@ -17,7 +19,7 @@ const BASE_W = 1280, BASE_H = 720;
 const SLOT_ROWS = 8;
 
 /** createTalentsScene(hero {race, cls, path, name}, back scene, onStart(game, fullHero)) */
-export function createTalentsScene(hero, back, onStart) {
+export function createTalentsScene(hero, back, onStart, step = { n: 4, of: 4 }) {
   const st = {
     origin: null, alignment: 'good', bg: hero.bg || null, anyStat: null, picks: {}, focus: null, time: 0, pages: {}, lists: {}, dsc: createDetails(),
   };
@@ -109,7 +111,7 @@ export function createTalentsScene(hero, back, onStart) {
   }
 
   // details panel (ui/details.js): full card of the hovered / focused talent or origin + the class gadget, scrolls
-  const detailRect = () => ({ x: ox + 916, y: oy + 92, w: 348, h: 496 });
+  const detailRect = () => ({ x: ox + 916, y: oy + 92, w: 348, h: 470 });
   function detailSpec() {
     const f = st.focus || (hover && (hover.kind === 'talent' || hover.kind === 'origin') ? { kind: hover.kind, id: hover.id } : null);
     const focus = hover && (hover.kind === 'talent' || hover.kind === 'origin') ? { kind: hover.kind, id: hover.id } : f;
@@ -137,7 +139,9 @@ export function createTalentsScene(hero, back, onStart) {
     const { ctx: c } = game;
     const { spec, key } = detailSpec();
     drawDetailsPanel(c, st.dsc, detailRect(), spec, key);
-    text(c, `${t('talent.combat')}: ${combatCount(null)}/${COMBAT_TALENT_LIMIT(1)}`, ox + 924, oy + 600, C.a, FONT_B);
+    text(c, `${t('talent.combat')}: ${combatCount(null)}/${COMBAT_TALENT_LIMIT(1)}`, ox + 924, oy + 570, C.a, FONT_B);
+    // QA v48 #8: what «боевой: N/M» means
+    wrap(c, t('create.combatHelp').replace('{n}', COMBAT_TALENT_LIMIT(1)), 336, HELP_FONT).slice(0, 2).forEach((l, i) => text(c, l, ox + 924, oy + 590 + i * 14, C['4'], HELP_FONT));
   }
 
   self = {
@@ -160,6 +164,7 @@ export function createTalentsScene(hero, back, onStart) {
       const { ctx: c, width: W, height: H } = game;
       clear(c, W, H);
       text(c, t('create.page2'), ox + 24, oy + 20, C.h, FONT_L);
+      text(c, t('create.stepOf').replace('{n}', step.n).replace('{m}', step.of), ox + 24 + c.measureText(t('create.page2')).width + 16, oy + 28, C['3'], FONT);
       text(c, `${hero.name} · ${game.data.RACES[hero.race].name} · ${game.data.CLASSES[hero.cls].name}`, ox + 1256, oy + 28, C['4'], FONT, 'right');
       text(c, t('create.origin'), ox + 24, oy + 72, C['4'], FONT_B);
       const ay = oy + 100 + 11 * 40 + 24;

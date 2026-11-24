@@ -55,7 +55,7 @@ function tabIcon(ctx, id, cx, cy, col) {
   ctx.restore();
 }
 
-export function createLookScene(hero, back, onNext) {
+export function createLookScene(hero, back, onNext, step = { n: 3, of: 4 }) {
   const rng = rngOf(`${hero.name}|${Math.random()}`);
   let race = hero.race;
   const flex = !!hero.stats; // the flexible build fixed the race-dependent numbers: the race can not change here
@@ -313,7 +313,7 @@ export function createLookScene(hero, back, onNext) {
       const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, C['1']); bg.addColorStop(1, C['0']);
       ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
       text(ctx, 'Внешность', ox + 24, oy + 20, C['5'], FONT_L);
-      text(ctx, 'Шаг 3 из 4', ox + 24 + 190, oy + 28, C['3'], S12);
+      text(ctx, t('create.stepOf').replace('{n}', step.n).replace('{m}', step.of), ox + 24 + 190, oy + 28, C['3'], S12);
       text(ctx, `${hero.name} · ${game.data.RACES[race].name} · ${game.data.CLASSES[hero.cls].name}`, ox + 1256, oy + 28, C['4'], FONT, 'right');
       ctx.fillStyle = C['2']; ctx.fillRect(ox + 24, oy + 58, 1232, 1);
       // tabs

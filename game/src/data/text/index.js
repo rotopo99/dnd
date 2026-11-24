@@ -226,6 +226,8 @@ const ru = {
   // ---------- v2: creation page 2 ----------
   'create.next': 'Далее',
   'create.page2': 'Происхождение и таланты',
+  'create.stepOf': 'Шаг {n} из {m}',
+  'create.combatHelp': 'Б — боевой талант, М — мирный. Боевых при создании — не больше {n}.',
   'create.origin': 'Происхождение',
   'create.alignment': 'Мировоззрение',
   'create.align.good': 'Добрый',
