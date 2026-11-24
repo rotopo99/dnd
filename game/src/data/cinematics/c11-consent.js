@@ -28,7 +28,13 @@ export const C11_CONSENT = {
       ],
       next: 'who',
     },
-    who: { branch: [{ if: { any: ['kuksius-helped', 'dawn-archive'] }, next: 'k-intro' }, { if: { flag: 'archon-ally' }, next: 'a-intro' }, { next: 's-intro' }] },
+    who: { branch: [{ if: { any: ['kuksius-helped', 'dawn-archive'] }, next: 'k-intro' }, { if: { flag: 'archon-ally' }, next: 'a-intro' }, { if: { flag: 'dawn-known' }, next: 's-intro' }, { next: 'n-intro' }] },
+    // никто не связан с «Рассветом» (без dawn-known — лог ретранслятора не читали): бланк объясняет себя сам
+    'n-intro': {
+      shot: 'close:sera', set: { sera: { anim: 'shrug' } },
+      lines: [{ w: 'sera', t: 'Я не знаю, кто это принёс. Шапка: «Рассвет». Вы слышали это слово? Я — только что.' }],
+      next: 'line',
+    },
     'k-intro': {
       shot: 'med:kuksius>push:5', set: { kuksius: { anim: 'talk' } },
       lines: [

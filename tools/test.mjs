@@ -5649,7 +5649,7 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
       // content-wave4: c11 narrators (Kuksius / Archon / Sera) and c12 branches by fin-* with dossier witnesses
       { 'kuksius-helped': true, 'vessel-hero': true, 'fin-reflash': true, 'ladov-named': true }, { 'archon-ally': true, 'fin-admin-oldgod': true, 'disp-live': true },
       { 'fin-admin-order': true, 'kuksius-helped': true }, { 'fin-admin-scrap': true, 'truth-harmony-public': true }, { 'fin-lox9': true }, { 'fin-vessel': true },
-      { 'fin-closed': true, 'fin-lox-leave': true }];
+      { 'fin-closed': true, 'fin-lox-leave': true, 'dawn-known': true }];
     for (const d of Object.values(CINEMATICS)) {
       const seen = new Set();
       for (let run = 0; run < 120; run++) {
