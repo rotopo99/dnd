@@ -316,5 +316,14 @@ function renderMap(game, S) {
     text(ctx, `${st.hp}/${st.maxHp}`, px + 240, y + 52, C['5'], FONT);
     if (st.maxMrl) { bar(ctx, px + 84, y + 76, 150, 10, st.mrl, st.maxMrl, 'mrl'); text(ctx, `${st.mrl}/${st.maxMrl}`, px + 240, y + 72, C['5'], FONT); }
   });
+  // legend of node glyphs (QA v48 #6): below the party
+  const types = Object.keys(GLYPH);
+  const ly = Math.max(138 + run.party.length * 112, H - 140);
+  text(ctx, t('run.legend'), px, ly, C['4'], FONT_B);
+  types.forEach((k, i) => {
+    const lx = px + (i % 3) * 102, lyy = ly + 22 + Math.floor(i / 3) * 20;
+    text(ctx, GLYPH[k], lx, lyy, C[COLOR[k] || '5'], FONT_B);
+    text(ctx, fit(ctx, NODE_TYPES[k]?.name || k, 82, '13px monospace'), lx + 18, lyy + 2, C['4'], '13px monospace');
+  });
   for (const b of S.buttons) button(ctx, b, S.hover === b);
 }

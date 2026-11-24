@@ -1,8 +1,11 @@
 // Roguelike «Забег» — start screen (docs/specs/roguelike.md §1, §6, §7): fast party of 1–4 from TEMPLATES (one click),
 // race toggle, seed (random or typed), ascension (≤ meta.ascMax), «Память киберспейса» unlocks, continue the saved run.
 import { t } from '../data/text/index.js';
-import { RUN, META, RELICS } from '../data/roguelike.js';
-import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear, panel } from '../ui/draw.js';
+import { RUN, META, RELICS, ASCENSIONS } from '../data/roguelike.js';
+import { C, FONT, FONT_B, FONT_L, text, button, hitButton, clear, panel, fit } from '../ui/draw.js';
+
+const SMALL = '13px monospace';
+const roleLabel = (r) => { const k = `run.role.${r}`; const s = t(k); return s === k ? r : s; };
 import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
 import { play } from '../audio/sfx.js';
 import { newRun, randomSeed, loadRun, clearRun, saveRun } from '../world/run.js';
@@ -19,7 +22,7 @@ export function createRunStartScene(back) {
     tpls.forEach((tp, i) => {
       const cls = game.data.CLASSES[tp.cls];
       B.push({ id: 'tpl', tpl: tp, x: x0 + (i % 2) * (colW + 8), y: 110 + Math.floor(i / 2) * 60, w: colW, h: 52,
-        label: cls?.name || tp.cls, sub: tp.open ? tp.role : `${t('run.locked')} · ${t('run.cost')} ${META.unlocks.find((u) => u.id === tp.unlock)?.cost ?? '—'}`,
+        label: cls?.name || tp.cls, sub: tp.open ? roleLabel(tp.role) : `${t('run.locked')} · ${t('run.cost')} ${META.unlocks.find((u) => u.id === tp.unlock)?.cost ?? '—'}`,
         disabled: !tp.open || S.party.length >= RUN.partyMax });
     });
     const px = x0 + 2 * (colW + 8) + 24;
@@ -35,7 +38,7 @@ export function createRunStartScene(back) {
     B.push({ id: 'ascUp', x: rx + 224, y: 216, w: 44, h: 40, label: '+', disabled: S.asc >= S.meta.ascMax });
     B.push({ id: 'unlocks', x: rx, y: 300, w: 268, h: 44, label: t('run.unlocks'), key: 'U' });
     if (S.saved) B.push({ id: 'continue', x: rx, y: game.height - 200, w: 268, h: 48, label: t('run.continue'), key: 'C', selected: true });
-    B.push({ id: 'start', x: rx, y: game.height - 140, w: 268, h: 52, label: t('run.start'), disabled: !S.party.length, selected: !S.saved && S.party.length > 0 });
+    B.push({ id: 'start', x: rx, y: game.height - 140, w: 268, h: 52, label: t('run.start'), sub: S.party.length ? null : t('run.startWhy'), disabled: !S.party.length, selected: !S.saved && S.party.length > 0 });
     B.push({ id: 'back', x: rx, y: game.height - 76, w: 268, h: 40, label: t('run.back') });
     S.buttons = B;
   }
@@ -96,7 +99,7 @@ export function createRunStartScene(back) {
         if (inp.wasPressed('Escape')) act = { id: 'back' };
         if (inp.wasPressed('KeyU')) act = { id: 'unlocks' };
         if (inp.wasPressed('KeyC') && S.saved) act = { id: 'continue' };
-        if (inp.wasPressed('Enter') && S.party.length) act = { id: 'start' };
+        if (inp.wasPressed('Enter')) { if (S.party.length) act = { id: 'start' }; else { game.toast(t('run.needParty'), 'a'); } }
         for (let i = 1; i <= 4; i++) if (inp.wasPressed(`Digit${i}`)) { const tp = templatesFor(S.meta).filter((x) => x.open)[i - 1]; if (tp) act = { id: 'tpl', tpl: tp }; }
       }
       if (!act) return;
@@ -122,7 +125,10 @@ export function createRunStartScene(back) {
       const { ctx, width: W, height: H } = game;
       clear(ctx, W, H);
       text(ctx, t('run.title'), 32, 24, C.h, FONT_L);
-      text(ctx, `${t('run.memory')}: ${S.meta.memory}`, 32, 60, C.j, FONT_B);
+      text(ctx, t('run.premise'), 140, 32, C['4'], FONT);
+      const mem = `${t('run.memory')}: ${S.meta.memory}`;
+      text(ctx, mem, 32, 60, C.j, FONT_B);
+      text(ctx, `— ${t('run.memoryHint')}`, 32 + ctx.measureText(mem).width + 8, 60, C['3'], FONT);
       text(ctx, t('run.templates'), 32, 88, C['4'], FONT);
       const px = 32 + 2 * 258 + 24;
       text(ctx, `${t('run.party')} ${S.party.length}/${RUN.partyMax}`, px, 88, C['4'], FONT);
@@ -136,6 +142,9 @@ export function createRunStartScene(back) {
       });
       const rx = W - 300;
       text(ctx, `${t('run.asc')}: ${S.asc}`, rx + 134, 226, C['5'], FONT_B, 'center');
+      const asc = ASCENSIONS.find((x) => x.lvl === S.asc);
+      text(ctx, fit(ctx, asc?.name || '', 268, FONT_B), rx + 134, 262, C.a, FONT_B, 'center');
+      text(ctx, fit(ctx, t('run.ascHint'), 268, SMALL), rx + 134, 280, C['3'], SMALL, 'center');
       for (const b of S.buttons) button(ctx, b, S.hover === b);
     },
   };
