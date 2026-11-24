@@ -4,7 +4,7 @@ build(eid) -> dict(kind, P, arm, objs, names, springs, meta)"""
 from common import *
 import npc
 from npc import ellipsoid, tube, hat_fit, obj_of, ring_at
-from clothes import fab, rbox, band, blob, smooth01, project_uv
+from clothes import fab, rbox, band, blob, smooth01, project_uv, push_out
 
 # ------------------------------------------------------------------ humanoids (npc.build configs)
 HUMANOIDS = {
@@ -23,7 +23,14 @@ HUMANOIDS = {
                   pal=dict(jacket='#5b4a3a', jacket_trim='#3b2519', pants='#3c3f2a', pants_trim='#262818', boots='#3b2519', boots_trim='#1a1008',
                            accent='#74c050', gear='#6e3d22', strap='#a95f2c'),
                   shape=dict(build=1.0, shoulders=1.0), bulk=1.4, head_scale=0.88, age=1.5, head=['muzzle'], body=['spikes'], face=dict(angry=0.7), scale=1.18),
+    # Warprom android stormtrooper: gunmetal bodysuit with red seams, olive hard armour (cuirass, pauldrons, limb guards, backpack
+    # power unit, red star), closed helmet with a wrap-around red visor (no face visible)
+    'android': dict(sex='male', hair=None, hc='black', skin='ashen', base='cyber',
+                    pal=dict(jacket='#3c3f4f', jacket_trim='#262833', pants='#3c3f4f', gear='#262833', boots='#262833', boots_trim='#141018', accent='#4a2a30', bare=True),
+                    skin_col='#3c3f4f',
+                    shape=dict(build=0.5, shoulders=0.8), head=['android_helm'], body=['android_armor'], face=dict(angry=0.3), scale=1.06),
 }
+ANDROID_COL = dict(plate='#4b5a2f', frame='#3c3f4f', dark='#262833', glow='#c42828', star='#c42828', mark='#f0b050')
 
 
 def hg_cult_mask(H, C):
@@ -145,8 +152,120 @@ def bg_spikes(body, P, C, cfg):
     return o
 
 
+def _part(bm, mi, fn, *a, **k):
+    """run a bmesh builder, set material index mi on the faces it created -> its new verts"""
+    fs0 = set(bm.faces); vs0 = set(bm.verts); fn(*a, **k)
+    for f in bm.faces:
+        if f not in fs0: f.material_index = mi
+    return [v for v in bm.verts if v not in vs0]
+
+
+def hg_android_helm(H, C):
+    """closed helmet: egg shell (chin to crown), angular jaw, thick wrap-around red visor, mouth grille, ear pods, antenna, crest"""
+    A = ANDROID_COL; bm = bmesh.new(); hs = H['hs']; cy = H['cy']; ry = (H['by'] - H['fy']) / 2
+    top = max([H['zt']] + [v.z for v in H['hv']]); z0 = H['zc'] - 0.05 * hs; zm = (z0 + top) / 2; rz = (top - z0) / 2 + 0.018
+    rx = H['hx'] + 0.024; ryy = ry + 0.028
+    vs = _part(bm, 0, ellipsoid, bm, (0, cy + 0.004, zm), (rx, ryy, rz), seg=28, rings=16)
+    for v in vs:                                    # squarer shell (superellipse, p = 3)
+        u = Vector((v.co.x / rx, (v.co.y - cy - 0.004) / ryy, (v.co.z - zm) / rz)); n3 = (abs(u.x) ** 3 + abs(u.y) ** 3 + abs(u.z) ** 3) ** (1 / 3)
+        if n3 > 1e-6: u *= u.length / n3
+        v.co = Vector((u.x * rx, cy + 0.004 + u.y * ryy, zm + u.z * rz))
+    for v in vs:                                    # jaw: narrower and flat-fronted below the visor, slight snout
+        t = smooth01((H['ze'] - 0.02 - v.co.z) / (0.22 * hs))
+        v.co.x *= 1 - 0.16 * t
+        if v.co.y < cy: v.co.y = cy + (v.co.y - cy) * (1 - 0.10 * t)
+    # visor: solid curved slab (outer, inner, top, bottom faces)
+    zv = H['ze'] + 0.01 * hs; h = 0.085 * hs; seg = 16; rows = []
+    for k in range(seg + 1):
+        a = math.radians(-78 + 156 * k / seg); ca, sa = math.cos(a), math.sin(a)
+        ring = []
+        f = 1 / (abs(sa) ** 3 + abs(ca) ** 3) ** (1 / 3)         # superellipse shell radius factor
+        for d in (0.010, -0.004):
+            x = sa * (rx * f + d); y = cy + 0.004 - ca * (ryy * f + d); dz = -0.012 * hs * (1 - ca)
+            ring += [bm.verts.new((x, y, zv + dz + s * h / 2 * (0.75 + 0.25 * ca))) for s in (-1, 1)]
+        rows.append(ring)
+    fs0 = set(bm.faces)
+    for r0, r1 in zip(rows[:-1], rows[1:]):
+        bm.faces.new((r0[0], r1[0], r1[1], r0[1])); bm.faces.new((r0[1], r1[1], r1[3], r0[3])); bm.faces.new((r0[2], r0[0], r1[0], r1[2]))
+    for f in bm.faces:
+        if f not in fs0: f.material_index = 2
+    def fy_at(z): return min(v.co.y for v in vs if abs(v.co.x) < 0.03 and abs(v.co.z - z) < 0.03 * hs)
+    for q in range(3):                              # mouth grille bars
+        z = H['zc'] + (0.07 + 0.04 * q) * hs; _part(bm, 1, rbox, bm, (0, fy_at(z) + 0.002, z), (0.055 - 0.008 * q, 0.012, 0.011), bevel=0.003)
+    # brow ridge over the visor + cheek plates
+    for v in _part(bm, 1, lambda: band(bm, (0, cy + 0.004, zv + h / 2 + 0.006), 1.0, 1.0, 0.016, seg=32)):
+        a = math.atan2(v.co.x, -(v.co.y - cy - 0.004)); sa, ca = math.sin(a), math.cos(a); f = 1 / (abs(sa) ** 3 + abs(ca) ** 3) ** (1 / 3)
+        v.co.x = sa * (rx * f + 0.012); v.co.y = cy + 0.004 - ca * (ryy * f + 0.012)
+    for s in (1, -1): _part(bm, 1, rbox, bm, (s * (rx - 0.022), cy - ryy * 0.45, H['zc'] + 0.10 * hs), (0.016, 0.07, 0.06), bevel=0.006)
+    for s in (1, -1):                               # ear pods + glow ring
+        _part(bm, 1, lambda: Kit.cyl_raw(bm, (s * (rx - 0.01), cy + 0.01, H['ze'] - 0.02 * hs), (s * (rx + 0.022), cy + 0.01, H['ze'] - 0.02 * hs), 0.032, 0.028, 14))
+        _part(bm, 2, lambda: Kit.cyl_raw(bm, (s * (rx + 0.021), cy + 0.01, H['ze'] - 0.02 * hs), (s * (rx + 0.025), cy + 0.01, H['ze'] - 0.02 * hs), 0.014, 0.014, 10))
+    _part(bm, 1, lambda: Kit.cyl_raw(bm, (rx + 0.012, cy + 0.025, H['ze']), (rx + 0.02, cy + 0.05, top + 0.07), 0.005, 0.003, 6))     # antenna
+    _part(bm, 1, rbox, bm, (0, cy + 0.01, top + 0.010), (0.026, 2 * ryy * 0.82, 0.03), bevel=0.006)                                     # crest
+    mats = [fab('AndroidHelm', A['plate'], 'tech'), fab('AndroidHelmFrame', A['frame'], 'tech'), fab('AndroidVisorGlow', A['glow'], 'weave', True), fab('AndroidHelmDark', A['dark'], 'leather')]
+    return bm, mats, None
+
+
+def bg_android_armor(body, P, C, cfg):
+    """cuirass (body shell, weights transferred) + rigid plates on their own bones (pauldrons, arm / leg guards, backpack, star)"""
+    from skeleton import joints
+    from clothes import shell, to_object, assign_mats
+    A = ANDROID_COL; hs = P['hs']; sw = P['sw']; hx = P['hx']; J = joints(P); az = J['upperArm'][2]
+    bm = shell(body, 1.02 * hs, 1.475 * hs, sw - 0.03, offfn=lambda co: 0.022 + 0.014 * smooth01((co.z - 1.08 * hs) / (0.18 * hs)))
+    cu = to_object(bm, 'Cuirass', 0.45, pin_z=[1.02 * hs, 1.475 * hs])
+    for m in (fab('AndroidPlate', A['plate'], 'tech'), fab('AndroidFrame', A['frame'], 'tech'), fab('AndroidGlow', A['glow'], 'weave', True)): cu.data.materials.append(m)
+    def cm(c):
+        if c.z < 1.02 * hs + 0.025 or c.z > 1.475 * hs - 0.02: return 1
+        if abs(c.x) < 0.012 and c.y > 0 and 1.10 * hs < c.z < 1.40 * hs: return 2           # spine glow line
+        if abs(c.z - 1.17 * hs) < 0.012 and c.y < 0: return 1                                 # ab plate seam
+        return 0
+    assign_mats(cu, cm); npc.solidify(cu, 0.008); push_out(cu, [body], 0.02)
+    # rigid plates
+    arm = bpy.data.objects['Armature']; bm = bmesh.new(); groups = {}
+    def add(bone, mi, fn, *a, **k):
+        for v in _part(bm, mi, fn, *a, **k): groups.setdefault(bone, []).append(v)
+    def front(z, xc, xr=0.07):
+        vs = [v.co for v in body.data.vertices if abs(v.co.z - z) < 0.01 and abs(v.co.x - xc) < xr]
+        return min(v.y for v in vs), max(v.y for v in vs)
+    PL, FR, GL, DK, SR = range(5)
+    for s, side in ((1, 'left'), (-1, 'right')):
+        # pauldron: two overlapping domes over the shoulder joint, red unit mark
+        add(side + 'UpperArm', PL, ellipsoid, bm, (s * (sw + 0.035), 0.0, az + 0.030), (0.105, 0.092, 0.075), seg=18, rings=10, keep=lambda c: c.z > az + 0.005)
+        add(side + 'UpperArm', FR, ellipsoid, bm, (s * (sw + 0.075), 0.0, az + 0.004), (0.085, 0.084, 0.060), seg=16, rings=8, keep=lambda c: c.z > az - 0.02)
+        add(side + 'UpperArm', SR, rbox, bm, (s * (sw + 0.045), -0.035, az + 0.098), (0.06, 0.03, 0.012), bevel=0.003)
+        # upper-arm band, forearm guard with a glow strip, elbow cap
+        add(side + 'UpperArm', FR, band, bm, (s * (sw + 0.17 * hs), 0, az), 0.050, 0.050, 0.035, axis='X', seg=16)
+        add(side + 'LowerArm', PL, rbox, bm, (s * (sw + 0.40 * hs), 0, az), (0.17 * hs, 0.098, 0.090), bevel=0.012)
+        add(side + 'LowerArm', GL, rbox, bm, (s * (sw + 0.40 * hs), -0.01, az + 0.047), (0.11 * hs, 0.018, 0.006), bevel=0.002)
+        add(side + 'LowerArm', FR, blob, bm, (s * (sw + 0.27 * hs), 0.03, az), 0.04, (1, 0.8, 0.9), seg=10, rings=6)
+        # thigh plate, knee pad, shin guard
+        y0, y1 = front(0.74 * hs, s * hx); add(side + 'UpperLeg', PL, rbox, bm, (s * (hx + 0.01), y0 - 0.006, 0.74 * hs), (0.12, 0.035, 0.22 * hs), bevel=0.012)
+        add(side + 'UpperLeg', FR, rbox, bm, (s * (hx + 0.06), (y0 + y1) / 2, 0.76 * hs), (0.03, 0.12, 0.16 * hs), bevel=0.008)
+        y0, y1 = front(0.50 * hs, s * hx); add(side + 'LowerLeg', FR, blob, bm, (s * hx, y0 - 0.008, 0.50 * hs), 0.058, (1.0, 0.55, 1.05), seg=12, rings=8)
+        y0, y1 = front(0.30 * hs, s * hx); add(side + 'LowerLeg', PL, rbox, bm, (s * hx, y0 - 0.004, 0.31 * hs), (0.10, 0.03, 0.27 * hs), bevel=0.010)
+        add(side + 'LowerLeg', GL, rbox, bm, (s * hx, y0 - 0.020, 0.36 * hs), (0.012, 0.006, 0.14 * hs), bevel=0.002)
+    # backpack power unit: box, two exhaust cans with glowing caps, cable
+    x0, x1, y0, y1 = ring_at(body, 1.28 * hs, 0.012); yb = y1 + 0.03
+    add('upperChest', DK, rbox, bm, (0, yb + 0.055, 1.27 * hs), (0.24, 0.10, 0.30 * hs), bevel=0.015)
+    add('upperChest', PL, rbox, bm, (0, yb + 0.11, 1.27 * hs), (0.20, 0.02, 0.24 * hs), bevel=0.006)
+    for s in (1, -1):
+        add('upperChest', FR, lambda: Kit.cyl_raw(bm, (s * 0.075, yb + 0.06, 1.33 * hs), (s * 0.075, yb + 0.06, 1.43 * hs + 0.02), 0.032, 0.028, 12))
+        add('upperChest', GL, lambda: Kit.cyl_raw(bm, (s * 0.075, yb + 0.06, 1.43 * hs + 0.02), (s * 0.075, yb + 0.06, 1.43 * hs + 0.028), 0.024, 0.024, 12))
+    # chest star (on the cuirass) + collar ring
+    x0, x1, y0, y1 = ring_at(body, 1.30 * hs, 0.012)
+    add('upperChest', SR, star, bm, Vector((0.07, y0 - 0.036, 1.32 * hs)), Vector((0, -1, 0)), 0.038, 0.008)
+    bm.verts.index_update(); idx = {b: [v.index for v in vs] for b, vs in groups.items()}
+    o = obj_of(bm, 'ArmorPlates', [fab('AndroidPlate', A['plate'], 'tech'), fab('AndroidFrame', A['frame'], 'tech'), fab('AndroidGlow', A['glow'], 'weave', True),
+                                    fab('AndroidDark', A['dark'], 'leather'), fab('AndroidStar', A['star'], 'leather')], smooth=False)
+    for b in arm.data.bones: o.vertex_groups.new(name=b.name)
+    for b, ii in idx.items(): o.vertex_groups[b].add(ii, 1.0, 'REPLACE')
+    o['own_weights'] = 1
+    return [cu, o]
+
+
 npc.HEADGEAR.update(cult_mask=hg_cult_mask, bandana=hg_bandana, eyepatch=hg_eyepatch, earring=hg_earring, muzzle=hg_muzzle)
-npc.BODYGEAR.update(cord=bg_cord, sash=bg_sash, spikes=bg_spikes)
+npc.HEADGEAR.update(android_helm=hg_android_helm)
+npc.BODYGEAR.update(cord=bg_cord, sash=bg_sash, spikes=bg_spikes, android_armor=bg_android_armor)
 
 
 # ------------------------------------------------------------------ hard-surface helpers (mechs)
@@ -187,6 +306,13 @@ class Kit:
         R = Vector((0, 0, 1)).rotation_difference((b - a).normalized())
         for v in res['verts']: v.co = R @ v.co + (a + b) / 2
         if bone: self.tag(bone, mat)
+
+    @staticmethod
+    def cyl_raw(bm, a, b, r0, r1, seg=12):
+        a, b = Vector(a), Vector(b)
+        res = bmesh.ops.create_cone(bm, cap_ends=True, radius1=r0, radius2=r1, depth=(b - a).length, segments=seg)
+        R = Vector((0, 0, 1)).rotation_difference((b - a).normalized())
+        for v in res['verts']: v.co = R @ v.co + (a + b) / 2
 
     def obj(self, name, mats, arm, flat=True):
         me = bpy.data.meshes.new(name); self.bm.normal_update(); self.bm.to_mesh(me); self.bm.free()
@@ -498,12 +624,17 @@ MECHS = {
     'drone': dict(table=drone_table, mesh=drone_mesh, clips=drone_clips, root='body', kind='drone',
                   anchors=dict(muzzle=('barrel', (0, -0.53, HOVER - 0.20)), eye=('eye', (0, -0.345, HOVER + 0.02)), core=('body', (0, 0, HOVER)))),
 }
+import enemy_mech                                # pass 7 mechs (walker, fox): registered here
+MECHS.update(enemy_mech.MECHS)
 IDS = list(HUMANOIDS) + list(MECHS)
 
 
 def build(eid):
     if eid in HUMANOIDS:
         cfg = HUMANOIDS[eid]; P, arm, objs, names, sp = npc.build(eid, cfg)
+        if cfg.get('skin_col'):                   # synthetic skin (android hands / neck): recolour the body skin material
+            for m in objs[0].data.materials:
+                if m and m.name.endswith('Skin'): m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (*srgb(cfg['skin_col']), 1)
         return dict(kind='humanoid', P=P, arm=arm, objs=objs, names=names, springs=sp, sex=cfg['sex'],
                     meta=dict(enemy=eid, hair=cfg.get('hair'), outfit=cfg['base'], skin=cfg['skin'], scale=cfg.get('scale', 1.0)))
     m = MECHS[eid]; reset()

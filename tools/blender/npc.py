@@ -575,7 +575,7 @@ def make_extra(npc, hair=None):
             tl = coat_tail(body, arm, P, npc['tail'], parts, springs, zt=0.98 * hs); parts.append(tl)
         if 'apron' in npc.get('body', []): parts.append(apron(body, P, C, arm, parts))
         for k in npc.get('body', []):
-            if k in BODYGEAR: parts.append(BODYGEAR[k](body, P, C, cfg))
+            if k in BODYGEAR: r = BODYGEAR[k](body, P, C, cfg); parts.extend(r if isinstance(r, list) else [r])
         if 'hood' in npc.get('head', []):
             ho = hood(body, P, H, cfg); hood_weights(ho, arm, P); parts.append(ho)
         objs = []

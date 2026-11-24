@@ -7,10 +7,13 @@ import numpy as np
 
 eid = sys.argv[1]
 DEF = dict(wolf='idle:1:three,walk:8:side,run:5:side,bite:14:three,hit:3:three,death:50:three',
-           drone='idle:12:three,move:6:side,shoot:3:side,hit:3:three,death:20:three,death:45:three')
+           drone='idle:12:three,move:6:side,shoot:3:side,hit:3:three,death:20:three,death:45:three',
+           walker='walk:10:side,walk:30:three,shoot:6:three,rockets:12:three,stomp:13:side,stomp:19:three,hit:3:three,death:20:three,death:60:three',
+           fox='idle:1:three,walk:8:side,run:5:side,bite:14:three,hit:3:three,death:50:three',
+           android='idle:1:three,walk:8:three,aim_2h:20:three,shoot_2h:3:side,hit:4:three,death:50:three')
 poses = (sys.argv[2] if len(sys.argv) > 2 else DEF.get(eid, 'walk:8:three,run:6:side,attack_melee:20:three,attack_shoot:16:three,hit:4:three,death:50:three')).split(',')
 r = enemy.build(eid); arm = r['arm']; objs = r['objs']
-VIEW = dict(wolf=((0, -0.05, 0.62), 1.9), drone=((0, 0, 0.95), 2.0))
+VIEW = dict(wolf=((0, -0.05, 0.62), 1.9), drone=((0, 0, 0.95), 2.0), walker=((0, -0.1, 1.15), 2.9), fox=((0, 0.12, 0.45), 1.9))
 center, height = VIEW.get(eid, ((0, 0, 1.05), 2.4))
 sc = bpy.context.scene; size = (300, 360) if eid in VIEW else (300, 520); pth = os.path.join(WORK, 'ec.png'); row = []
 def shot(views):

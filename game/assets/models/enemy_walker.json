@@ -1,0 +1,101 @@
+{
+ "name": "enemy_walker.glb",
+ "up": "Y",
+ "front": "+Z",
+ "bones": [
+  "hips",
+  "body",
+  "gunL",
+  "barrelL",
+  "podR",
+  "thighL",
+  "shinL",
+  "tarsusL",
+  "footL",
+  "thighR",
+  "shinR",
+  "tarsusR",
+  "footR"
+ ],
+ "parents": {
+  "hips": null,
+  "body": "hips",
+  "gunL": "body",
+  "barrelL": "gunL",
+  "podR": "body",
+  "thighL": "hips",
+  "shinL": "thighL",
+  "tarsusL": "shinL",
+  "footL": "tarsusL",
+  "thighR": "hips",
+  "shinR": "thighR",
+  "tarsusR": "shinR",
+  "footR": "tarsusR"
+ },
+ "parts": [
+  "Walker"
+ ],
+ "animations": [
+  "idle",
+  "walk",
+  "shoot",
+  "rockets",
+  "stomp",
+  "hit",
+  "death"
+ ],
+ "loops": [
+  "idle",
+  "walk"
+ ],
+ "fps": 30,
+ "triangles": 4336,
+ "enemy": "walker",
+ "kind": "walker",
+ "height_m": 2.444,
+ "length_m": 1.628,
+ "width_m": 1.589,
+ "anchors": {
+  "muzzle": {
+   "bone": "barrelL",
+   "pos": [
+    0.6,
+    1.58,
+    0.95
+   ]
+  },
+  "rockets": {
+   "bone": "podR",
+   "pos": [
+    -0.62,
+    1.74,
+    0.36
+   ]
+  },
+  "eye": {
+   "bone": "body",
+   "pos": [
+    0,
+    1.74,
+    0.68
+   ]
+  },
+  "core": {
+   "bone": "body",
+   "pos": [
+    0,
+    1.72,
+    0
+   ]
+  },
+  "feet": {
+   "bone": "hips",
+   "pos": [
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "root": "hips"
+}

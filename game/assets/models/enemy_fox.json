@@ -1,0 +1,105 @@
+{
+ "name": "enemy_fox.glb",
+ "up": "Y",
+ "front": "+Z",
+ "bones": [
+  "pelvis",
+  "spine",
+  "chest",
+  "neck",
+  "head",
+  "jaw",
+  "upperArmL",
+  "foreArmL",
+  "handPawL",
+  "upperArmR",
+  "foreArmR",
+  "handPawR",
+  "thighL",
+  "shinL",
+  "hockL",
+  "footPawL",
+  "thighR",
+  "shinR",
+  "hockR",
+  "footPawR",
+  "tail0",
+  "tail1",
+  "tail2"
+ ],
+ "parents": {
+  "pelvis": null,
+  "spine": "pelvis",
+  "chest": "spine",
+  "neck": "chest",
+  "head": "neck",
+  "jaw": "head",
+  "upperArmL": "chest",
+  "foreArmL": "upperArmL",
+  "handPawL": "foreArmL",
+  "upperArmR": "chest",
+  "foreArmR": "upperArmR",
+  "handPawR": "foreArmR",
+  "thighL": "pelvis",
+  "shinL": "thighL",
+  "hockL": "shinL",
+  "footPawL": "hockL",
+  "thighR": "pelvis",
+  "shinR": "thighR",
+  "hockR": "shinR",
+  "footPawR": "hockR",
+  "tail0": "pelvis",
+  "tail1": "tail0",
+  "tail2": "tail1"
+ },
+ "parts": [
+  "Fox"
+ ],
+ "animations": [
+  "idle",
+  "walk",
+  "run",
+  "bite",
+  "hit",
+  "death"
+ ],
+ "loops": [
+  "idle",
+  "walk",
+  "run"
+ ],
+ "fps": 30,
+ "triangles": 3772,
+ "enemy": "fox",
+ "kind": "quadruped",
+ "height_m": 0.924,
+ "length_m": 1.93,
+ "width_m": 0.373,
+ "anchors": {
+  "mouth": {
+   "bone": "jaw",
+   "pos": [
+    0.0,
+    0.6138,
+    0.7396
+   ]
+  },
+  "eyes": {
+   "bone": "head",
+   "pos": [
+    0.0,
+    0.7029,
+    0.602
+   ]
+  },
+  "chest": {
+   "bone": "chest",
+   "pos": [
+    0.0,
+    0.5544,
+    0.3096
+   ]
+  }
+ },
+ "root": "pelvis"
+}
