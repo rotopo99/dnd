@@ -6477,6 +6477,7 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   const QS = await import('../game/src/world/quests.js');
   const DS = await import('../game/src/world/dossier.js');
   const W4 = await import('../game/src/world/wave4.js');
+  const CQX = await import('../game/src/world/consequences.js');
   const { DOSSIER, DOSSIER_RULES } = await import('../game/src/data/world/dossier.js');
   const { QUESTS: QW } = await import('../game/src/world/data.js');
   const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act2-done': true }, flags); return s; };
@@ -6585,6 +6586,28 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     const v = atVerdict({ 'sputnik-owner-ai': true });
     QS.chooseOption(v, QS.slots(v, 'mq3-court')[0], 'order', GAME_DATA);
     assert.ok(v.pendingEpilogue && v.cine.queue.includes('c12-verdict'));
+  });
+  test('wave4 epilogue: ≤ 18 after the finale; ending, ≥ 3 factions, ≥ 2 companions, finale never pushed out; perfect at 10', () => {
+    const CQ2 = CQX;
+    const s = atVerdict({ 'sputnik-owner-ai': true, 'truth-harmony-public': true, 'ladov-named': true, 'dawn-archive': true, 'consent-known': true, 'arsenal-sealed': true, 'burner-off': true,
+      'saved-people': true, 'victor-soul-freed': true, 'cold-thawed': true, 'repa-block-found': true, 'sort-free': true, 'liza-truth': true, 'laugh-off': true, 'lis-online': true });
+    for (const f of ['aiParty', 'pirates', 'cult', 'scavengers', 'mechanids']) s.rep[f] = f === 'cult' ? -60 : 45;
+    st.recruit(s, 'lox'); st.recruit(s, 'tik'); st.recruit(s, 'telifon');
+    s.party.find((p) => p.npc === 'lox').approval = 95; s.party.find((p) => p.npc === 'tik').approval = -30;
+    QS.chooseOption(s, QS.slots(s, 'mq3-court')[0], 'order', GAME_DATA);
+    const sl = CQ2.epilogueSlides(s);
+    const ids = sl.map((x) => x.id);
+    assert.ok(sl.length <= 18, `${sl.length}`);
+    assert.equal(ids[0], 'epi-intro'); assert.equal(ids.at(-1), 'epi-outro');
+    assert.ok(ids.includes('epi-fin-admin-order') && ids.includes('epi-year-admin') && ids.includes('epi-perfect'), ids.join(','));
+    assert.ok(!ids.includes('court-order'), 'the old ending slide gives way');
+    assert.ok(ids.filter((x) => x.startsWith('epi-f-')).length >= 3);
+    assert.ok(ids.filter((x) => x.startsWith('epi-c-')).length >= 2);
+    assert.ok(sl.find((x) => x.id === 'epi-c-lox').text.includes('море'), 'personal devoted line');
+    assert.ok(sl.find((x) => x.id === 'epi-f-cult').text.includes('распущен'), 'cult byFin');
+    assert.ok(ids.includes('epi-kuksius'));
+    // a repeat run does not double flags / slides
+    assert.deepEqual(CQ2.epilogueSlides(s).map((x) => x.id), ids);
   });
   test('wave4 G11: mq3-court is level 18 and waits for eve-done', () => {
     assert.equal(QW['mq3-court'].level, 18);

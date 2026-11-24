@@ -15,6 +15,11 @@ import { romanceEpilogue } from './romance.js';
 import { scheduleDelayed } from './delayed.js';
 import { findsAt } from './lore.js';
 import { cineQueuePoint } from './cine-hooks.js';
+import { dossierPoints } from './dossier.js';
+import { partnerOf } from './romance.js';
+import { normFaction } from './reputation.js';
+import { COMPANIONS, COMPANION_RULES } from '../data/companions.js';
+import { EPI_FACTIONS, EPI_FACTION_RULES, EPI_COMPANIONS, EPI_COMPANION_TIERS, EPI_COMPANION_RULES, EPI_HUB_STAND, EPI_EVENT, EPI_FINAL_REPLACES } from '../data/world/consequences-wave4.js';
 
 export { CQ_FLAG };
 export const EPI_MAX = 12;           // spec: no more than 12 slides by prio (intro and outro always)
@@ -213,16 +218,72 @@ export function cqDetail(e) {
   return [...out, ...cqLines(e).filter((l) => !(e.nodes || []).some((n) => l === tf('cq.node', { loc: locName(n.loc) })))];
 }
 
-/** Epilogue slides by flags: when.all / any / not; ≤ EPI_MAX by prio, shown by order; intro and outro always. */
+/** Epilogue slides by flags: when.all / any / not; ≤ EPI_MAX by prio, shown by order; intro and outro always.
+ *  content-wave4.md §4: after the finale (game-complete) — finalSlides (≤ 18, Fallout-style blocks). */
 export function epilogueSlides(save, max = save?.flags?.[FINAL_FLAG] ? EPI_MAX_FINAL : EPI_MAX) {
-  const f = save?.flags || {};
-  const ok = (w = {}) => (!w.all || w.all.every((x) => f[x])) && (!w.any || w.any.some((x) => f[x])) && (!w.not || !w.not.some((x) => f[x]))
-    && (!w.rel || Object.entries(w.rel).every(([n, v]) => (save.cine?.rel?.[n] || 0) >= v)); // content-wave3.md: liza-keys at rel 5
+  if (save?.flags?.[FINAL_FLAG] && EPILOGUE.some((s) => s.final)) return finalSlides(save, max);
+  const ok = slideOk(save);
   const fixed = EPILOGUE.filter((s) => s.id === 'epi-intro' || s.id === 'epi-outro');
-  const pool = EPILOGUE.filter((s) => !fixed.includes(s) && ok(s.when)).sort((a, b) => b.prio - a.prio).slice(0, Math.max(0, max - fixed.length));
+  const pool = EPILOGUE.filter((s) => !fixed.includes(s) && !s.final && ok(s.when)).sort((a, b) => b.prio - a.prio).slice(0, Math.max(0, max - fixed.length));
   const list = [...fixed, ...pool].sort((a, b) => a.order - b.order);
-  // romance.md: the partner's 3 slides (together / parted / tragedy, with music) right before the outro
+  return withRomance(save, list);
+}
+
+const slideOk = (save) => {
+  const f = save?.flags || {};
+  return (w = {}) => (!w.all || w.all.every((x) => f[x])) && (!w.any || w.any.some((x) => f[x])) && (!w.not || !w.not.some((x) => f[x]))
+    && (!w.rel || Object.entries(w.rel).every(([n, v]) => (save.cine?.rel?.[n] || 0) >= v)) // content-wave3.md: liza-keys at rel 5
+    && (w.dossier == null || Math.max(save.dossier || 0, dossierPoints(save)) >= w.dossier); // content-wave4.md: «Дело без изъяна»
+};
+// romance.md: the partner's 3 slides (together / parted / tragedy, with music) right before the outro
+function withRomance(save, list) {
   const rom = romanceEpilogue(save)?.slides || [];
   if (rom.length) { const k = list.findIndex((s) => s.id === 'epi-outro'); list.splice(k < 0 ? list.length : k, 0, ...rom); }
   return list;
+}
+const finFlag = (f, c) => (c.flag ? f[c.flag] : (c.any || []).some((x) => f[x]));
+
+/** content-wave4.md §4: faction slides — |rep| ≥ 30 (good / bad) or tied to the ending (byFin), by |rep|, ≤ max. */
+export function factionSlides(save, max = EPI_FACTION_RULES.max) {
+  const f = save?.flags || {}, out = [];
+  for (const [id, d] of Object.entries(EPI_FACTIONS)) {
+    const rep = save?.rep?.[normFaction(id)] || 0;
+    const fin = (d.byFin || []).find((c) => finFlag(f, c));
+    const text = fin?.text || (rep >= EPI_FACTION_RULES.min ? d.good : rep <= -EPI_FACTION_RULES.min ? d.bad : null);
+    if (text) out.push({ id: `epi-f-${id}`, order: EPI_FACTION_RULES.order, prio: 50, title: d.name || factionName(id), text, w: (fin ? 1000 : 0) + Math.abs(rep) });
+  }
+  return out.sort((a, b) => b.w - a.w).slice(0, max).map(({ w, ...x }) => x);
+}
+
+/** content-wave4.md §4: companion slides — the party at the finale + the romance partner, by loyalty, ≤ max. */
+export function companionSlides(save, max = EPI_COMPANION_RULES.max) {
+  const f = save?.flags || {};
+  const ids = (save?.party || []).filter((p) => ['active', 'waiting'].includes(p.state)).map((p) => p.npc);
+  const pt = partnerOf(save);
+  if (pt && COMPANIONS[pt] && !ids.includes(pt)) ids.push(pt);
+  const loy = (id) => save.party.find((p) => p.npc === id)?.approval || 0;
+  const bands = COMPANION_RULES.loyalty.bands;
+  return ids.filter((id) => COMPANIONS[id]).sort((a, b) => loy(b) - loy(a)).slice(0, max).map((id) => {
+    const name = npcName(id), tier = (bands.find((b) => loy(id) >= b.min) || bands.at(-1)).id;
+    const per = EPI_COMPANIONS[id] || {};
+    const text = f[`eve-hub-${id}`] ? EPI_HUB_STAND
+      : (per.byFin || []).find((c) => finFlag(f, c))?.text || (tier === 'devoted' && per.devoted) || EPI_COMPANION_TIERS[tier === 'leaving' ? 'cold' : tier];
+    return { id: `epi-c-${id}`, order: EPI_COMPANION_RULES.order, prio: 50, title: name, text: text.replace('{name}', name) };
+  });
+}
+
+function finalSlides(save, max) {
+  const ok = slideOk(save);
+  const intro = EPILOGUE.find((s) => s.id === 'epi-intro'), outro = EPILOGUE.find((s) => s.id === 'epi-outro');
+  const fin = EPILOGUE.filter((s) => s.final && ok(s.when)).sort((a, b) => a.order - b.order);
+  let room = Math.max(0, max - 2 - fin.length);
+  const comps = companionSlides(save).slice(0, room); room -= comps.length;
+  const facs = factionSlides(save).slice(0, room); room -= facs.length;
+  const events = EPI_EVENT.filter((e) => ok(e.when)).slice(0, Math.max(0, room - 2)).map((e) => ({ ...e, order: EPI_COMPANION_RULES.order + 5, prio: 40 }));
+  room -= events.length;
+  // the old ending slides give way to the wave-4 ones (old saves without fin-* keep them); they lead the world block
+  const old = (s) => EPI_FINAL_REPLACES.includes(s.id);
+  const world = EPILOGUE.filter((s) => s !== intro && s !== outro && !s.final && !(fin.length && old(s)) && ok(s.when))
+    .sort((a, b) => (old(b) - old(a)) || b.prio - a.prio).slice(0, Math.min(4, room)).sort((a, b) => a.order - b.order);
+  return withRomance(save, [intro, ...world, ...facs, ...comps, ...events, ...fin, outro].filter(Boolean));
 }
