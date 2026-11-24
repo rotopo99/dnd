@@ -114,6 +114,7 @@ function collectPassives(list) {
     if (op.advantage) out.advantage.push(...op.advantage);
     if (op.deathSave) out.deathSave += op.deathSave;
     if (op.mrlGuard) out.mrlGuard += op.mrlGuard; // content-wave3 «Бирка вторсырья»: −N to every MRL hit (cringe / psychic)
+    if (op.resistPierce) out.resistPierce = 1; // balance-finale.md «armor-bane»: ranged weapon hits ignore one resist step
   }
   return out;
 }
@@ -453,6 +454,7 @@ export function buildCreature({ race, cls, level = 1, stats, path, team = 'heroe
   u.condBonuses = P.cond;
   u.thorns = [...P.thorns, ...EQ.gear.thorns];
   u.mrlGuard = P.mrlGuard || 0;
+  u.resistPierce = P.resistPierce || 0;
   u.talents = ownTalents;
   u.asi = asiApplied.filter((e) => e && (e.level || 0) <= level).map((e) => ({ ...e }));
   u.asiOverflow = AS.overflow;

@@ -930,6 +930,7 @@ export function createBattleScene(opts) {
       case 'death': if (T) { const d = dispOf(T); d.fade = 1; d.down = false; } break;
       case 'unsummon': if (T) dispOf(T).fade = 1; break;
       case 'summon': if (T) { const d = addDisp(T); d.x = e.x; d.y = e.y; } break;
+      case 'triggerLog': if (A && e.bark) bubble(A, e.bark, true); if (A && e.phase) emote(A, 'angry'); break; // balance-finale.md boss phase
       case 'status': if (T && b.data.statuses[e.id]) popup(T, b.data.statuses[e.id].name, b.data.statuses[e.id].kind === 'buff' ? C.j : C.a); break;
       case 'turnStart': {
         const bk = A && opts.barks ? opts.barks[String(A.enemyId || '').split('^')[0]] : null;

@@ -89,7 +89,7 @@ import {
 import {
   initTerrain, coverBonus, terrainHit, elevRange, meleeElevOk, objectAt, damageObject, damageObjectsIn, terrainOn, bridgeAt, damageBridge,
 } from './terrain.js';
-import { initTriggers, triggerEvent, runTriggers } from './battle-triggers.js';
+import { initTriggers, triggerEvent, runTriggers, auraDmgMul, auraKb } from './battle-triggers.js';
 import { initObjectives, objectiveEvent, interact as objInteract, retreatWhy } from './objectives.js';
 import { assignArchetypes, archTurnStart, archTurnEnd, archOnDamage, archOnDeath, archHit, archDmg, archKb } from './archetypes.js';
 import {
@@ -319,6 +319,7 @@ export function getKb(b, u, attacker, ranged) {
   if (attacker) kb += coverBonus(b, attacker.x, attacker.y, u.x, u.y, !ranged, geoOn(b) ? ptOf(attacker) : null, geoOn(b) ? ptOf(u) : null).kb;
   if (u.holdPos) kb += b.data.combat?.cover.holdKb ?? 0;
   if (u.arch) kb += archKb(b, u);
+  if (u.auras) kb += auraKb(b, u); // balance-finale.md: boss phase auras (battle-triggers.js)
   return kb;
 }
 
@@ -546,7 +547,8 @@ export function createBattle({ map, heroes = [], enemies, allies, rivals = null,
   }
   // combat rework: destructible objects get HP from the battle level, AI archetypes (terrain.js, archetypes.js)
   initTerrain(b);
-  b.trigFx = { healUnit, reviveUnit, dealDamage, rollDice }; // battle-triggers.js ops (no import cycle)
+  b.trigFx = { healUnit, reviveUnit, dealDamage, rollDice, spawnUnit, createSurface, addShield, applyStatus, castFree, getDc, // battle-triggers.js ops
+    passable: (bb, x, y) => isPassable(bb.grid, x, y) && tileAt(bb.grid, x, y) !== T_HAZARD }; // (no import cycle)
   initTriggers(b, triggers); // + extra triggers of the battle options (content-wave4.md: the mq4-eve waves)
   assignArchetypes(b);
   // combat rework §6 (stage 2): optional objective, chests, exits for retreat (rules/objectives.js)
@@ -762,7 +764,7 @@ export function checkVictory(b) {
   const standing = new Set();
   let teams = 0;
   for (const u of b.units) {
-    if (u.kind === 'summon' || u.removed) continue;
+    if (u.kind === 'summon' || u.removed || u.prop) continue; // trigger props (battle-triggers.js) are targets, not a side
     teams++;
     if (isStanding(u)) standing.add(u.team);
   }
@@ -882,7 +884,10 @@ export function dealDamage(b, src, tgt, amount, dmgType, opts) {
     }
     if (broke) removeStatus(b, tgt, broke);
   }
-  const r = resistOf(b, tgt, dmgType);
+  let r = resistOf(b, tgt, dmgType);
+  // balance-finale.md «armor-bane» (passive op resistPierce): a ranged weapon hit — resist → normal, immune → resist
+  if (r && opts && opts.armorBane) r = r === 'immune' ? 'resist' : r === 'resist' ? null : r;
+  if (amt > 0 && (tgt.auras || (src && src.auras))) amt = Math.floor(amt * auraDmgMul(b, src, tgt)); // boss phase auras
   if (r === 'immune') amt = 0;
   else if (r === 'resist') amt = Math.floor(amt / 2);
   else if (r === 'vuln') amt *= 2;
@@ -977,6 +982,8 @@ function zeroHp(b, u, src) {
     for (const a of b.units) if (a !== u && a.team === u.team && isStanding(a)) phobiaTrigger(b, a, 'blood', src);
     if (!checkVictory(b)) triggerReactions(b, 'allyDown', u, src);
   } else {
+    // balance-finale.md: a trigger-spawned unit with onKill ({dice, resource}) pays its killer (Collector's exhibits: 2d6 MRL)
+    if (u.onKill && src && src !== u && isAlive(src) && !src.down) healUnit(b, src, src, rollDice(b.rng, u.onKill.dice), u.onKill.resource || 'hp');
     kill(b, u, 'killed');
   }
 }
@@ -1241,7 +1248,7 @@ function weaponDamage(b, att, tgt, crit, extraWeaponDice, extraDice, extraType, 
     const die = firstDie(w.dice);
     for (let i = 0; die && i < extraWeaponDice; i++) amt += rollDice(b.rng, die, critDice);
   }
-  dealDamage(b, att, tgt, Math.max(0, amt), w.dmgType, { crit: critDice });
+  dealDamage(b, att, tgt, Math.max(0, amt), w.dmgType, { crit: critDice, armorBane: !melee && !!att.resistPierce });
   if (extraDice && isAlive(tgt)) {
     const type = extraType || w.dmgType;
     const c = crit && type !== 'proxy';
@@ -2175,6 +2182,38 @@ export function spawnSummon(b, owner, unitId, turns, tile, team) {
   if (idx <= b.turnIndex) b.turnIndex++;
   emit(b, { type: 'summon', actor: owner.id, target: s.id, unit: unitId, x: s.x, y: s.y, turns: s.summonTurns });
   return s;
+}
+
+/** balance-finale.md (battle-triggers.js spawn / prop): a real unit of `team` next to `near` — not a summon (counts for
+ *  victory, no owner scaling); acts right after `near` in the order. o.prop — no turn at all (a target object). */
+export function spawnUnit(b, near, unitId, team, o = {}) {
+  const def = b.data.enemies[unitId];
+  if (!def) return null;
+  let pos = null;
+  for (const [dx, dy] of DIRS8) {
+    const x = near.x + dx, y = near.y + dy;
+    if (isPassable(b.grid, x, y) && !unitAt(b, x, y) && tileAt(b.grid, x, y) !== T_HAZARD) { pos = { x, y }; break; }
+  }
+  if (!pos) pos = nearestFree(b.grid, near.x, near.y, b.occ);
+  if (!pos) return null;
+  const u = initUnit(buildEnemy(def, { id: `t${++b.summonCount}`, team, kind: 'enemy', data: b.data }));
+  u.team = team;
+  addUnit(b, u, pos);
+  if (!o.prop) {
+    const at = b.order.indexOf(near.id);
+    const idx = at >= 0 ? at + 1 : b.order.length;
+    b.order.splice(idx, 0, u.id);
+    if (idx <= b.turnIndex) b.turnIndex++;
+  }
+  emit(b, { type: 'summon', actor: near.id, target: u.id, unit: unitId, x: u.x, y: u.y, turns: null, spawn: true, prop: !!o.prop });
+  return u;
+}
+
+/** battle-triggers.js cast: an ability of `u` out of its turn, free (no action, no use spent). */
+function castFree(b, u, a, spec) {
+  const ru = u.reactionUsed, used = u.uses[a.id] || 0, enr = u.enr;
+  resolveAbility(b, u, a, spec, true);
+  u.reactionUsed = ru; u.uses[a.id] = used; u.enr = enr;
 }
 
 // ---------------------------------------------------------------- overcast tables

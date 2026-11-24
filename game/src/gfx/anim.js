@@ -117,6 +117,15 @@ export function animEvent3d(S, e) {
       if (d) spawnFx(V, { kind: 'ring', t0: now, at: [e.x + 0.5, fl, e.y + 0.5], r: (e.size || 0) + 0.7, color: d.color });
       break;
     }
+    case 'triggerLog': { // balance-finale.md: a boss enters a phase — two cast rings around it (existing fx)
+      if (!Au || !e.phase) break;
+      const fl = V.world?.floor[Au.y * V.world.w + Au.x] ?? 0, p = posOf(S, Au);
+      spawnFx(V, { kind: 'ring', t0: now, at: [p.x, fl, p.z], r: 1.2, color: GFX.fx.color.cast });
+      spawnFx(V, { kind: 'ring', t0: now + 0.25, at: [p.x, fl, p.z], r: 2, color: GFX.fx.color.spark });
+      act(S, V, Au, 'cast', null);
+      break;
+    }
+    case 'aura': if (Tu && e.on === false) { const fl = V.world?.floor[Tu.y * V.world.w + Tu.x] ?? 0, p = posOf(S, Tu); spawnFx(V, { kind: 'ring', t0: now, at: [p.x, fl, p.z], r: 0.9, color: GFX.fx.color.debris }); } break;
     case 'summon': {
       const fl = V.world?.floor[e.y * V.world.w + e.x] ?? 0;
       spawnFx(V, { kind: 'ring', t0: now, at: [e.x + 0.5, fl, e.y + 0.5], r: 0.7, color: GFX.fx.color.cast });
