@@ -5,6 +5,7 @@
 // spring bones from the .json meta (VRM-like verlet chains, weight by the «Физика тела» setting).
 //   heroSpec(u)                      -> F {base, parts, sex, hair:null, tint {skin, hair, cloth}, shape, key} of an editor look
 //   npcSpec(nid, tint)               -> F of an assembled NPC model npc_<nid> (data/hero-models.js HERO_MODELS.npc)
+//   enemySpec(model, tint)           -> F of an enemy model enemy_<model> (HERO_MODELS.enemy; F.kind humanoid / quadruped / drone)
 //   assembleCharacter(F)             -> Promise<C> {inst, root, sex, bones, rest, springs, headY, height, faces, morph, mats, meta}
 //   toonify(C, o)                    toon materials; o {look (CINE_LOOKS entry), tint, outline: true | (mesh) => material, xray: (mesh) => material}
 //   setBodyShape(C, shape)           shape keys {bust, hips, shoulders, build, height}
@@ -90,6 +91,12 @@ export function npcSpec(nid, tint = null) {
   return { base: `npc_${nid}`, parts: [], sex, hair: null, tint: tint || {}, shape: {}, npc: nid, key: `npc|${nid}|${tint ? Object.values(tint).join('') : '-'}` };
 }
 
+/** Enemy model enemy_<model> (Blender pass 6): humanoids on the hero rig, mechs (wolf / drone) on own armatures. */
+export function enemySpec(model, tint = null) {
+  const M = HM.enemy.models[model] || {};
+  return { base: `enemy_${model}`, parts: [], sex: 'm', hair: null, tint: tint || {}, shape: {}, enemy: model, kind: M.kind || 'humanoid', key: `enemy|${model}|${tint ? Object.values(tint).map((v) => v || '-').join('') : '-'}` };
+}
+
 /** Base + parts on one skeleton, idle pose applied (C.headY: head top over the feet, m). */
 export async function assembleCharacter(F) {
   const inst = await instanceGLB(`${MODEL_DIR}${F.base}.glb`);
@@ -155,12 +162,15 @@ export function toonify(C, o = {}) {
   const L = o.look || null, T = o.tint || C.tint || {};
   const tSkin = T.skin ? srgb(T.skin) : null, tHair = T.hair ? srgb(T.hair) : null, tCloth = T.cloth ? srgb(T.cloth) : null;
   const tCoat = T.coat ? srgb(T.coat) : null, tPants = T.pants ? srgb(T.pants) : null; // crowd NPCs: apron / vest / hat, pants (HM.tint)
+  const tMul = T.mul && o.mulRe ? new THREE.Color(1, 1, 1).lerp(srgb(T.mul), o.mulK ?? 0.5) : null; // enemy mechs: plate colour
   const meshes = [];
   C.root.traverse((m) => { if (m.isMesh) meshes.push(m); });
   for (const mesh of meshes) {
     const conv = (m) => {
       const t = new THREE.MeshToonMaterial({ name: m.name, color: m.color?.clone() || new THREE.Color(1, 1, 1), map: m.map || null, gradientMap: toonRamp(),
         side: THREE.DoubleSide, transparent: !!L?.opacity, opacity: L?.opacity ?? 1, emissive: new THREE.Color(L?.emissive ?? (/glow/i.test(m.name) ? 0x4fa0f0 : 0)) });
+      if (o.glow?.test(m.name) && m.emissive) t.emissive.copy(m.emissive).multiplyScalar(o.glowK ?? 1); // enemies: GLB emissive (eyes, tokens)
+      if (tMul && o.mulRe.test(m.name)) t.color.multiply(tMul);
       if (L?.tint) t.color.lerp(new THREE.Color(L.tint), L.tintK ?? 0.6);
       if (m.name === 'Skin') { if (o.skinHex != null) t.color.set(o.skinHex); else if (tSkin) t.color.copy(tSkin); }
       else if (t.map && tHair && HM.tint.hair.test(m.name)) { t.color.copy(tHair); lumTint(t, HM.tint.hairGain); }
@@ -189,6 +199,9 @@ export function toonify(C, o = {}) {
     if (o.outline) twin(o.outline === true ? outlineMat() : o.outline(mesh), 'hull');
     if (o.xray) twin(o.xray(mesh), 'xray');
   }
+  // o.faceSkin [r, g, b] (linear Skin colour the face atlas is painted for): the face follows the Skin tint (mutant green)
+  const sk = o.faceSkin && C.mats.find((m) => m.name === 'Skin'), fr = o.faceSkin;
+  if (sk) for (const f of C.faces) f.color.setRGB(Math.min(1, sk.color.r / fr[0]), Math.min(1, sk.color.g / fr[1]), Math.min(1, sk.color.b / fr[2]));
 }
 
 /** Body sliders -> shape keys of the body and the outfits (same names). */

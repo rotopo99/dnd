@@ -66,4 +66,38 @@ export const HERO_MODELS = {
       hair: ['0', '2', '7', '8', '6', '1', '5'],
     },
   },
+  // Blender pass 6 enemies (enemy_<model>.glb; three/party.js enemyModelOf): first rule whose regexp matches the enemy id
+  // (without the ^variant) and whose procedural body type (gfx/units3d.js bodyType) is listed wins; other enemies stay
+  // procedural. Key characters / bosses of npc.byEnemy go first.
+  enemy: {
+    on: true,
+    rules: [
+      { re: '^(boss-)?wolf-\\d', body: ['beast'], model: 'wolf' },                         // Warprom «Волк» robo-wolves
+      { re: '(^|-)drone($|-)', body: ['drone'], model: 'drone' },                           // drone, lis-drone, ai-kill-drone, agro-drone-swarm
+      { re: '^(mutz|mutr)-|brute|^gang-thug', body: ['humanoid', 'beast'], model: 'brute' }, // mutants, brutes
+      { re: '^pir(ate)?-|^pirate$', body: ['humanoid'], model: 'pirate' },
+      { re: '^(cultist|acolyte|cult|crg|cringe)(-|$)', body: ['humanoid'], model: 'cultist' }, // Judge's cult, кринжгоны
+    ],
+    // kind: humanoid (shared hero rig / clips, weapon in hand) or a mech with own clips: act — battle action -> clip
+    // (missing — actDefault), loop — locomotion loop names, walkSpeed / runSpeed / runAt — m/s of the clips at timeScale 1
+    models: {
+      cultist: { kind: 'humanoid' },
+      pirate: { kind: 'humanoid', faceSkin: true },
+      brute: { kind: 'humanoid', faceSkin: true },   // mutant-green skin: the swapped face atlas is tinted to the Skin colour
+      wolf: { kind: 'quadruped', act: {}, actDefault: 'bite', loop: { walk: 'walk', run: 'run' }, walkSpeed: 1.6, runSpeed: 4.2, runAt: 2.6 },
+      drone: { kind: 'drone', act: {}, actDefault: 'shoot', loop: { walk: 'move', run: 'move' }, walkSpeed: 2, runSpeed: 2, runAt: 99 },
+    },
+    humanH: 1.55,              // m: height of a humanoid model drawn over a non-humanoid template (beast mutants; ~ humanoid templates)
+    faceRef: [1, 0.69, 0.54],  // linear Skin colour the face atlases are painted for (face colour = Skin / faceRef)
+    glow: /Eye$|Token|Glow|HoodTrim/, glowK: 1.6, // GLB emissive kept (x glowK) on these materials (eyes, cult tokens)
+    // deterministic variety by the unit id hash: palette keys (null — the authored colour); cloth / coat / pants / skin as
+    // HERO_MODELS.tint (luminance tint), mul — mechs: plate colour multiplied by white -> key at mulK
+    tint: {
+      cultist: { cloth: [null, null, 'd', 'i', '1', '6', 'k'] },
+      pirate: { cloth: [null, '7', 'g', 'l', 'm', 'd'], coat: [null, 'c', 'a', 'g', '5'], pants: [null, '1', '2', '6', 'l'], skin: [null, '9', '8'] },
+      brute: { cloth: [null, 'm', '6', '2', 'k'], coat: [null, 'c', '7', 'l'], skin: [null, null, 'j', 'k'] },
+      wolf: { mul: [null, '4', 'm', '8', '3'], mulRe: /^WolfPlate$/, mulK: 0.55 },
+      drone: { mul: [null, 'l', 'm', '4', 'a'], mulRe: /^DroneHull$/, mulK: 0.5 },
+    },
+  },
 };

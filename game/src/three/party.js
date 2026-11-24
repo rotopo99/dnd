@@ -4,12 +4,16 @@
 // prepFrame instance p: position, facing, walk, alpha, flash, team colour; gfx/anim.js state: action / hit / fall).
 // Clips: idle / walk / run / crouch_walk loops, one-shots attack_melee / attack_shoot / cast / hit / death sped up to
 // the action length (missing clip — the current loop stays). Loading is async: until the character is ready (or when
-// it failed — then for the whole session) the unit is drawn by the procedural template. Enemies stay procedural.
+// it failed — then for the whole session) the unit is drawn by the procedural template.
+// Enemies (Blender pass 6, HERO_MODELS.enemy): cultists / кринжгоны, pirates, mutants / brutes on the hero rig (weapon in
+// hand, hero clips), Warprom robo-wolves (idle / walk / run, bite) and drones (idle / move, shoot) on own armatures;
+// tint variety by the unit id hash; other enemies stay procedural.
 // Key characters (Lox, the Judge avatar, Ladov, the Cyber-Priest: HERO_MODELS.npc byNpc / byEnemy — companions,
 // bosses, roam NPCs) and roam crowd NPCs (trader / guard / settler by role, cloth / hair tint by the npc id) use the
 // assembled npc_<id>.glb. Two-handed weapons switch to the *_2h clips. Night tint / light holes as the procedural units.
 //   partySpec(u)                     -> spec | null (eligible unit: data/hero-models.js teams / races, humanoid body; npc models)
 //   npcModelOf(u)                    -> {nid, tint} | null (which npc_<nid>.glb a unit uses)
+//   enemyModelOf(u)                  -> {model, tint} | null (which enemy_<model>.glb an enemy uses)
 //   syncParty(T, p, c)               -> true when the unit p is drawn by its GLB character this frame
 //                                       (c: {now (display clock), ppm (px per metre), prefs, hgt (unit heights)})
 //   sweepParty(T)                    hide characters not drawn this frame; drop after HERO_MODELS.keepUnseen s
@@ -22,7 +26,7 @@ import { NPCS } from '../data/npcs.js';
 import { GFX } from '../data/gfx.js';
 import { bodyType } from '../gfx/units3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
-import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec, npcSpec } from './character.js';
+import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec, npcSpec, enemySpec } from './character.js';
 import { weaponKey, attachWeapon, detachWeapon, isTwoHand } from './weapons.js';
 import { nightPatch } from './units.js';
 import { keyRGB } from '../gfx/mesh.js';
@@ -52,6 +56,27 @@ export function npcModelOf(u) {
   return { nid: C[role], tint: { cloth: pal[0], coat: pal[1], skin: T.skin[(h >>> 12) % T.skin.length], pants: T.pants[(h >>> 16) % T.pants.length], hair: T.hair[(h >>> 8) % T.hair.length] } };
 }
 
+const enemyRule = new Map(); // enemy id -> model | null
+export function enemyModelOf(u) {
+  const E = HM.enemy;
+  if (!E?.on || u.kind !== 'enemy') return null;
+  const id = String(u.enemyId || u.id || '').split('^')[0];
+  let rule = enemyRule.get(id);
+  if (rule === undefined) {
+    const bt = bodyType(u), model = E.rules.find((r) => new RegExp(r.re).test(id) && (!r.body || r.body.includes(bt)))?.model || null;
+    // a humanoid model over a non-humanoid template (beast mutants): fixed humanoid height instead of the template's
+    rule = model && { model, fixH: E.models[model]?.kind === 'humanoid' && bt !== 'humanoid' ? E.humanH : 0 };
+    enemyRule.set(id, rule);
+  }
+  if (!rule) return null;
+  const model = rule.model;
+  const P = E.tint[model] || {}, h = hashOf(String(u.id ?? id));
+  const tint = {};
+  let bit = 0;
+  for (const k of ['cloth', 'coat', 'pants', 'skin', 'mul']) { const L = P[k]; if (L?.length) tint[k] = L[(h >>> bit) % L.length]; bit += 5; }
+  return { model, tint, fixH: rule.fixH };
+}
+
 export function partySpec(u) {
   if (!HM.on) return null;
   const nm = npcModelOf(u);
@@ -59,6 +84,11 @@ export function partySpec(u) {
     let m = specs.get(u);
     if (!m || m.sig !== 'npc') { m = { sig: 'npc', spec: npcSpec(nm.nid, nm.tint) }; specs.set(u, m); }
     if (!failed.has(m.spec.key)) return m.spec;
+  }
+  if (u.kind === 'enemy') {
+    let m = specs.get(u);
+    if (!m || m.sig !== 'enemy') { const em = enemyModelOf(u); m = { sig: 'enemy', spec: em && { ...enemySpec(em.model, em.tint), fixH: em.fixH } }; specs.set(u, m); }
+    return m.spec && !failed.has(m.spec.key) ? m.spec : null;
   }
   if (u.kind !== 'hero' || !HM.teams.includes(u.team) || !HM.races.includes(u.raceId || 'human') || bodyType(u) !== 'humanoid') return null;
   const sig = `${heroLook3d(u).key}|${JSON.stringify(u.hide || 0)}|${u.armorType || ''}`;
@@ -84,7 +114,13 @@ function build(T, id, R, spec) {
   assembleCharacter(spec).then((C) => {
     if (R.dead) { disposeCharacter(C); return; }
     R.hull = hullMat(); R.xray = xrayMat();
-    toonify(C, { tint: spec.tint, outline: () => R.hull, xray: () => R.xray });
+    const EM = spec.enemy && HM.enemy.models[spec.enemy], ET = spec.enemy && HM.enemy.tint[spec.enemy];
+    toonify(C, { tint: spec.tint, outline: () => R.hull, xray: () => R.xray,
+      ...(EM && { glow: HM.enemy.glow, glowK: HM.enemy.glowK, mulRe: ET?.mulRe, mulK: ET?.mulK, faceSkin: EM.faceSkin ? HM.enemy.faceRef : null }) });
+    // locomotion / action clips: hero rig (HERO_MODELS) or the mech set of the enemy model
+    R.prof = EM && EM.kind !== 'humanoid' ? EM : null;
+    R.size = spec.enemy ? C.meta?.scale || 1 : 1; // brute: meta scale 1.18
+    R.fixH = spec.fixH || 0;
     const L = spec.npc && HM.npc.lift?.[spec.npc];
     if (L) { // QA v42 L3: lighter key model + light rim (Ladov: dark grey on a grey dais)
       for (const m of C.mats) { if (m.name === 'Face') continue; m.color.multiplyScalar(L.gain); m.userData.emissive0.addScalar(L.emissive); }
@@ -131,7 +167,8 @@ function animate(R, p, now, dt) {
     if (R.cur !== 'death' && now >= fallT) one('death', 0, now);
   } else {
     if (R.cur === 'death') R.oneEnd = 0;
-    const a2 = R.two && HM.clip2h[st.act], act = a2 && I.clips.has(a2) ? a2 : HM.clip[st.act] || 'attack_melee';
+    const a2 = R.two && HM.clip2h[st.act], P = R.prof;
+    const act = P ? P.act[st.act] || P.actDefault : a2 && I.clips.has(a2) ? a2 : HM.clip[st.act] || 'attack_melee';
     if (st.act && st.t0 !== R.actT0 && now >= st.t0 && now < st.t0 + st.dur) { R.actT0 = st.t0; one(act, st.dur, now); }
     else if (st.hitT0 !== R.hitT0 && now >= st.hitT0 && now < st.hitT0 + 1) { R.hitT0 = st.hitT0; one('hit', 0, now); }
   }
@@ -139,9 +176,10 @@ function animate(R, p, now, dt) {
   const moving = p.walking || R.v > 0.3;
   let name = 'idle', sp = 1;
   if (moving) {
-    const crouch = (p.it.crouch || 0) > 0.5 && I.clips.has('crouch_walk');
-    name = crouch ? 'crouch_walk' : R.v > HM.runAt && I.clips.has('run') ? 'run' : 'walk';
-    sp = clamp(R.v / (name === 'run' ? HM.runSpeed : HM.walkSpeed) / (R.k || 1), 0.6, 2);
+    const P = R.prof || HM, crouch = !R.prof && (p.it.crouch || 0) > 0.5 && I.clips.has('crouch_walk');
+    const run = R.v > P.runAt && I.clips.has(R.prof ? P.loop.run : 'run');
+    name = crouch ? 'crouch_walk' : R.prof ? P.loop[run ? 'run' : 'walk'] : run ? 'run' : 'walk';
+    sp = clamp(R.v / (run ? P.runSpeed : P.walkSpeed) / (R.k || 1), 0.6, 2);
   }
   if (!I.clips.has(name)) name = 'idle';
   const n2 = R.two && HM.loop2h[name];
@@ -161,7 +199,7 @@ export function syncParty(T, p, c) {
   R.seen = T.partyFrame; R.seenAt = wallNow();
   if (!R.C) return false;
   const C = R.C, d = p.it.d, now = c.now;
-  const wk = weaponKey(u);
+  const wk = R.prof ? null : weaponKey(u); // mechs: the weapon is part of the model
   if (wk !== R.wkey) {
     detachWeapon(C, R.W); R.W = attachWeapon(C, wk, R.hull); R.wkey = wk;
     R.two = isTwoHand(wk) && C.inst.clips.has('idle_2h');
@@ -173,7 +211,7 @@ export function syncParty(T, p, c) {
   if (R.lx != null && dt > 0) R.v += (Math.hypot(x - R.lx, z - R.lz) / dt - R.v) * Math.min(1, dt * 8);
   if (!p.walking && dt > 0 && R.v < 0.05) R.v = 0;
   R.lx = x; R.lz = z;
-  R.k = (p.T.top * p.T.scale) / C.height; // same height as the template: 2D anchors (bars, bubbles) and picking match
+  R.k = (R.fixH || p.T.top * p.T.scale) / C.height * R.size; // same height as the template: 2D anchors (bars, bubbles) and picking match
   C.root.position.set(x, y, z);
   C.root.rotation.y = p.a ?? 0;
   C.root.scale.setScalar(R.k);
@@ -190,7 +228,7 @@ export function syncParty(T, p, c) {
   // face: emotion of the display state (CINE_FACES), blink as the procedural faces
   const d2 = p.it.d, emo = d2.emoT > 0 && d2.emo ? d2.emo : 'neutral', F = CINE_FACES[emo] || CINE_FACES.neutral;
   const blink = p.dead || d2.down || ((now * 0.37 + (p.st.seed || 0) * 7.3) % 1) < 0.045;
-  setFace(C, F.tex, F.keys, blink ? 1 : 0);
+  if (C.faces.length || C.morph.length) setFace(C, F.tex, F.keys, blink ? 1 : 0);
   // alpha, flash, shadows, outline (team colour, px -> metres -> model units), x-ray
   const fl = p.flash * HM.flash;
   for (const m of C.mats) {
