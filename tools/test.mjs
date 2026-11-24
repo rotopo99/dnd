@@ -5653,7 +5653,7 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
       { 'fin-closed': true, 'fin-lox-leave': true, 'dawn-known': true }];
     for (const d of Object.values(CINEMATICS)) {
       const seen = new Set();
-      for (let run = 0; run < 120; run++) {
+      for (let run = 0; run < 240; run++) {
         const flags = { ...flagSets[run % flagSets.length] };
         const save = { flags };
         const { R } = drive(d, { save, env: failEnv(save, rnd() < 0.5), pick: (R2) => { const ids = [...R2.choice.opts.map((x) => x.id), 'silence']; return ids[Math.floor(rnd() * ids.length)]; }, qte: () => (rnd() < 0.5 ? 'ok' : 'fail') });
