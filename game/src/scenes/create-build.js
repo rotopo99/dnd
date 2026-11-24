@@ -313,7 +313,7 @@ export function createBuildScene(hero, back, onNext, step = { n: 2, of: 4 }) {
   function drawRight(ctx) {
     const x = ox + 860, y = oy + 64;
     panel(ctx, x, y, 396, 120, C['1'], C['3']);
-    drawHeroPic(ctx, { race: hero.race, name: hero.name }, x + 10, y + 12, 2, { native: true }); // 3D preview (the real look is chosen in the next step)
+    drawHeroPic(ctx, { race: hero.race, name: hero.name, avatar: hero.avatar, look: st.look }, x + 10, y + 12, 2, { native: true }); // the look the editor starts from (QA v48 #9)
     text(ctx, fit(ctx, hero.name, 270, FONT_B), x + 120, y + 10, C.h, FONT_B);
     if (built) {
       text(ctx, `${t('res.hp')} ${built.maxHp} · ${t('res.mrl')} ${built.maxMrl} · ${t('res.enr')} ${built.maxEnr}`, x + 120, y + 34, C['5'], SMALL);

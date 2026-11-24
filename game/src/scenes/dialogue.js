@@ -88,7 +88,7 @@ export function createDialogueScene({ title = '', lines, hero = null, portraits 
       const emotion = emos[i] || 'neutral';
       const info = { hero, wounds: hurt };
       if (hero && cur.who === 'hero') drawSpeaker(ctx, 'hero', Math.floor(W / 2) - 300, floor - ps, sc, { native: true, emotion }, info);
-      else if (hero) drawSprite(ctx, heroSpriteIds(hero.race, hero.cls, hero.look), Math.floor(W / 2) - 300, stageY, 9, { frame: idleFrame(time * 1000) });
+      else if (hero) drawSpeaker(ctx, 'hero', Math.floor(W / 2) - 300, floor - ps, sc, { native: true, emotion: 'neutral' }, info); // QA v48 #9: the same avatar, not the pixel sprite
       const custom = portraits?.[cur.who];
       if (custom) drawSprite(ctx, custom, Math.floor(W / 2) + 156, stageY, 9, { frame: idleFrame(time * 1000, 0.5), flip: true });
       else if (cur.who !== 'hero' && !drawSpeaker(ctx, cur.who, Math.floor(W / 2) + 120, floor - ps, sc, { native: true, emotion, flip: true }, info) && PORTRAITS[cur.who]) {

@@ -6,6 +6,7 @@ import { buildCreature, isAllowed, mod, STATS } from '../rules/character.js';
 import { PLAYABLE_RACES, CLASS_ORDER } from '../data/index.js';
 import { drawSprite, heroSpriteIds, idleFrame } from '../assets/sprites.js';
 import { drawHeroPic } from '../ui/portrait-of.js';
+import { defaultLook } from '../ui/avatar3d.js';
 import { play } from '../audio/sfx.js';
 import { C, FONT, FONT_B, FONT_L, LINE, text, textBlock, fit, panel, button, hitButton, clear, drawIcon } from '../ui/draw.js';
 import { menuScene } from './menu.js';
@@ -40,7 +41,9 @@ function raceTraits(r, statuses) {
 /** opts.onDone(game, hero) — instead of the prologue (co-op hero), opts.onBack(game) — instead of the main menu. */
 export function createCreateScene(opts = {}) {
   const goBack = (game) => (opts.onBack ? opts.onBack(game) : game.setScene(menuScene));
-  const st = { race: PLAYABLE_RACES[0], cls: null, path: null, name: '', mode: 'rec', focus: { kind: 'race', id: PLAYABLE_RACES[0] }, time: 0 };
+  const st = { race: PLAYABLE_RACES[0], cls: null, path: null, name: '', mode: 'rec', focus: { kind: 'race', id: PLAYABLE_RACES[0] }, time: 0, lookSeed: (Math.random() * 1e6) | 0, avatar: null };
+  // QA v48 #9: one starting look per visit (by race) — the step-1 card, the editor and the game show the same hero
+  const avatarOf = () => { if (!st.avatar || st.avatar.race !== st.race) st.avatar = defaultLook(st.race, 'x', st.lookSeed); return st.avatar; };
   let buttons = [];
   let hover = null;
   let ox = 0, oy = 0;
@@ -91,7 +94,7 @@ export function createCreateScene(opts = {}) {
   }
 
   function begin(game) {
-    const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName') };
+    const hero = { race: st.race, cls: st.cls, path: st.path, name: st.name.trim() || t('create.defaultName'), avatar: avatarOf() };
     const of = st.mode === 'flex' ? 4 : 3; // QA v48 #8: steps count per mode
     const talents = (h, backTo) => createTalentsScene(h, backTo, (g, full) => { if (opts.onDone) { opts.onDone(g, full); return; } g.hero = full; startPrologue(g, full); }, { n: of, of });
     // steps: [build (flex)] -> look (3D avatar) -> talents
@@ -112,7 +115,7 @@ export function createCreateScene(opts = {}) {
     // preview on a floor tile
     const px = x + 16, py = y + 16;
     panel(ctx, px, py, 112, 112, C['2'], C['3']);
-    drawHeroPic(ctx, { race: st.race, name: 'preview' }, px + 8, py + 8, 2, { native: true }); // 3D preview by race
+    drawHeroPic(ctx, { race: st.race, avatar: avatarOf() }, px + 8, py + 8, 2, { native: true }); // the look the editor starts from
     const race = D.RACES[st.race], cls = D.CLASSES[st.cls];
     const path = cls.paths.find((p) => p.id === st.path);
     const tx = px + 128, tw = w - 160;
