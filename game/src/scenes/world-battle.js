@@ -4,7 +4,7 @@
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
 import { cineBefore } from './cinema.js';
-import { eveSetup, eveTerrainMap } from '../world/wave4.js';
+import { eveSetup, eveTerrainMap, bossPhases, smallParty } from '../world/wave4.js';
 import { cineEncounter, cineBattleSkip } from '../world/cine-hooks.js';
 import { radioBattle } from '../world/radio.js';
 import { applyWithdrawal } from '../rules/aftermath.js';
@@ -49,14 +49,21 @@ export function encounterSetup(save, encId) {
   let reduce = 0;
   const allies = [];
   // third-exodus.md: after the zero (Judge incarnates) — no terminal reduce, no finaleMods allies, the boss +25% ЗДР
-  if (encId === FINALE_ENCOUNTER && exodusZeroFinale(save)) return { enemies: incarnate(encounterEnemies(encId, partySize(save)), ENEMIES), allies };
+  // balance-finale.md §3: a party of ≤ 3 — an ally (2 for a duo) and bosses at 90% (over the incarnation's +25%)
+  if (encId === FINALE_ENCOUNTER && exodusZeroFinale(save)) {
+    const sp = smallParty(partySize(save), encId, incarnate(encounterEnemies(encId, partySize(save)), ENEMIES), ENEMIES);
+    return { enemies: sp.enemies, allies: sp.allies, triggers: bossPhases(save, sp.enemies) };
+  }
   if (encId === 'w-cc-finale') {
     reduce = FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length;
     for (const m of QUESTS['mq-exodus']?.finaleMods || []) if (m.flag && save.flags[m.flag]) allies.push(...(m.allies || []));
   }
   // content-wave4.md §2: the Raytsentr waves of mq4-eve — allies, enemy ЗДР and party buffs by earlier choices
   const eve = eveSetup(save, encId, cineEncounter(save, encId, encounterEnemies(encId, partySize(save), { reduce })));
-  return { enemies: eve.enemies, allies: [...allies, ...eve.allies], buffs: eve.buffs, notes: eve.notes, triggers: eve.triggers };
+  const sp = smallParty(partySize(save), encId, eve.enemies, ENEMIES, allies.length);
+  // balance-finale.md §2: boss phases (hp triggers) next to the wave triggers
+  return { enemies: sp.enemies, allies: [...allies, ...eve.allies, ...sp.allies], buffs: eve.buffs, notes: eve.notes,
+    triggers: [...(eve.triggers || []), ...bossPhases(save, sp.enemies)] };
 }
 
 /** content-wave4.md §2: a fired battle trigger with `flag` marks the save (the hub terminal revives once per mission). */

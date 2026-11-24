@@ -1,7 +1,10 @@
 // Content wave 4 helpers (docs/specs/content-wave4.md §2, §5). Pure (no DOM).
 //   eveMods(save, encId)       §2 the Raytsentr defence by earlier choices: EVE_MODS rows that apply to this wave
 //   eveSetup(save, encId, enemies)  → { enemies (hpPct-wrapped), allies, buffs, notes, triggers } (scenes/world-battle.js encounterSetup;
-//                              triggers — rules/battle-triggers.js: barge volley, hub terminal revive)
+//                              triggers — rules/battle-triggers.js: volleys, hub terminal revive). balance-finale.md §1: WAVE4_RULES.allyCap —
+//                              ≤ units allied units and ≤ volleys volley triggers a wave (bottom EVE_MODS rows first); the rest — a toast only
+//   bossPhases(save, enemies)  balance-finale.md §2: phase triggers of the bosses in the list (BOSS_PHASES of data/enemies-v4.js)
+//   smallParty(size, encId, enemies, ENEMIES, flagAllies)  §3: → { enemies (bosses hpPct), allies } for a party of ≤ smallParty.size
 //   doorFarewell(save)         §5 at the Door (mq3-court door stage): loy ≥ 20 — support line, loy < −20 — the companion leaves
 //   doorBonus(save, skills)    §5 a supporting companion (door-support-<id>, still active) whose class specialty is among the
 //                              skills: → { n (R.door.bonus, not stacked), npc, skill } | null; quests.goalDc / cine.checkDc: DC − n
@@ -17,6 +20,7 @@ import { COMPANIONS } from '../data/companions.js';
 import { NPCS } from '../data/npcs.js';
 import { SPECIALIZATIONS } from '../data/skills.js';
 import { GAME_DATA } from '../data/index.js';
+import { BOSS_PHASES } from '../data/enemies-v4.js';
 import { skillCheck } from '../rules/skills.js';
 import { memberUnit } from './state.js';
 
@@ -24,7 +28,8 @@ const f = (save, k) => !!save?.flags?.[k];
 
 export function eveMods(save, encId) {
   if (!EVE_WAVES.includes(encId)) return [];
-  return EVE_MODS.filter((m) => f(save, m.flag) && (!m.notFlag || !f(save, m.notFlag)) && (!m.waves || m.waves.includes(encId)));
+  const not = (m) => [].concat(m.notFlag || []).some((k) => f(save, k));
+  return EVE_MODS.filter((m) => f(save, m.flag) && !not(m) && (!m.waves || m.waves.includes(encId)));
 }
 
 const baseOf = (e) => (typeof e === 'string' ? e : e?.enemy || e?.id);
@@ -33,8 +38,45 @@ export function eveSetup(save, encId, enemies = []) {
   if (!mods.length) return { enemies, allies: [], buffs: [], notes: [], triggers: [] };
   const k = mods.reduce((a, m) => a * (m.hpPct || 1), 1);
   const out = k === 1 ? enemies : enemies.map((e) => ({ ...(typeof e === 'object' ? e : {}), enemy: baseOf(e), hpPct: Math.round((e?.hpPct || 1) * k * 100) / 100 }));
-  return { enemies: out, allies: mods.flatMap((m) => m.allies || []), buffs: mods.map((m) => m.buff).filter(Boolean), notes: mods.map((m) => m.text),
-    triggers: mods.flatMap((m) => m.triggers || []) };
+  // allyCap: units / volleys taken from the bottom rows of EVE_MODS up; a capped flag keeps its toast only
+  const cap = R.allyCap || { units: 99, volleys: 99 };
+  let units = cap.units, volleys = cap.volleys;
+  const allies = [], triggers = [];
+  for (const m of [...mods].reverse()) {
+    if (m.allies?.length && units > 0) { const a = m.allies.slice(0, units); units -= a.length; allies.unshift(...a); }
+    for (const tr of m.triggers || []) {
+      const volley = tr.do.some((op) => op.op === 'volley');
+      if (volley && volleys <= 0) continue;
+      if (volley) volleys--;
+      triggers.unshift(tr);
+    }
+  }
+  return { enemies: out, allies, buffs: mods.map((m) => m.buff).filter(Boolean), notes: mods.map((m) => m.text), triggers };
+}
+
+/** balance-finale.md §2: phase triggers of every boss of the list (once per boss id). c8: noFlag — no phases, tornFlag — `torn`. */
+export function bossPhases(save, enemies = []) {
+  const out = [];
+  for (const id of new Set(enemies.map((e) => String(baseOf(e) || '').split('^')[0]))) {
+    const P = BOSS_PHASES[id];
+    if (!P || (P.noFlag && f(save, P.noFlag))) continue;
+    out.push(...P.phases({ torn: !!(P.tornFlag && f(save, P.tornFlag)) }));
+  }
+  return out;
+}
+
+/** balance-finale.md §3: a party of ≤ smallParty.size in the late fights — allies (2 for a duo) and bosses at bossHpPct.
+ *  The finale (flagAllies — finaleMods allies already there) gets no extra ally. ENEMIES — enemy defs (boss flag). */
+export function smallParty(size, encId, enemies = [], ENEMIES = {}, flagAllies = 0) {
+  const S = R.smallParty;
+  if (!S || size > S.size || !S.enc.includes(encId)) return { enemies, allies: [] };
+  const n = encId === 'w-cc-finale' && flagAllies > 0 ? 0 : S.countBySize?.[size] ?? S.count;
+  const out = enemies.map((e) => {
+    const id = baseOf(e);
+    if (!ENEMIES[String(id).split('^')[0]]?.boss && !ENEMIES[id]?.boss) return e;
+    return { ...(typeof e === 'object' ? e : {}), enemy: id, hpPct: Math.round((e?.hpPct || 1) * S.bossHpPct * 100) / 100 };
+  });
+  return { enemies: out, allies: Array(n).fill(S.ally) };
 }
 
 /** §5: companions at the Door. Mutates the party (a cold companion leaves). → [{ npc, kind: 'support'|'leave', line }]. */

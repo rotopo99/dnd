@@ -160,7 +160,7 @@ for (const way of ['name', 'offer', 'skip']) for (let k = 0; k < 8; k++) {
       const foes = ['boss-great-collector', 'crg-meme-lord', 'crg-banner-bearer'];
       const mod = HK.cineEncounter(s, 'v4-boss-collector', foes);
       if (R.result === 'ladov-named') assert.deepEqual(mod, ['boss-great-collector']);
-      if (R.result === 'ladov-torn') assert.equal(mod[0].hpPct, 0.9);
+      if (R.result === 'ladov-torn') assert.equal(mod[0].hpPct, 0.8);
       if (R.result === 'ladov-trade') assert.ok(HK.cineBattleSkip('v4-boss-collector', R.result));
     } else assert.deepEqual(ready, [], 'no c8 without the name');
   });

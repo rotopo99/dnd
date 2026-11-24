@@ -5802,7 +5802,7 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     const foes = ['boss-great-collector', 'crg-meme-lord', 'crg-banner-bearer'];
     assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes), foes);
     save.flags['ladov-torn'] = true;
-    assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes)[0], { enemy: 'boss-great-collector', hpPct: 0.9 });
+    assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes)[0], { enemy: 'boss-great-collector', hpPct: 0.8 });
     delete save.flags['ladov-torn']; save.flags['ladov-named'] = true;
     assert.deepEqual(HK.cineEncounter(save, 'v4-boss-collector', foes), ['boss-great-collector']);
     assert.ok(HK.cineBattleSkip('v4-boss-collector', 'ladov-trade') && !HK.cineBattleSkip('v4-boss-collector', 'ladov-named'));
@@ -6565,11 +6565,20 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   test('wave4 mq4-eve: defence mods by earlier flags (allies, mines, barricades, Ladov one wave)', () => {
     const s = mk({ 'harmony-ren': true, 'harmony-council': true, 'saved-workshop': true, 'ally-tin': true, 'mech-ally': true, 'ladov-named': true });
     const w1 = W4.eveSetup(s, 'w-eve-1', ['a', 'b']);
-    assert.deepEqual(w1.enemies.map((e) => e.hpPct), [0.75, 0.75]);
-    assert.ok(w1.allies.includes('lis-5-turret-l15') && w1.allies.includes('tin-elite-l16') && !w1.allies.includes('mech-elite-l16'));
-    assert.equal(w1.buffs[0].stat, 'kb');
-    assert.equal(W4.eveSetup(s, 'w-eve-2', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 3);
+    assert.deepEqual(w1.enemies.map((e) => e.hpPct), [0.85, 0.85]);
+    // balance-finale.md §1: allyCap — one unit (tin > mech, -vet-l14), the workshop turret is a volley now
+    assert.deepEqual(w1.allies, ['tin-vet-l14']);
+    assert.deepEqual(w1.triggers.map((x) => x.id), ['eve-workshop']);
+    assert.deepEqual(w1.buffs[0], { id: 'barricade', stat: 'kb', value: 1, turns: 3 });
+    const w2 = W4.eveSetup(s, 'w-eve-2', ['a']);
+    assert.deepEqual(w2.allies, ['crg-vet-l16'], 'Ladov (bottom row) wins the single unit slot on wave 2');
     assert.equal(W4.eveSetup(s, 'w-eve-3', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 0);
+    // volleys: at most 2 a wave, bottom rows first (Ladov, sector D) — the AI / barge / workshop flags give a toast only
+    const all = mk(Object.fromEntries(['harmony-ai', 'harmony-pir', 'saved-workshop', 'saved-sector-d', 'ladov-named'].map((k) => [k, true])));
+    const v2 = W4.eveSetup(all, 'w-eve-2', ['a']);
+    assert.deepEqual(v2.triggers.map((x) => x.id), ['eve-sector-d', 'eve-ladov']);
+    assert.equal(v2.notes.length, 5);
+    assert.deepEqual(W4.eveSetup(all, 'w-eve-1', ['a']).triggers.map((x) => x.id), ['eve-workshop', 'eve-sector-d']);
     assert.deepEqual(W4.eveSetup(mk(), 'w-eve-1', ['a']), { enemies: ['a'], allies: [], buffs: [], notes: [], triggers: [] });
     // harmony-pir: a barge volley trigger each wave (no −% ЗДР); saved-terminal: a revive trigger until it was used once
     const pir = W4.eveSetup(mk({ 'harmony-pir': true, 'saved-terminal': true }), 'w-eve-3', ['a']);
@@ -6577,6 +6586,17 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.deepEqual(pir.triggers.map((x) => x.id).sort(), ['eve-barges', 'eve-terminal']);
     assert.deepEqual(W4.eveSetup(mk({ 'saved-terminal': true, 'eve-revive-used': true }), 'w-eve-2', ['a']).triggers, []);
     for (const id of W4.eveMods(mk(Object.fromEntries(['harmony-ai', 'saved-sector-d', 'plague-cured'].map((f) => [f, true]))), 'w-eve-1').flatMap((m) => m.allies || [])) assert.ok(GAME_DATA.ENEMIES[id], id);
+    for (const m of ['ally-tin', 'mech-ally', 'plague-cured', 'ladov-named']) for (const id of W4.eveSetup(mk({ [m]: true }), 'w-eve-2', ['a']).allies) assert.ok(GAME_DATA.ENEMIES[id], id);
+    // §2 boss phases: Priest / Collector; c8 named — none, torn — one exhibit; §3 a party of 3 — an ally and the boss at 90%
+    assert.deepEqual(W4.bossPhases(mk(), ['boss-cyber-priest-prime', 'x']).map((t) => t.id), ['priest-p2', 'priest-p3']);
+    assert.deepEqual(W4.bossPhases(mk({ 'ladov-named': true }), ['boss-great-collector']), []);
+    const torn = W4.bossPhases(mk({ 'ladov-torn': true }), [{ enemy: 'boss-great-collector', hpPct: 0.8 }]);
+    assert.equal(torn[0].do.find((o) => o.op === 'spawn').count, 1);
+    const sp = W4.smallParty(3, 'v4-boss-collector', ['boss-great-collector', 'crg-elite-l16'], GAME_DATA.ENEMIES);
+    assert.deepEqual(sp, { enemies: [{ enemy: 'boss-great-collector', hpPct: 0.9 }, 'crg-elite-l16'], allies: ['wp-vet-l16'] });
+    assert.equal(W4.smallParty(2, 'w-eve-1', ['a'], GAME_DATA.ENEMIES).allies.length, 2);
+    assert.equal(W4.smallParty(4, 'w-eve-1', ['a'], GAME_DATA.ENEMIES).allies.length, 0);
+    assert.equal(W4.smallParty(3, 'w-cc-finale', ['a'], GAME_DATA.ENEMIES, 1).allies.length, 0, 'finale: flag allies replace it');
   });
   test('wave4 battle triggers: barge volley hits the densest enemy cluster, the hub terminal raises the fallen at 25%', () => {
     const tr = W4.eveSetup(mk({ 'harmony-pir': true, 'saved-terminal': true }), 'w-eve-1', []).triggers;
@@ -6594,6 +6614,74 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     b.trigCheck = true; runTriggers(b, () => {});
     assert.ok(!h.down && !h.dead && h.hp === Math.ceil(h.maxHp * 0.25), `revived ${h.hp}/${h.maxHp}`);
     assert.ok(b.triggers.find((x) => x.id === 'eve-terminal').fired && b.triggers.find((x) => x.id === 'eve-terminal').flag === 'eve-revive-used');
+  });
+  test('balance-finale: boss phase ops — spawn + aura while the choir lives, prop breaks the shield, kb aura, dmgMul while down', () => {
+    const tr = [
+      { id: 'p2', when: { event: 'hp', unit: 'thug', below: 0.66 }, do: [
+        { op: 'log', unit: 'boss', text: 'Хор вступает', bark: 'Пойте!' },
+        { op: 'spawn', unit: 'thug', count: 2, near: 'boss', tag: 'choir', onKill: { dice: '1d1+4', resource: 'hp' } },
+        { op: 'aura', id: 'choir-shield', unit: 'boss', reduce: 0.3, whileAlive: 'choir' },
+        { op: 'aura', id: 'exhibit-kb', unit: 'boss', kbPer: 1, kbMax: 1, whileAlive: 'choir' },
+        { op: 'ability', unit: 'boss', id: 'x-verdict', dcAdd: 2, usesAdd: 1, ratio: 1 }] },
+      { id: 'p3', when: { event: 'hp', unit: 'boss', below: 0.33 }, do: [
+        { op: 'shield', unit: 'boss', perLevel: 5 },
+        { op: 'aura', id: 'shelf', unit: 'boss', dmgMul: 2, whileDown: 'heroes' },
+        { op: 'prop', unit: 'thug', tag: 'node', onBreak: [{ op: 'unshield', unit: 'boss' }, { op: 'status', unit: 'boss', id: 'stun', turns: 1 }, { op: 'unaura', unit: 'boss', id: 'shelf' }] }] },
+    ];
+    const b = createBattle({ map: makeArena({ heroes: 2, enemies: 1 }), heroes: [hero(), hero()], enemies: ['thug'], data: DATA, seed: 3, autoReactions: false, triggers: tr });
+    const ev = []; const emit = (bb, e) => ev.push(e);
+    const boss = b.units.find((u) => u.team === 'enemies'); boss.boss = true; boss.maxHp = boss.hp = 300; boss.level = 10;
+    boss.abilities = [{ id: 'x-verdict', usesPerBattle: 2, effects: [{ op: 'drain', dice: '1d4', ratio: 0.5 }] }];
+    const kb0 = getKb(b, boss);
+    boss.hp = 190; b.trigCheck = true; runTriggers(b, emit);
+    const choir = b.units.filter((u) => u.trigTag === 'choir');
+    assert.equal(choir.length, 2);
+    assert.ok(choir.every((u) => b.order.includes(u.id) && u.kind === 'enemy'));
+    assert.ok(ev.some((e) => e.type === 'triggerLog' && e.bark === 'Пойте!' && e.actor === boss.id));
+    assert.equal(getKb(b, boss), kb0 + 1, 'kb aura capped at kbMax');
+    const xv = boss.abilities[0];
+    assert.ok(xv.usesPerBattle === 3 && xv.dc != null && xv.effects[0].ratio === 1);
+    let hp = boss.hp; dealDamage(b, null, boss, 10, 'blunt'); assert.equal(hp - boss.hp, 7, 'choir shield −30%');
+    // a hero kills both choristers: onKill pays the killer; the aura is off at once
+    const h = b.units.find((u) => u.kind === 'hero'); h.hp = 1;
+    for (const c of choir) dealDamage(b, h, c, 9999, 'blunt');
+    assert.equal(h.hp, 1 + 5 + 5 > h.maxHp ? h.maxHp : 11);
+    hp = boss.hp; dealDamage(b, null, boss, 10, 'blunt'); assert.equal(hp - boss.hp, 10);
+    assert.equal(getKb(b, boss), kb0);
+    // phase 3: shield by level, a prop that is not needed for victory; down hero → boss deals ×2
+    boss.hp = 90; b.trigCheck = true; runTriggers(b, emit);
+    assert.equal(boss.shield.value, 50);
+    const node = b.units.find((u) => u.trigTag === 'node');
+    assert.ok(node && node.prop && !b.order.includes(node.id));
+    const h2 = b.units.filter((u) => u.kind === 'hero')[1]; h2.maxHp = h2.hp = 100;
+    dealDamage(b, boss, h2, 10, 'blunt'); assert.equal(h2.hp, 90, 'no one down — ×1');
+    dealDamage(b, null, h, 9999, 'blunt'); assert.ok(h.down || h.dead);
+    dealDamage(b, boss, h2, 10, 'blunt'); assert.equal(h2.hp, 70, 'a hero is down — ×2');
+    dealDamage(b, null, node, 9999, 'blunt'); b.trigCheck = true; runTriggers(b, emit);
+    assert.ok(!boss.shield && boss.statuses.some((s) => s.id === 'stun') && !boss.auras.some((a) => a.id === 'shelf'));
+    dealDamage(b, null, boss, 9999, 'blunt');
+    assert.equal(b.winner, 'heroes', 'props are not a side');
+  });
+  test('balance-finale: surface op fills the middle band; cast op fires an ability for free; armor-bane ranged pierce', () => {
+    const b = createBattle({ map: makeArena({ heroes: 2, enemies: 2 }), heroes: [hero(), hero()], enemies: ['acolyte-5', 'acolyte-5'], data: GAME_DATA, seed: 3, autoReactions: false,
+      triggers: [{ id: 's', when: { event: 'round', round: 1 }, do: [{ op: 'surface', kind: 'fire', cells: 6, band: [0.4, 0.6] }] }] });
+    b.trigCheck = true; runTriggers(b, () => {});
+    let n = 0; for (let y = 0; y < b.grid.h; y++) for (let x = 0; x < b.grid.w; x++) if (floorAt(b, x, y)?.kind === 'fire') { n++; assert.ok(x >= Math.floor(b.grid.w * 0.4) && x < Math.ceil(b.grid.w * 0.6)); }
+    assert.ok(n >= 4, `fire cells ${n}`);
+    const boss = b.units.find((u) => u.team === 'enemies'); boss.boss = true;
+    boss.abilities = [{ id: 'x-wave', name: 'x', range: 10, target: 'tile', area: { shape: 'radius', size: 3 }, roll: 'auto', action: 'action', usesPerBattle: 1, effects: [{ op: 'damage', dice: '1d1+2', dmgType: 'blunt' }] }];
+    const hs = b.units.filter((u) => u.team === 'heroes'); const hp0 = hs.map((u) => u.hp);
+    b.triggers.push({ id: 'c', when: { event: 'round', round: 1 }, do: [{ op: 'cast', unit: 'boss', ability: 'x-wave' }], fired: false });
+    b.trigCheck = true; runTriggers(b, () => {});
+    assert.ok(hs.some((u, i) => u.hp < hp0[i]), 'cast hit heroes');
+    assert.equal(boss.uses['x-wave'] || 0, 0, 'free');
+    // armor-bane: resist → normal for a ranged weapon hit of a unit with resistPierce
+    const r = buildCreature({ race: 'human', cls: 'ranger', level: 16, data: GAME_DATA });
+    assert.equal(r.resistPierce, 1);
+    const E = b.units.find((u) => u.team === 'enemies' && u !== boss); E.resist = { pierce: 'resist' }; E.maxHp = E.hp = 500;
+    let hp = E.hp; dealDamage(b, null, E, 20, 'pierce', { armorBane: true }); assert.equal(hp - E.hp, 20);
+    hp = E.hp; dealDamage(b, null, E, 20, 'pierce'); assert.equal(hp - E.hp, 10);
+    E.resist = { pierce: 'immune' }; hp = E.hp; dealDamage(b, null, E, 20, 'pierce', { armorBane: true }); assert.equal(hp - E.hp, 10);
   });
   test('wave4 §5: a supporting companion — court DC −1 for his specialty (once); ending D — Помеха rolls meditation', () => {
     const s = mk({ 'door-support-sister-pomekha': true, 'door-support-telifon': true }); st.recruit(s, 'sister-pomekha'); st.recruit(s, 'telifon');

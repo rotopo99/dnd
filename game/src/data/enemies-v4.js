@@ -404,7 +404,7 @@ boss('boss-cyber-priest-prime', 18, { name: 'Кибер-Жрец в силе', f
     sv({ id: 'cp-whisper', name: 'Глас Судьи', range: 12, usesPerBattle: null, save: 'wil', effects: [D(L, 1.5, 'psychic')], desc: 'Пси по МРЛ.' }),
     ability({ id: 'cp-soul-theft', name: 'Похищение души', range: 8, usesPerBattle: 3, effects: [{ op: 'drain', dice: X6(L, 3.2), dmgType: 'cyber', to: 'hp', ratio: 0.5 }], desc: 'Кибер-урон, жрец лечится.' }),
     aoe({ id: 'cp-verdict', name: 'Приговор', save: 'wil', onSave: 'none', range: 10, area: { shape: 'radius', size: 3 }, usesPerBattle: 2, effects: [{ op: 'status', id: 'curse', turns: 3 }, { op: 'status', id: 'silence', turns: 2 }], desc: 'Проклятие и немота (радиус 3).' }),
-    summonA({ id: 'cp-skrilet', name: 'Призыв скрилета', usesPerBattle: 2, effects: [{ op: 'summon', unit: 'skrilet', turns: 4 }], desc: 'Скрилет на 4 хода.' }),
+    summonA({ id: 'cp-skrilet', name: 'Призыв скрилета', usesPerBattle: 3, effects: [{ op: 'summon', unit: 'skrilet', turns: 4 }], desc: 'Скрилет на 4 хода.' }),
     selfA({ id: 'cp-upload', name: 'Резервная копия', usesPerBattle: 1, effects: [{ op: 'shield', value: shieldV(L, 4), turns: 3 }, { op: 'cleanse', count: 2, kind: 'debuff' }], desc: 'Щит и снятие двух дебаффов.' })],
   desc: 'Заместитель Судьи, управляет культистами. Здесь — без сдерживающих протоколов.', canon: ['lore/history.md', 'lore/npcs.md'] });
 
@@ -430,12 +430,66 @@ boss('boss-crg-chief', 15, { name: 'Кринж-Вождь', faction: 'cringegons
 boss('boss-great-collector', 16, { name: 'Великий Собиратель', faction: 'cringegons', role: 'caster', tags: ['hybrid'], cast: 'cha', hpK: 1.5, resist: NO_MIND_RES, immune: ['fear'], loot: 'boss-vibe-burner',
   weapon: { name: 'Крюк коллекционера', dmgType: 'cyber', range: 8, stat: 'cha' },
   abilities: (L) => [
-    ability({ id: 'gc-collect', name: 'Коллекция', range: 10, usesPerBattle: 3, effects: [{ op: 'drain', dice: X6(L, 2.2), dmgType: 'cringe', to: 'mrl', ratio: 0.6 }], desc: 'Кринж по МРЛ и лечение МРЛ себе.' }),
+    ability({ id: 'gc-collect', name: 'Коллекция', range: 10, usesPerBattle: 4, effects: [{ op: 'drain', dice: X6(L, 2.2), dmgType: 'cringe', to: 'mrl', ratio: 0.6 }], desc: 'Кринж по МРЛ и лечение МРЛ себе.' }),
     sv({ id: 'gc-exhibit', name: 'Витрина', range: 10, target: 'tile', area: { shape: 'radius', size: 2 }, save: 'str', onSave: 'none', usesPerBattle: 2, effects: [{ op: 'status', id: 'root', turns: 2 }, { op: 'status', id: 'disarm', turns: 2 }], desc: 'Обездвиживает и разоружает (радиус 2).' }),
     aoe({ id: 'gc-vibe-theft', name: 'Кража вайба', save: 'wil', range: 10, area: { shape: 'radius', size: 3 }, usesPerBattle: 2, effects: [D(L, 1.2, 'cringe'), { op: 'status', id: 'silence', turns: 2 }], desc: 'Кринж и немота (радиус 3).' }),
     summonA({ id: 'gc-exponats', name: 'Экспонаты', usesPerBattle: 2, effects: [{ op: 'summon', unit: 'cringe-jester', turns: 4 }], desc: 'Экспонат-шут на 4 хода.' }),
     selfA({ id: 'gc-vitrine', name: 'Бронестекло', usesPerBattle: 1, effects: [{ op: 'shield', value: shieldV(L, 4), turns: 3 }], desc: 'Щит себе.' })],
   desc: 'Новый лидер кринжгонов — по словам пленных. Собирает всё, чем вы дорожите, и отлично хранит.', canon: ['lore/npcs.md'] });
+
+// ---------------------------------------------------------------- фазы боссов (docs/specs/balance-finale.md §2)
+// Триггеры боя (rules/battle-triggers.js) по боссу: world/wave4.js bossPhases → scenes/world-battle.js encounterSetup, tools/sim/finale.mjs.
+// Ручки баланса — BOSS_PHASE_RULES (balance-tester): пороги, хор/экспонаты, аура, узел/каталог.
+export const BOSS_PHASE_RULES = {
+  priest: { p2: 0.66, p3: 0.33, choir: 2, choirReduce: 0.2, verdictDc: 2, verdictUses: 1, fireCells: 8, fireBand: [0.35, 0.65], fireTurns: 6,
+    node: { hp: 20, kb: 12 }, uploadPerLevel: 3, nodeRatio: 1, baseRatio: 0.5 },
+  collector: { p2: 0.66, p3: 0.33, exhibits: 2, exhibitsTorn: 1, exhibitKb: 1, exhibitKbMax: 2, exhibitMrl: '2d6', shelfMul: 1.25, catalog: { hp: 40, kb: 10 } },
+};
+const PR = BOSS_PHASE_RULES;
+// цели-объекты фазы 3: не ходят, не нужны для победы (battle-triggers prop)
+const propDef = (id, name, L, o, desc) => put(foe({ id, name, level: L, rank: 'elite', faction: null, prop: true, tags: ['mechanical'], stats: st(10, 10, 10, 10, 10, 10, 10),
+  hp: o.hp, mrl: 0, kb: o.kb, weapon: null, speed: 0, ai: 'melee', xp: 0, noAttack: true,
+  resist: { psychic: 'immune', cringe: 'immune', toxin: 'immune' }, immuneStatus: [...MACHINE_IMMUNE, 'stun', 'prone', 'root', 'silence', 'disarm', 'curse'], abilities: [],
+  desc, canon: ['lore/npcs.md'] }));
+const NODE = propDef('prop-copy-node', 'Узел копии', 18, PR.priest.node, 'Резервная копия Жреца. Пока цел — щит Жреца держится, а похищение души лечит вдвое.');
+const CATALOG = propDef('prop-catalog', 'Каталог', 16, PR.collector.catalog, 'Каталог коллекции. Разбей — Собиратель растеряется.');
+V('tin', 'vet', 14); V('mech', 'vet', 14); // balance-finale.md §1: союзник-юнит «Последней ночи» (EVE_MODS)
+const PRIEST = 'boss-cyber-priest-prime', COLLECTOR = 'boss-great-collector';
+const CHOIR = V('cult', 'vet', 18), EXHIBIT = lift('cringe-jester', 16, { id: 'gc-exhibit-l16', name: 'Экспонат-шут', rank: 'specialist' });
+const hpWhen = (unit, below) => ({ event: 'hp', unit, below });
+export const BOSS_PHASES = {
+  [PRIEST]: { phases: () => [
+    { id: 'priest-p2', when: hpWhen(PRIEST, PR.priest.p2), do: [
+      { op: 'log', unit: PRIEST, text: 'Хор вступает: культисты у ворот подключаются к Жрецу. Пока поёт хор — Жрец под защитой.', bark: 'Хор! Ко мне!' },
+      { op: 'spawn', unit: CHOIR, count: PR.priest.choir, near: PRIEST, tag: 'choir' },
+      { op: 'aura', id: 'choir-shield', unit: PRIEST, reduce: PR.priest.choirReduce, whileAlive: 'choir' },
+      { op: 'ability', unit: PRIEST, id: 'cp-verdict', dcAdd: PR.priest.verdictDc, usesAdd: PR.priest.verdictUses }] },
+    { id: 'priest-p3', when: hpWhen(PRIEST, PR.priest.p3), do: [
+      { op: 'log', unit: PRIEST, text: 'Сеть: кибер-огонь по средней полосе, Жрец ставит узел копии. Разбей узел!', bark: 'Я сохранён. Вы — нет.' },
+      { op: 'surface', kind: 'fire', cells: PR.priest.fireCells, band: PR.priest.fireBand, turns: PR.priest.fireTurns },
+      { op: 'shield', unit: PRIEST, perLevel: PR.priest.uploadPerLevel },
+      { op: 'ability', unit: PRIEST, id: 'cp-soul-theft', ratio: PR.priest.nodeRatio },
+      { op: 'prop', unit: NODE, tag: 'copy-node', near: PRIEST, onBreak: [
+        { op: 'log', unit: PRIEST, text: 'Узел копии разбит: щит Жреца снят, Жрец оглушён.', bark: 'Копия… потеряна…' },
+        { op: 'unshield', unit: PRIEST }, { op: 'status', unit: PRIEST, id: 'stun', turns: 1 },
+        { op: 'ability', unit: PRIEST, id: 'cp-soul-theft', ratio: PR.priest.baseRatio }] }] },
+  ] },
+  // c8: «назвал» (ladov-named) — один босс без фаз; «оборванное имя» (ladov-torn) — один экспонат вместо двух
+  [COLLECTOR]: { noFlag: 'ladov-named', tornFlag: 'ladov-torn', phases: ({ torn } = {}) => [
+    { id: 'collector-p2', when: hpWhen(COLLECTOR, PR.collector.p2), do: [
+      { op: 'log', unit: COLLECTOR, text: 'Витрины: Собиратель выставляет экспонаты. Каждый живой экспонат — +1 КБ Собирателю.', bark: 'Не трогать экспонаты!' },
+      { op: 'spawn', unit: EXHIBIT, count: torn ? PR.collector.exhibitsTorn : PR.collector.exhibits, near: COLLECTOR, tag: 'exhibit',
+        onKill: { dice: PR.collector.exhibitMrl, resource: 'mrl' } },
+      { op: 'aura', id: 'exhibits', unit: COLLECTOR, kbPer: PR.collector.exhibitKb, kbMax: PR.collector.exhibitKbMax, whileAlive: 'exhibit' }] },
+    { id: 'collector-p3', when: hpWhen(COLLECTOR, PR.collector.p3), do: [
+      { op: 'log', unit: COLLECTOR, text: 'Пустая полка: Собиратель крадёт вайб и коллекционирует павших. Разбей каталог!', bark: 'Пустая полка ждёт тебя.' },
+      { op: 'cast', unit: COLLECTOR, ability: 'gc-vibe-theft' },
+      { op: 'aura', id: 'empty-shelf', unit: COLLECTOR, dmgMul: PR.collector.shelfMul, whileDown: 'heroes' },
+      { op: 'prop', unit: CATALOG, tag: 'catalog', near: COLLECTOR, onBreak: [
+        { op: 'log', unit: COLLECTOR, text: 'Каталог разбит: Собиратель растерян.', bark: 'Моя… опись…' },
+        { op: 'unaura', unit: COLLECTOR, id: 'empty-shelf' }, { op: 'status', unit: COLLECTOR, id: 'cringed', turns: 1 }] }] },
+  ] },
+};
 
 // Лис-9 и Волк-0 в полной силе (lift боссов v3 + «полная мощность»)
 lift('boss-lis-9-tail', 15, { id: 'boss-lis-9-full', name: 'Лис-9 «Хвост»: полная сила', rank: 'boss', boss: true, hpK: 1.05,
@@ -497,10 +551,10 @@ list.push(
   // content-wave4.md §2: «Последняя ночь» — три волны у вала Райцентра (mq4-eve) и Кибер-Жрец «в силе» у ворот
   // QA v44 pacing: wave 1 — the Dawn cult's marching souls, wave 2 — Warprom androids with a «Кузнечик» walker (the Judge's
   // «Рассвет» shooters), wave 3 — the Priest's choir (a lead voice and scriptlets, dark); terrain — data/world/eve-waves.js
-  enc('w-eve-1', 'Последняя ночь: строй у вала', 17, 'cult', ['raytsentr'], [lift('acolyte-5', 17), lift('acolyte-5', 17), lift('skrilet-5', 17), V('cult', 'vet', 17)]),
-  enc('w-eve-2', 'Последняя ночь: Военпром у пролома', 17, 'warprom', ['raytsentr'], [V('wp', 'cmd', 17), V('wp', 'vet', 17), V('wp', 'vet', 17), V('wp', 'elite', 17)]),
+  enc('w-eve-1', 'Последняя ночь: строй у вала', 17, 'cult', ['raytsentr'], [lift('acolyte-5', 17), lift('acolyte-5', 17), lift('skrilet-5', 17), V('cult', 'vet', 17), lift('acolyte-5', 17)]),
+  enc('w-eve-2', 'Последняя ночь: Военпром у пролома', 17, 'warprom', ['raytsentr'], [V('wp', 'cmd', 17), V('wp', 'vet', 17), V('wp', 'vet', 17), V('wp', 'elite', 17), V('wp', 'vet', 17)]),
   enc('w-eve-3', 'Последняя ночь: хор Жреца', 18, 'cult', ['raytsentr'], [N('cult-skrilet-prime', 18), N('cult-soul-reaper', 18), lift('scriptlet', 18), lift('scriptlet', 18), lift('scriptlet', 18), lift('scriptlet', 18)]),
-  enc('enc-cyber-priest-strong', 'Кибер-Жрец в силе: хор у ворот', 18, 'cult', ['raytsentr'], ['boss-cyber-priest-prime', V('cult', 'elite', 18), N('cult-skrilet-prime', 18)]),
+  enc('enc-cyber-priest-strong', 'Кибер-Жрец в силе: хор у ворот', 18, 'cult', ['raytsentr'], ['boss-cyber-priest-prime', V('cult', 'elite', 18), N('cult-skrilet-prime', 18), lift('scriptlet', 18)]),
   enc('v4-boss-crg-chief', 'Кринж-Вождь', 15, 'cringegons', ['baza-predlozhki'], ['boss-crg-chief', V('crg', 'elite', 15), N('crg-banner-bearer', 15), N('crg-stage-diver', 15), N('crg-stage-diver', 15)]),
   enc('v4-boss-collector', 'Великий Собиратель', 16, 'cringegons', ['vyzhigatel-vayba'], ['boss-great-collector', V('crg', 'elite', 16), N('crg-meme-lord', 16), N('crg-banner-bearer', 16)]),
   enc('v4-mon-hill', 'Удазазаги, гидра холмов (старая)', 9, null, ['hill-monsters-m20'], [MON('uda', 8), spawn(9), spawn(9)], { scale: 0.6 }),

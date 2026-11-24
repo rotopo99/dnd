@@ -60,7 +60,7 @@ export const CINE_AFTER = {
 export const CINE_ENCOUNTER_MODS = {
   'v4-boss-collector': [
     { flag: 'ladov-named', keep: ['boss-great-collector'] },
-    { flag: 'ladov-torn', hpPct: { 'boss-great-collector': 0.9 } },
+    { flag: 'ladov-torn', hpPct: { 'boss-great-collector': 0.8 } }, // balance-finale.md: −20% (было −10%)
   ],
 };
 // Scene results that replace the battle at their point (c8 «отдать душу»: no fight, the arena counts as won).

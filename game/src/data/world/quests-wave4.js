@@ -22,8 +22,19 @@ export const WAVE4_RULES = {
   eveLevel: 17,          // уровень героя для выдачи mq4-eve
   hub: 'raytsentr',      // Райцентр — хаб «Последней ночи»
   restHealPct: 0.1,      // saved-people: ополченцы лечат отряд на 10% ЗДР между волнами
-  renHpPct: 0.75,        // harmony-ren: мины — первая волна −25% ЗДР врагов
+  renHpPct: 0.85,        // harmony-ren: мины — первая волна −15% ЗДР врагов (balance-finale.md: было 0.75)
   pirVolley: { dice: '3d8', radius: 1, round: 2, dmgType: 'fire' }, // harmony-pir: залп барж раз за волну, по скоплению врагов
+  aiVolley: { dice: '3d8', radius: 1, round: 1, dmgType: 'pierce' },      // harmony-ai: стрелки Военпрома — один залп
+  workshopVolley: { dice: '2d8', radius: 1, round: 3, dmgType: 'electric' }, // saved-workshop: турель Николы
+  sectorVolley: { dice: '4d6', radius: 2, round: 4, dmgType: 'blunt' },    // saved-sector-d: Тушёнкин
+  ladovVolley: { dice: '3d6', radius: 1, round: 3, dmgType: 'fire' },       // ladov-named: Предложка (файеры)
+  councilTurns: 3,       // harmony-council: КБ +1 только первые 3 раунда
+  // balance-finale.md §1: потолок флагов на волну — союзных юнитов и залпов; лишние флаги — только тост.
+  // Приоритет — снизу вверх по строкам EVE_MODS (нижняя строка первой).
+  allyCap: { units: 1, volleys: 2 },
+  // balance-finale.md §3: отряд из ≤ size — союзник(и) и −ЗДР боссам в поздних боях (вне allyCap; 2 героя — 2 союзника)
+  smallParty: { size: 3, ally: 'wp-vet-l16', count: 1, countBySize: { 2: 2, 1: 2 }, bossHpPct: 0.9,
+    enc: ['w-eve-1', 'w-eve-2', 'w-eve-3', 'enc-cyber-priest-strong', 'v4-boss-cyber-priest', 'v4-boss-collector', 'w-cc-finale'] },
   terminalRevivePct: 0.25, // saved-terminal: терминал хаба поднимает первого павшего (1 раз за миссию, флаг eve-revive-used)
   ladovWave: 'w-eve-2',  // ladov-named: Предложка приходит строем на одну волну
   card: { free: 5, together: 2, stay: -3, devotedAt: 60 }, // «Последняя ночь»: лояльность по выбору (devoted: «Останься» — 0)
@@ -36,7 +47,9 @@ export const WAVE4_RULES = {
 const W = ['w-eve-1', 'w-eve-2', 'w-eve-3'];
 export const EVE_WAVES = W;
 export const EVE_MODS = [
-  { flag: 'harmony-ai', allies: ['wp-vet-l16', 'wp-vet-l16'], text: 'Стрелки Военпрома на валу' },
+  { flag: 'harmony-ai', text: 'Стрелки Военпрома: один залп',
+    triggers: [{ id: 'eve-ai-volley', when: { event: 'round', round: WAVE4_RULES.aiVolley.round },
+      do: [{ op: 'volley', team: 'enemies', ...WAVE4_RULES.aiVolley, text: 'Стрелки Военпрома дают залп с вала.' }] }] },
   { flag: 'harmony-ren', waves: ['w-eve-1'], hpPct: WAVE4_RULES.renHpPct, text: 'Мины Яроша на подходах' },
   { flag: 'harmony-pir', text: 'Залп пиратских барж',
     triggers: [{ id: 'eve-barges', when: { event: 'round', round: WAVE4_RULES.pirVolley.round },
@@ -45,13 +58,20 @@ export const EVE_MODS = [
   { flag: 'saved-terminal', notFlag: 'eve-revive-used', text: 'Терминал хаба на связи',
     triggers: [{ id: 'eve-terminal', flag: 'eve-revive-used', when: { event: 'down', team: 'heroes' },
       do: [{ op: 'revive', pct: WAVE4_RULES.terminalRevivePct }, { op: 'log', text: 'Терминал хаба вернул павшего: четверть сил.' }] }] },
-  { flag: 'harmony-council', buff: { id: 'barricade', stat: 'kb', value: 1, turns: 99 }, text: 'Беженцы на баррикадах' },
-  { flag: 'saved-workshop', allies: ['lis-5-turret-l15'], text: 'Турель Николы' },
-  { flag: 'saved-sector-d', allies: ['nv-cmd-l16'], text: 'Бородач Тушёнкин на левом фланге' },
-  { flag: 'ally-tin', allies: ['tin-elite-l16'], text: 'Ласточка с Великим Мехом' },
-  { flag: 'mech-ally', notFlag: 'ally-tin', allies: ['mech-elite-l16'], text: 'Мех-ласточка' },
-  { flag: 'plague-cured', notFlag: 'mechanids-wounded', allies: ['mech-vet-l16'], text: 'Эвакуатор Механидов' },
-  { flag: 'ladov-named', waves: [WAVE4_RULES.ladovWave], allies: ['crg-vet-l16', 'crg-vet-l16', 'crg-vet-l16'], text: 'Предложка строем' },
+  { flag: 'harmony-council', buff: { id: 'barricade', stat: 'kb', value: 1, turns: WAVE4_RULES.councilTurns }, text: 'Беженцы на баррикадах' },
+  { flag: 'saved-workshop', text: 'Турель Николы',
+    triggers: [{ id: 'eve-workshop', when: { event: 'round', round: WAVE4_RULES.workshopVolley.round },
+      do: [{ op: 'volley', team: 'enemies', ...WAVE4_RULES.workshopVolley, text: 'Турель Николы бьёт разрядом по скоплению врагов.' }] }] },
+  { flag: 'saved-sector-d', text: 'Бородач Тушёнкин на левом фланге',
+    triggers: [{ id: 'eve-sector-d', when: { event: 'round', round: WAVE4_RULES.sectorVolley.round },
+      do: [{ op: 'volley', team: 'enemies', ...WAVE4_RULES.sectorVolley, text: 'Тушёнкин с левого фланга: «Сектор Д, огонь!»' }] }] },
+  // один юнит по приоритету tin > mech > plague (notFlag), уровень -vet-l12 (balance-finale: l14 давал +10 п.п. цепочке)
+  { flag: 'ally-tin', allies: ['tin-vet-l12'], text: 'Ласточка с Великим Мехом' },
+  { flag: 'mech-ally', notFlag: 'ally-tin', allies: ['mech-vet-l12'], text: 'Мех-ласточка' },
+  { flag: 'plague-cured', notFlag: ['mechanids-wounded', 'ally-tin', 'mech-ally'], allies: ['mech-vet-l12'], text: 'Эвакуатор Механидов' },
+  { flag: 'ladov-named', waves: [WAVE4_RULES.ladovWave], allies: ['crg-vet-l12'], text: 'Предложка строем',
+    triggers: [{ id: 'eve-ladov', when: { event: 'round', round: WAVE4_RULES.ladovVolley.round },
+      do: [{ op: 'volley', team: 'enemies', ...WAVE4_RULES.ladovVolley, text: 'Предложка швыряет файеры в строй врага.' }] }] },
 ];
 
 // «Последняя ночь»: карточка на каждого напарника (в отряде; ещё не говорили).

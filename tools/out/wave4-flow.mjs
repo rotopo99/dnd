@@ -241,7 +241,8 @@ check('mq4-eve: every flag set / none set, all waves lost — still ends', () =>
     // the hub terminal is a battle trigger now (rules/battle-triggers.js), the quest only holds a lost wave
     assert.ok(!s.flags['eve-revive-used'] && s.flags['eve-wave-3-lost']);
     const tr = W4.eveSetup(s, 'w-eve-1', []).triggers.map((x) => x.id);
-    assert.deepEqual(tr, flags['saved-terminal'] ? ['eve-barges', 'eve-terminal'] : []);
+    // balance-finale.md allyCap: two volleys a wave, bottom EVE_MODS rows first (the barges give a toast only here)
+    assert.deepEqual(tr, flags['saved-terminal'] ? ['eve-terminal', 'eve-workshop', 'eve-sector-d'] : []);
   }
 });
 check('coverage', () => {
