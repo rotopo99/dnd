@@ -3,12 +3,12 @@ import { menuScene } from './scenes/menu.js';
 import { unlockAudioOnFirstGesture, play } from './audio/sfx.js';
 import { playTrack } from './audio/music.js';
 import { romanceInterrupt } from './scenes/romance-scene.js';
-import { cineId, cineInterrupt, playCinematic } from './scenes/cinema.js';
+import { cineId, cineInterrupt, cineResumeTick, playCinematic } from './scenes/cinema.js';
 import { exodusMark } from './world/exodus.js';
 import { PLAY_DATA as GAME_DATA } from './world/data.js';
 import { setSaveErrorHandler } from './save.js';
 import { t } from './data/text/index.js';
-import { updateModal, renderModal, renderToasts, updateToasts } from './ui/modal.js';
+import { updateModal, renderModal, renderToasts, updateToasts, toastHold, toastHeld } from './ui/modal.js';
 import { renderTips, clearTips } from './ui/tooltip.js';
 import { renderContextMenu } from './ui/context-menu.js';
 import { syncTheme } from './ui/theme.js';
@@ -42,6 +42,8 @@ const game = {
     this.gfx?.leaveScene(); // 3D states the new scene does not draw are freed at the end of the frame
     this.scene = scene;
     this.modals.length = 0;
+    this.cinePending = null;
+    toastHold(this, scene); // QA v44 M3: no toasts over a cinematic
     scene.enter?.(this);
     syncMusic(this);
     romanceInterrupt(this, scene); // romance.md: queued farewell / breakup / jealousy on a calm scene
@@ -51,17 +53,20 @@ const game = {
   resume(scene) {
     if (scene !== this.scene) this.gfx?.leaveScene();
     this.scene = scene;
+    toastHold(this, scene);
     scene.resume?.(this);
     syncMusic(this);
+    this.cinePending = scene; // QA v44 M1: a scene queued while away (Sera's talk -> c11) plays once no window is open
   },
   openModal(spec) { if (spec) spec._t0 = null; this.modals.push(spec); play('open'); },
   closeModal() { if (this.modals.pop()) play('close'); },
   /** Toast: identical ones are merged («×N»), at most 3 are kept (oldest dropped). */
   toast(text, color = 'h') {
-    const same = this.toasts.find((x) => x.text === text);
+    const list = toastHeld(this) ? (this.toastsHeld ||= []) : this.toasts; // QA v44 M3: parked during a cinematic
+    const same = list.find((x) => x.text === text);
     if (same) { same.n = (same.n || 1) + 1; same.t = 0; return; }
-    this.toasts.push({ text, color, t: 0, n: 1 });
-    if (this.toasts.length > 3) this.toasts.shift();
+    list.push({ text, color, t: 0, n: 1 });
+    if (list.length > (list === this.toasts ? 3 : 8)) list.shift();
   },
 };
 
@@ -141,6 +146,7 @@ function frame(now) {
     try {
       updateToasts(game, STEP);
       updateBarks(game, STEP); // companion barks (companions-scenes.md)
+      cineResumeTick(game); // QA v44 M1: queued scenes after a dialogue / battle resume
       if (game.modals.length) updateModal(game, STEP);
       else if (game.coop?.sceneUpdate) game.coop.sceneUpdate(game, STEP); // co-op guest: input filtered by scene
       else game.scene.update(game, STEP);

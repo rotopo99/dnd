@@ -81,13 +81,28 @@ export function cineBefore(game, point, cont) {
   return true;
 }
 
-/** main.js setScene: on a node / map scene — queued scenes first, then the node's `loc:<id>` point. */
-export function cineInterrupt(game, scene) {
+/**
+ * main.js setScene: on a node / map scene — queued scenes first, then the node's `loc:<id>` point. queueOnly — only the
+ * queue (game.resume: a dialogue / battle returned to the scene). → true when a scene started.
+ */
+export function cineInterrupt(game, scene, { queueOnly = false } = {}) {
   const sv = game.save;
-  if (!sv || game.coop || game.modals.length || game.scene !== scene || !['location', 'roam', 'worldmap'].includes(scene?.id)) return;
-  const id = takeCineQueue(sv) || (scene.locId && cinesAt(sv, `loc:${scene.locId}`)[0]);
-  if (!id) return;
+  if (!sv || game.coop || game.modals.length || game.scene !== scene || !['location', 'roam', 'worldmap'].includes(scene?.id)) return false;
+  const id = takeCineQueue(sv) || (!queueOnly && scene.locId && cinesAt(sv, `loc:${scene.locId}`)[0]);
+  if (!id) return false;
   playCinematic(game, id, { onEnd: (g) => { saveGame(sv); g.resume(scene); cineInterrupt(g, scene); } });
+  return true;
+}
+
+/**
+ * QA v44 M1: main loop step — game.resume marked its scene (game.cinePending); once no window is open, a scene queued
+ * meanwhile (Sera's omen talk -> c11 «Согласие») plays at once instead of on the next scene change.
+ */
+export function cineResumeTick(game) {
+  const sc = game.cinePending;
+  if (!sc || game.modals.length) return false;
+  game.cinePending = null;
+  return game.scene === sc && cineInterrupt(game, sc, { queueOnly: true });
 }
 
 // ------------------------------------------------------------------------------------------------ scene

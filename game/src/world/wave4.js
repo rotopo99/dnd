@@ -5,8 +5,14 @@
 //   doorFarewell(save)         §5 at the Door (mq3-court door stage): loy ≥ 20 — support line, loy < −20 — the companion leaves
 //   doorBonus(save, skills)    §5 a supporting companion (door-support-<id>, still active) whose class specialty is among the
 //                              skills: → { n (R.door.bonus, not stacked), npc, skill } | null; quests.goalDc / cine.checkDc: DC − n
+//   eveWave(encId)             QA v44: EVE_WAVE_SETUP row of a wave battle | null
+//   eveTerrain(def, encId)     → a copy of the battle map def with the wave's terrain (fire patches / breached cover / night)
+//   eveTerrainMap(map, encId)  same over startWorldBattle's map (def or seed => def); other battles — unchanged
+//   eveWaveIntro(save, qid, sid, rng)  → lines before the wave battle of stage wall-N (EVE_WAVE_FLAVOR + terrain) | null
+//   eveInterlude(save, qid, sid)       → lines of the lull rest-N (EVE_INTERLUDES: radio, a companion bark, the wall) | []
 //   finaleChoir(save, qid, rng) §5 ending D: sister-pomekha in the party rolls meditation DC 14 — stays or leaves into the Choir
-import { EVE_MODS, EVE_WAVES, WAVE4_RULES as R, FINALE_BARKS, FINALE_BARK_DEFAULT } from '../data/world/quests-wave4.js';
+import { EVE_MODS, EVE_WAVES, WAVE4_RULES as R, FINALE_BARKS, FINALE_BARK_DEFAULT, EVE_WAVE_FLAVOR, EVE_INTERLUDES } from '../data/world/quests-wave4.js';
+import { EVE_WAVE_SETUP, EVE_TERRAIN_RULES as ET } from '../data/world/eve-waves.js';
 import { COMPANIONS } from '../data/companions.js';
 import { NPCS } from '../data/npcs.js';
 import { SPECIALIZATIONS } from '../data/skills.js';
@@ -74,4 +80,71 @@ export function finaleChoir(save, qid, rng = Math.random) {
   if (ok) save.flags['pomekha-stayed'] = true;
   else { p.state = 'left'; save.flags['pomekha-choir'] = true; }
   return { ok, line: ok ? 'w4.choirStay' : 'w4.choirLeave' };
+}
+
+// ---------------------------------------------------------------- QA v44: the three waves differ (data/world/eve-waves.js)
+export const eveWave = (encId) => EVE_WAVE_SETUP[encId] || null;
+
+/** Map def copy with the wave's terrain. Fire / breach go to the middle band of the width, away from the start cells. */
+export function eveTerrain(def, encId) {
+  const W = eveWave(encId);
+  if (!def || !W?.terrain || !Array.isArray(def.grid)) return def;
+  const T = W.terrain;
+  const rows = def.grid.map((r) => r.split(''));
+  const h = rows.length, w = rows[0]?.length || 0;
+  const starts = [...Object.values(def.starts || {}).flat().map((p) => (Array.isArray(p) ? p : [p.x, p.y]))];
+  rows.forEach((r, y) => r.forEach((ch, x) => { if ('PEAFB'.includes(ch)) starts.push([x, y]); }));
+  const nearStart = (x, y) => starts.some(([sx, sy]) => Math.max(Math.abs(sx - x), Math.abs(sy - y)) <= ET.startClear);
+  const x0 = Math.floor(w * ET.band[0]), x1 = Math.ceil(w * ET.band[1]);
+  const band = (pred) => {
+    const out = [];
+    for (let y = 1; y < h - 1; y++) for (let x = Math.max(1, x0); x < Math.min(w - 1, x1); x++) if (pred(rows[y][x]) && !nearStart(x, y)) out.push([x, y]);
+    return out;
+  };
+  const spread = (cells, n) => (cells.length <= n ? cells : Array.from({ length: n }, (_, i) => cells[Math.floor(((i + 0.5) * cells.length) / n)]));
+  const out = { ...def };
+  if (T.fire) out.surfaces = [...(def.surfaces || []), ...spread(band((c) => c === '.'), T.fire.cells).map(([x, y]) => ({ kind: 'fire', x, y }))];
+  if (T.breach) {
+    for (const [x, y] of spread(band((c) => c === 'c' || c === '#'), T.breach.cells)) rows[y][x] = '.';
+    out.grid = rows.map((r) => r.join(''));
+  }
+  if (T.dark) out.tod = 'night';
+  out.eveTerrain = Object.keys(T);
+  return out;
+}
+
+/** startWorldBattle: the map option (def or seed => def) with the wave terrain. */
+export function eveTerrainMap(map, encId) {
+  if (!eveWave(encId) || !map) return map;
+  return typeof map === 'function' ? (seed) => eveTerrain(map(seed), encId) : eveTerrain(map, encId);
+}
+
+const W_STAGE = /^wall-(\d)$/, R_STAGE = /^rest-(\d)$/;
+const activeCompanions = (save) => (save?.party || []).filter((p) => p.state === 'active' && COMPANIONS[p.npc]).map((p) => p.npc);
+
+/** Lines before the wave battle of `wall-N` (mq4-eve): name + intro, one cringe line, the terrain / goal of the wave. */
+export function eveWaveIntro(save, qid, sid, rng = Math.random) {
+  const m = qid === 'mq4-eve' && W_STAGE.exec(sid || '');
+  if (!m) return null;
+  const n = Number(m[1]), F = EVE_WAVE_FLAVOR?.[n], encId = EVE_WAVES[n - 1], W = eveWave(encId);
+  const lines = [];
+  if (F?.intro) lines.push({ text: F.intro });
+  if (F?.cringe?.length) lines.push({ text: F.cringe[Math.floor(rng() * F.cringe.length) % F.cringe.length], color: 'n' });
+  for (const k of Object.keys(W?.terrain || {})) lines.push({ key: `w4.terrain.${k}`, color: 'a' });
+  return { n, name: F?.name || null, encId, lines };
+}
+
+/** Lines of the lull `rest-N` (mq4-eve): Шумок on the radio, a companion of the party, the wall. */
+export function eveInterlude(save, qid, sid) {
+  const m = qid === 'mq4-eve' && R_STAGE.exec(sid || '');
+  const I = m && EVE_INTERLUDES?.[Number(m[1])];
+  if (!I) return [];
+  const out = [];
+  if (I.radio) out.push({ text: I.radio, color: 'f' });
+  const party = activeCompanions(save);
+  const own = party.find((id) => I.bark?.[id]);
+  if (own) out.push({ text: I.bark[own], color: 'j' });
+  else if (I.barkAny && party.length) out.push({ text: `${npcName(party[0])}: ${I.barkAny}`, color: 'j' });
+  if (I.wall) out.push({ text: I.wall, color: '5' });
+  return out;
 }

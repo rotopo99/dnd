@@ -14,7 +14,7 @@ import { resLineTip, resTip, statusTip, termTip } from './tips.js';
 import { itemTip } from './items-ui.js';
 import { fieldBiome, drawFieldCell, drawFieldProps, propCells, drawWeather } from './field-view.js';
 import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp } from './battle-terrain.js';
-import { drawObjectiveMarkers, drawObjectivePanel } from './battle-objectives.js';
+import { drawObjectiveMarkers, drawObjectivePanel, objectiveStripBottom } from './battle-objectives.js';
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
 import { battle3d, drawBattle3d, cellScreen, unitScreen, camButtons } from '../gfx/scene3d.js';
@@ -437,6 +437,7 @@ function drawUnits(ctx, S, preview, tms) {
   const cur = b.turn ? b.turn.unitId : null;
   affected.clear();
   if (preview.area) for (const au of preview.area.units) affected.add(au.id);
+  const barTop = (objectiveStripBottom(S) ?? L.area.y) + 18; // 3D: room for the status pips over the bar
   for (const u of list) {
     const d = S.dispOf(u);
     const hidden = isHidden(u) && !(u.dead || u.removed);
@@ -467,7 +468,8 @@ function drawUnits(ctx, S, preview, tms) {
     const bw = L.cell - 6, bh = Math.max(2, L.s + 1);
     const bx = px + 3;
     const base = String(u.enemyId || '').split('^')[0];
-    const by = py - (S.units3 ? 0 : (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s) - bh * 2 - 4;
+    let by = py - (S.units3 ? 0 : (base.startsWith('acolyte') ? 8 : base.startsWith('junk-mech') ? 4 : 0) * L.s) - bh * 2 - 4;
+    if (S.units3) by = Math.max(barTop, by); // QA v44 L4: a tall far model's bar stays below the «Цели боя» strip / screen top
     bar(ctx, bx, by, bw, bh, d.hp, u.maxHp, 'hp', u.shield ? u.shield.value : 0);
     if (u.maxMrl > 0) bar(ctx, bx, by + bh + 1, bw, bh, d.mrl, u.maxMrl, 'mrl');
     // status icons (Stage B: palette colour per status, max 4, then «+N»)

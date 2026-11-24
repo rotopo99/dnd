@@ -14,6 +14,7 @@ export const BATTLE_OBJECTIVES = {
     'v3-cult-call': 'rescue',
     'enc-brigands': 'rescue',
     'v4-scv-host': 'rescue',
+    'w-eve-1': 'rescue', // QA v44: mq4-eve waves get different goals (a kill-all win always failed «hold»)
     // hack a terminal
     'w-villages-terminal': 'terminal',
     'w-agro-terminal': 'terminal',
@@ -25,6 +26,7 @@ export const BATTLE_OBJECTIVES = {
     'v3-lis-vault': 'terminal',
     'v4-tek-elite': 'terminal',
     'v4-mech-host': 'terminal',
+    'w-eve-2': 'terminal', // mq4-eve wave 2: restart the wall turret terminal under Warprom fire
     // hold a point N rounds
     'w-villages-beacon': 'hold',
     'v3-tin-trial': 'hold',
@@ -33,7 +35,6 @@ export const BATTLE_OBJECTIVES = {
     'enc-border-clash': 'hold',
     'v4-ren-host': 'hold',
     'v4-wp-host': 'hold',
-    'w-eve-1': 'hold', 'w-eve-2': 'hold', 'w-eve-3': 'hold', // content-wave4.md §2: hold the Raytsentr wall
     // kill the target before it flees
     'w-harmony-cult-cell': 'assassinate',
     'v3-scv-kings-yard': 'assassinate',
@@ -43,6 +44,7 @@ export const BATTLE_OBJECTIVES = {
     'enc-saboteurs': 'assassinate',
     'v4-scv-elite': 'assassinate',
     'v4-crg-elite': 'assassinate',
+    'w-eve-3': 'assassinate', // mq4-eve wave 3: the choir's lead voice runs back to the Priest
     // do not let the cargo burn / break
     'w-agro-burning-field': 'nofire',
     'w-agro-checkpoint': 'nofire',

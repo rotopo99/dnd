@@ -68,7 +68,7 @@ export const HERO_MODELS = {
   },
   // Blender pass 6 enemies (enemy_<model>.glb; three/party.js enemyModelOf): first rule whose regexp matches the enemy id
   // (without the ^variant) and whose procedural body type (gfx/units3d.js bodyType) is listed wins; other enemies stay
-  // procedural. Key characters / bosses of npc.byEnemy go first. Rule extras: scale — size multiplier (bosses), h — fixed
+  // procedural. Key characters / bosses of npc.byEnemy go first. Rule extras: scale — size multiplier (bosses), tint — palette lists over E.tint[model], h — fixed
   // model height, m (instead of the template's; body types without a matching template: the robo-fox over sentry drones).
   // Pass 7 (Warprom android / «Кузнечик» walker / «Лис» robo-fox) goes before the wolf rule: wolf-3 / wolf-5 are not wolves.
   enemy: {
@@ -80,7 +80,9 @@ export const HERO_MODELS = {
       { re: '^lis-sentry(-|$)', model: 'fox' },                                                       // «Лис-0» sentry
       { re: '^(boss-)?wolf-\\d', body: ['beast'], model: 'wolf' },                         // Warprom «Волк» robo-wolves
       { re: '(^|-)drone($|-)', body: ['drone'], model: 'drone' },                           // drone, lis-drone, ai-kill-drone, agro-drone-swarm
-      { re: '^(mutz|mutr)-|brute|^gang-thug', body: ['humanoid', 'beast'], model: 'brute' }, // mutants, brutes
+      // QA v44 L4: mutants are clearly green (rule tint overrides the model's skin list); human brutes keep the model tints
+      { re: '^(mutz|mutr)-', body: ['humanoid', 'beast'], model: 'brute', tint: { skin: ['j', 'j', 'k'] } }, // mutants
+      { re: 'brute|^gang-thug', body: ['humanoid', 'beast'], model: 'brute' }, // human brutes
       { re: '^pir(ate)?-|^pirate$', body: ['humanoid'], model: 'pirate' },
       { re: '^(cultist|acolyte|cult|crg|cringe)(-|$)', body: ['humanoid'], model: 'cultist' }, // Judge's cult, кринжгоны
     ],

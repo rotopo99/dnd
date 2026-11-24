@@ -161,6 +161,18 @@ function drawModalBody(game, m, spec, L) {
 }
 
 // ----------------------------------------------------------------------------- toasts
+/** QA v44 M3: toasts wait while a cinematic plays (they covered the subtitles); a scene change flushes them. */
+export const TOAST_HOLD_SCENES = ['cinema', 'epilogue'];
+export function toastHeld(game) { return TOAST_HOLD_SCENES.includes(game.scene?.id); }
+/** main.js setScene / resume: entering a cinematic parks the live toasts, leaving it shows the parked ones (last 3, fresh). */
+export function toastHold(game, scene) {
+  game.toastsHeld ||= [];
+  if (TOAST_HOLD_SCENES.includes(scene?.id)) { game.toastsHeld.push(...game.toasts); game.toasts.length = 0; return; }
+  if (!game.toastsHeld.length) return;
+  const held = game.toastsHeld.splice(0);
+  for (const x of held) { x.t = 0; const same = game.toasts.find((y) => y.text === x.text); if (same) same.n = (same.n || 1) + (x.n || 1); else game.toasts.push(x); }
+  if (game.toasts.length > 3) game.toasts.splice(0, game.toasts.length - 3);
+}
 export function updateToasts(game, dt) {
   const ts = game.toasts;
   let n = 0;

@@ -39,7 +39,7 @@ import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
 import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag, CINE_RESULT_SOFTEN } from './cine-hooks.js';
 import { dossierDc, courtLimits, applyDossier, dossierPoints } from './dossier.js';
-import { doorFarewell, npcName, doorBonus, finaleChoir } from './wave4.js';
+import { doorFarewell, npcName, doorBonus, finaleChoir, eveInterlude } from './wave4.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
 
@@ -62,10 +62,14 @@ export function questOutcome(st, td, save = null) {
   return 'default';
 }
 
-/** Turn-in lines (strings) of a quest by outcome: lines[outcome] → lines.default. */
-export function turninLines(qid, outcome) {
-  const l = QUEST_TURNIN[qid]?.lines || {};
-  const v = l[outcome] ?? l.default ?? [];
+/**
+ * Turn-in lines (strings) of a quest by outcome: lines[outcome] → lines.default. With the save, td.variants
+ * [{ outcome, all: [flag], key }] pick a flavour of the outcome (QA v44 L2: «closed» with door-halfsealed → «crooked»).
+ */
+export function turninLines(qid, outcome, save = null) {
+  const td = QUEST_TURNIN[qid], l = td?.lines || {};
+  const vr = save && (td?.variants || []).find((x) => x.outcome === outcome && (x.all || []).every((f) => save.flags?.[f]) && l[x.key]);
+  const v = (vr ? l[vr.key] : null) ?? l[outcome] ?? l.default ?? [];
   return Array.isArray(v) ? v : [v];
 }
 
@@ -107,6 +111,9 @@ function reward(save, qid, data) {
   if (q.personal) out.push(...personalQuestDone(save, q)); // companions-scenes.md: +loyalty, alternative path
   const choir = finaleChoir(save, qid); // content-wave4.md §5: ending D — Сестра Помеха rolls not to go into the Choir
   if (choir) { journal(save, t(choir.line)); out.push({ text: t(choir.line), color: choir.ok ? 'j' : 'c' }); }
+  // QA v44 L6: c6 sets door-halfsealed when Lox is pulled out; only the endings that weld the Door (A: fin-closed) keep it —
+  // after B / C / D the Door is not welded at all, so no «crooked seam» knock, no radio / epilogue line about it
+  if (qid === 'mq3-court' && save.flags?.['door-halfsealed'] && !save.flags['fin-closed']) delete save.flags['door-halfsealed'];
   out.push(...applyConsequences(save, qid)); // world-consequences.md: flag cq:<qid>:<outcome>, rep, world changes (once)
   markFinale(save);
   // content-wave4.md §2: rewards.startQuest — the next quest begins at once (mq4-eve -> mq3-court: the court is at the Door)
@@ -129,13 +136,13 @@ export function turninFallback(save, data) {
   for (const qid of pendingTurnins(save)) {
     const n = QUEST_TURNIN[qid].npc;
     if (turninReachable(save, n)) continue;
-    out.push(...shortLine(qid, save.quests[qid].outcome), ...claimTurnin(save, qid, data));
+    out.push(...shortLine(qid, save.quests[qid].outcome, save), ...claimTurnin(save, qid, data));
   }
   return out;
 }
 
-const shortLine = (qid, outcome) => {
-  const line = turninLines(qid, outcome)[0];
+const shortLine = (qid, outcome, save = null) => {
+  const line = turninLines(qid, outcome, save)[0];
   const n = QUEST_TURNIN[qid]?.npc;
   return line ? [{ text: `${NPCS[n]?.name || n}: «${line}»`, color: '5' }] : [];
 };
@@ -335,7 +342,7 @@ function deliver(save, qid, td) {
   const st = save.quests[qid];
   if (td.mode === 'radio') { save.pendingRadio = [...(save.pendingRadio || []), qid]; return []; }
   if (td.mode !== 'return') return [];
-  if (!turninReachable(save, td.npc)) return shortLine(qid, st.outcome);
+  if (!turninReachable(save, td.npc)) return shortLine(qid, st.outcome, save);
   st.turnin = true;
   if (st.state !== 'done') return [];
   journal(save, tf('q.turninJournal', { name: QUESTS[qid].name, npc: NPCS[td.npc]?.name || td.npc, loc: LOCATIONS[npcHome(td.npc)]?.name || '?' }));
@@ -568,9 +575,9 @@ export function questTimerTick(save, data) {
  * content-wave4.md: extra lines of a stage — stage.notes [{ requires?, text }] (the Judge's temptation in verdict) and the
  * dossier score (stage.dossier / stage.showDossier). → [{ text, color }].
  */
-export function stageNotes(save, stage) {
+export function stageNotes(save, stage, qid = null) {
   if (!stage) return [];
-  const out = [];
+  const out = qid ? eveInterlude(save, qid, stage.id) : []; // QA v44: the lull between the mq4-eve waves (radio, barks)
   if (stage.dossier || stage.showDossier) out.push({ text: tf('w4.dossier', { n: dossierPoints(save) }), color: 'f' });
   for (const n of stage.notes || []) if (requiresOk(save, n.requires)) out.push({ text: n.text, color: n.color || 'c' });
   return out;

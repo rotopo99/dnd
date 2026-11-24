@@ -6479,6 +6479,9 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   const DS = await import('../game/src/world/dossier.js');
   const W4 = await import('../game/src/world/wave4.js');
   const CQX = await import('../game/src/world/consequences.js');
+  const MD = await import('../game/src/ui/modal.js'); // QA v44 M3
+  const CI = await import('../game/src/scenes/cinema.js'); // QA v44 M1
+  const { BATTLE_OBJECTIVES: BO44 } = await import('../game/src/data/world/battle-objectives.js');
   const { DOSSIER, DOSSIER_RULES } = await import('../game/src/data/world/dossier.js');
   const { QUESTS: QW } = await import('../game/src/world/data.js');
   const mk = (flags = {}) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true, 'act2-done': true }, flags); return s; };
@@ -6610,7 +6613,8 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   });
   test('wave4 §1: the Judge\'s temptation highlights A and D (not B) only at a thin dossier', () => {
     const v = QW['mq3-court'].stages.find((x) => x.id === 'verdict');
-    assert.deepEqual([...QS.stageHighlights(mk(), v)].sort(), ['closed', 'lox-leave', 'lox9', 'vessel']);
+    assert.deepEqual([...QS.stageHighlights(mk(), v)].sort(), ['closed', 'lox-leave', 'lox9']); // QA v44 L1: no D offered — not marked
+    assert.deepEqual([...QS.stageHighlights(mk({ 'consent-signed': true }), v)].sort(), ['closed', 'lox-leave', 'lox9', 'vessel']);
     const thick = mk(Object.fromEntries(DOSSIER.filter((r) => r.flag).map((r) => [r.flag, true])));
     assert.equal(QS.stageHighlights(thick, v).size, 0);
   });
@@ -6653,6 +6657,64 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.ok(ids.includes('epi-kuksius'));
     // a repeat run does not double flags / slides
     assert.deepEqual(CQ2.epilogueSlides(s).map((x) => x.id), ids);
+  });
+  test('QA v44 pacing: the three eve waves differ — enemies, objective, terrain (fire / breach / night) on the same map', () => {
+    const E = GAME_DATA.ENCOUNTERS;
+    const ids = (k) => E[k].enemies.map((e) => String(typeof e === 'string' ? e : e.enemy || e.id));
+    assert.ok(ids('w-eve-2').every((x) => x.startsWith('wp-')) && ids('w-eve-2').some((x) => /^wp-cmd/.test(x)), 'wave 2: Warprom androids + walker');
+    assert.ok(ids('w-eve-3').some((x) => x.startsWith('cult-skrilet-prime')), 'wave 3: the choir');
+    for (const k of ['w-eve-1', 'w-eve-2', 'w-eve-3']) for (const x of ids(k)) assert.ok(GAME_DATA.ENEMIES[x], x);
+    const goals = ['w-eve-1', 'w-eve-2', 'w-eve-3'].map((k) => BO44.bindings[k]);
+    assert.equal(new Set(goals).size, 3); assert.ok(!goals.includes('hold'), 'L3: no «hold» in a kill-all wave');
+    const row = '#' + '.'.repeat(18) + '#';
+    const def = { id: 't', grid: ['#'.repeat(20), ...Array.from({ length: 8 }, (_, y) => (y % 2 ? row.slice(0, 9) + 'cc' + row.slice(11) : row)), '#'.repeat(20)], starts: { P: [[1, 4]], E: [[18, 4]] } };
+    const f = W4.eveTerrain(def, 'w-eve-1');
+    assert.equal(f.surfaces.length, 6);
+    assert.ok(f.surfaces.every((c) => c.kind === 'fire' && c.x >= 7 && c.x <= 13 && def.grid[c.y][c.x] === '.'));
+    assert.equal(def.surfaces, undefined, 'the shared def is not touched');
+    const br = W4.eveTerrain(def, 'w-eve-2');
+    assert.ok(br.grid.join('').split('c').length < def.grid.join('').split('c').length, 'breach knocks cover down');
+    assert.equal(W4.eveTerrain(def, 'w-eve-3').tod, 'night');
+    assert.equal(W4.eveTerrain(def, 'enc-brigands'), def);
+    const fn = W4.eveTerrainMap(() => def, 'w-eve-3'); assert.equal(fn(1).tod, 'night');
+  });
+  test('QA v44: wave intro (wall-N) and lull interlude (rest-N) lines from the writer data', () => {
+    const s = mk(); st.recruit(s, 'lox');
+    const w2 = W4.eveWaveIntro(s, 'mq4-eve', 'wall-2', () => 0);
+    assert.equal(w2.n, 2); assert.ok(w2.name && w2.lines[0].text && w2.lines.some((l) => l.key === 'w4.terrain.breach'));
+    assert.equal(W4.eveWaveIntro(s, 'mq3-court', 'wall-2'), null);
+    const r1 = W4.eveInterlude(s, 'mq4-eve', 'rest-1');
+    assert.ok(r1.length === 3 && r1[1].text.startsWith('Lox'), JSON.stringify(r1));
+    const rest = QW['mq4-eve'].stages.find((x) => x.id === 'rest-1');
+    assert.ok(QS.stageNotes(s, rest, 'mq4-eve').length >= 3 && QS.stageNotes(s, rest).length === 0);
+  });
+  test('QA v44 L1/L2/L6: temptation note names «сосуд» only when D is offered; crooked radio; halfsealed cleared after B/C', () => {
+    const verdict = QW['mq3-court'].stages.find((x) => x.id === 'verdict');
+    const txt = (s) => QS.stageNotes(s, verdict).map((n) => n.text).join(' ');
+    assert.ok(!/сосуд/.test(txt(mk())) && /Закройте Дверь/.test(txt(mk())), 'no D: only the Door');
+    assert.ok(/сосуд/.test(txt(mk({ 'consent-signed': true }))));
+    assert.ok(!QS.stageHighlights(mk(), verdict).has('vessel'));
+    const cr = mk({ 'door-halfsealed': true });
+    assert.match(QS.turninLines('mq3-court', 'closed', cr)[0], /криво/);
+    assert.match(QS.turninLines('mq3-court', 'closed', mk())[0], /разрушена/);
+    const c = atVerdict({ 'sputnik-owner-tekhonki': true, 'door-halfsealed': true });
+    QS.chooseOption(c, QS.slots(c, 'mq3-court').find((x) => x.kind === 'choice'), 'oldgod', GAME_DATA);
+    assert.equal(c.quests['mq3-court'].state, 'done');
+    assert.ok(!c.flags['door-halfsealed'], 'C: no crooked seam');
+  });
+  test('QA v44 M1/M3: a queued scene plays after resume once windows close; toasts wait out a cinematic', () => {
+    const g = { toasts: [{ text: 'a', t: 1, n: 1 }], toastsHeld: [], scene: null };
+    MD.toastHold(g, { id: 'cinema' });
+    assert.equal(g.toasts.length, 0); assert.equal(g.toastsHeld.length, 1);
+    g.scene = { id: 'cinema' }; assert.ok(MD.toastHeld(g));
+    MD.toastHold(g, { id: 'location' });
+    assert.deepEqual(g.toasts.map((x) => [x.text, x.t]), [['a', 0]]); assert.equal(g.toastsHeld.length, 0);
+    const sc = { id: 'location' };
+    const s = mk(); s.cine = { queue: ['no-such-scene'] };
+    const gm = { save: s, modals: [1], scene: sc, cinePending: sc };
+    assert.equal(CI.cineResumeTick(gm), false); assert.equal(gm.cinePending, sc, 'waits while a window is open');
+    gm.modals = []; CI.cineResumeTick(gm);
+    assert.equal(gm.cinePending, null); assert.equal(s.cine.queue.length, 0, 'the queue was read');
   });
   test('wave4 G11: mq3-court is level 18 and waits for eve-done', () => {
     assert.equal(QW['mq3-court'].level, 18);

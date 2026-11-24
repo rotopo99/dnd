@@ -4,7 +4,7 @@
 // Battle size and map follow world.md «Контракт UI»: first ceil(n × s / 4) enemies; map — ENCOUNTERS[id].map,
 // else battle.map, else LOCATIONS[loc].battleMap, else a generated arena.
 import { cineBefore } from './cinema.js';
-import { eveSetup } from '../world/wave4.js';
+import { eveSetup, eveTerrainMap } from '../world/wave4.js';
 import { cineEncounter, cineBattleSkip } from '../world/cine-hooks.js';
 import { radioBattle } from '../world/radio.js';
 import { applyWithdrawal } from '../rules/aftermath.js';
@@ -148,7 +148,8 @@ export function startWorldBattle(game, o) {
     heroes: () => partyUnits(save, data),
     enemies: setup.enemies,
     allies, rivals, partyLose: !!rivals,
-    map: roamCut ? roamCut.map : fixed && !rivals ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies.map(elemId), ...(rivals ? { sides: 3, rivals: rivals.length } : {}), hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }),
+    // QA v44 pacing: the mq4-eve waves change the same map (fire / breached barricade / night) — world/wave4.js eveTerrain
+    map: eveTerrainMap(roamCut ? roamCut.map : fixed && !rivals ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies.map(elemId), ...(rivals ? { sides: 3, rivals: rivals.length } : {}), hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }), o.encounter),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)

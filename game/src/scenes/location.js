@@ -2,7 +2,7 @@
 // (talk, trade, train/implant, recruit, quest), location actions (rest, heal, revive, trade, rumors, terminal, battles,
 // caches, quest goals, field camp), entry gate by reputation, unique events on enter/rest,
 // bottom bar: map / party / reputation / journal / menu. Every change is autosaved.
-import { playCinematic } from './cinema.js';
+import { playCinematic, cineInterrupt } from './cinema.js';
 import { takeCineQueue } from '../world/cine-hooks.js';
 import { skillActionsAt, hintSkillsOf, npcHintSkills } from '../world/node-actions.js';
 import { openSkillActions, drawHintBadges } from '../ui/skill-ui.js';
@@ -23,6 +23,7 @@ import { openPauseMenu, openSaveMenu } from '../ui/save-ui.js';
 import { hotspot } from '../ui/tooltip.js';
 import { resTip, xpInfo, talentTip } from '../ui/tips.js';
 import { members, activeCompanions, grant, restParty, journal, tf, locFaction, hasFlagInParty, effectiveRep, learnTalent, talentOk, openHidden, squadFree, requiresOk } from '../world/state.js';
+import { eveWaveIntro } from '../world/wave4.js';
 import { exodusSync, passDays, serviceOff, tollMult, exodusRumor } from '../world/exodus.js';
 import { EXODUS_UI } from '../data/text/exodus.js';
 import { EXODUS } from '../data/world/exodus.js';
@@ -205,8 +206,9 @@ export function createLocationScene(rawId, opts = {}) {
       const clues = [...new Set(s.choice.options.filter(isClue).flatMap((o) => o.requires.flags))];
       const hl = stageHighlights(sv, s.stage);
       const evidence = clues.length ? [{ text: clues.some((f) => sv.flags[f]) ? tf('accuse.clues', { list: clues.filter((f) => sv.flags[f]).map(clueName).filter(Boolean).join(', ') }) : t('accuse.noClues'), color: 'f' }] : [];
-      return { label: `${t('loc.decide')}: ${q.name}`, sub: s.gate || s.stage.text, run: (g) => g.openModal({
-        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...stageNotes(sv, s.stage), ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
+      // QA v44 M1: a scene waiting in the queue (c11 at mq4-eve/twist) plays first — the fallback buttons cannot skip it
+      return { label: `${t('loc.decide')}: ${q.name}`, sub: s.gate || s.stage.text, run: (g) => cineInterrupt(g, g.scene, { queueOnly: true }) || g.openModal({
+        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...stageNotes(sv, s.stage, s.qid), ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
         options: [...opts.map((o) => {
           const ok = avail.includes(o) && (!o.requires || requires(g, o.requires));
           const miss = (o.requires?.flags || []).filter((f) => !sv.flags[f]).map(clueName).filter(Boolean);
@@ -220,10 +222,17 @@ export function createLocationScene(rawId, opts = {}) {
       }) };
     }
     if (goal.kind === 'battle') {
-      return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}`,
-        run: (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); },
+      const intro = eveWaveIntro(sv, s.qid, s.stage.id, () => (((sv.day || 0) * 7 + s.stage.id.length) % 10) / 10); // stable while the panel redraws
+      // QA v44 L5: a wave always ends with the loot window (a wave of scriptlets may drop nothing) — «Волна N отбита»
+      const waveNote = intro ? { afterLoot: (g2, loot, notes) => notes.unshift({ text: tf('w4.waveHeld', { n: intro.n }), color: 'j' }) } : {};
+      const fight = (g) => startWorldBattle(g, { encounter: goal.encounter, location: locId, ...waveNote, onWin: (g2) => { toastAll(g2, completeSlot(sv, s, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); },
           // content-wave2.md §1.2: a quest battle with onFail (mq3-court judge-fight-hard) — a loss moves the quest, no game over
-          ...(goal.onFail ? { onLose: (g2) => { toastAll(g2, failSlot(sv, s, g2.data)); persist(g2); again(g2); } } : {}) }) };
+          ...(goal.onFail ? { onLose: (g2) => { toastAll(g2, failSlot(sv, s, g2.data)); persist(g2); again(g2); } } : {}) });
+      // QA v44 pacing: an mq4-eve wave opens with its own beat (name, intro, a cringe line, the terrain of this wave)
+      return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}`,
+        run: !intro ? fight : (g) => g.openModal({ title: intro.name ? tf('w4.waveTitle', { n: intro.n, name: intro.name }) : encounterName(goal.encounter), width: 900, border: 'c', titleColor: 'c',
+          lines: [{ text: s.stage.text }, ...intro.lines.map((l) => (l.key ? { text: t(l.key), color: l.color } : l))],
+          options: [{ label: t('w4.toWall'), sub: encounterName(goal.encounter), run: fight }, { label: t('loc.questLater'), run: () => {} }] }) };
     }
     if (goal.kind === 'check') {
       return { label: `${t('loc.solve')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${goal.skills.map((x) => t(`skill.${x}`)).join('/')} ${t('battle.dc')} ${goalDc(sv, goal)}`,
@@ -526,7 +535,7 @@ export function createLocationScene(rawId, opts = {}) {
     const st = sv.quests[qid];
     game.setScene(createDialogueScene({
       title: tf('q.turninTitle', { name: QUESTS[qid].name }),
-      lines: turninLines(qid, st.outcome).slice(0, 3).map((text) => ({ who: npc.id, name: npc.name, text })), hero: heroOf(sv), wounds: true,
+      lines: turninLines(qid, st.outcome, sv).slice(0, 3).map((text) => ({ who: npc.id, name: npc.name, text })), hero: heroOf(sv), wounds: true,
       onDone: (g) => {
         g.resume(home());
         const got = claimTurnin(sv, qid, g.data);
@@ -549,7 +558,7 @@ export function createLocationScene(rawId, opts = {}) {
     const npc = NPCS[td.npc];
     const lines = [{ text: tf('q.radioFrom', { npc: npc?.name || td.npc }), color: 'a' }];
     if (td.radioCall) lines.push({ text: `${sv.hero.name}: «${td.radioCall}»`, color: 'h' });
-    for (const l of turninLines(qid, st?.outcome).slice(0, 3)) lines.push({ text: `${npc?.name || td.npc}: «${l}»` });
+    for (const l of turninLines(qid, st?.outcome, sv).slice(0, 3)) lines.push({ text: `${npc?.name || td.npc}: «${l}»` });
     game.openModal({ title: `${t('q.radio')} · ${QUESTS[qid].name}`, width: 820, lines,
       options: [{ label: t('battle.continue'), run: (g) => refresh(g) }], onCancel: (g) => refresh(g) });
   }

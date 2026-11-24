@@ -14,6 +14,9 @@ const st = (id, text, goal, next) => ({ id, text, goal, ...(next === 'done' ? { 
 const Q = (id, name, type, region, giver, level, summary, stages, rewards, extra = {}) =>
   ({ id, name, type, key: false, giver, region, level, requires: null, summary, stages, rewards, v3: true, ...extra });
 
+// mq3-court D «Сосуд»: evil, a lost court or a signed blank (c11); a torn blank closes it for good (option + temptation note)
+const VESSEL_REQ = { notFlag: 'consent-torn', any: [{ alignment: 'evil' }, { flag: 'court-lost' }, { flag: 'consent-signed' }] };
+
 const LIST = [
   // ============================================================ ГЛАВНЫЙ СЮЖЕТ
   // ---------- Акт I: финал
@@ -169,12 +172,15 @@ const LIST = [
           { flag: 'sputnik-owner-scavengers', notFlag: 'sputnik-destroyed' }),
         // D «Сосуд»: evil, a lost court or a signed blank (c11); a torn blank closes it for good
         opt('vessel', '«Сосуд»: принять тело Судьи.', null, { flags: ['ending-vessel', 'fin-vessel'], deeds: ['cult-deal'] }, null,
-          { notFlag: 'consent-torn', any: [{ alignment: 'evil' }, { flag: 'court-lost' }, { flag: 'consent-signed' }] }),
+          VESSEL_REQ),
         opt('lox9', '«Приманка»: Lox-9 займёт место героя.', null, { flags: ['ending-lox9', 'fin-lox9'], deeds: ['honor'] }, null, { notFlag: 'lox-alive-door', any: [{ flag: 'lox9-free' }, { flag: 'lox-leaflet' }] }),
       ), 'done'), showDossier: true,
         // BIBLE §8.3 temptation: a thin dossier or a lost court — the Judge offers the shortcut (A / D)
-        notes: [{ requires: { any: [{ dossier: { max: 3 } }, { flag: 'court-lost' }] }, text: 'Судья, тихо: «Очередь в сорок один миллион. Вы можете это закончить». Дверь или сосуд — выбирайте.',
-          highlight: ['closed', 'lox-leave', 'vessel', 'lox9'] }] }, // the A / D options are marked in the choice (not B)
+        // QA v44 L1: «Дверь или сосуд» only when «Сосуд» is offered (its requires, double `not`); else the Door alone
+        notes: [{ requires: { any: [{ dossier: { max: 3 } }, { flag: 'court-lost' }], not: { not: VESSEL_REQ } }, text: 'Судья, тихо: «Очередь в сорок один миллион. Вы можете это закончить». Дверь или сосуд — выбирайте.',
+          highlight: ['closed', 'lox-leave', 'vessel', 'lox9'] },
+        { requires: { any: [{ dossier: { max: 3 } }, { flag: 'court-lost' }], not: VESSEL_REQ }, text: 'Судья, тихо: «Очередь в сорок один миллион. Вы можете это закончить». Закройте Дверь — и всё кончится.',
+          highlight: ['closed', 'lox-leave', 'lox9'] }] }, // the A / D options are marked in the choice (not B)
       // A failed: the door is sealed crooked (as c6), the Judge knocks after 6 days (COURT_MODS halfsealed)
       st('crooked', 'Створка дрогнула и встала криво. Шов держится, но не весь.', choice(
         opt('closed', 'Заварить как есть: створка держится на одном шве.', null, { flags: ['ending-closed', 'fin-closed', 'door-halfsealed'] }),
@@ -452,6 +458,7 @@ const LIST = [
   Q('ct3-dungeon', 'Контракт: подземелье Предложки', 'combat', 'neutralVillages', 'collector-tsitata', 4, 'Цитате нужна книга из подземелья.',
     [st('delve', 'Подземелье.', fight('enc-dungeon', 'dungeons-m12'), 'done')], { xp: 400, credits: 150, talentChoice: ['analyst', 'letter-reading'] }),
 ];
+
 
 export const QUESTS_V3 = Object.fromEntries(LIST.map((q) => [q.id, q]));
 

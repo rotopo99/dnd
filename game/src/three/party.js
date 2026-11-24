@@ -67,12 +67,12 @@ export function enemyModelOf(u) {
     const bt = bodyType(u), r = E.rules.find((q) => new RegExp(q.re).test(id) && (!q.body || q.body.includes(bt))), model = r?.model || null;
     // a humanoid model over a non-humanoid template (beast mutants): fixed humanoid height instead of the template's
     const M = model && E.models[model];
-    rule = model && { model, fixH: M.h || (M.kind === 'humanoid' && bt !== 'humanoid' ? E.humanH : 0), scale: r.scale || 1 };
+    rule = model && { model, fixH: M.h || (M.kind === 'humanoid' && bt !== 'humanoid' ? E.humanH : 0), scale: r.scale || 1, tint: r.tint || null };
     enemyRule.set(id, rule);
   }
   if (!rule) return null;
   const model = rule.model;
-  const P = E.tint[model] || {}, h = hashOf(String(u.id ?? id));
+  const P = { ...(E.tint[model] || {}), ...(rule.tint || {}) }, h = hashOf(String(u.id ?? id));
   const tint = {};
   let bit = 0;
   const hm = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0; // mixed: sequential unit ids differ in the low bits only
