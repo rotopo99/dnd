@@ -6566,13 +6566,13 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     const s = mk({ 'harmony-ren': true, 'harmony-council': true, 'saved-workshop': true, 'ally-tin': true, 'mech-ally': true, 'ladov-named': true });
     const w1 = W4.eveSetup(s, 'w-eve-1', ['a', 'b']);
     assert.deepEqual(w1.enemies.map((e) => e.hpPct), [0.85, 0.85]);
-    // balance-finale.md §1: allyCap — one unit (tin > mech, -vet-l14), the workshop turret is a volley now
-    assert.deepEqual(w1.allies, ['tin-vet-l14']);
+    // balance-finale.md §1: allyCap — one unit (tin > mech, -vet-l12), the workshop turret is a volley now
+    assert.deepEqual(w1.allies, ['tin-vet-l12']);
     assert.deepEqual(w1.triggers.map((x) => x.id), ['eve-workshop']);
     assert.deepEqual(w1.buffs[0], { id: 'barricade', stat: 'kb', value: 1, turns: 3 });
     const w2 = W4.eveSetup(s, 'w-eve-2', ['a']);
-    assert.deepEqual(w2.allies, ['crg-vet-l16'], 'Ladov (bottom row) wins the single unit slot on wave 2');
-    assert.equal(W4.eveSetup(s, 'w-eve-3', ['a']).allies.filter((x) => x === 'crg-vet-l16').length, 0);
+    assert.deepEqual(w2.allies, ['crg-vet-l12'], 'Ladov (bottom row) wins the single unit slot on wave 2');
+    assert.equal(W4.eveSetup(s, 'w-eve-3', ['a']).allies.filter((x) => x === 'crg-vet-l12').length, 0);
     // volleys: at most 2 a wave, bottom rows first (Ladov, sector D) — the AI / barge / workshop flags give a toast only
     const all = mk(Object.fromEntries(['harmony-ai', 'harmony-pir', 'saved-workshop', 'saved-sector-d', 'ladov-named'].map((k) => [k, true])));
     const v2 = W4.eveSetup(all, 'w-eve-2', ['a']);
