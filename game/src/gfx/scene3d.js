@@ -482,7 +482,7 @@ export function unitScreen(S, u, d) {
   const L = S.L, V = S.v3;
   if (!V?.world) return { x: L.mapX + d.x * L.cell, y: L.mapY + d.y * L.cell };
   const T = unitTemplate(u, { simple: !!gfxPrefs().reduceFx });
-  const top = T.top * T.scale + 0.15;
+  const top = (V.glbTop?.[u.id] ?? T.top * T.scale) + 0.15; // GLB units: their own model top (three/party.js)
   const p = project(V.cam, d.x + 0.5, (V.hgt[u.id] ?? 0) + top, d.y + 0.5);
   return { x: p.x - L.cell / 2, y: p.y };
 }

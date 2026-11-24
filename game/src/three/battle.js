@@ -379,7 +379,7 @@ function pickThree(E, V, T, S, px, py) {
     const d = S.dispOf(u), tp = unitTemplate(u, { simple: !!gfxPrefs().reduceFx });
     p.userData.unit = u;
     p.position.set(d.x + 0.5, V.hgt[u.id] ?? 0, d.y + 0.5);
-    p.scale.set(1, tp.top * tp.scale, 1);
+    p.scale.set(1, V.glbTop?.[u.id] ?? tp.top * tp.scale, 1);
     p.updateMatrixWorld(true);
     list.push(p);
   }
@@ -438,11 +438,12 @@ export function drawBattleThree(E, game, S, opts) {
   }
 
   // units
-  const seen = new Set(), ppm = cam.ppmFit * cam.zoom, PC = { now, ppm, prefs, hgt: V.hgt };
+  const seen = new Set(), ppm = cam.ppmFit * cam.zoom, PC = { now, ppm, prefs, hgt: V.hgt, tops: V.glbTop || (V.glbTop = {}) };
   let glbN = 0;
   for (const p of inst) {
     const id = p.it.u.id;
-    if (syncParty(T, p, PC)) { glbN++; continue; } // GLB hero (three/party.js); its procedural twin is dropped below
+    if (syncParty(T, p, PC)) { glbN++; continue; }
+    delete PC.tops[id]; // GLB hero (three/party.js); its procedural twin is dropped below
     let o = T.units.get(id);
     if (o && o.key !== p.T.key) { dropUnit(o); o = null; }
     if (!o) { o = makeUnit(E, T, p.T); if (!o) continue; T.units.set(id, o); }

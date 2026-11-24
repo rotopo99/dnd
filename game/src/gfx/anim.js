@@ -25,8 +25,9 @@ function stOf(V, id) {
 const posOf = (S, u) => { const d = S.dispOf(u); return { x: d.x + 0.5, z: d.y + 0.5 }; };
 
 /** Start an action of unit u (kind: swing | shoot | cast | throw | use) aimed at {x, z} (cells, centred). */
-function act(S, V, u, kind, aim, delay = 0) {
+function act(S, V, u, kind, aim, delay = 0, abil = null) {
   const s = stOf(V, u.id);
+  s.abil = abil; // ability id of a cast (GLB mechs: own clip per ability, HERO_MODELS.enemy.models.*.act)
   s.act = kind; s.t0 = (S.vtime ?? S.time) + delay; s.dur = ACT_DUR[kind]; s.aim = aim;
 }
 /** World point of the unit's hand / chest (for projectiles). */
@@ -82,7 +83,7 @@ export function animEvent3d(S, e) {
       if (!Au) break;
       const tgt = e.target ? b.byId[e.target] : null;
       const aim = tgt ? posOf(S, tgt) : e.tile ? tileAim(e.tile.x, e.tile.y) : null;
-      act(S, V, Au, 'cast', aim);
+      act(S, V, Au, 'cast', aim, 0, e.ability || null);
       const fl = V.world?.floor[Au.y * V.world.w + Au.x] ?? 0, p = posOf(S, Au);
       const ally = tgt && tgt.team === Au.team;
       const color = ally ? GFX.fx.color.heal : GFX.fx.color.cast;
@@ -406,5 +407,5 @@ export const animState = stOf;
 /** Start an action on a body outside the battle (roam attack): kind swing | shoot | cast | throw | use, aim {x, z}. */
 export function startAct(V, id, kind, now, aim = null) {
   const s = stOf(V, id);
-  s.act = kind; s.t0 = now; s.dur = ACT_DUR[kind]; s.aim = aim;
+  s.abil = null; s.act = kind; s.t0 = now; s.dur = ACT_DUR[kind]; s.aim = aim;
 }

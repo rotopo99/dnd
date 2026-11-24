@@ -7,7 +7,8 @@
 // it failed — then for the whole session) the unit is drawn by the procedural template.
 // Enemies (Blender pass 6, HERO_MODELS.enemy): cultists / кринжгоны, pirates, mutants / brutes on the hero rig (weapon in
 // hand, hero clips), Warprom robo-wolves (idle / walk / run, bite) and drones (idle / move, shoot) on own armatures;
-// tint variety by the unit id hash; other enemies stay procedural.
+// pass 7: Warprom androids (hero rig), «Кузнечик» walkers (shoot / stomp / rockets by ability id), «Лис» robo-foxes;
+// tint variety by the unit id hash; other enemies stay procedural. GLB units report their model top (bars, picking).
 // Key characters (Lox, the Judge avatar, Ladov, the Cyber-Priest: HERO_MODELS.npc byNpc / byEnemy — companions,
 // bosses, roam NPCs) and roam crowd NPCs (trader / guard / settler by role, cloth / hair tint by the npc id) use the
 // assembled npc_<id>.glb. Two-handed weapons switch to the *_2h clips. Night tint / light holes as the procedural units.
@@ -15,7 +16,7 @@
 //   npcModelOf(u)                    -> {nid, tint} | null (which npc_<nid>.glb a unit uses)
 //   enemyModelOf(u)                  -> {model, tint} | null (which enemy_<model>.glb an enemy uses)
 //   syncParty(T, p, c)               -> true when the unit p is drawn by its GLB character this frame
-//                                       (c: {now (display clock), ppm (px per metre), prefs, hgt (unit heights)})
+//                                       (c: {now (display clock), ppm (px per metre), prefs, hgt (unit heights), tops?: {id: model top, m}})
 //   sweepParty(T)                    hide characters not drawn this frame; drop after HERO_MODELS.keepUnseen s
 //   dropParty(T)                     dispose all (scene change: three/battle.js dropBattleThree)
 // Weapon in the right hand by the equipped weapon category (three/weapons.js), re-attached when it changes.
@@ -63,9 +64,10 @@ export function enemyModelOf(u) {
   const id = String(u.enemyId || u.id || '').split('^')[0];
   let rule = enemyRule.get(id);
   if (rule === undefined) {
-    const bt = bodyType(u), model = E.rules.find((r) => new RegExp(r.re).test(id) && (!r.body || r.body.includes(bt)))?.model || null;
+    const bt = bodyType(u), r = E.rules.find((q) => new RegExp(q.re).test(id) && (!q.body || q.body.includes(bt))), model = r?.model || null;
     // a humanoid model over a non-humanoid template (beast mutants): fixed humanoid height instead of the template's
-    rule = model && { model, fixH: E.models[model]?.kind === 'humanoid' && bt !== 'humanoid' ? E.humanH : 0 };
+    const M = model && E.models[model];
+    rule = model && { model, fixH: M.h || (M.kind === 'humanoid' && bt !== 'humanoid' ? E.humanH : 0), scale: r.scale || 1 };
     enemyRule.set(id, rule);
   }
   if (!rule) return null;
@@ -73,8 +75,9 @@ export function enemyModelOf(u) {
   const P = E.tint[model] || {}, h = hashOf(String(u.id ?? id));
   const tint = {};
   let bit = 0;
-  for (const k of ['cloth', 'coat', 'pants', 'skin', 'mul']) { const L = P[k]; if (L?.length) tint[k] = L[(h >>> bit) % L.length]; bit += 5; }
-  return { model, tint, fixH: rule.fixH };
+  const hm = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0; // mixed: sequential unit ids differ in the low bits only
+  for (const k of ['cloth', 'coat', 'pants', 'skin', 'mul']) { const L = P[k]; if (L?.length) tint[k] = L[((k === 'mul' ? hm : h) >>> bit) % L.length]; bit += 5; }
+  return { model, tint, fixH: rule.fixH, scale: rule.scale };
 }
 
 export function partySpec(u) {
@@ -87,7 +90,7 @@ export function partySpec(u) {
   }
   if (u.kind === 'enemy') {
     let m = specs.get(u);
-    if (!m || m.sig !== 'enemy') { const em = enemyModelOf(u); m = { sig: 'enemy', spec: em && { ...enemySpec(em.model, em.tint), fixH: em.fixH } }; specs.set(u, m); }
+    if (!m || m.sig !== 'enemy') { const em = enemyModelOf(u); m = { sig: 'enemy', spec: em && { ...enemySpec(em.model, em.tint), fixH: em.fixH, scale: em.scale } }; specs.set(u, m); }
     return m.spec && !failed.has(m.spec.key) ? m.spec : null;
   }
   if (u.kind !== 'hero' || !HM.teams.includes(u.team) || !HM.races.includes(u.raceId || 'human') || bodyType(u) !== 'humanoid') return null;
@@ -119,8 +122,12 @@ function build(T, id, R, spec) {
       ...(EM && { glow: HM.enemy.glow, glowK: HM.enemy.glowK, mulRe: ET?.mulRe, mulK: ET?.mulK, faceSkin: EM.faceSkin ? HM.enemy.faceRef : null }) });
     // locomotion / action clips: hero rig (HERO_MODELS) or the mech set of the enemy model
     R.prof = EM && EM.kind !== 'humanoid' ? EM : null;
-    R.size = spec.enemy ? C.meta?.scale || 1 : 1; // brute: meta scale 1.18
+    R.size = spec.enemy ? (C.meta?.scale || 1) * (spec.scale || 1) : 1; // brute: meta scale 1.18; bosses: rule scale
     R.fixH = spec.fixH || 0;
+    // head top of the model in its own units (bind-pose bounds incl. helmet / hair / hull): HP bar / bubble anchor, picking
+    C.root.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(C.root);
+    R.topL = Number.isFinite(bb.max.y) ? (bb.max.y - C.root.position.y) / (C.root.scale.y || 1) : C.height;
     const L = spec.npc && HM.npc.lift?.[spec.npc];
     if (L) { // QA v42 L3: lighter key model + light rim (Ladov: dark grey on a grey dais)
       for (const m of C.mats) { if (m.name === 'Face') continue; m.color.multiplyScalar(L.gain); m.userData.emissive0.addScalar(L.emissive); }
@@ -168,7 +175,7 @@ function animate(R, p, now, dt) {
   } else {
     if (R.cur === 'death') R.oneEnd = 0;
     const a2 = R.two && HM.clip2h[st.act], P = R.prof;
-    const act = P ? P.act[st.act] || P.actDefault : a2 && I.clips.has(a2) ? a2 : HM.clip[st.act] || 'attack_melee';
+    const act = P ? P.act[st.abil] || P.act[st.act] || P.actDefault : a2 && I.clips.has(a2) ? a2 : HM.clip[st.act] || 'attack_melee';
     if (st.act && st.t0 !== R.actT0 && now >= st.t0 && now < st.t0 + st.dur) { R.actT0 = st.t0; one(act, st.dur, now); }
     else if (st.hitT0 !== R.hitT0 && now >= st.hitT0 && now < st.hitT0 + 1) { R.hitT0 = st.hitT0; one('hit', 0, now); }
   }
@@ -216,6 +223,7 @@ export function syncParty(T, p, c) {
   C.root.rotation.y = p.a ?? 0;
   C.root.scale.setScalar(R.k);
   C.root.visible = true;
+  if (c.tops) c.tops[id] = Math.max(R.topL, C.height) * R.k; // m over the feet (gfx/scene3d.js unitScreen, three/battle.js pick)
   animate(R, p, now, dt);
   if (R.W?.carry) { // two-handed carry <-> native shaft (attack_2h)
     const nat = HM.weapon.carry2hNative.includes(C.inst.current()), pv = R.W.pivot, k = Math.min(1, dt * HM.weapon.carryLerp);

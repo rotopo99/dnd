@@ -68,10 +68,16 @@ export const HERO_MODELS = {
   },
   // Blender pass 6 enemies (enemy_<model>.glb; three/party.js enemyModelOf): first rule whose regexp matches the enemy id
   // (without the ^variant) and whose procedural body type (gfx/units3d.js bodyType) is listed wins; other enemies stay
-  // procedural. Key characters / bosses of npc.byEnemy go first.
+  // procedural. Key characters / bosses of npc.byEnemy go first. Rule extras: scale — size multiplier (bosses), h — fixed
+  // model height, m (instead of the template's; body types without a matching template: the robo-fox over sentry drones).
+  // Pass 7 (Warprom android / «Кузнечик» walker / «Лис» robo-fox) goes before the wolf rule: wolf-3 / wolf-5 are not wolves.
   enemy: {
     on: true,
     rules: [
+      { re: '^(wp-(vanguard|stormtrooper|bolterman|vet|elite)|wolf-3-fang)(-|$)', model: 'android' }, // humanoid body (wolf-3: cyborg)
+      { re: '^(wp-(kuznechik|cmd)|wolf-5-matyorny)(-|$)', model: 'walker' },                         // Warprom walker mechs
+      { re: '^boss-lis-9-(tail|full)(-|$)', model: 'fox', scale: 1.6 },                               // Лис-9 «Хвост» (boss)
+      { re: '^lis-sentry(-|$)', model: 'fox' },                                                       // «Лис-0» sentry
       { re: '^(boss-)?wolf-\\d', body: ['beast'], model: 'wolf' },                         // Warprom «Волк» robo-wolves
       { re: '(^|-)drone($|-)', body: ['drone'], model: 'drone' },                           // drone, lis-drone, ai-kill-drone, agro-drone-swarm
       { re: '^(mutz|mutr)-|brute|^gang-thug', body: ['humanoid', 'beast'], model: 'brute' }, // mutants, brutes
@@ -86,10 +92,15 @@ export const HERO_MODELS = {
       brute: { kind: 'humanoid', faceSkin: true },   // mutant-green skin: the swapped face atlas is tinted to the Skin colour
       wolf: { kind: 'quadruped', act: {}, actDefault: 'bite', loop: { walk: 'walk', run: 'run' }, walkSpeed: 1.6, runSpeed: 4.2, runAt: 2.6 },
       drone: { kind: 'drone', act: {}, actDefault: 'shoot', loop: { walk: 'move', run: 'move' }, walkSpeed: 2, runSpeed: 2, runAt: 99 },
+      android: { kind: 'humanoid' },   // helmet hides the face; meta scale 1.06
+      // act: display action (gfx/anim.js swing / shoot / cast ...) or the ability id of a cast (anim state abil) -> clip
+      walker: { kind: 'walker', act: { shoot: 'shoot', swing: 'stomp', 'wp-stomp': 'stomp', 'wp-rockets': 'rockets' }, actDefault: 'shoot',
+        loop: { walk: 'walk', run: 'walk' }, walkSpeed: 0.93, runSpeed: 0.93, runAt: 99, h: 2.3 }, // h: wolf-5 has a low beast template
+      fox: { kind: 'quadruped', act: {}, actDefault: 'bite', loop: { walk: 'walk', run: 'run' }, walkSpeed: 1.2, runSpeed: 3.4, runAt: 2.2, h: 0.92 },
     },
     humanH: 1.55,              // m: height of a humanoid model drawn over a non-humanoid template (beast mutants; ~ humanoid templates)
     faceRef: [1, 0.69, 0.54],  // linear Skin colour the face atlases are painted for (face colour = Skin / faceRef)
-    glow: /Eye$|Token|Glow|HoodTrim/, glowK: 1.6, // GLB emissive kept (x glowK) on these materials (eyes, cult tokens)
+    glow: /Eye$|Token|Glow|HoodTrim|Warn$/, glowK: 1.6, // GLB emissive kept (x glowK) on these materials (eyes, cult tokens)
     // deterministic variety by the unit id hash: palette keys (null — the authored colour); cloth / coat / pants / skin as
     // HERO_MODELS.tint (luminance tint), mul — mechs: plate colour multiplied by white -> key at mulK
     tint: {
@@ -98,6 +109,9 @@ export const HERO_MODELS = {
       brute: { cloth: [null, 'm', '6', '2', 'k'], coat: [null, 'c', '7', 'l'], skin: [null, null, 'j', 'k'] },
       wolf: { mul: [null, '4', 'm', '8', '3'], mulRe: /^WolfPlate$/, mulK: 0.55 },
       drone: { mul: [null, 'l', 'm', '4', 'a'], mulRe: /^DroneHull$/, mulK: 0.5 },
+      android: { mul: [null, '4', 'm', '8'], mulRe: /^AndroidPlate/, mulK: 0.45 },
+      walker: { mul: [null, '4', 'm', '3'], mulRe: /^WalkerHull$/, mulK: 0.45 },
+      fox: { mul: [null, null, 'a'], mulRe: /^FoxPlate$/, mulK: 0.35 },
     },
   },
 };

@@ -1,7 +1,8 @@
 // GLB enemies in a Three.js battle (Blender pass 6, data/hero-models.js HERO_MODELS.enemy): cultists / pirates / brutes
 // on the hero rig, robo-wolves and drones on own armatures. Per group: enemies drawn by GLB, attack clip by the model
 // (attack_* / bite / shoot), hit, death; close-up screenshots tools/out/three-enemies-<group>-*.png; exit 1 on errors.
-// node tools/out/three-enemies.mjs [--night]
+// Pass 7 groups android / walker / fox (+ mech ability clips), mutz: HP bar anchor over the model top.
+// node tools/out/three-enemies.mjs [--night] [--only g1,g2]
 import { open } from './v3-harness.mjs';
 
 const night = process.argv.includes('--night');
@@ -12,10 +13,18 @@ const ok = (c, m) => { console.log(c ? 'ok  ' : 'FAIL', m); if (!c) fails++; };
 await wait(800);
 const GROUPS = {
   humans: { foes: ['cultist', 'cultist-gunner', 'crg-heckler', 'pir-deckhand', 'mutz-alpha'], act: ['attack_melee', 'attack_shoot', 'attack_2h', 'shoot_2h'] },
-  wolves: { foes: ['wolf-1-grey', 'wolf-3-fang', 'wolf-2-driver', 'wolf-1-grey'], act: ['bite'] },
+  wolves: { foes: ['wolf-1-grey', 'wolf-4-howler', 'wolf-2-driver', 'wolf-1-grey'], act: ['bite'] },
   drones: { foes: ['lis-drone', 'drone', 'ai-kill-drone-l15'], act: ['shoot'] },
+  // pass 7: Warprom androids (+ wolf-3 cyborg), «Кузнечик» walkers (+ wolf-5, commanders), «Лис» robo-foxes
+  android: { foes: ['wp-vanguard-l14', 'wp-stormtrooper', 'wp-bolterman', 'wolf-3-fang', 'wp-vet-l12'], act: ['attack_melee', 'attack_shoot', 'attack_2h', 'shoot_2h'], model: 'android' },
+  walker: { foes: ['wp-kuznechik', 'wolf-5-matyorny', 'wp-cmd-l8'], act: ['shoot'], model: 'walker', abil: { 'wp-stomp': 'stomp', 'wp-rockets': 'rockets' } },
+  fox: { foes: ['boss-lis-9-tail', 'lis-sentry', 'lis-sentry'], act: ['bite'], model: 'fox' },
+  // HP bar over the model top: beast mutants drawn by the brute model
+  mutz: { foes: ['mutz-alpha', 'mutz-tusker'], act: ['attack_melee', 'attack_shoot', 'attack_2h', 'shoot_2h'], model: 'brute' },
 };
+const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1].split(',') : null;
 for (const [g, G] of Object.entries(GROUPS)) {
+  if (only && !only.includes(g)) continue;
   await page.evaluate(async ({ foes, night }) => {
     Math.random = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
     const st = await import('/game/src/world/state.js');
@@ -53,11 +62,18 @@ for (const [g, G] of Object.entries(GROUPS)) {
     const foes = S.b.units.filter((u) => u.kind === 'enemy' && !u.dead);
     const glb = foes.filter((u) => T.party.get(u.id)?.C).map((u) => `${u.enemyId}:${T.party.get(u.id).key}`);
     const f = foes.find((u) => T.party.get(u.id)?.C);
+    // HP bar anchor (unitScreen) vs the projected model top: the bar must not sit inside the model
+    const tops = foes.filter((u) => T.party.get(u.id)?.C).map((u) => {
+      const R = T.party.get(u.id), V = S.v3, at = m.unitScreen(S, u, S.dispOf(u));
+      return { id: u.enemyId, bar: at.y, top: V.glbTop?.[u.id] ?? null, h: R.C.height * R.k };
+    });
     const dbg = foes.map((u) => `${u.enemyId} k=${T.party.get(u.id)?.k?.toFixed(3)} h=${((T.party.get(u.id)?.k || 0) * (T.party.get(u.id)?.C?.height || 0)).toFixed(2)}`);
-    return { dbg, glb, n: foes.length, p: f ? m.unitScreen(S, f, S.dispOf(f)) : null, id: f?.id };
+    return { tops, dbg, glb, n: foes.length, p: f ? m.unitScreen(S, f, S.dispOf(f)) : null, id: f?.id };
   });
   console.log(g, JSON.stringify(info.glb), info.dbg.join(' | '));
   ok(info.glb.length === info.n, `${g}: ${info.glb.length}/${info.n} enemies on GLB`);
+  if (G.model) ok(info.glb.every((s) => s.includes(`enemy|${G.model}|`)), `${g}: model ${G.model}`);
+  ok(info.tops.every((t) => t.top != null && t.top >= t.h - 1e-3), `${g}: bar anchor over the model top ${info.tops.map((t) => `${t.id}=${t.top?.toFixed(2)}/${t.h.toFixed(2)}`).join(' ')}`);
   await shot(`three-enemies-${g}-1-battle`);
   const clipOf = (id) => page.evaluate((id) => window.__game.scene.S.v3.T.party.get(id)?.cur || null, id);
   const close = info.p ? { x: Math.max(0, Math.min(940 - 420, info.p.x - 210)), y: Math.max(0, Math.min(720 - 360, info.p.y - 120)), width: 420, height: 360 } : null;
@@ -73,9 +89,21 @@ for (const [g, G] of Object.entries(GROUPS)) {
   ok(G.act.includes(c1), `${g}: attack -> ${c1}`);
   if (close) await shot(`three-enemies-${g}-3-attack`, close);
   await wait(1500);
+  for (const [ab, clip] of Object.entries(G.abil || {})) { // mech abilities -> own clips
+    await page.evaluate(async ({ id, ab }) => {
+      const a = await import('/game/src/gfx/anim.js'), S = window.__game.scene.S, u = S.b.byId[id], h = S.b.units.find((x) => x.team === 'heroes' && !x.dead);
+      a.animEvent3d(S, { type: 'ability', actor: u.id, ability: ab, tile: { x: h.x, y: h.y } });
+    }, { id: info.id, ab });
+    const seen = [];
+    for (let i = 0; i < 8; i++) { await wait(60); seen.push(await clipOf(info.id)); }
+    ok(seen.includes(clip), `${g}: ${ab} -> ${seen.find((c) => c === clip) || seen.join(',')}`);
+    if (close) await shot(`three-enemies-${g}-3-${clip}`, close);
+    await wait(1500);
+  }
   await page.evaluate(async (id) => { const a = await import('/game/src/gfx/anim.js'); a.animEvent3d(window.__game.scene.S, { type: 'damage', target: id, amount: 1 }); }, info.id);
-  await wait(200);
-  const c2 = await clipOf(info.id);
+  const seen2 = [];
+  for (let i = 0; i < 24 && !seen2.includes('hit'); i++) { await wait(60); seen2.push(await clipOf(info.id)); } // slow SwiftShader frames
+  const c2 = seen2.includes('hit') ? 'hit' : seen2.join(',');
   ok(c2 === 'hit', `${g}: damage -> ${c2}`);
   await wait(1200);
   await page.evaluate(async (id) => {
