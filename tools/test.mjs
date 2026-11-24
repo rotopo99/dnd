@@ -6871,5 +6871,13 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.deepEqual([...bad.keys()], []);
   });
 }
+{
+  const { buildPack, PACK } = await import('./pack-meta.mjs');
+  const fs = await import('node:fs');
+  test('model meta pack is in sync (node tools/pack-meta.mjs)', () => {
+    const cur = fs.readFileSync(new URL(`../game/assets/models/${PACK}`, import.meta.url), 'utf8');
+    assert.equal(cur, buildPack());
+  });
+}
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

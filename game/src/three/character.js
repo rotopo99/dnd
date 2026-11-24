@@ -59,10 +59,16 @@ export function outlineMat() {
 }
 
 const metaCache = new Map();
+let metaPack = null; // assets/models/meta-pack.json: every <name>.json in one file (tools/pack-meta.mjs)
+const getJSON = (url) => fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 /** <name>.json meta of tools/blender (springBones, height_m, animations); null when missing. */
 export function modelMeta(name) {
   let p = metaCache.get(name);
-  if (!p) { p = fetch(`${MODEL_DIR}${name}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null); metaCache.set(name, p); }
+  if (!p) {
+    metaPack ??= getJSON(`${MODEL_DIR}meta-pack.json`);
+    p = metaPack.then((pack) => (pack && name in pack ? pack[name] : getJSON(`${MODEL_DIR}${name}.json`)));
+    metaCache.set(name, p);
+  }
   return p;
 }
 
