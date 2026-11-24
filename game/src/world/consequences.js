@@ -14,6 +14,7 @@ import { journal, tf, repToasts, deed } from './state.js';
 import { romanceEpilogue } from './romance.js';
 import { scheduleDelayed } from './delayed.js';
 import { findsAt } from './lore.js';
+import { cineQueuePoint } from './cine-hooks.js';
 
 export { CQ_FLAG };
 export const EPI_MAX = 12;           // spec: no more than 12 slides by prio (intro and outro always)
@@ -125,7 +126,9 @@ export function applyConsequences(save, qid) {
 
 /** Quest finale reached → the epilogue waits for the location scene. */
 export function markFinale(save) {
-  if (save.flags[FINAL_FLAG] && !save.flags['epilogue-seen']) save.pendingEpilogue = true;
+  if (!save.flags[FINAL_FLAG] || save.flags['epilogue-seen']) return;
+  save.pendingEpilogue = true;
+  cineQueuePoint(save, 'final:mq3-court'); // content-wave4.md §3: c12 «Приговор» plays before the epilogue (location.js)
 }
 
 /** Vendor changes: { mult (clamped), add: [itemId], remove: Set, closed }. */

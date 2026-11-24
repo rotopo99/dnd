@@ -5634,8 +5634,8 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     return { R, save };
   };
 
-  test('cine: 10 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
-    assert.equal(Object.keys(CINEMATICS).length, 10);
+  test('cine: 12 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
+    assert.equal(Object.keys(CINEMATICS).length, 12);
     for (const d of Object.values(CINEMATICS)) assert.deepEqual(CN.validateCine(d), [], d.id);
     const bad = { id: 'x', start: 'a', cast: {}, beats: { a: { choice: { opts: [{ id: 'o', next: 'nope' }, { id: 'p', next: 'a' }] } }, z: { end: { result: 'r' } } } };
     const e = CN.validateCine(bad).join('\n');
@@ -5645,7 +5645,11 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   test('cine: every scene ends on every branch (random walks cover all beats, never an error result)', () => {
     let seed = 7;
     const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-    const flagSets = [{}, { 'victor-soul-freed': true, 'truth-lox5': true, 'cine-c2-stalled': true }, { 'lox5-partial': true }];
+    const flagSets = [{}, { 'victor-soul-freed': true, 'truth-lox5': true, 'cine-c2-stalled': true }, { 'lox5-partial': true },
+      // content-wave4: c11 narrators (Kuksius / Archon / Sera) and c12 branches by fin-* with dossier witnesses
+      { 'kuksius-helped': true, 'vessel-hero': true, 'fin-reflash': true, 'ladov-named': true }, { 'archon-ally': true, 'fin-admin-oldgod': true, 'disp-live': true },
+      { 'fin-admin-order': true, 'kuksius-helped': true }, { 'fin-admin-scrap': true, 'truth-harmony-public': true }, { 'fin-lox9': true }, { 'fin-vessel': true },
+      { 'fin-closed': true, 'fin-lox-leave': true }];
     for (const d of Object.values(CINEMATICS)) {
       const seen = new Set();
       for (let run = 0; run < 120; run++) {
@@ -6570,6 +6574,17 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     const r = W4.doorFarewell(s);
     assert.deepEqual(r.map((x) => `${x.npc}:${x.kind}`).sort(), ['lox:support', 'tik:leave']);
     assert.equal(s.party.find((p) => p.npc === 'tik').state, 'left');
+  });
+  test('wave4 cine: c11 queued at mq4-eve/twist and moves to wall-1; c12 queued by the finale, once', () => {
+    const s = mk(); s.hero.level = 17; s.quests['mq3-arsenal'] = { state: 'done' };
+    QS.startQuest(s, 'mq4-eve'); QS.onTalk(s, 'sera', GAME_DATA);
+    assert.equal(s.quests['mq4-eve'].stage, 'twist');
+    assert.ok(s.cine.queue.includes('c11-consent'));
+    QS.cineResult(s, 'c11-torn', {}, GAME_DATA, 'c11-consent');
+    assert.equal(s.quests['mq4-eve'].stage, 'wall-1');
+    const v = atVerdict({ 'sputnik-owner-ai': true });
+    QS.chooseOption(v, QS.slots(v, 'mq3-court')[0], 'order', GAME_DATA);
+    assert.ok(v.pendingEpilogue && v.cine.queue.includes('c12-verdict'));
   });
   test('wave4 G11: mq3-court is level 18 and waits for eve-done', () => {
     assert.equal(QW['mq3-court'].level, 18);

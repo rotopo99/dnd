@@ -2,6 +2,8 @@
 // (talk, trade, train/implant, recruit, quest), location actions (rest, heal, revive, trade, rumors, terminal, battles,
 // caches, quest goals, field camp), entry gate by reputation, unique events on enter/rest,
 // bottom bar: map / party / reputation / journal / menu. Every change is autosaved.
+import { playCinematic } from './cinema.js';
+import { takeCineQueue } from '../world/cine-hooks.js';
 import { skillActionsAt, hintSkillsOf, npcHintSkills } from '../world/node-actions.js';
 import { openSkillActions, drawHintBadges } from '../ui/skill-ui.js';
 import { dropItem, countAll } from '../world/inventory.js';
@@ -676,6 +678,9 @@ export function createLocationScene(rawId, opts = {}) {
   function pendingEpilogue(game) {
     const sv = save(game);
     if (!sv.pendingEpilogue || game.modals.length) return false;
+    // content-wave4.md §3: the finale scene (c12, queued by markFinale) first, the epilogue on the next pump
+    const cid = !game.coop && takeCineQueue(sv);
+    if (cid) { playCinematic(game, cid, { onEnd: (g) => { persist(g); g.resume(home()); } }); return true; }
     sv.pendingEpilogue = false;
     sv.flags['epilogue-seen'] = true;
     persist(game);

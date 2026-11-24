@@ -5,6 +5,7 @@
 //   cinesAt(save, point)       ids ready at the point ('before' triggers first)
 //   cineStage(save, qid, sid)  quest stage entered: CINE_STAGE_FLAGS + queue ready scenes (save.cine.queue)
 //   takeCineQueue(save)        next queued id (main.js setScene on a calm scene)
+//   cineQueuePoint(save, point) queue the ready scenes of any point (c12 at final:mq3-court, consequences.js markFinale)
 //   cineResultStage(qid, sid, result)  content-wave2.md §1.2: the scene's end.result -> the next stage of a quest (or null)
 //   cineFlag(save, flag)       a quest flag was just set (doneFlag): queue `loc:` scenes waiting for it (c7 after the reactor clue)
 //   cineEncounter(save, encId, enemies)  CINE_ENCOUNTER_MODS: scene outcomes change a battle (c8 -> the Collector arena)
@@ -21,6 +22,8 @@ export const CINE_POINT_ALIAS = {
   'arena-great-collector': 'battle:v4-boss-collector', // c8: before the Great Collector arena (vyzhigatel-vayba, battles-v4)
   'liza-door': 'stage:w3-liza/door',               // c9 (content-wave3 §1): the father's locker in the Old Forge (dungeons-m17)
   'w3-debate': 'stage:w3-flags/debate',             // c10 (content-wave3 §2): the council debate on the Harmony deck
+  'mq4-twist': 'stage:mq4-eve/twist',               // c11 (content-wave4 §3): the consent blank on the Raytsentr wall
+  'mq3-verdict': 'final:mq3-court',                 // c12 (content-wave4 §3): right after the verdict, before the epilogue
 };
 // Flags the triggers wait for, set by quest stages (enterStage).
 export const CINE_STAGE_FLAGS = { 'mq3-court/inside': 'mq3-court' };
@@ -37,6 +40,8 @@ export const CINE_RESULT_NEXT = {
   'w3-liza/door': { 'c9-done': 'note' },
   // content-wave3.md §2: c10 vote won -> the council takes Harmony; draw -> the hero picks one of three flags
   'w3-flags/debate': { 'c10-council': 'council-won', 'c10-draw': 'debate-lost' },
+  // content-wave4.md §3: c11 sets the consent-* flags itself — every outcome goes on to the first wave
+  'mq4-eve/twist': { 'c11-known': 'wall-1', 'c11-torn': 'wall-1', 'c11-signed': 'wall-1', 'c11-signed-bad': 'wall-1', 'c11-silent': 'wall-1' },
 };
 // content-wave4.md §1: a result stage replaced while a flag stands (dossier ≥ 6 — the Judge fights without his edge).
 export const CINE_RESULT_SOFTEN = { 'judge-fight-hard': { flag: 'dossier-6', to: 'judge-fight' } };
@@ -99,6 +104,15 @@ export function cineStage(save, qid, sid) {
   const key = `${qid}/${sid}`;
   if (CINE_STAGE_FLAGS[key]) (save.flags ||= {})[CINE_STAGE_FLAGS[key]] = true;
   const ids = idsAt(`stage:${key}`);
+  if (!ids.length) return;
+  save.cine ||= {};
+  const q = (save.cine.queue ||= []);
+  for (const id of ids) if (!q.includes(id)) q.push(id);
+}
+
+/** Queue the ready scenes of a point (content-wave4.md: `final:mq3-court` — c12 from consequences.js markFinale). */
+export function cineQueuePoint(save, point) {
+  const ids = cinesAt(save, point);
   if (!ids.length) return;
   save.cine ||= {};
   const q = (save.cine.queue ||= []);
