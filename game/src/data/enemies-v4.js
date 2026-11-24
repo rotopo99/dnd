@@ -398,11 +398,11 @@ boss('boss-ai-general', 19, { name: 'Генерал ИИ', faction: 'aiParty', r
     selfA({ id: 'gen-backup', name: 'Резервный контур', usesPerBattle: 1, effects: [{ op: 'shield', value: shieldV(L, 5), turns: 3 }], desc: 'Большой щит себе.' })],
   desc: 'Заместитель лидера АИ Партии, управляет армией и карателями. «Это не бунт – это чистка».', canon: ['lore/history.md', 'lore/timeline.md'] });
 
-boss('boss-cyber-priest-prime', 18, { name: 'Кибер-Жрец в силе', faction: 'cult', role: 'caster', tags: ['hybrid'], cast: 'wil', hpK: 1.15, resist: NO_MIND_RES, immune: ['fear'], loot: 'boss-plague-seed',
+boss('boss-cyber-priest-prime', 18, { name: 'Кибер-Жрец в силе', faction: 'cult', role: 'caster', tags: ['hybrid'], cast: 'wil', hpK: 1.8, resist: NO_MIND_RES, immune: ['fear'], loot: 'boss-plague-seed',
   weapon: { name: 'Посох-терминал: полная мощность', dmgType: 'blunt', range: 2, stat: 'wil' },
   abilities: (L) => [
-    sv({ id: 'cp-whisper', name: 'Глас Судьи', range: 12, usesPerBattle: null, save: 'wil', effects: [D(L, 1.1, 'psychic')], desc: 'Пси по МРЛ.' }),
-    ability({ id: 'cp-soul-theft', name: 'Похищение души', range: 8, usesPerBattle: 3, effects: [{ op: 'drain', dice: X6(L, 2.4), dmgType: 'cyber', to: 'hp', ratio: 0.5 }], desc: 'Кибер-урон, жрец лечится.' }),
+    sv({ id: 'cp-whisper', name: 'Глас Судьи', range: 12, usesPerBattle: null, save: 'wil', effects: [D(L, 1.5, 'psychic')], desc: 'Пси по МРЛ.' }),
+    ability({ id: 'cp-soul-theft', name: 'Похищение души', range: 8, usesPerBattle: 3, effects: [{ op: 'drain', dice: X6(L, 3.2), dmgType: 'cyber', to: 'hp', ratio: 0.5 }], desc: 'Кибер-урон, жрец лечится.' }),
     aoe({ id: 'cp-verdict', name: 'Приговор', save: 'wil', onSave: 'none', range: 10, area: { shape: 'radius', size: 3 }, usesPerBattle: 2, effects: [{ op: 'status', id: 'curse', turns: 3 }, { op: 'status', id: 'silence', turns: 2 }], desc: 'Проклятие и немота (радиус 3).' }),
     summonA({ id: 'cp-skrilet', name: 'Призыв скрилета', usesPerBattle: 2, effects: [{ op: 'summon', unit: 'skrilet', turns: 4 }], desc: 'Скрилет на 4 хода.' }),
     selfA({ id: 'cp-upload', name: 'Резервная копия', usesPerBattle: 1, effects: [{ op: 'shield', value: shieldV(L, 4), turns: 3 }, { op: 'cleanse', count: 2, kind: 'debuff' }], desc: 'Щит и снятие двух дебаффов.' })],
@@ -427,7 +427,7 @@ boss('boss-crg-chief', 15, { name: 'Кринж-Вождь', faction: 'cringegons
     ability({ id: 'chief-smash', name: 'Удар рупором', range: 1, usesPerBattle: 3, effects: [{ op: 'weapon', extraDice: X6(L, 1.3) }, { op: 'status', id: 'stun', turns: 1 }, { op: 'push', tiles: 2 }], desc: 'Оглушение и отбрасывание.' })],
   desc: 'Лидер кринжгонов: агрессивный и безжалостный. Орёт — и это его самая тонкая тактика.', canon: ['lore/history.md', 'lore/npcs.md'] });
 
-boss('boss-great-collector', 16, { name: 'Великий Собиратель', faction: 'cringegons', role: 'caster', tags: ['hybrid'], cast: 'cha', hpK: 1.1, resist: NO_MIND_RES, immune: ['fear'], loot: 'boss-vibe-burner',
+boss('boss-great-collector', 16, { name: 'Великий Собиратель', faction: 'cringegons', role: 'caster', tags: ['hybrid'], cast: 'cha', hpK: 1.5, resist: NO_MIND_RES, immune: ['fear'], loot: 'boss-vibe-burner',
   weapon: { name: 'Крюк коллекционера', dmgType: 'cyber', range: 8, stat: 'cha' },
   abilities: (L) => [
     ability({ id: 'gc-collect', name: 'Коллекция', range: 10, usesPerBattle: 3, effects: [{ op: 'drain', dice: X6(L, 2.2), dmgType: 'cringe', to: 'mrl', ratio: 0.6 }], desc: 'Кринж по МРЛ и лечение МРЛ себе.' }),
@@ -499,7 +499,7 @@ list.push(
   // «Рассвет» shooters), wave 3 — the Priest's choir (a lead voice and scriptlets, dark); terrain — data/world/eve-waves.js
   enc('w-eve-1', 'Последняя ночь: строй у вала', 17, 'cult', ['raytsentr'], [lift('acolyte-5', 17), lift('acolyte-5', 17), lift('skrilet-5', 17), V('cult', 'vet', 17)]),
   enc('w-eve-2', 'Последняя ночь: Военпром у пролома', 17, 'warprom', ['raytsentr'], [V('wp', 'cmd', 17), V('wp', 'vet', 17), V('wp', 'vet', 17), V('wp', 'elite', 17)]),
-  enc('w-eve-3', 'Последняя ночь: хор Жреца', 18, 'cult', ['raytsentr'], [N('cult-skrilet-prime', 18), N('cult-soul-reaper', 18), lift('scriptlet', 18), lift('scriptlet', 18), lift('scriptlet', 18)]),
+  enc('w-eve-3', 'Последняя ночь: хор Жреца', 18, 'cult', ['raytsentr'], [N('cult-skrilet-prime', 18), N('cult-soul-reaper', 18), lift('scriptlet', 18), lift('scriptlet', 18), lift('scriptlet', 18), lift('scriptlet', 18)]),
   enc('enc-cyber-priest-strong', 'Кибер-Жрец в силе: хор у ворот', 18, 'cult', ['raytsentr'], ['boss-cyber-priest-prime', V('cult', 'elite', 18), N('cult-skrilet-prime', 18)]),
   enc('v4-boss-crg-chief', 'Кринж-Вождь', 15, 'cringegons', ['baza-predlozhki'], ['boss-crg-chief', V('crg', 'elite', 15), N('crg-banner-bearer', 15), N('crg-stage-diver', 15), N('crg-stage-diver', 15)]),
   enc('v4-boss-collector', 'Великий Собиратель', 16, 'cringegons', ['vyzhigatel-vayba'], ['boss-great-collector', V('crg', 'elite', 16), N('crg-meme-lord', 16), N('crg-banner-bearer', 16)]),
