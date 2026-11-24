@@ -159,6 +159,8 @@ export function startWorldBattle(game, o) {
     map: eveTerrainMap(roamCut ? roamCut.map : fixed && !rivals ? fixed : (seed) => makeWorldMap({ seed, enemies: setup.enemies.length, enemyIds: setup.enemies.map(elemId), ...(rivals ? { sides: 3, rivals: rivals.length } : {}), hazard: o.hazard ?? loc?.hazard, biome: o.biome ?? loc?.biome, region: loc?.region, faction: o.faction, id: o.id || 'world', kind: loc?.kind, ambush: !!o.ambush, day: save.day }), o.encounter),
     title: o.title || (o.encounter ? encounterName(o.encounter) : loc?.name || ''),
     intro: null, hint: o.ambush ? 'world.ambushHint' : null,
+    // QA v49 #16: a defeat that leads to Cyberspace says so (canon: the soul goes to Cyberspace, the Judge marks it)
+    defeatLines: o.defeatLines || (o.onLose ? null : [{ text: t('battle.defeatText') }, { text: t('battle.defeatCyber') }, { text: t('battle.defeatMarks') }]),
     // codex terms: statuses / surfaces applied in this battle (battle events, no battle.js change)
     onEvent: (S, e) => {
       if (e.type === 'status') markTerm(save, 'status', e.id); else if (e.type === 'surfaceCreate') markTerm(save, 'surface', e.kind);

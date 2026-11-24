@@ -3389,7 +3389,8 @@ console.log('combat rework stage 2: objectives, chests, retreat, jam');
     assert.ok(m3.list.some((e) => e.encounter === 'x-revenant-neutralVillages'));
     const m5 = road.exodusRoad(withMark(5), 'cult');
     assert.equal(m5.only, true);
-    for (let i = 0; i < 20; i++) assert.ok(st.pickEncounter(withMark(5), 'cult', () => i / 20).encounter?.startsWith('x-'));
+    const hi5 = withMark(5); hi5.hero.level = 18; // QA v49 #13: road fights are gated by party level
+    for (let i = 0; i < 20; i++) assert.ok(st.pickEncounter(hi5, 'cult', () => i / 20).encounter?.startsWith('x-'));
     for (const e of Object.values(ENCOUNTERS_EXODUS)) for (const id of e.enemies) assert.ok(GAME_DATA.ENEMIES[id], `${e.id}: ${id}`);
     assert.equal(GAME_DATA.ENEMIES['x-revenant-l18'].weapon.dmgType, 'psychic');
     const s = withMark(5); s.flags['exodus-stopped'] = true;
@@ -6869,6 +6870,41 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
       }
     });
     assert.deepEqual([...bad.keys()], []);
+  });
+}
+// ---------------------------------------------------------------- QA v49 #13: random road encounters are gated by party level
+{
+  const st = await import('../game/src/world/state.js');
+  const D = await import('../game/src/world/data.js');
+  test('road encounters from the start hub never pick a fight far above a level 1-3 party', () => {
+    const G = D.ENCOUNTER_GATE;
+    assert.ok(D.ENCOUNTER_TABLES.sea.some((e) => e.encounter === 'v4-mon-sea'), 'fixture: the lvl-16 sea serpent is in the sea table');
+    const regs = new Set();
+    for (const r of st.routesFrom(D.START_LOCATION)) {
+      const to = st.otherEnd(r, D.START_LOCATION);
+      if (r.region === 'sea') regs.add('sea');
+      regs.add(D.LOCATIONS[to].region);
+    }
+    assert.ok(regs.size > 0);
+    for (const L of [1, 2, 3]) {
+      const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+      s.hero.level = L;
+      const P = st.partyPower(s);
+      for (const reg of regs) for (let i = 0; i < 200; i++) {
+        const e = st.pickEncounter(s, reg, () => (i + 0.5) / 200);
+        if (!e) continue;
+        for (const id of [e.kind === 'battle' && e.encounter, e.success?.battle, e.fail?.battle].filter((x) => typeof x === 'string')) {
+          const info = st.encounterInfo(id);
+          assert.ok(info.level <= P + G.maxOver, `L${L} ${reg}: ${id} lvl ${info.level}`);
+          assert.ok(!info.boss || info.level <= P + G.bossOver, `L${L} ${reg}: boss ${id}`);
+        }
+      }
+    }
+    // the serpent is gated, a lvl-16 party may meet it
+    const hi = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] });
+    hi.hero.level = 16;
+    assert.ok(st.encounterGate(hi, { kind: 'battle', encounter: 'v4-mon-sea' }).ok);
+    assert.equal(st.encounterGate(hi, { kind: 'battle', encounter: 'w-road-crawlers' }).over, false);
   });
 }
 {

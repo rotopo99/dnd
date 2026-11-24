@@ -51,6 +51,7 @@ const BOTTOM = 178, TOP = 52;
 const PAN_KEYS = 600; // screen px / s
 /** District nodes are drawn on a ring around their parent (they share its map point). */
 const RING = 40;
+const QUEST_FUZZ = 70; // QA v49 #15: radius / jitter (map px) of an undiscovered quest goal's approximate mark
 
 let IMG = null;
 function mapImage() {
@@ -277,20 +278,15 @@ export function createWorldMapScene() {
   }
 
   // ---------------------------------------------------------------- travel
+  /** QA v49 #14: travel starts after the confirm window (destination, days, cost, danger, money left); confirmed — skip it (test hook). */
   function startTravel(game, to, confirmed = false) {
     const sv = save(game);
     if (to === sv.location) return enterLocation(game);
     const hops = findRoute(sv, sv.location, to, S.pflags);
     if (!hops) { game.toast(t('map.noRoute'), 'c'); return; }
     const fare = hops.reduce((s, h) => s + routeFare(sv, h.r), 0);
+    if (!confirmed) { confirmTravel(game, to, hops, fare); return; }
     if (fare > sv.hero.credits) { game.toast(`${t('map.noFare')}: ${fare} ${t('world.credits')}`, 'c'); return; }
-    // third-exodus.md: a long trip at late marks asks first
-    const warn = !confirmed && travelWarning(sv, hops.reduce((s, h) => s + hopDays(h.r, !!S.night), 0));
-    if (warn) {
-      game.openModal({ title: EXODUS_UI.confirmTitle, titleColor: 'c', lines: [{ text: EXODUS_UI.confirm.replace('{n}', warn.n).replace('{m}', warn.m) }],
-        options: [{ label: EXODUS_UI.go, run: (g) => startTravel(g, to, true) }, { label: EXODUS_UI.stay, run: () => {} }] });
-      return;
-    }
     // world-consequences.md ч.5: peaceful road uses (Survival tracking / forage, Endurance forced march)
     const ru = roadUses(members(sv, game.data), hops, !!S.night);
     for (const x of ru.log) log(x.text, x.color);
@@ -300,6 +296,32 @@ export function createWorldMapScene() {
     S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night, encMod: ru.encMod, forage: ru.forage, march: ru.marchHop, cut: {} };
     payHop(game);
     play('uiClick');
+  }
+
+  function confirmTravel(game, to, hops, fare) {
+    const sv = save(game);
+    // a free zero-day hop (districts of a city) needs no confirm
+    if (!fare && hops.every((h) => !hopDays(h.r, !!S.night) && !(h.r.rolls && encounterThreshold(sv, h.r, game.data).need))) { startTravel(game, to, true); return; }
+    const days = hops.reduce((s, h) => s + hopDays(h.r, !!S.night), 0);
+    const toll = harmonyExitToll(sv, sv.location, to);
+    const cost = fare + Math.max(0, toll);
+    const left = sv.hero.credits - cost;
+    const danger = Math.max(0, ...hops.map((h) => encounterThreshold(sv, h.r, game.data).danger || 0));
+    const rolls = hops.reduce((s, h) => s + (h.r.rolls || 0), 0);
+    const lv = [...new Set(hops.map((h) => REGIONS[LOCATIONS[h.to].region]?.levels).filter(Boolean).flat())];
+    const lines = [
+      { text: `${t('map.way')}: ${days} ${t('map.days')}, ${hops.length} ${t('map.hops')}`, color: '5' },
+      { text: `${t('map.danger')}: ${'■'.repeat(danger) || '—'} · ${t('map.rolls')} ${rolls}${lv.length ? ` · ${t('world.level')} ${Math.min(...lv)}–${Math.max(...lv)}` : ''}`, color: danger ? 'c' : '4' },
+      { text: cost ? tf('map.tripCost', { n: cost, have: sv.hero.credits }) : t('map.tripFree'), color: cost > sv.hero.credits ? 'c' : 'b' },
+    ];
+    if (cost > sv.hero.credits) lines.push({ text: t('map.tripCantPay'), color: 'c' });
+    else if (cost && left <= 0) lines.push({ text: t('map.tripBroke'), color: 'c' });
+    // third-exodus.md: a long trip at late marks warns
+    const warn = travelWarning(sv, days);
+    if (warn) lines.push({ text: EXODUS_UI.confirm.replace('{n}', warn.n).replace('{m}', warn.m), color: 'c' });
+    const ok = cost <= sv.hero.credits;
+    game.openModal({ title: tf('map.tripTitle', { to: LOCATIONS[to].name }), titleColor: warn ? 'c' : undefined, lines,
+      options: [...(ok ? [{ label: t('map.tripGo'), run: (g) => startTravel(g, to, true) }] : []), { label: t('map.tripStay'), run: () => {} }] });
   }
 
   function payHop(game) {
@@ -530,6 +552,100 @@ export function createWorldMapScene() {
     ctx.restore();
   }
 
+  /** Quest goal marks: shown — visible node ids with a goal; hidden — top-level nodes of goals not on the map yet. */
+  function questMarks(sv, ids) {
+    const vis = new Set(ids), shown = new Set(), hidden = new Set();
+    for (const id of questTargets(sv)) {
+      if (!LOCATIONS[id]) continue;
+      if (vis.has(id)) { shown.add(id); continue; }
+      const top = LOCATIONS[id].parent || id;
+      if (vis.has(top)) shown.add(top); else if (LOCATIONS[top]?.px) hidden.add(top);
+    }
+    return { shown, hidden };
+  }
+
+  /** Undiscovered quest goals: an approximate circle (exact with radio L3 «mapReveal»), an edge arrow when off screen. */
+  function drawHiddenTargets(ctx, sv, hidden) {
+    if (!hidden.size) return;
+    const exact = baseOpen(sv) && baseFx(sv, 'radio')?.mapReveal;
+    const A = S.area;
+    for (const id of hidden) {
+      const l = LOCATIONS[id];
+      let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) | 0;
+      const j = exact ? 0 : QUEST_FUZZ;
+      const cx = sx(l.px.x + ((h & 0xff) / 255 - 0.5) * j), cy = sy(l.px.y + (((h >> 8) & 0xff) / 255 - 0.5) * j);
+      const r = Math.max(14, (exact ? 10 : QUEST_FUZZ) * S.cam.z);
+      const inside = cx > A.x && cy > A.y && cx < A.x + A.w && cy < A.y + A.h;
+      if (inside) {
+        ctx.strokeStyle = C.a; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+        ctx.globalAlpha = 0.6 + 0.3 * Math.sin(S.time * 3);
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        text(ctx, '?', cx, cy - 8, C.a, 'bold 16px monospace', 'center');
+        const s = exact ? `${t('map.questGoal')}: ${l.name}` : t('map.questSomewhere');
+        ctx.font = '12px monospace';
+        const w = ctx.measureText(s).width + 8;
+        ctx.fillStyle = 'rgba(16,16,24,0.8)'; ctx.fillRect(cx - w / 2, cy + 12, w, 16);
+        text(ctx, s, cx, cy + 14, C.a, '12px monospace', 'center');
+        continue;
+      }
+      // off screen: an arrow at the edge towards the goal
+      const mx = A.x + A.w / 2, my = A.y + A.h / 2, dx = cx - mx, dy = cy - my;
+      const k = Math.min((A.w / 2 - 24) / Math.abs(dx || 1e-6), (A.h / 2 - 24) / Math.abs(dy || 1e-6));
+      const ex = mx + dx * k, ey = my + dy * k, ang = Math.atan2(dy, dx);
+      ctx.save(); ctx.translate(ex, ey); ctx.rotate(ang);
+      ctx.fillStyle = C.a; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-6, -8); ctx.lineTo(-6, 8); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      text(ctx, '?', ex - Math.cos(ang) * 16, ey - Math.sin(ang) * 16 - 7, C.a, 'bold 13px monospace', 'center');
+    }
+  }
+
+  /** Node labels: priority order, candidates below / above / right / left; skipped on overlap (forced — below anyway). */
+  function layoutLabels(ctx, sv, order, half, z, boxes) {
+    const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const out = [], placed = [];
+    for (const id of order) {
+      const l = LOCATIONS[id];
+      const kind = l.tier || 'poi';
+      const force = id === sv.location || id === S.hoverNode || !!S.ringOf[id];
+      if (!force && z < (LABEL_ZOOM[kind] ?? 2)) continue;
+      const { x, y } = nodePos(id);
+      const font = LABEL_FONT[l.tier] || '12px monospace';
+      ctx.font = font;
+      const name = fit(ctx, l.name, 180, font);
+      const w = ctx.measureText(name).width + 6, h = 16;
+      const own = { x: x - half - 2, y: y - half - 2, w: half * 2 + 4, h: half * 2 + 4 };
+      const cands = [
+        { x: x - w / 2, y: y + half + 3 }, { x: x - w / 2, y: y - half - 3 - h },
+        { x: x + half + 5, y: y - h / 2 }, { x: x - half - 5 - w, y: y - h / 2 },
+      ].map((c) => ({ ...c, w, h }));
+      const free = (r) => !placed.some((q) => hit(q, r)) && !boxes.some((b) => b !== own && !(b.x === own.x && b.y === own.y) && hit(b, r));
+      const rect = cands.find(free) || (force ? cands[0] : null);
+      if (!rect) continue;
+      placed.push(rect);
+      out.push({ rect, name, font, col: l.tier === 'capital' ? C.a : sv.visited.includes(id) ? C['5'] : C['4'] });
+    }
+    return out;
+  }
+
+  /** Region names over their discovered nodes (big, faint): centroid, nudged up/down to miss labels and nodes, else skipped. */
+  function drawRegionNames(ctx, ids, taken) {
+    const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    ctx.font = 'bold 14px monospace';
+    for (const reg of Object.values(REGIONS)) {
+      const locs = ids.filter((id) => LOCATIONS[id].region === reg.id && !LOCATIONS[id].parent);
+      if (locs.length < 2) continue;
+      const cx = sx(locs.reduce((s, id) => s + LOCATIONS[id].px.x, 0) / locs.length);
+      const cy = sy(locs.reduce((s, id) => s + LOCATIONS[id].px.y, 0) / locs.length);
+      const name = reg.name.toUpperCase(), w = ctx.measureText(name).width + 4;
+      const r = [-30, -50, 30, -70, 50].map((dy) => ({ x: cx - w / 2, y: cy + dy, w, h: 16 })).find((c) => !taken.some((q) => hit(q, c)));
+      if (!r) continue;
+      taken.push(r);
+      ctx.globalAlpha = 0.55;
+      text(ctx, name, cx, r.y, C['5'], 'bold 14px monospace', 'center');
+      ctx.globalAlpha = 1;
+    }
+  }
+
   function drawNodes(ctx, sv, game) {
     ctx.save();
     ctx.beginPath(); ctx.rect(S.area.x, S.area.y, S.area.w, S.area.h); ctx.clip();
@@ -537,27 +653,18 @@ export function createWorldMapScene() {
     const scale = z >= 2 ? 2 : 1;
     const half = 8 * scale;
     const ids = visibleNodes(sv);
-    // region names over their discovered nodes (big, faint)
-    if (z < 2.6) {
-      for (const reg of Object.values(REGIONS)) {
-        const locs = ids.filter((id) => LOCATIONS[id].region === reg.id && !LOCATIONS[id].parent);
-        if (locs.length < 2) continue;
-        const cx = locs.reduce((s, id) => s + LOCATIONS[id].px.x, 0) / locs.length;
-        const cy = locs.reduce((s, id) => s + LOCATIONS[id].px.y, 0) / locs.length;
-        ctx.globalAlpha = 0.55;
-        text(ctx, reg.name.toUpperCase(), sx(cx), sy(cy) - 30, C['5'], 'bold 14px monospace', 'center');
-        ctx.globalAlpha = 1;
-      }
-    }
     if (S.ringHub) {
       const p = LOCATIONS[S.ringHub].px;
       ctx.strokeStyle = C['3']; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), RING, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
-    const placed = [];
     const order = [...ids].sort((a, b) => prio(sv, b) - prio(sv, a));
-    // world-consequences.md ч.3: radio L3 — marks of the current quest goals on the map
-    const qt = baseOpen(sv) && baseFx(sv, 'radio')?.mapReveal ? questTargets(sv) : null;
+    // QA v49 #15: active quest goals are marked (a district goal — on its city unless the ring is open)
+    const { shown: qt, hidden: qHidden } = questMarks(sv, ids);
+    // QA v49 #19: label layout first — node boxes block labels; region names go around them
+    const boxes = ids.map((id) => { const { x, y } = nodePos(id); return { x: x - half - 2, y: y - half - 2, w: half * 2 + 4, h: half * 2 + 4 }; });
+    const labels = layoutLabels(ctx, sv, order, half, z, boxes);
+    if (z < 2.6) drawRegionNames(ctx, ids, [...boxes, ...labels.map((L) => L.rect)]);
     for (const id of [...order].reverse()) {
       const l = LOCATIONS[id];
       const { x, y } = nodePos(id);
@@ -577,25 +684,12 @@ export function createWorldMapScene() {
         text(ctx, '!', x - half, y - half - 7, C['0'], 'bold 12px monospace', 'center');
       }
     }
-    // labels: greedy by priority (current, hover, capitals, cities…), skipped on overlap
-    for (const id of order) {
-      const l = LOCATIONS[id];
-      const kind = l.tier || 'poi';
-      const force = id === sv.location || id === S.hoverNode || !!S.ringOf[id];
-      if (!force && z < (LABEL_ZOOM[kind] ?? 2)) continue;
-      const { x, y } = nodePos(id);
-      const font = LABEL_FONT[l.tier] || '12px monospace';
-      ctx.font = font;
-      const name = fit(ctx, l.name, 180, font);
-      const lw = ctx.measureText(name).width;
-      const rect = { x: x - lw / 2 - 3, y: y + half + 3, w: lw + 6, h: 16 };
-      if (!force && placed.some((r) => r.x < rect.x + rect.w && rect.x < r.x + r.w && r.y < rect.y + rect.h && rect.y < r.y + r.h)) continue;
-      placed.push(rect);
+    for (const L of labels) {
       ctx.fillStyle = 'rgba(16,16,24,0.8)';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      const col = l.tier === 'capital' ? C.a : sv.visited.includes(id) ? C['5'] : C['4'];
-      text(ctx, name, x, rect.y + 2, col, font, 'center');
+      ctx.fillRect(L.rect.x, L.rect.y, L.rect.w, L.rect.h);
+      text(ctx, L.name, L.rect.x + L.rect.w / 2, L.rect.y + 2, L.col, L.font, 'center');
     }
+    drawHiddenTargets(ctx, sv, qHidden);
     ctx.restore();
     // hero marker (or travelling dot)
     let hp = nodePos(sv.location);
@@ -703,6 +797,7 @@ export function createWorldMapScene() {
       ...(l.terminal && (sv.visited.includes(id) || S.pflags.has('terminal-scan')) ? [{ text: `${t('map.terminal')}: ${t(`term.${sv.terminals[l.terminal.id]}`)}`, color: C.n }] : []),
       ...(S.pflags.has('scout-node') && l.battles?.length ? [{ text: `${t('map.scout')}: ${l.battles.filter((b) => !(b.once && sv.battlesDone.includes(b.id))).map((b) => encounterName(b.encounter)).join(', ') || '—'}`, color: C.c }] : []),
       ...(S.pflags.has('map-memory') && sv.visited.includes(id) && l.caches?.some((c) => !sv.caches.includes(c.id)) ? [{ text: t('map.cacheHere'), color: C.a }] : []),
+      ...(questMarks(sv, [id]).shown.has(id) ? [{ text: t('map.questGoal'), color: C.a }] : []),
       ...(nodeServices(sv, l.id).length ? [{ text: nodeServices(sv, l.id).map((s) => t(`svc.${s}`)).join(', '), color: C['4'] }] : []),
     ];
     // v4: the node description (locations-lore.js desc, else locations.js desc), up to CARD_DESC_LINES lines
@@ -746,7 +841,7 @@ export function createWorldMapScene() {
       game.visit = null; bindLog(game); layout(game); mapImage();
       stopAmbience(2); // the world map has music only (ambience — battles, free map, cyberspace)
       // test hooks (playwright scenarios): travel by id, node screen position
-      S.travelTo = (id) => startTravel(game, id);
+      S.travelTo = (id) => startTravel(game, id, true);
       S.pos = (id) => nodePos(id);
       S.clashPos = (id) => { const c = (save(game).clashes || []).find((x) => x.id === id); return c ? clashPos(save(game), c) : null; };
       S.openClash = (id) => { const c = (save(game).clashes || []).find((x) => x.id === id); if (c) clickClash(game, c); };

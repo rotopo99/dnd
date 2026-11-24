@@ -16,7 +16,7 @@ import { clearWithdrawal } from '../rules/aftermath.js';
 import { applyBackstory, backstoryWorld, backstoryPassives, backstoryOf } from './backstory.js';
 const backstoryName = (h) => backstoryOf(h?.bg)?.name || '';
 import {
-  LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, gadgetFor, ITEMS,
+  LOCATIONS, ROUTES, REGIONS, START_LOCATION, START_DISCOVERED, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, ENCOUNTER_GATE, gadgetFor, ITEMS,
   PLAY_DATA as GAME_DATA, resolveLocation, starterKit, FINALE_TERMINALS,
 } from './data.js';
 import { EXODUS } from '../data/world/exodus.js';
@@ -864,12 +864,43 @@ export function encounterThreshold(save, r, data = GAME_DATA) {
   return { danger, mod, need: Math.max(1, ENCOUNTER_PER_DANGER * danger + mod) };
 }
 
-/** Weighted pick from a region's encounter table (raceWeight for party races). Friendly faction battles → trader. */
+/** Party power for random encounters (QA v49 #13): mean level + sizeBonus per extra member. */
+export function partyPower(save) {
+  return partyAvgLevel(save) + ENCOUNTER_GATE.sizeBonus * Math.max(0, partySize(save) - 1);
+}
+const encBattles = (e) => [e.kind === 'battle' && e.encounter, e.success?.battle, e.fail?.battle].filter((x) => typeof x === 'string');
+/** Encounter level and whether it has a boss (any enemy with boss / rank 'boss') or is unique. */
+export function encounterInfo(encId, data = GAME_DATA) {
+  const enc = data.ENCOUNTERS?.[encId];
+  if (!enc) return { level: 0, boss: false };
+  const boss = !!enc.unique || !!enc.boss || (enc.enemies || []).some((x) => {
+    const d = typeof x === 'string' ? data.ENEMIES?.[x] : x;
+    return !!d && (d.boss || d.rank === 'boss');
+  });
+  return { level: enc.level || 0, boss };
+}
+/**
+ * Gate for a random road/camp entry (battle or an event that may end in a battle):
+ * { ok, over } — ok: may be picked for this party; over: the hardest battle is above the party's level (offer to avoid).
+ */
+export function encounterGate(save, e, data = GAME_DATA) {
+  const G = ENCOUNTER_GATE, P = partyPower(save);
+  let ok = true, over = false;
+  for (const id of encBattles(e)) {
+    const { level, boss } = encounterInfo(id, data);
+    if (level > P + G.maxOver || ((boss || e.unique) && level > P + G.bossOver)) ok = false;
+    if (level > P + G.avoidOver) over = true;
+  }
+  return { ok, over };
+}
+
+/** Weighted pick from a region's encounter table (raceWeight for party races). Friendly faction battles → trader.
+ * Battles far above the party (and bosses / unique fights above it) never come up (encounterGate). */
 export function pickEncounter(save, regionId, rng = Math.random) {
   // third-exodus.md: marks 2–5 add cult squads / revenants (world/exodus-road.js); the last mark — only them in part of the regions
   const xr = exodusRoad(save, regionId);
   const base = xr.only ? [] : (ENCOUNTER_TABLES[regionId] || []).filter((e) => e.kind !== 'npc' || NPCS[e.npc]);
-  const list = [...base, ...xr.list];
+  const list = [...base, ...xr.list].filter((e) => encounterGate(save, e).ok);
   if (!list.length) return null;
   const races = new Set([save.hero.race, ...activeCompanions(save).map((p) => NPCS[p.npc]?.race)]);
   const w = (e) => e.w * Object.entries(e.raceWeight || {}).reduce((m, [race, k]) => (races.has(race) ? m * k : m), 1);

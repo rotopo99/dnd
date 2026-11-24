@@ -148,6 +148,10 @@ export const ENCOUNTER_MODS = {
 
 export const AMBUSH = { skill: 'perception', dc: 12, enemyInit: 5 };
 export const FIELD_CAMP = { restore: 0.5, encounterRoll: true };
+// QA v49 #13: случайные бои дороги/привала по уровню партии (state.encounterGate). P = средний ур. партии + sizeBonus × (размер − 1).
+// Бой с ур. > P + maxOver не выпадает; бой с боссом/уникальный (unique) — только при ур. ≤ P + bossOver.
+// Бой выше уровня партии (ур. > P + avoidOver) — перед боем окно «Обойти» (групповая проверка avoid) или «Принять бой».
+export const ENCOUNTER_GATE = { sizeBonus: 0.5, maxOver: 2, bossOver: 0, avoidOver: 0, avoid: { skills: ['stealth', 'survival'], dc: 12 } };
 
 // ------------------------------------------------------------------ таблицы встреч (по регионам + море)
 // Формат записи — как в v1.0 (world.md, п. 2). tag — желаемый тип врагов для enemies-v3; бой пока берёт encounter.

@@ -20,11 +20,11 @@ const E = (o) => ({
 export const CONSEQUENCES = {
   // ------------------------------------------------------------ сюжет: главные
   'mq-exodus': {
-    default: E({ rep: { cult: -10, technikums: 10 }, rumors: ['Говорят, ритуал в Коррупции-Сити сорвали, но не до конца: терминал ещё тёплый.'], slides: ['exodus-delayed'] }),
+    default: E({ rep: { cult: -10, technikums: 10 }, rumors: ['Говорят, ритуал в Коррупция-Сити сорвали, но не до конца: терминал ещё тёплый.'], slides: ['exodus-delayed'] }),
     destroy: E({ rep: { cult: -25, technikums: 15, aiParty: 5 },
       nodes: [{ loc: 'cc-node', desc: 'Узел Судьи выжжен: в стенах чёрные подтёки, терминалы мертвы. Тихо, как в склепе.', glyph: '✕', tone: 'good' }],
       access: { close: ['cc-node'] }, vendors: [{ npc: 'duel-master', mult: 0.95 }],
-      rumors: ['Узел в Коррупции-Сити больше не гудит. Кто-то говорит «слава героям», кто-то — «кто теперь платить будет».'], slides: ['exodus-destroyed'] }),
+      rumors: ['Узел в Коррупция-Сити больше не гудит. Кто-то говорит «слава героям», кто-то — «кто теперь платить будет».'], slides: ['exodus-destroyed'] }),
     reflash: E({ rep: { cult: 15, technikums: -20 },
       nodes: [{ loc: 'cc-node', desc: 'Узел перепрошит: терминалы мигают чужим, ровным светом. Кто-то теперь слушает.', glyph: '⚑', tone: 'bad' }],
       vendors: [{ npc: 'sk-kvitantsiya', mult: 0.9, add: ['proxy-can'] }],
@@ -246,7 +246,7 @@ for (const [k, e] of Object.entries(COURT_MODS)) CONSEQUENCES['mq3-court'][`mod:
 const F = CQ_FLAG;
 export const EPILOGUE = [
   { id: 'epi-intro', order: 0, prio: 99, title: 'Что осталось после', text: 'Пустоши помнят всё, но рассказывают по-разному. Вот что говорят о вас.', when: {} },
-  { id: 'exodus-destroyed', order: 10, prio: 90, title: 'Узел Судьи молчит', text: 'Узел в Коррупции-Сити сгорел. Судья остался слухом, а скрилеты — страшной историей на ночь.', when: { all: [F('mq-exodus', 'destroy')] } },
+  { id: 'exodus-destroyed', order: 10, prio: 90, title: 'Узел Судьи молчит', text: 'Узел в Коррупция-Сити сгорел. Судья остался слухом, а скрилеты — страшной историей на ночь.', when: { all: [F('mq-exodus', 'destroy')] } },
   { id: 'exodus-reflashed', order: 10, prio: 90, title: 'Новая прошивка', text: 'Судья слушается. Кого-то это успокоило, остальные просто не спят.', when: { all: [F('mq-exodus', 'reflash')] } },
   { id: 'exodus-delayed', order: 10, prio: 40, title: 'Отсрочка', text: 'Ритуал сорван, но не уничтожен. Каждый вечер кто-то проверяет терминал.', when: { all: [F('mq-exodus')] } },
   { id: 'beacons-silent', order: 20, prio: 50, title: 'Тихие маяки', text: 'В Нейтральных селениях впервые за зиму никто не слышит писка. Дети придумали игру «кто дольше простоит у столба».', when: { all: [F('mq-beacons')] } },

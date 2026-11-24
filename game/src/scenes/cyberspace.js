@@ -433,7 +433,7 @@ export function createCyberspaceScene() {
       text(ctx, n.res === 'pass' ? t('cyber.passed') : n.res === 'fail' ? t('cyber.nodeFailed') : i === cur ? t('cyber.here') : '…', x + cw / 2, y + 176, col, FONT_B, 'center');
       if (i === cur) drawSoul(game, x + cw / 2 - 48, y + 72, 96);
     });
-    let y = 400;
+    let y = textBlock(ctx, tf('cyber.explain', { need: CS.needed, n: c.nodes.length, max: MAX_MARKS }), W / 2 - 400, 396, 800, C['5'], FONT, LINE, 2) + 8; // QA v49 #16
     if (c.helped) y = textBlock(ctx, t('cyber.helped'), W / 2 - 400, y, 800, C.j, FONT, LINE, 2);
     if (c.terminal) y = textBlock(ctx, t('cyber.terminalHelp'), W / 2 - 400, y, 800, C.h, FONT, LINE, 2);
   }

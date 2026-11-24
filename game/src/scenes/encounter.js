@@ -4,9 +4,9 @@
 import { t } from '../data/text/index.js';
 import { NPCS } from '../data/npcs.js';
 import { openCheck, openGroupCheck } from '../ui/checks-ui.js';
-import { LOCATIONS, SHOP_STOCK, AMBUSH, encounterName, npcGreeting, LORE_RUMORS } from '../world/data.js';
+import { LOCATIONS, SHOP_STOCK, AMBUSH, ENCOUNTER_GATE, encounterName, npcGreeting, LORE_RUMORS } from '../world/data.js';
 import { repTier, factionName, normFaction } from '../world/reputation.js';
-import { members, grant, journal, hasFlagInParty, openHidden } from '../world/state.js';
+import { members, grant, journal, hasFlagInParty, openHidden, encounterGate, encounterInfo, partyAvgLevel, tf } from '../world/state.js';
 import { startWorldBattle, startSkirmish } from './world-battle.js';
 import { openShop } from './shop.js';
 import { saveGame } from '../save.js';
@@ -40,7 +40,20 @@ export function runEncounter(game, e, reg, back, resume) {
       openGroupCheck(game, { title: t('map.ambushCheck'), lines: [{ text: t('map.ambushText') }], skill: AMBUSH.skill, dc: AMBUSH.dc, members: ms, memoKey: `ambush:${sv.day}:${reg}`,
         onDone: (g, ok) => { if (!ok) g.toast(t('map.ambush'), 'c'); fight(!ok); } });
     };
-    card(t('map.encounterBattle'), [{ text: encounterName(e.encounter), color: 'c' }, ...(e.faction ? [{ text: factionName(e.faction), color: '4' }] : [])], go);
+    const head = [{ text: encounterName(e.encounter), color: 'c' }, ...(e.faction ? [{ text: factionName(e.faction), color: '4' }] : [])];
+    // QA v49 #13: a fight above the party's level — may be avoided (group check) before it starts
+    const gate = encounterGate(sv, e, game.data);
+    if (gate.over) {
+      const lv = encounterInfo(e.encounter, game.data).level;
+      const A = ENCOUNTER_GATE.avoid;
+      const avoid = (g) => openGroupCheck(g, { title: t('map.avoidTitle'), lines: [{ text: t('map.avoidText') }], skills: A.skills, dc: A.dc, members: ms, memoKey: `avoid:${sv.day}:${reg}`,
+        onDone: (g2, ok) => { if (ok) card(t('check.success'), [{ text: t('map.avoidOk'), color: 'j' }], () => resume()); else { g2.toast(t('map.avoidFail'), 'c'); fight(true); } } });
+      game.openModal({ title: t('map.encounterBattle'), onCancel: false,
+        lines: [...head, { text: tf('map.overTier', { lv, p: Math.round(partyAvgLevel(sv)) }), color: 'c' }],
+        options: [{ label: t('map.avoid'), sub: `${t('battle.dc')} ${A.dc}`, run: avoid }, { label: t('map.acceptFight'), run: () => go() }] });
+      return;
+    }
+    card(t('map.encounterBattle'), head, go);
     return;
   }
   if (e.kind === 'event') {

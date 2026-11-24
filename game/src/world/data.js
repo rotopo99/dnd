@@ -45,7 +45,7 @@ export {
   LOCATIONS, START_LOCATION, START_DISCOVERED, DEFAULT_RESPAWN, TERMINAL_ACTIONS, FINALE_TERMINALS, SERVICE_PRICES,
   MAP_SPACE, MAP_NODES, HUB_STATES, ALIASES, TIER_NAMES, resolveLocation,
 } from '../data/world/locations.js';
-export { ROUTES, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, AMBUSH, FIELD_CAMP, FARE } from '../data/world/travel.js';
+export { ROUTES, ENCOUNTER_TABLES, ENCOUNTER_PER_DANGER, ENCOUNTER_MODS, ENCOUNTER_GATE, AMBUSH, FIELD_CAMP, FARE } from '../data/world/travel.js';
 export { DEED_TAGS } from '../data/world/quests.js';
 import { EVENTS as EVENTS_BASE } from '../data/world/events.js';
 import { EVENTS_DENSITY } from '../data/world/density-events.js';
