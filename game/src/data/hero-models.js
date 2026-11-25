@@ -27,6 +27,7 @@ export const HERO_MODELS = {
   walkSpeed: 1.4, runSpeed: 3.4, runAt: 2.3, // m/s of the clips at timeScale 1; faster display motion -> run
   fade: 0.18,
   outline: 0x14141c, outlineTeam: 0.3, outlineTeamNpc: 0.08,       // hull = dark + 30 % team colour (as the procedural hull)
+  outlinePush: 3, // hull pushed back in depth by outline width x this (thin plates: a rim, not a fill over the model)
   flash: 0.9,                                // hit flash -> emissive white x this
   keepUnseen: 5,                             // s an off-screen (culled) character stays built
   physics: { off: 0, low: 0.5, normal: 1 },  // settings «Физика тела» -> spring bones weight

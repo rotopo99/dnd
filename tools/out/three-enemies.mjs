@@ -84,7 +84,8 @@ for (const [g, G] of Object.entries(GROUPS)) {
     a.animEvent3d(S, { type: 'attack', actor: u.id, target: h.id, melee: false, hit: true });
   }, info.id);
   const seen1 = [];
-  for (let i = 0; i < 8; i++) { await wait(60); seen1.push(await clipOf(info.id)); }
+  // poll until the clip shows (SwiftShader frames take up to ~1.5 s here)
+  for (let i = 0; i < 40 && !seen1.some((c) => G.act.includes(c)); i++) { await wait(60); seen1.push(await clipOf(info.id)); }
   const c1 = seen1.find((c) => G.act.includes(c)) || seen1.join(',');
   ok(G.act.includes(c1), `${g}: attack -> ${c1}`);
   if (close) await shot(`three-enemies-${g}-3-attack`, close);
@@ -95,7 +96,7 @@ for (const [g, G] of Object.entries(GROUPS)) {
       a.animEvent3d(S, { type: 'ability', actor: u.id, ability: ab, tile: { x: h.x, y: h.y } });
     }, { id: info.id, ab });
     const seen = [];
-    for (let i = 0; i < 8; i++) { await wait(60); seen.push(await clipOf(info.id)); }
+    for (let i = 0; i < 40 && !seen.includes(clip); i++) { await wait(60); seen.push(await clipOf(info.id)); }
     ok(seen.includes(clip), `${g}: ${ab} -> ${seen.find((c) => c === clip) || seen.join(',')}`);
     if (close) await shot(`three-enemies-${g}-3-${clip}`, close);
     await wait(1500);
@@ -111,8 +112,8 @@ for (const [g, G] of Object.entries(GROUPS)) {
     S.b.byId[id].dead = true; S.b.byId[id].hp = 0; S.dispOf(S.b.byId[id]).fade = 1;
     a.animEvent3d(S, { type: 'death', target: id });
   }, info.id);
-  await wait(500);
-  const c3 = await clipOf(info.id);
+  let c3 = null;
+  for (let i = 0; i < 40 && c3 !== 'death'; i++) { await wait(60); c3 = await clipOf(info.id); }
   ok(c3 === 'death', `${g}: death -> ${c3}`);
   if (close) await shot(`three-enemies-${g}-4-death`, close);
 }

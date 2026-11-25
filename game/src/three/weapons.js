@@ -15,7 +15,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HERO_MODELS as HM } from '../data/hero-models.js';
 import { weaponKind } from '../gfx/gear3d.js';
 import { isMeleeWeapon } from '../rules/combat.js';
-import { toonRamp } from './character.js';
+import { toonRamp, HULL_PUSH_VS } from './character.js';
 
 const W = HM.weapon;
 const kinds = new WeakMap(); // u.weapon -> kind (weaponKind runs regexps on the name)
@@ -82,11 +82,13 @@ function geometries(cat, glow, two) {
 function hullFor(hull) {
   const m = new THREE.MeshBasicMaterial({ color: hull.color, side: THREE.BackSide });
   m.onBeforeCompile = (s) => {
-    s.uniforms.uGrow = hull.userData.grow; // same grow as the body hull (px -> model units, set by party.js)
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nuniform float uGrow;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed += normalize(normal) * uGrow;');
+    s.uniforms.uGrow = hull.userData.grow; // same grow / depth push as the body hull (set by party.js)
+    s.uniforms.uPush = hull.userData.push || { value: 0 };
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nuniform float uGrow, uPush;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed += normalize(normal) * uGrow;')
+      .replace('#include <project_vertex>', HULL_PUSH_VS);
   };
-  m.customProgramCacheKey = () => 'weaponHull';
+  m.customProgramCacheKey = () => 'weaponHull2';
   return m;
 }
 

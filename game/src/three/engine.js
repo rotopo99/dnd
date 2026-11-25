@@ -115,7 +115,7 @@ export function createThree(canvas, game) {
       comp.setSize(E.w, E.h);
       const render = new RenderPass(scene, camera);
       const gtao = new GTAOPass(scene, camera, E.w, E.h);
-      if (Q.gtao > 0 && Q.gtao < 1) { // medium: AO buffers at a share of the resolution (the blend samples it filtered)
+      if (Q.gtao > 0 && Q.gtao < 1) { // AO buffers at a share of the resolution (high 1/2, medium 1/4; the blend samples it filtered)
         const ss = gtao.setSize.bind(gtao);
         gtao.setSize = (w, h) => ss(Math.max(1, Math.round(w * Q.gtao)), Math.max(1, Math.round(h * Q.gtao)));
       }

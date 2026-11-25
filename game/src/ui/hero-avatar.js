@@ -127,7 +127,9 @@ export function heroAvatarFrame(h, box = 96, o = {}) {
   // pose: breathing, sway, flinch, tremor
   let yaw = 0.3 + (still ? 0 : (3 * Math.PI) / 180 * Math.sin((t * 2 * Math.PI) / 7));
   let pitch = 0.05;
-  const zoom = 1.25 * (1 + (still ? 0 : 0.01 * Math.sin((t * 2 * Math.PI) / 3.6)));
+  // perf (docs/perf.md): breathing is a 2D scale of the cached frame (drawHeroAvatar), not a new GL frame + GPU readback —
+  // only the look, the sway yaw, blink and emotion make new frames (a few dozen per look, then all from frameCache)
+  const zoom = 1.25;
   let flash = 0;
   if (o.hurtAt != null) {
     const age = (ms - o.hurtAt) / 1000;
@@ -232,7 +234,11 @@ export function drawHeroAvatar(ctx, h, x, y, box, o = {}) {
   ctx.imageSmoothingEnabled = false;
   const ga = ctx.globalAlpha;
   if (o.alpha != null) ctx.globalAlpha = ga * o.alpha;
-  ctx.drawImage(cv, x, y, box, box);
+  // breathing: up to +2 % zoom around the head (upper 40 %), clipped to the box
+  const t = Math.floor(((o.time ?? nowMs()) / 1000) * FPS) / FPS;
+  const k = o.still === true ? 0 : Math.round(box * 0.01 * (1 + Math.sin((t * 2 * Math.PI) / 3.6)));
+  if (k > 0) { ctx.save(); ctx.beginPath(); ctx.rect(x, y, box, box); ctx.clip(); ctx.drawImage(cv, x - k / 2, y - k * 0.4, box + k, box + k); ctx.restore(); }
+  else ctx.drawImage(cv, x, y, box, box);
   ctx.globalAlpha = ga;
   ctx.imageSmoothingEnabled = prev;
 }

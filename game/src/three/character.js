@@ -13,7 +13,7 @@
 //   stepSprings(C, dt, k)            spring chains after the mixer (k 0 — rest pose)
 //   disposeCharacter(C)              per-instance materials + mixer (geometry / textures stay in the GLB cache)
 import * as THREE from 'three';
-import { instanceGLB, loadGLB } from './models.js';
+import { instanceGLB, loadGLB, twinGeometry } from './models.js';
 import { HERO_MODELS as HM } from '../data/hero-models.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
 import { outfitOf, skinRamp, hairRamp, eyeKey } from '../ui/look-data.js';
@@ -46,6 +46,11 @@ export function toonRamp() {
   ramp.needsUpdate = true;
   return ramp;
 }
+
+/** Outline hull vertex patch (perf pass 2): the hull is pushed uPush m away from the camera in depth only (same pixels) —
+ *  on thin / open shells (android plates, blades) its back faces otherwise poke through the body and the team colour
+ *  covers the model; only the rim outside the silhouette stays. Use after #include <project_vertex>; needs uPush. */
+export const HULL_PUSH_VS = '#include <project_vertex>\n  { vec4 hq = mvPosition; hq.xyz += isOrthographic ? vec3(0.0, 0.0, -uPush) : normalize(hq.xyz) * uPush; gl_Position = projectionMatrix * hq; }';
 
 let outline = null;
 /** Shared dark inverted hull of the cinematics (fixed 3.5 mm). */
@@ -171,7 +176,7 @@ export function toonify(C, o = {}) {
   const tEye = T.eye ? srgb(T.eye) : null; // mechanical heroes: eye / accent glow follows the look eyes
   const tCoat = T.coat ? srgb(T.coat) : null, tPants = T.pants ? srgb(T.pants) : null; // crowd NPCs: apron / vest / hat, pants (HM.tint)
   const tMul = T.mul && o.mulRe ? new THREE.Color(1, 1, 1).lerp(srgb(T.mul), o.mulK ?? 0.5) : null; // enemy mechs: plate colour
-  const meshes = [];
+  const meshes = [], skinned = [];
   C.root.traverse((m) => { if (m.isMesh) meshes.push(m); });
   for (const mesh of meshes) {
     const conv = (m) => {
@@ -194,23 +199,62 @@ export function toonify(C, o = {}) {
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(conv) : conv(mesh.material);
     mesh.castShadow = !L?.opacity; mesh.receiveShadow = true;
     if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) C.morph.push(mesh);
-    if (!mesh.isSkinnedMesh || L?.opacity) continue;
-    const twin = (mat, tag) => { // same geometry, skeleton and morph weights
-      const h = new THREE.SkinnedMesh(mesh.geometry, mat);
-      h.bind(mesh.skeleton, mesh.bindMatrix);
-      if (mesh.morphTargetInfluences) { h.morphTargetInfluences = mesh.morphTargetInfluences; h.morphTargetDictionary = mesh.morphTargetDictionary; }
-      h.frustumCulled = false; h.castShadow = false; h.receiveShadow = false; h.userData[tag] = true; h.userData.noAO = true;
-      mesh.parent.add(h);
-      h.position.copy(mesh.position); h.quaternion.copy(mesh.quaternion); h.scale.copy(mesh.scale);
-      C.extra.push(h);
-      return h;
-    };
-    if (o.outline) twin(o.outline === true ? outlineMat() : o.outline(mesh), 'hull');
-    if (o.xray) twin(o.xray(mesh), 'xray');
+    if (mesh.isSkinnedMesh && !L?.opacity && (o.outline || o.xray)) skinned.push(mesh);
   }
+  if (skinned.length) twins(C, skinned, o);
   // o.faceSkin [r, g, b] (linear Skin colour the face atlas is painted for): the face follows the Skin tint (mutant green)
   const sk = o.faceSkin && C.mats.find((m) => m.name === 'Skin'), fr = o.faceSkin;
   if (sk) for (const f of C.faces) f.color.setRGB(Math.min(1, sk.color.r / fr[0]), Math.min(1, sk.color.g / fr[1]), Math.min(1, sk.color.b / fr[2]));
+}
+
+/**
+ * Outline hull / x-ray twins on the same skeleton and morphs. perf (docs/perf.md): sub-meshes with the same parent,
+ * transform and bind matrix share ONE merged twin per material (models.js twinGeometry) — 2 draw calls per character
+ * instead of 2 x 12-14; its own morph weights are synced by setBodyShape / setFace (C.morph). Fallback: a twin per mesh.
+ */
+function twins(C, skinned, o) {
+  const hullMat = (m) => (o.outline === true ? outlineMat() : o.outline(m));
+  const add = (src, geo, skel, mat, tag) => {
+    const h = new THREE.SkinnedMesh(geo, mat);
+    h.bind(skel, src.bindMatrix);
+    h.frustumCulled = false; h.castShadow = false; h.receiveShadow = false; h.userData[tag] = true; h.userData.noAO = true;
+    src.parent.add(h);
+    h.position.copy(src.position); h.quaternion.copy(src.quaternion); h.scale.copy(src.scale);
+    C.extra.push(h);
+    return h;
+  };
+  const groups = new Map();
+  for (const m of skinned) {
+    const k = `${m.parent.uuid}|${m.matrix.elements.map((v) => v.toFixed(5))}|${m.bindMatrix.elements.map((v) => v.toFixed(5))}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  }
+  for (const list of groups.values()) {
+    const T = list.length > 1 ? twinGeometry(list) : null;
+    if (!T) { // per-mesh twins: same geometry, skeleton and morph weights
+      for (const mesh of list) {
+        const share = (h) => { if (mesh.morphTargetInfluences) { h.morphTargetInfluences = mesh.morphTargetInfluences; h.morphTargetDictionary = mesh.morphTargetDictionary; } };
+        if (o.outline) share(add(mesh, mesh.geometry, mesh.skeleton, hullMat(mesh), 'hull'));
+        if (o.xray) share(add(mesh, mesh.geometry, mesh.skeleton, o.xray(mesh), 'xray'));
+      }
+      continue;
+    }
+    const byName = new Map();
+    for (const m of list) for (const b of m.skeleton.bones) if (!byName.has(b.name)) byName.set(b.name, b);
+    const skel = new THREE.Skeleton(T.bones.map((n) => byName.get(n)), T.inv.map((x) => x.clone()));
+    const src = list[0];
+    let first = null, own = true;
+    for (const [on, mk, tag] of [[o.outline, hullMat, 'hull'], [o.xray, o.xray, 'xray']]) {
+      if (!on) continue;
+      const h = add(src, T.geo, skel, mk(src), tag);
+      if (own) { h.userData.ownSkel = true; own = false; } // bone texture of the merged twin skeleton: disposed once (disposeCharacter)
+      if (!T.names.length) continue;
+      if (first) { h.morphTargetInfluences = first.morphTargetInfluences; h.morphTargetDictionary = first.morphTargetDictionary; continue; }
+      first = h;
+      for (const m of list) for (const [n, i] of Object.entries(m.morphTargetDictionary || {})) h.morphTargetInfluences[h.morphTargetDictionary[n]] = m.morphTargetInfluences[i];
+      C.morph.push(h);
+    }
+  }
 }
 
 /** Body sliders -> shape keys of the body and the outfits (same names). */
@@ -261,6 +305,6 @@ export function stepSprings(C, dt, k) {
 
 export function disposeCharacter(C) {
   for (const m of C.mats) m.dispose();
-  for (const h of C.extra) { h.parent?.remove(h); if (h.material !== outline) h.material.dispose(); }
+  for (const h of C.extra) { h.parent?.remove(h); if (h.material !== outline) h.material.dispose(); if (h.userData.ownSkel) h.skeleton.dispose(); }
   C.inst.dispose();
 }

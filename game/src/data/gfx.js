@@ -180,8 +180,8 @@ export const GFX = {
   // 3D scene stays above 1000 / downFps ms for `window` s (after `warm` s on the scene); the result is remembered.
   quality: {
     levels: ['auto', 'low', 'medium', 'high'],
-    high: { dpr: 1.5, msaa: 4, gtao: 1, aoUnits: true, bloom: true, shadow: 1, near: 0, xrayCrowd: true, oldPost: true },
-    medium: { dpr: 1.25, msaa: 2, gtao: 0.5, aoUnits: false, bloom: true, shadow: 1, near: 16, xrayCrowd: false, oldPost: true },
+    high: { dpr: 1.5, msaa: 4, gtao: 0.5, aoUnits: true, bloom: true, shadow: 1, near: 0, xrayCrowd: true, oldPost: true },
+    medium: { dpr: 1.25, msaa: 2, gtao: 0.25, aoUnits: false, bloom: true, shadow: 1, near: 16, xrayCrowd: false, oldPost: true },
     low: { dpr: 1, msaa: 0, gtao: 0, aoUnits: false, bloom: false, shadow: 0.5, near: 9, xrayCrowd: false, oldPost: false },
     auto: { downFps: 40, window: 3, warm: 2, minFrames: 30 },
   },

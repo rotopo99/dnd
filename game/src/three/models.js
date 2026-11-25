@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const cache = new Map();
 let loader = null;
@@ -93,7 +94,65 @@ export async function instanceGLB(url) {
   return I;
 }
 
+// ---- merged twin geometry (perf, docs/perf.md): the outline hull / x-ray of a character is ONE skinned mesh over all its
+// skinned sub-meshes (same material for all of them) instead of a twin per sub-mesh. Only what the twins need: position,
+// normal, skin (indices into the union bone list `bones` by name), morph targets by name (union `names`, missing — zero).
+const twinCache = new Map();
+const TWIN_MAX = 48;
+const f32 = (a, n, k) => { const o = new Float32Array(n * k); if (a) for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) o[i * k + j] = a.getComponent(i, j); return new THREE.BufferAttribute(o, k); };
+
+/**
+ * Twin geometry of skinned meshes sharing the parent / transform / bind matrix -> {geo, bones: [name], inv: [Matrix4]} | null
+ * (cached by the source geometries + skeletons; null when the bind poses disagree — the caller keeps per-mesh twins).
+ */
+export function twinGeometry(meshes) {
+  const key = meshes.map((m) => `${m.geometry.uuid}:${m.skeleton.bones.map((b) => b.name).join(',')}`).join('|');
+  let T = twinCache.get(key);
+  if (T !== undefined) { twinCache.delete(key); twinCache.set(key, T); return T; }
+  const bones = [], inv = [], at = new Map(), names = [];
+  T = null;
+  ok: {
+    for (const m of meshes) {
+      const sk = m.skeleton;
+      for (let i = 0; i < sk.bones.length; i++) {
+        const n = sk.bones[i].name, j = at.get(n);
+        if (j === undefined) { at.set(n, bones.length); bones.push(n); inv.push(sk.boneInverses[i]); }
+        else if (!inv[j].equals(sk.boneInverses[i]) && inv[j].elements.some((v, e) => Math.abs(v - sk.boneInverses[i].elements[e]) > 1e-4)) break ok;
+      }
+      if (m.geometry.morphAttributes.position && !m.geometry.morphTargetsRelative) break ok;
+      for (const n of Object.keys(m.morphTargetDictionary || {})) if (!names.includes(n)) names.push(n);
+    }
+    const mn = meshes.some((m) => m.geometry.morphAttributes.normal);
+    const parts = meshes.map((m) => {
+      const s = m.geometry, A = s.attributes, n = A.position.count, g = new THREE.BufferGeometry();
+      g.setAttribute('position', f32(A.position, n, 3));
+      g.setAttribute('normal', f32(A.normal, n, 3));
+      const si = new Uint16Array(n * 4), map = m.skeleton.bones.map((b) => at.get(b.name));
+      for (let i = 0; i < n; i++) for (let j = 0; j < 4; j++) si[i * 4 + j] = map[A.skinIndex.getComponent(i, j)] ?? 0;
+      g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+      g.setAttribute('skinWeight', f32(A.skinWeight, n, 4));
+      if (s.index) g.setIndex(new THREE.BufferAttribute(Uint32Array.from(s.index.array), 1));
+      else g.setIndex(new THREE.BufferAttribute(Uint32Array.from({ length: n }, (_, i) => i), 1));
+      if (names.length) {
+        const d = m.morphTargetDictionary || {}, M = s.morphAttributes;
+        g.morphTargetsRelative = true;
+        g.morphAttributes.position = names.map((k) => { const a = f32(d[k] != null ? M.position?.[d[k]] : null, n, 3); a.name = k; return a; });
+        if (mn) g.morphAttributes.normal = names.map((k) => { const a = f32(d[k] != null ? M.normal?.[d[k]] : null, n, 3); a.name = k; return a; });
+      }
+      return g;
+    });
+    const geo = mergeGeometries(parts, false);
+    for (const g of parts) g.dispose();
+    if (geo) T = { geo, bones, inv, names };
+  }
+  twinCache.set(key, T);
+  if (twinCache.size > TWIN_MAX) { const [k0, t0] = twinCache.entries().next().value; twinCache.delete(k0); t0?.geo.dispose(); }
+  return T;
+}
+
 export function clearModelCache() {
+  for (const t of twinCache.values()) t?.geo.dispose();
+  twinCache.clear();
   for (const p of cache.values()) p.then((g) => g.scene.traverse((o) => {
     if (!o.isMesh) return;
     o.geometry.dispose();

@@ -27,7 +27,7 @@ import { NPCS } from '../data/npcs.js';
 import { GFX } from '../data/gfx.js';
 import { bodyType } from '../gfx/units3d.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
-import { assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec, npcSpec, enemySpec } from './character.js';
+import { HULL_PUSH_VS, assembleCharacter, toonify, setBodyShape, setFace, stepSprings, disposeCharacter, heroSpec, npcSpec, enemySpec } from './character.js';
 import { weaponKey, attachWeapon, detachWeapon, isTwoHand } from './weapons.js';
 import { nightPatch } from './units.js';
 import { keyRGB } from '../gfx/mesh.js';
@@ -104,12 +104,14 @@ export function partySpec(u) {
 function hullMat() {
   const m = new THREE.MeshBasicMaterial({ color: HM.outline, side: THREE.BackSide });
   m.userData.grow = { value: 0.01 };
+  m.userData.push = { value: 0 };
   m.onBeforeCompile = (s) => {
-    s.uniforms.uGrow = m.userData.grow;
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nuniform float uGrow;')
-      .replace('#include <skinning_vertex>', '#include <skinning_vertex>\n  transformed += normalize(objectNormal) * uGrow;');
+    s.uniforms.uGrow = m.userData.grow; s.uniforms.uPush = m.userData.push;
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nuniform float uGrow, uPush;')
+      .replace('#include <skinning_vertex>', '#include <skinning_vertex>\n  transformed += normalize(objectNormal) * uGrow;')
+      .replace('#include <project_vertex>', HULL_PUSH_VS);
   };
-  m.customProgramCacheKey = () => 'partyHull';
+  m.customProgramCacheKey = () => 'partyHull2';
   return m;
 }
 const xrayMat = () => new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: GFX.unit.xray, depthFunc: THREE.GreaterDepth, depthWrite: false, fog: false, blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor });
@@ -182,8 +184,11 @@ function animate(R, p, now, dt) {
     if (R.cur === 'death') R.oneEnd = 0;
     const a2 = R.two && HM.clip2h[st.act], P = R.prof;
     const act = P ? P.act[st.abil] || P.act[st.act] || P.actDefault : a2 && I.clips.has(a2) ? a2 : HM.clip[st.act] || 'attack_melee';
-    if (st.act && st.t0 !== R.actT0 && now >= st.t0 && now < st.t0 + st.dur) { R.actT0 = st.t0; one(act, st.dur, now); }
-    else if (st.hitT0 !== R.hitT0 && now >= st.hitT0 && now < st.hitT0 + 1) { R.hitT0 = st.hitT0; one('hit', 0, now); }
+    // a long frame (hitch, software GL) can jump over the whole action window: the previous drawn frame (R.pn) was before
+    // its start — play it late rather than never (three-enemies.mjs «attack -> idle»)
+    const late = (t0) => R.pn != null && R.pn < t0;
+    if (st.act && st.t0 !== R.actT0 && now >= st.t0 && (now < st.t0 + st.dur || late(st.t0))) { R.actT0 = st.t0; one(act, st.dur, now); }
+    else if (st.hitT0 !== R.hitT0 && now >= st.hitT0 && (now < st.hitT0 + 1 || late(st.hitT0))) { R.hitT0 = st.hitT0; one('hit', 0, now); }
   }
   if (fall || now < R.oneEnd) return;
   const moving = p.walking || R.v > 0.3;
@@ -219,7 +224,7 @@ export function syncParty(T, p, c) {
     if (R.W) { for (const m of R.W.mats) nightPatch(m, T.UU); if (R.W.hullMat) nightPatch(R.W.hullMat, T.UU); }
   }
   const dt = R.lastNow == null ? 0 : clamp(now - R.lastNow, 0, 0.25);
-  R.lastNow = now;
+  R.pn = R.lastNow; R.lastNow = now;
   const x = d.x + 0.5, z = d.y + 0.5, y = c.hgt[id] ?? 0;
   if (R.lx != null && dt > 0) R.v += (Math.hypot(x - R.lx, z - R.lz) / dt - R.v) * Math.min(1, dt * 8);
   if (!p.walking && dt > 0 && R.v < 0.05) R.v = 0;
@@ -263,6 +268,7 @@ export function syncParty(T, p, c) {
   R.hull.color.set(HM.outline).lerp(TEAM_C.setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace), p.it.u.team === 'npc' ? HM.outlineTeamNpc : HM.outlineTeam);
   if (R.rim) R.hull.color.lerp(R.rim.c, R.rim.k);
   R.hull.userData.grow.value = p.grow / c.ppm / R.k * (R.rim?.grow || 1);
+  R.hull.userData.push.value = p.grow / c.ppm * (R.rim?.grow || 1) * HM.outlinePush; // world m (view space)
   R.W?.hullMat?.color.copy(R.hull.color);
   R.xray.color.setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace);
   for (const o of C.extra) o.visible = o.userData.hull ? !p.trans && !far : !p.trans && !p.dead && !xrayOff;
