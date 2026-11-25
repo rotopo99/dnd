@@ -1,4 +1,4 @@
-"""Build every model: python build_all.py [--only faces|body|hair|outfit|preset|npc|enemy] [--sex male|female]
+"""Build every model: python build_all.py [--only faces|body|robo|hair|outfit|preset|npc|enemy] [--sex male|female]
 Output: game/assets/models/*.glb (+ .json meta, face PNGs) and previews tools/out/blender-*.png"""
 import sys, argparse, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))) if False else None
@@ -83,6 +83,14 @@ for sex in SEXES:
             export.meta(p, arm, P, sex, [o.name for o in parts], [], sps, dict(triangles=sum(tri_count(o) for o in parts)))
             log('outfit', k, sex, kb(p), 'tris', sum(tri_count(o) for o in parts))
             done_preview('outfit-%s-%s' % (k, sx(sex)), [body] + parts)
+if args.only in ('all', 'robo'):      # mechanical hero bodies: skeleton-robot (body_skel_*) and synth (body_synth_*) on the hero rig
+    import robo
+    for kind in ('skel', 'synth'):
+        for sex in SEXES:
+            P, arm, objs, names = robo.build(kind, sex)
+            p = os.path.join(MODELS, 'body_%s_%s.glb' % (kind, sx(sex))); n = export.glb(p, [arm] + objs)
+            export.meta(p, arm, P, sex, [o.name for o in objs], names, [], dict(triangles=sum(tri_count(o) for o in objs), mech=kind))
+            log('robo', kind, sex, kb(p), 'tris', sum(tri_count(o) for o in objs)); done_preview('robo-%s-%s' % (kind, sx(sex)), objs)
 if args.only in ('all', 'preset'):
     for name, sex, st, k, hc, skin in PRESETS:
         if sex not in SEXES or (os.environ.get('PRESETS') and name not in os.environ['PRESETS'].split(',')): continue

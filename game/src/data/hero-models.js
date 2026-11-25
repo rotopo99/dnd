@@ -4,7 +4,8 @@
 export const HERO_MODELS = {
   on: true,
   teams: ['heroes'],                 // unit teams with GLB characters (party, companions, other players); npc — later
-  races: ['human', 'tekhonok', 'cringegon', 'mutant-plant', 'mutant-beast'], // robots / skeletons / spirits stay procedural
+  races: ['human', 'tekhonok', 'cringegon', 'mutant-plant', 'mutant-beast', 'skeleton', 'android'], // spirits stay procedural
+  mech: { skeleton: 'skel', android: 'synth' },  // race -> mechanical body (body_<mech>_<sex>.glb, tools/blender robo.py): same rig / clips / outfits
   xSex: 'm',                         // gender 'x' (not set) -> this body
   height: { f: 1.674, m: 1.79 },     // fallback when the .json meta is missing (m)
   // editor hair (OPT.hair) -> GLB style; null — bald (no hair part)

@@ -74,12 +74,7 @@
   "height"
  ],
  "parts": [
-  "Body",
-  "Outfit_android_Suit",
-  "Outfit_android_Boots",
-  "Outfit_android_Cuirass",
-  "Outfit_android_ArmorPlates",
-  "Outfit_android_Headgear"
+  "Body"
  ],
  "animations": [
   "idle",
@@ -102,10 +97,10 @@
   "attack_2h"
  ],
  "springBones": [],
- "triangles": 22886,
+ "triangles": 14344,
  "enemy": "android",
  "hair": null,
- "outfit": "cyber",
+ "outfit": "synth",
  "skin": "ashen",
  "scale": 1.06,
  "grip2h": {

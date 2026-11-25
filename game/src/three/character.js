@@ -16,7 +16,7 @@ import * as THREE from 'three';
 import { instanceGLB, loadGLB } from './models.js';
 import { HERO_MODELS as HM } from '../data/hero-models.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
-import { outfitOf, skinRamp, hairRamp } from '../ui/look-data.js';
+import { outfitOf, skinRamp, hairRamp, eyeKey } from '../ui/look-data.js';
 import { keyRGB } from '../gfx/mesh.js';
 
 export const MODEL_DIR = new URL('../../assets/models/', import.meta.url).href;
@@ -84,11 +84,12 @@ export function heroSpec(u) {
   const outfit = (of && HM.outfit[of.id]) || HM.armor[armor] || 'field';
   const parts = [`outfit_${outfit}_${sex}`];
   if (hs) parts.push(`hair_${hs}_${sex}`);
-  const sk = skinRamp(look)[1], hk = hairRamp(look)[1], ck = look.cloth || null;
+  const mech = HM.mech[look.race] || null; // skeleton-robot / synth: mechanical body GLB (tools/blender robo.py), plating = Skin, glow = eyes
+  const sk = skinRamp(look)[mech ? 2 : 1], hk = hairRamp(look)[1], ck = look.cloth || null;
   const shape = { build: HM.build[look.build] ?? 0 };
   for (const [k, [f, m]] of Object.entries(HM.shape)) shape[k] = (+look[f] || 0) * m;
-  const key = `${sex}|${parts.join(',')}|${sk}${hk}${ck || '-'}|${Object.values(shape).map((v) => v.toFixed(2)).join(',')}`;
-  return { base: `body_${sex}`, parts, sex, hair: null, tint: { skin: sk, hair: hs ? hk : null, cloth: ck }, shape, key };
+  const key = `${mech || ''}${sex}|${parts.join(',')}|${sk}${hk}${ck || '-'}${mech ? eyeKey(look) : ''}|${Object.values(shape).map((v) => v.toFixed(2)).join(',')}`;
+  return { base: `body_${mech ? `${mech}_` : ''}${sex}`, parts, sex, hair: null, tint: { skin: sk, hair: hs ? hk : null, cloth: ck, eye: mech ? eyeKey(look) : null }, shape, key };
 }
 
 /** Assembled key-character / crowd model npc_<nid> (hair and outfit are in the GLB); tint {skin, hair, cloth} keys or null. */
@@ -167,6 +168,7 @@ function lumTint(m, gain) {
 export function toonify(C, o = {}) {
   const L = o.look || null, T = o.tint || C.tint || {};
   const tSkin = T.skin ? srgb(T.skin) : null, tHair = T.hair ? srgb(T.hair) : null, tCloth = T.cloth ? srgb(T.cloth) : null;
+  const tEye = T.eye ? srgb(T.eye) : null; // mechanical heroes: eye / accent glow follows the look eyes
   const tCoat = T.coat ? srgb(T.coat) : null, tPants = T.pants ? srgb(T.pants) : null; // crowd NPCs: apron / vest / hat, pants (HM.tint)
   const tMul = T.mul && o.mulRe ? new THREE.Color(1, 1, 1).lerp(srgb(T.mul), o.mulK ?? 0.5) : null; // enemy mechs: plate colour
   const meshes = [];
@@ -176,6 +178,7 @@ export function toonify(C, o = {}) {
       const t = new THREE.MeshToonMaterial({ name: m.name, color: m.color?.clone() || new THREE.Color(1, 1, 1), map: m.map || null, gradientMap: toonRamp(),
         side: THREE.DoubleSide, transparent: !!L?.opacity, opacity: L?.opacity ?? 1, emissive: new THREE.Color(L?.emissive ?? (/glow/i.test(m.name) ? 0x4fa0f0 : 0)) });
       if (o.glow?.test(m.name) && m.emissive) t.emissive.copy(m.emissive).multiplyScalar(o.glowK ?? 1); // enemies: GLB emissive (eyes, tokens)
+      if (tEye && /Glow$/.test(m.name)) { t.color.copy(tEye); t.emissive.copy(tEye); }
       if (tMul && o.mulRe.test(m.name)) t.color.multiply(tMul);
       if (L?.tint) t.color.lerp(new THREE.Color(L.tint), L.tintK ?? 0.6);
       if (m.name === 'Skin') { if (o.skinHex != null) t.color.set(o.skinHex); else if (tSkin) t.color.copy(tSkin); }

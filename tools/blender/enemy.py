@@ -630,6 +630,11 @@ IDS = list(HUMANOIDS) + list(MECHS)
 
 
 def build(eid):
+    if eid == 'android':                        # remade on the synth body (enemy_android.py); same rig / clips / meta as the humanoids
+        import enemy_android
+        P, arm, objs, names = enemy_android.build(); cfg = HUMANOIDS['android']
+        return dict(kind='humanoid', P=P, arm=arm, objs=objs, names=names, springs=[], sex='male',
+                    meta=dict(enemy=eid, hair=None, outfit='synth', skin=cfg['skin'], scale=cfg.get('scale', 1.0)))
     if eid in HUMANOIDS:
         cfg = HUMANOIDS[eid]; P, arm, objs, names, sp = npc.build(eid, cfg)
         if cfg.get('skin_col'):                   # synthetic skin (android hands / neck): recolour the body skin material
