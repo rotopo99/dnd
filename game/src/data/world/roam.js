@@ -13,6 +13,10 @@ export const ROAM = {
   chainTeleport: 6, // a follower further than this jumps to its place
   npcSpeed: 1, // tiles per second on a route
   npcPause: [3, 8], // seconds at each route point
+  npcHalt: 3, // QA v49 #18: a walking NPC stops and turns to the leader when it is this close, hovered or the walk target
+  npcHit: 0.9, // 2D hover: an NPC is picked within this many tiles of the cursor cell (NPCs move between cells)
+  npcTalk: 2.2, // arriving at a walking NPC: talk if it is within this distance (it may have moved a step)
+  npcRetry: 3, // re-path attempts toward an NPC that moved away
   npcWander: 0.5, // share of non-trader NPCs that walk a route
   npcFarTick: 0.5, // NPCs off screen update every N seconds
   camLerp: 8, // camera follow speed (1/s)

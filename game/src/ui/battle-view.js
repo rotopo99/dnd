@@ -13,7 +13,7 @@ import { hotspot } from './tooltip.js';
 import { resLineTip, resTip, statusTip, termTip } from './tips.js';
 import { itemTip } from './items-ui.js';
 import { fieldBiome, drawFieldCell, drawFieldProps, propCells, drawWeather } from './field-view.js';
-import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp } from './battle-terrain.js';
+import { liveChar, drawTileExtra, drawObjects, drawIntents, drawOddsCard, drawHelp, helpBand } from './battle-terrain.js';
 import { drawObjectiveMarkers, drawObjectivePanel, objectiveStripBottom } from './battle-objectives.js';
 import { drawPin, intentText } from './unit-pin.js';
 import { drawStatusIcon } from '../assets/status-icons.js';
@@ -558,7 +558,7 @@ function drawTopBar(ctx, S) {
   text(ctx, `${t('battle.round')} ${b.round}`, L.area.w - 12, 12, C['4'], FONT_B, 'right');
   if (S.sel && S.playerTurn) {
     const key = S.sel.kind === 'ability' && S.sel.a.target === 'tile' ? 'battle.selectTile' : 'battle.selectTarget';
-    text(ctx, t(key), L.area.w / 2, L.area.y + L.area.h - 20, C.a, FONT, 'center');
+    text(ctx, fit(ctx, t(key), L.area.w - 32, FONT), L.area.w / 2, helpBand(ctx, L), C.a, FONT, 'center');
   }
 }
 

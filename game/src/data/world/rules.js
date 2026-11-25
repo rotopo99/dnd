@@ -10,6 +10,7 @@ export const WORLD_RULES = {
   socialSkills: ['persuasion', 'deception', 'intimidation'],
   approval: { deed: 5, keyDeed: 15, warn: -50, leave: -70, teach: 50, min: -100, max: 100 },
   killRep: { perKill: -2, maxPerBattle: -10 },
+  questRecommend: { overLevel: 2 }, // QA v49 #17: an NPC's quest list puts quests up to hero level + N first, the first is «recommended»
   codex: { knownKills: 5, lootOften: 0.3, lootSome: 0.1 }, // vendors-bestiary.md part 2: «Изучен» after N wins; loot chance words
   hiddenSearch: { skill: 'perception' },
   hiddenRouteFlags: ['hidden-routes', 'squeeze'],

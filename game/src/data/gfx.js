@@ -24,6 +24,8 @@ export const GFX = {
     elev: 0.5, wall: 1.6, cut: 0.3, block: 1.6, fence: 1.2, full: 1.1, half: 0.55, water: -0.15, base: -0.35,
     bevel: 0.08, rubble: [3, 5], hazard: 0.03, overlay: 0.012, pathDot: 0.12, border: 0.06,
   },
+  // QA v49 #20: the 3D model in the Снаряжение tab (scenes/panel-gear.js; offset from the panel origin, px), camera as the editor's
+  gearModel: { x: 1004, y: 436, w: 252, h: 254, yaw: 22, sway: 14, pitch: 10, zoom: 0.9, focus: 0.9 },
   camera: {
     pitch: 35.26, yaw: 45, tween: 0.25, // s, ease in-out; «Снизить движение» — no tween
     // zoom levels: 0 — the whole map fits the area; 1 (default) — the floor diamond takes `widthFill` of the area width
@@ -32,6 +34,9 @@ export const GFX = {
     zoomDefault: 1, follow: 6, // 1/s, camera centre lerp
     // QA v48 #5: at the hero's turn start — frame hero + nearest foe: margin (m) around both, part of the area they may fill
     frameMargin: 2.5, frameFill: 0.8,
+    // QA v48/v49 #4: the turn framing never goes wider than the first zoom level with at least readPpm px per metre
+    // (a unit ~60 px tall); big maps get an extra level at readPpm. Wheel zoom still reaches «whole map».
+    readPpm: 40,
     // stage 3: pan — drag with the middle / right button (right: after dragMin px, a right click stays a click), arrows px/s
     dragMin: 6, panSpeed: 720,
     maxDt: 0.25, // s per drawn frame for camera / animation tweens (= main loop cap: slow frames keep real-time tweens)

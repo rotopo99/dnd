@@ -217,7 +217,7 @@ export function pickRoam(A, R, px, py) {
     if (it.ref.kind === 'member' || it.ref.kind === 'other' || it.d.down) return;
     const top = bodyTop(it);
     const a = roamScreen(A, it.d.x, it.d.y, 0), c = roamScreen(A, it.d.x, it.d.y, top);
-    const rw = A.ppm * 0.32;
+    const rw = A.ppm * (it.ref.kind === 'npc' ? 0.5 : 0.32); // QA v49 #18: NPCs get a generous hit box
     if (px > a.x - rw && px < a.x + rw && py < a.y + rw * 0.4 && py > c.y && a.d < bd) { bd = a.d; ent = i; }
   });
   const W = V.world;

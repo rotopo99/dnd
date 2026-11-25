@@ -300,6 +300,7 @@ export function createRoamScene(rawId, opts = {}) {
       play('step', { surface: stepSurface(map, ld.cx, ld.cy), sneak: gait(game) === 'sneak', heavy: game.save?.hero?.armorType === 'heavy' });
       if (checkTriggers(game)) return;
       if (S.goal?.attack && attackInReach(game, S.goal)) S.path = [];
+      if (S.goal?.kind === 'npc' && reachOk(ld.cx, ld.cy, S.goal)) S.path = []; // the NPC came closer: talk now
       if (!S.path.length) arrived(game);
     }
     // WASD / arrows: one cell at a time while held (cancels a click path)
@@ -354,9 +355,19 @@ export function createRoamScene(rawId, opts = {}) {
     }
   }
   const npcAt = (x, y) => S.npcs.find((n) => Math.round(n.fx) === x && Math.round(n.fy) === y) || S.posts.find((p) => p.x === x && p.y === y);
+  /** QA v49 #18: a walking NPC halts (and, unless a guard — cones stay honest, turns to the leader) when it is the
+   *  walk target, hovered or the leader is near, so clicking it reliably opens the talk. */
+  function npcHalts(n) {
+    const ld = S.party[0];
+    const target = (S.goal?.kind === 'npc' && S.goal.n === n) || (S.hoverEnt?.kind === 'npc' && S.hoverEnt.n === n);
+    if (!target && !(ld && Math.hypot(ld.x - n.fx, ld.y - n.fy) <= ROAM.npcHalt)) return false;
+    if (ld && npcRole(NPCS[n.id]) !== 'guard' && Math.hypot(ld.x - n.fx, ld.y - n.fy) > 0.1) n.face = faceOf(ld.x - n.fx, ld.y - n.fy);
+    return true;
+  }
   function updateNpcs(dt) {
     for (const n of S.npcs) {
-      if (!n.route) continue;
+      if (!n.route) { if (!S.sneak) npcHalts(n); continue; }
+      if (!S.sneak && npcHalts(n)) continue;
       if (n.path && n.path.length) {
         const p = n.path[0];
         const ddx = p.x - n.fx, ddy = p.y - n.fy, d = Math.hypot(ddx, ddy);
@@ -383,14 +394,27 @@ export function createRoamScene(rawId, opts = {}) {
     S.runTo = run;
     if (ent && reachOk(ld.cx, ld.cy, ent)) { S.path = []; S.goal = null; return then ? then(game) : interact(game, ent); }
     if (!ent && !at) return;
-    const tx = ent ? ent.x : at.x, ty = ent ? ent.y : at.y;
+    const tx = ent ? Math.round(ent.kind === 'npc' ? ent.n.fx : ent.x) : at.x, ty = ent ? Math.round(ent.kind === 'npc' ? ent.n.fy : ent.y) : at.y;
     const self2 = !ent || (ent.kind === 'obj' && !ent.o.solid);
-    const dest = approachCell(grid, ld.step ? ld.step.tx : ld.cx, ld.step ? ld.step.ty : ld.cy, tx, ty, { self: self2 });
+    let dest = approachCell(grid, ld.step ? ld.step.tx : ld.cx, ld.step ? ld.step.ty : ld.cy, tx, ty, { self: self2 });
+    if (!dest && ent?.kind === 'npc') dest = talkCell(ld, ent.n); // QA v49 #18: an NPC halted on a cell with no free neighbour
     if (!dest) return;
     const from = ld.step ? [ld.step.tx, ld.step.ty] : [ld.cx, ld.cy];
     S.path = roamPath(grid, from[0], from[1], dest.x, dest.y) || [];
     S.goal = ent && then ? { ...ent, then } : ent;
     if (!S.path.length && !ld.step) arrived(game);
+  }
+  /** The nearest reachable cell within ROAM.npcTalk of an NPC (approachCell only looks at the 8 neighbours). */
+  function talkCell(ld, n) {
+    const sx = ld.step ? ld.step.tx : ld.cx, sy = ld.step ? ld.step.ty : ld.cy, R = Math.ceil(ROAM.npcTalk);
+    let best = null, bd = Infinity;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const x = Math.round(n.fx) + dx, y = Math.round(n.fy) + dy;
+      if (Math.hypot(x - n.fx, y - n.fy) > ROAM.npcTalk || !isPassable(grid, x, y)) continue;
+      const p = x === sx && y === sy ? [] : roamPath(grid, sx, sy, x, y);
+      if (p && p.length < bd) { bd = p.length; best = { x, y }; }
+    }
+    return best;
   }
   /** Free mode: the selected members walk to free cells around the clicked one; the rest stay. */
   function orderGo(game, at, run) {
@@ -439,13 +463,19 @@ export function createRoamScene(rawId, opts = {}) {
     for (const b of S.memScr) if (Math.abs(mx - b.x) <= b.r && my >= b.y0 && my <= b.y1) return b.m;
     return null;
   }
-  const reachOk = (x, y, ent) => (ent.kind === 'obj' && ent.o.cells ? ent.o.cells.some(([cx, cy]) => inReach(x, y, cx, cy)) : inReach(x, y, Math.round(ent.x), Math.round(ent.y)));
+  // NPCs move: reach is measured to the live position (the entity is a snapshot), with a little slack (ROAM.npcTalk)
+  const reachOk = (x, y, ent) => (ent.kind === 'npc' ? inReach(x, y, Math.round(ent.n.fx), Math.round(ent.n.fy)) || Math.hypot(ent.n.fx - x, ent.n.fy - y) <= ROAM.npcTalk
+    : ent.kind === 'obj' && ent.o.cells ? ent.o.cells.some(([cx, cy]) => inReach(x, y, cx, cy)) : inReach(x, y, Math.round(ent.x), Math.round(ent.y)));
   function arrived(game) {
     const ld = S.party[0];
     const goal = S.goal;
     S.goal = null; S.runTo = false;
     if (goal?.attack) return attackInReach(game, goal) ? startStrike(game, goal) : null;
     if (goal && reachOk(ld.cx, ld.cy, goal)) return goal.then ? goal.then(game) : interact(game, goal);
+    // the NPC walked off before it halted: follow it (a few times)
+    if (goal?.kind === 'npc' && (goal.tries || 0) < ROAM.npcRetry) {
+      return goTo(game, { ...goal, x: goal.n.fx, y: goal.n.fy, tries: (goal.tries || 0) + 1 }, false, null, goal.then || null);
+    }
     if (!goal && grid.tiles[ld.cy * grid.w + ld.cx] === T_EXIT) {
       const ex = S.objs.find((o) => o.type === 'exit' && o.cells?.some(([x, y]) => x === ld.cx && y === ld.cy));
       if (ex) interact(game, { kind: 'obj', o: ex, x: ex.x, y: ex.y });
@@ -988,6 +1018,12 @@ export function createRoamScene(rawId, opts = {}) {
     S, map, locId, wx: weatherOf(game), others: game.coop?.others?.(game, locId) || [],
     area: { x: 0, y: 0, w: game.width, h: game.height }, camArea: { x: 0, y: HUD_H, w: game.width, h: game.height - HUD_H - 60 },
   });
+  /** The NPC closest to a (fractional) cell within ROAM.npcHit — walking NPCs are between cells. */
+  function npcNear(es, x, y) {
+    let best = null, bd = ROAM.npcHit;
+    for (const e of es) if (e.kind === 'npc') { const d = Math.hypot(e.x - x, e.y - y); if (d <= bd) { bd = d; best = e; } }
+    return best;
+  }
   /** Hover in 3D: a body under the cursor (NPC / guard / hunter / corpse), else the picked cell. */
   function hover3d(game, A, R, m) {
     const pk = pickRoam(A, R, m.x, m.y);
@@ -997,7 +1033,7 @@ export function createRoamScene(rawId, opts = {}) {
     if (ref) S.hoverEnt = es.find((e) => (ref.kind === 'npc' && e.n === ref.n) || (ref.kind === 'post' && e.p === ref.p) || (ref.kind === 'hostile' && e.h === ref.h) || (ref.kind === 'corpse' && e.c === ref.c)) || null;
     else if (pk.cell) {
       const { x: mx, y: my } = pk.cell;
-      S.hoverEnt = es.find((e) => e.kind === 'npc' && Math.round(e.x) === mx && Math.round(e.y) === my)
+      S.hoverEnt = npcNear(es, mx, my)
         || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my))
         || es.find((e) => e.kind === 'skill' && e.x === mx && e.y === my) || null;
     }
@@ -1118,7 +1154,7 @@ export function createRoamScene(rawId, opts = {}) {
     resize(game) { layout(game); },
     toastAnchor(game) { return { x: game.width / 2, y: game.height - 80, dir: -1 }; },
     // test hooks
-    goTo: (game, ent) => goTo(game, ent),
+    S, goTo: (game, ent) => goTo(game, ent),
     ctxFor: (game, ent, mem, at) => ctxFor(game, ent, mem, at), openCtx: (game, m) => openCtx(game, m), pickCtx: (game, id, c) => pickCtx(game, id, c),
     select: (game, keys, add) => selectMembers(game, keys, add), setMode: (game, md) => setMode(game, md), attackEnt: (game, e) => attackEnt(game, e), goCell: (game, x, y) => goTo(game, null, false, { x, y }),
     raiseAlarm: (game) => raiseAlarm(game), spawnRaid: (game, enemies, name) => spawnRaid(game, enemies, name), watchers, provider,
@@ -1160,7 +1196,8 @@ export function createRoamScene(rawId, opts = {}) {
       } else if (S.hoverCell && !S.hover) {
         // sprites are taller than a tile: the cell under the mouse or the one below it
         const es = entities();
-        S.hoverEnt = es.find((e) => e.kind === 'npc' && Math.round(e.x) === mx && (Math.round(e.y) === my || Math.round(e.y) === my + 1))
+        const fx = (m.x + S.cam.x) / c - 0.5, fy = (m.y + S.cam.y) / c - 0.5;
+        S.hoverEnt = npcNear(es, fx, fy) || npcNear(es, fx, fy + 1)
           || es.find((e) => e.kind === 'obj' && (e.o.cells ? e.o.cells.some(([x, y]) => x === mx && y === my) : e.x === mx && e.y === my))
           || es.find((e) => e.kind === 'skill' && e.x === mx && e.y === my) || null;
       }

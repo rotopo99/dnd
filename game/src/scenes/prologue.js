@@ -13,6 +13,7 @@ import { C } from '../ui/draw.js';
 import { newSave, gainXp, journal } from '../world/state.js';
 import { LOCATIONS, START_LOCATION, starterKit } from '../world/data.js';
 import { saveGame } from '../save.js';
+import { markSeen, markKills } from '../world/codex.js';
 import { createNodeScene } from './roam.js';
 
 /** Collect dialogue lines for keys (race-aware via line()). */
@@ -65,12 +66,17 @@ export function startPrologue(game, hero) {
   // portraits v2: hp/mrl of the hero and allies right after a battle ('npc-gans' -> speaker 'gans')
   const hurtAfter = (S) => Object.fromEntries(S.b.units.filter((u) => u.team !== 'enemies').map((u) => [u.kind === 'hero' && !u.enemyId ? 'hero' : String(baseOf(u)).replace(/^npc-/, ''), wounds(u)]));
   const toMenu = (g) => g.setScene(menuScene);
+  // QA v49 #21: there is no world save during the prologue — remember who was fought, startWorld writes the codex
+  const codexOf = (S) => {
+    const foes = S.b.units.filter((u) => u.team === 'enemies' && u.enemyId && u.kind !== 'summon');
+    (flags.codex ||= []).push({ seen: foes.map((u) => u.enemyId), beaten: foes.filter((u) => u.dead || u.removed || u.down).map((u) => u.enemyId) });
+  };
   const battle = (n, next) => {
     const map = MAPS[`prologue-${n}`];
     const scene = createBattleScene({
       hero: { ...hero, inventory: kit() }, map, tutorial: n === 1 ? tutorial : null, defeatTips: true, title: t(`b${n}_name`), intro: map.intro || `b${n}_intro`, hint: `b${n}_hint`, winText: `b${n}_win`,
       defeatLines: toLines(line('lose_hero', race)), barks: BARKS, onEvent: storyHooks(race),
-      onWin: (g, S) => next(g, S), onExit: toMenu,
+      onWin: (g, S) => { codexOf(S); next(g, S); }, onExit: toMenu,
     });
     game.setScene(scene);
   };
@@ -103,6 +109,7 @@ export function startWorld(game, hero, flags = {}) {
   exodusStart(save); // third-exodus.md: the Exodus timer starts with the prologue
   if (flags.gansAlive) save.flags['gans-alive'] = true;
   if (flags.cine) { Object.assign(save.flags, flags.cine.flags); save.cine = { ...(save.cine || {}), rel: { ...(flags.cine.cine?.rel || {}) } }; }
+  for (const f of flags.codex || []) { markSeen(save, f.seen); markKills(save, f.beaten); }
   game.save = save;
   for (const x of gainXp(save, 350, game.data)) game.toast(x.text, x.color);
   journal(save, `${t('world.arrived')}: ${LOCATIONS[START_LOCATION].name}`);

@@ -15,6 +15,12 @@ import { tierName, itemTip } from '../ui/items-ui.js';
 import { hotspot, showTip } from '../ui/tooltip.js';
 import { createDetails, updateDetails, drawDetails } from '../ui/details.js';
 import { saveGame } from '../save.js';
+import { unitTemplate } from '../gfx/units3d.js';
+import { animState } from '../gfx/anim.js';
+import { getStage } from '../gfx/stage.js';
+import { hasWebGL2 } from '../gfx/gl.js';
+import { GFX } from '../data/gfx.js';
+import { gfxPrefs } from '../gfx/settings.js';
 import { autoCheck, disassembleDc, disassembleParts } from '../world/skill-uses.js';
 import { LOOT_TABLES } from '../data/items/loot.js';
 import {
@@ -525,9 +531,34 @@ export function renderGear(game, S) {
   }
   // --- card (selected item or the worn weapon)
   renderCard(game, S, Z);
+  drawModel(game, S, u);
   // --- drag ghost
   if (d) drawGhost(game, S, d, hov);
   text(ctx, t('inv.help'), ox + 24, oy + 700, C['3'], SMALL);
+}
+
+/** QA v49 #20: the selected member's 3D model (gfx/stage.js — the same template as the appearance editor and the
+ *  portraits) in the free corner under the card; shows what is worn and the «show on model» switches. No WebGL2 — none. */
+const modelAnim = { anim: {} };
+function drawModel(game, S, u) {
+  if (!u || !hasWebGL2()) return;
+  const M = GFX.gearModel, v = { x: S.ox + M.x, y: S.oy + M.y, w: M.w, h: M.h };
+  const stage = getStage('gear', v.w, v.h);
+  if (!stage) return;
+  let T;
+  try { T = unitTemplate(u); } catch { return; }
+  const { ctx } = game;
+  panel(ctx, v.x - 4, v.y - 4, v.w + 8, v.h + 8, C['1'], C['2']);
+  const now = S.time || 0;
+  const proj = stage.draw(T, animState(modelAnim, 'p'), { yaw: M.yaw + (gfxPrefs().reduceMotion ? 0 : Math.sin(now * 0.4) * M.sway), pitch: M.pitch, zoom: M.zoom, focus: M.focus, now, dt: 1 / 60, walk: 0,
+    emo: 'neutral', blink: now % 4.2 < 0.14, physics: 1, reduceMotion: !!gfxPrefs().reduceMotion, modelYaw: 0 });
+  if (proj) { // contact shadow under the feet (the GL layer is transparent)
+    const sx = v.x + proj.sx, sy = v.y + proj.sy, r = proj.ppm * 0.5;
+    const sh = ctx.createRadialGradient(sx, sy, 1, sx, sy, r);
+    sh.addColorStop(0, 'rgba(10,10,16,0.6)'); sh.addColorStop(1, 'rgba(10,10,16,0)');
+    ctx.save(); ctx.translate(0, sy); ctx.scale(1, 0.3); ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(sx, 0, r, 0, 7); ctx.fill(); ctx.restore();
+  }
+  ctx.drawImage(stage.canvas, 0, 0, v.w, v.h, v.x, v.y, v.w, v.h);
 }
 
 const wrapLines = (ctx, s, w, font) => {

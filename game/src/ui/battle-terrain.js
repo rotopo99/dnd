@@ -156,10 +156,20 @@ export function drawOddsCard(ctx, S, preview) {
 }
 
 /** Help line under the map + pace indicator. */
+/** QA v49 #10: the help line sits on its own dark footer band at the bottom of the map area (not over the field). */
+export function helpBand(ctx, L) {
+  const y0 = L.area.y + L.area.h - HELP_H;
+  ctx.fillStyle = 'rgba(10,10,16,0.9)';
+  ctx.fillRect(L.area.x, y0, L.area.w, HELP_H);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(L.area.x, y0, L.area.w, 1);
+  return y0 + 4;
+}
+export const HELP_H = 24;
 export function drawHelp(ctx, S) {
   const L = S.L;
-  const y = L.area.y + L.area.h - 20;
   if (S.sel && S.playerTurn) return; // the selection hint lives there
+  const y = helpBand(ctx, L);
   const wx = weatherLine(S.b.map); // battlefields.md §4: time of day / weather / sight range
   // QA v48 #10/#11: the line was clipped (one fit() over the whole width) and promised a menu on RMB. Now: parts that
   // fit, dropped from the end, on a dark strip centred on the map area.
@@ -169,9 +179,7 @@ export function drawHelp(ctx, S) {
   let s = parts.join(' · ');
   while (parts.length > 1 && ctx.measureText(s).width > maxW) { parts.pop(); s = parts.join(' · '); }
   s = fit(ctx, s, maxW);
-  const tw = ctx.measureText(s).width, cx = L.area.x + L.area.w / 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(Math.round(cx - tw / 2 - 10), y - 3, Math.round(tw + 20), 22);
+  const cx = L.area.x + L.area.w / 2;
   text(ctx, s, cx, y, S.fast || S.skip ? C.a : C['4'], FONT, 'center');
 }
 const HELP_PARTS = ['Клик по врагу — атака', 'ПКМ по юниту — карточка и действия', 'Tab — закрепить карточку', 'F — ускорить врагов', 'Enter — пропустить ход врагов'];

@@ -55,6 +55,7 @@ export function fitCamera(cam, area, w, h, maxH = 1.6) {
   for (const X of [0, w]) for (const Z of [0, h]) { const a = dot([X, 0, Z], r); f0 = Math.min(f0, a); f1 = Math.max(f1, a); }
   const C = GFX.camera, wide = Math.max(1, (area.w * C.widthFill) / (f1 - f0) / cam.ppmFit);
   cam.zooms = [1, wide, wide * C.closer];
+  if (C.readPpm && wide * C.closer * cam.ppmFit < C.readPpm * 0.95) cam.zooms.push(C.readPpm / cam.ppmFit); // big maps
   if (first || !cam.zoomSet) { cam.zoom = cam.zooms[cam.zoomIdx]; cam.zoomSet = true; }
   if (first) { cam.cx = w / 2; cam.cz = h / 2; }
 }
@@ -120,14 +121,22 @@ export function frameCamera(cam, a, b) {
   const { r, u } = basis({ yaw: cam.yawTo, pitch: cam.pitch });
   const d = [a.x - b.x, 0, a.z - b.z];
   const sx = Math.abs(dot(d, r)) + 2 * m, sy = Math.abs(dot(d, u)) + 2 * m + 1.6 * Math.abs(u[1]);
-  const zmax = Math.min((cam.area.w * (C.frameFill ?? 0.8)) / sx, (cam.area.h * (C.frameFill ?? 0.8)) / sy) / cam.ppmFit;
-  let idx = 0;
-  for (let i = 0; i < cam.zooms.length; i++) if (cam.zooms[i] <= zmax) idx = i;
+  const fill = C.frameFill ?? 0.8;
+  const zmax = Math.min((cam.area.w * fill) / sx, (cam.area.h * fill) / sy) / cam.ppmFit;
+  // QA v49 #4: not wider than the first «readable» level (units clump and shrink at the whole-map zoom)
+  let lo = cam.zooms.findIndex((z) => z * cam.ppmFit >= (C.readPpm || 0) * 0.95);
+  if (lo < 0) lo = cam.zooms.length - 1;
+  let idx = lo;
+  for (let i = lo; i < cam.zooms.length; i++) if (cam.zooms[i] <= zmax) idx = i;
   cam.zoomIdx = idx;
   const z = cam.zooms[idx], mx = cam.mapW / 2, mz = cam.mapH / 2;
   const lean = Math.max(0, Math.min(1, (1 - 1 / z) * 1.5));
   const bx = mx + (a.x - mx) * lean, bz = mz + (a.z - mz) * lean;
-  cam.px = (a.x + b.x) / 2 - bx; cam.pz = (a.z + b.z) / 2 - bz;
+  // the pair does not fit at this level: slide the centre from the midpoint towards the hero so the hero stays in view
+  const s = cam.ppmFit * z, hw = (cam.area.w * fill) / (2 * s) - m, hh = (cam.area.h * fill) / (2 * s) - m;
+  const dr = Math.abs(dot(d, r)), du = Math.abs(dot(d, u));
+  const k = Math.max(0, Math.min(0.5, dr > 1e-3 ? hw / dr : 0.5, du > 1e-3 ? hh / du : 0.5));
+  cam.px = a.x + (b.x - a.x) * k - bx; cam.pz = a.z + (b.z - a.z) * k - bz;
 }
 
 const ppm = (cam) => cam.ppmFit * cam.zoom * (cam.fx?.z || 1);

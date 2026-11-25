@@ -61,7 +61,15 @@ export function createNpcActions(ctx) {
   }
 
   /** Quests an NPC offers under the reputation rules (world.md §3) — world/quest-access.js offeredQuests. */
-  const offeredBy = (game, npc) => offeredQuests(save(game), game.data, npc);
+  // QA v49 #17: ordered for a new player — quests near the hero's level first, then key ones, then by level;
+  // the first one (if it fits the level) is «recommended»
+  const fits = (sv, q) => (q.level || 1) <= (sv.hero?.level || 1) + WORLD_RULES.questRecommend.overLevel;
+  const offeredBy = (game, npc) => {
+    const sv = save(game);
+    return offeredQuests(sv, game.data, npc).map((q, i) => [q, i])
+      .sort(([a, i], [b, j]) => (fits(sv, b) - fits(sv, a)) || (!!b.key - !!a.key) || ((a.level || 1) - (b.level || 1)) || (i - j)).map(([q]) => q);
+  };
+  const recommended = (game, list) => (list.length > 1 && fits(save(game), list[0]) ? list[0] : null);
 
   /** Trade under the reputation rules: hostile — closed, except black-market (always) and bribe (pay to trade). */
   function tradeAccess(game, npc) {
@@ -173,10 +181,12 @@ export function createNpcActions(ctx) {
   function offerList(game, npc) {
     const list = offeredBy(game, npc);
     if (!list.length) return;
+    const rec = recommended(game, list);
+    const tag = (q) => [q === rec ? t('loc.questRec') : null, q.key ? t('journal.key') : null, q.level ? tf('loc.questLevel', { n: q.level }) : null].filter(Boolean).join(' · ');
     game.openModal({
       title: tf('loc.questOffers', { npc: npc.name, n: list.length }), width: 900,
-      lines: [{ text: t('loc.questOffersHint'), color: 'a' }],
-      options: [...list.map((q) => ({ label: q.name, sub: (q.summary || '').slice(0, 90) + ((q.summary || '').length > 90 ? '…' : ''),
+      lines: [{ text: t(rec ? 'loc.questOffersRec' : 'loc.questOffersHint'), color: 'a' }],
+      options: [...list.map((q) => ({ label: q === rec ? `★ ${q.name}` : q.name, sub: `${tag(q)}${tag(q) ? ' — ' : ''}${(q.summary || '').slice(0, 70)}${(q.summary || '').length > 70 ? '…' : ''}`,
         run: (g) => offerQuest(g, q, npc.id, (g2) => offerList(g2, npc)) })),
       { label: t('loc.questLater'), run: () => {} }],
     });
