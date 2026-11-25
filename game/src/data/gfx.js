@@ -3,7 +3,7 @@
 export const GFX = {
   storageKey: 'dnd.gfx',
   // defaults of the settings window (ui/settings-ui.js); brightness 0.8–1.2
-  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always', physics: 'normal', walls: 'cut', xray: 'hold', metric: 'on', engine: 'three' },
+  defaults: { mode: 'auto', reduceFx: false, reduceMotion: false, brightness: 1, shadows: 'high', highlight: 'always', physics: 'normal', walls: 'cut', xray: 'hold', metric: 'on', engine: 'three', quality: 'auto', autoQ: null },
   // shadow map of 1 directional light (§3): texture size by quality; «Снизить эффекты» = off
   shadow: { size: { high: 1024, low: 512 }, levels: ['high', 'low', 'off'], strength: 0.8, bias: 0.0025, pad: 1.5, dir: [-0.55, 1.5, 0.3] },
   brightness: { min: 0.8, max: 1.2, step: 0.1 },
@@ -168,5 +168,21 @@ export const GFX = {
     particleGlow: 2.4,
     // software GL (SwiftShader / llvmpipe — fill rate): no bloom / GTAO, shadow map size x shadow; `?hq=1` keeps full quality
     soft: { bloom: false, gtao: false, shadow: 0.5 },
+    // character shadows (perf): GLB sub-meshes smaller than this bounding radius (m, bind pose: face, trims, buckles)
+    // do not cast — their shadow lies inside the body's; halves the shadow-pass draw calls of a character
+    shadowMinR: 0.25,
+  },
+  // quality presets (docs/perf.md; setting «Качество», gfx/quality.js). dpr — render scale cap (x GFX.three.maxDpr cap),
+  // msaa — samples of the post target, gtao — 0 off | resolution share, aoUnits — characters in the AO g-buffer,
+  // bloom, shadow — shadow map size x, near — outlines / springs only within near m of the camera focus (0 — all),
+  // xrayCrowd — x-ray silhouettes of roam crowd NPCs, oldPost — post chain of the old WebGL2 renderer.
+  // auto: high on hardware (low on software GL); steps down one level when the 80th percentile of frame intervals with a
+  // 3D scene stays above 1000 / downFps ms for `window` s (after `warm` s on the scene); the result is remembered.
+  quality: {
+    levels: ['auto', 'low', 'medium', 'high'],
+    high: { dpr: 1.5, msaa: 4, gtao: 1, aoUnits: true, bloom: true, shadow: 1, near: 0, xrayCrowd: true, oldPost: true },
+    medium: { dpr: 1.25, msaa: 2, gtao: 0.5, aoUnits: false, bloom: true, shadow: 1, near: 16, xrayCrowd: false, oldPost: true },
+    low: { dpr: 1, msaa: 0, gtao: 0, aoUnits: false, bloom: false, shadow: 0.5, near: 9, xrayCrowd: false, oldPost: false },
+    auto: { downFps: 40, window: 3, warm: 2, minFrames: 30 },
   },
 };

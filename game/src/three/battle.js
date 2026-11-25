@@ -324,7 +324,8 @@ function overlayGeo(v, geo, cap = 0) {
 }
 
 // ---------------------------------------------------------------- units
-const IDENT = new THREE.Matrix4(), BM = new THREE.Matrix4();
+const IDENT = new THREE.Matrix4(), BM = new THREE.Matrix4(), PROJ = new THREE.Matrix4();
+const FRUSTUM = new THREE.Frustum(), SPH = new THREE.Sphere();
 function makeUnit(E, T, tpl) {
   const geo = E.geometry(`tpl:${tpl.key}`, () => geoFromMB(tpl.mb, true));
   if (!geo) return null;
@@ -345,7 +346,7 @@ function makeUnit(E, T, tpl) {
   };
   const mk = (mat) => { const m = new THREE.SkinnedMesh(geo, mat); m.bind(skel, IDENT); m.frustumCulled = false; return m; };
   const body = mk(unitMaterial(T.UU));
-  body.castShadow = true; body.receiveShadow = true;
+  body.castShadow = true; body.receiveShadow = true; body.userData.unit = true;
   const hull = mk(hullMaterial(T.UU));
   hull.userData.noAO = true;
   // x-ray: drawn in the opaque list after the world and before the bodies (renderOrder 1 < 2), against the world depth
@@ -438,7 +439,11 @@ export function drawBattleThree(E, game, S, opts) {
   }
 
   // units
-  const seen = new Set(), ppm = cam.ppmFit * cam.zoom, PC = { now, ppm, prefs, hgt: V.hgt, tops: V.glbTop || (V.glbTop = {}) };
+  // perf (docs/perf.md): frustum of the frame for unit culling, quality preset (outlines / springs near the focus)
+  T.cam3.updateMatrixWorld();
+  FRUSTUM.setFromProjectionMatrix(PROJ.multiplyMatrices(T.cam3.projectionMatrix, T.cam3.matrixWorldInverse));
+  const Q = E.Q, focus = { x: cam.cx, z: cam.cz };
+  const seen = new Set(), ppm = cam.ppmFit * cam.zoom, PC = { now, ppm, prefs, hgt: V.hgt, tops: V.glbTop || (V.glbTop = {}), frustum: FRUSTUM, Q, focus };
   let glbN = 0;
   for (const p of inst) {
     const id = p.it.u.id;
@@ -448,6 +453,10 @@ export function drawBattleThree(E, game, S, opts) {
     if (o && o.key !== p.T.key) { dropUnit(o); o = null; }
     if (!o) { o = makeUnit(E, T, p.T); if (!o) continue; T.units.set(id, o); }
     seen.add(id);
+    const d0 = p.it.d, ux = d0.x + 0.5, uz = d0.y + 0.5, uy = V.hgt[id] ?? 0, uh = p.T.top * p.T.scale;
+    SPH.center.set(ux, uy + uh * 0.5, uz); SPH.radius = uh * 0.75 + 1;
+    if (!FRUSTUM.intersectsSphere(SPH)) { o.body.visible = o.hull.visible = o.xray.visible = false; continue; }
+    const far = !!(Q?.near && Math.hypot(ux - focus.x, uz - focus.z) > Q.near);
     poseInst(p, V, now, prefs, o.pose, 0);
     const team = p.team, tc = linRGB(team);
     o.body.material.opacity = p.alpha;
@@ -457,7 +466,7 @@ export function drawBattleThree(E, game, S, opts) {
     bu.uTint.value.set(o.pose[NBONES * 12], o.pose[NBONES * 12 + 1], o.pose[NBONES * 12 + 2], o.pose[NBONES * 12 + 3]);
     bu.uFaceU.value = o.pose[NBONES * 12 + 9];
     o.body.castShadow = !p.trans;
-    o.hull.visible = !p.trans;
+    o.hull.visible = !p.trans && !far;
     o.hull.material.userData.u.uTeam.value.set(team[0] * 0.8, team[1] * 0.8, team[2] * 0.8);
     o.hull.material.userData.grow.value = p.grow / ppm;
     o.xray.visible = !p.trans && !p.dead;
@@ -495,7 +504,7 @@ export function drawBattleThree(E, game, S, opts) {
   T.key.position.copy(ctr).addScaledVector(kd, 60); T.key.target.position.copy(ctr);
   T.fill.position.copy(ctr).addScaledVector(rel(GFX.fill.dir), 60); T.fill.target.position.copy(ctr);
   T.key.target.updateMatrixWorld(); T.fill.target.updateMatrixWorld();
-  const shSize = prefs.reduceFx || prefs.shadows === 'off' ? 0 : (T3.shadow[prefs.shadows] || T3.shadow.high) * (E.lite ? T3.soft.shadow : 1);
+  const shSize = prefs.reduceFx || prefs.shadows === 'off' ? 0 : (T3.shadow[prefs.shadows] || T3.shadow.high) * (E.lite ? T3.soft.shadow : 1) * Q.shadow;
   T.key.castShadow = shSize > 0;
   if (shSize && shSize !== T.shadowSize) {
     T.shadowSize = shSize;

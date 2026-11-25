@@ -1,9 +1,10 @@
-// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, «Снизить эффекты», «Снизить движение», shadows, brightness, objects highlight.
+// Settings window (docs/specs/3d.md §3): graphics 3D / 2D / auto, quality (docs/perf.md), «Снизить эффекты», «Снизить движение», shadows, brightness, objects highlight.
 // openSettings(game) — modal (ui/modal.js), values live in gfx/settings.js (localStorage).
 import { t } from '../data/text/index.js';
 import { GFX } from '../data/gfx.js';
 import { gfxPrefs, setGfxPref, gfxMode, gfxBroken, gfxEngine } from '../gfx/settings.js';
 import { hasWebGL2 } from '../gfx/gl.js';
+import { gfxQuality, setQuality } from '../gfx/quality.js';
 import { ROAM } from '../data/world/roam.js';
 import { THEME_IDS, themePrefs, setThemePref } from './theme.js';
 import { setVolume, getVolume, setBusVolume, getBusVolume } from '../audio/sfx.js';
@@ -48,6 +49,10 @@ export function openSettings(game) {
         options: [
           { label: `${t('settings.mode')}: ${modeLabel}`, keep: true, disabled: !can3d, run: () => setGfxPref('mode', MODES[(MODES.indexOf(p.mode) + 1) % MODES.length]) },
           { label: `${t('settings.engine')}: ${t(`settings.engine.${gfxEngine()}`)}${gfxEngine() === 'three' && !game.gfx?.three ? ` (${t('settings.engineNA')})` : ''}`, keep: true, disabled: !can3d, run: () => setGfxPref('engine', gfxEngine() === 'three' ? 'old' : 'three') },
+          { // docs/perf.md: auto -> low -> medium -> high -> auto; auto shows the level it settled on
+            label: `${t('settings.quality')}: ${t(`settings.quality.${p.quality || 'auto'}`)}${(p.quality || 'auto') === 'auto' ? ` (${t(`settings.quality.${gfxQuality()}`)})` : ''}`, keep: true,
+            run: () => { const L = GFX.quality.levels; setQuality(L[(L.indexOf(p.quality || 'auto') + 1) % L.length]); },
+          },
           { label: `${t('settings.reduceFx')}: ${onOff(p.reduceFx)}`, keep: true, run: () => setGfxPref('reduceFx', !p.reduceFx) },
           { label: `${t('settings.physics')}: ${t(`settings.physics.${p.physics || 'normal'}`)}`, keep: true, run: () => { const L = ['off', 'low', 'normal']; setGfxPref('physics', L[(L.indexOf(p.physics || 'normal') + 1) % 3]); } },
           { label: `${t('settings.reduceMotion')}: ${onOff(p.reduceMotion)}`, keep: true, run: () => setGfxPref('reduceMotion', !p.reduceMotion) },

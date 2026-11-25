@@ -14,6 +14,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GFX } from '../data/gfx.js';
 import { softwareGL } from '../gfx/gl.js';
 import { markGfxBroken } from '../gfx/settings.js';
+import { gfxQuality, qualityPreset, sampleFrame } from '../gfx/quality.js';
 import { t } from '../data/text/index.js';
 import { drawBattleThree, dropBattleThree } from './battle.js';
 
@@ -51,7 +52,8 @@ export function createThree(canvas, game) {
         r.outputColorSpace = THREE.SRGBColorSpace;
         r.toneMapping = THREE.NeutralToneMapping; // Khronos PBR Neutral: keeps the brand cyan / magenta (premium-look)
         r.toneMappingExposure = GFX.three.exposure;
-        E.scale = E.soft ? GFX.soft.scale : Math.min(globalThis.devicePixelRatio || 1, GFX.three.maxDpr);
+        E.qLevel = gfxQuality(); E.Q = qualityPreset();
+        E.scale = E.pixelScale();
         r.setPixelRatio(E.scale);
         r.setSize(E.w, E.h, false);
         canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); E.lost = true; E.lostAt = performance.now(); });
@@ -71,7 +73,19 @@ export function createThree(canvas, game) {
       else { canvas.width = w; canvas.height = h; }
     },
     use() { E.used = true; },
+    /** Render scale: software GL — GFX.soft.scale; else devicePixelRatio capped by the quality preset (docs/perf.md). */
+    pixelScale() { return E.soft ? GFX.soft.scale : Math.min(globalThis.devicePixelRatio || 1, E.Q.dpr, GFX.three.maxDpr); },
+    /** Quality level changed (setting / auto tuner): new render scale, post chain rebuilt on the next frame. */
+    syncQuality() {
+      const lv = gfxQuality();
+      if (lv === E.qLevel || !E.renderer) return;
+      E.qLevel = lv; E.Q = qualityPreset();
+      const sc = E.pixelScale();
+      if (sc !== E.scale) { E.scale = sc; E.renderer.setPixelRatio(sc); E.renderer.setSize(E.w, E.h, false); }
+      E.disposePost();
+    },
     endFrame() {
+      sampleFrame(performance.now(), E.used && !E.failed && !!E.renderer);
       if (E.lost) E.ok(); // runs the lost-context timeout
       const show = E.used && !E.failed;
       if (canvas.style.visibility !== (show ? 'visible' : 'hidden')) canvas.style.visibility = show ? 'visible' : 'hidden';
@@ -95,22 +109,28 @@ export function createThree(canvas, game) {
       if (P && P.scene === scene) { P.render.camera = camera; P.gtao.camera = camera; return P; }
       E.disposePost();
       const T3 = GFX.three, r = E.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
-      const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: E.soft ? 0 : T3.msaa });
+      const Q = E.Q, rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: E.soft ? 0 : Math.min(T3.msaa, Q.msaa) });
       const comp = new EffectComposer(r, rt);
       comp.setPixelRatio(E.scale);
       comp.setSize(E.w, E.h);
       const render = new RenderPass(scene, camera);
       const gtao = new GTAOPass(scene, camera, E.w, E.h);
+      if (Q.gtao > 0 && Q.gtao < 1) { // medium: AO buffers at a share of the resolution (the blend samples it filtered)
+        const ss = gtao.setSize.bind(gtao);
+        gtao.setSize = (w, h) => ss(Math.max(1, Math.round(w * Q.gtao)), Math.max(1, Math.round(h * Q.gtao)));
+      }
       gtao.updateGtaoMaterial(T3.ao);
       gtao.blendIntensity = T3.ao.intensity;
       // transparent overlays, particles, outline hulls and x-ray silhouettes stay out of the AO g-buffer
       const ov = gtao._overrideVisibility.bind(gtao);
-      gtao._overrideVisibility = function () { ov(); scene.traverse((o) => { if (o.userData.noAO && o.visible) { o.visible = false; this._visibilityCache.push(o); } }); };
+      // quality without aoUnits: characters stay out too (the g-buffer pass is a full redraw of the scene)
+      const units = !Q.aoUnits;
+      gtao._overrideVisibility = function () { ov(); scene.traverse((o) => { if ((o.userData.noAO || (units && o.userData.unit)) && o.visible) { o.visible = false; this._visibilityCache.push(o); } }); };
       const B = T3.bloom, bloom = new UnrealBloomPass(new THREE.Vector2(E.w, E.h), B.strength, B.radius, B.threshold);
       const out = new OutputPass();
       const grade = new ShaderPass(GradeShader);
-      bloom.enabled = !(E.lite && !T3.soft.bloom);
-      gtao.enabled = !(E.lite && !T3.soft.gtao);
+      bloom.enabled = Q.bloom && !(E.lite && !T3.soft.bloom);
+      gtao.enabled = Q.gtao > 0 && !(E.lite && !T3.soft.gtao);
       for (const p of [render, gtao, bloom, out, grade]) comp.addPass(p);
       E.post = { scene, comp, render, gtao, bloom, grade, setSize: (w, h) => comp.setSize(w, h) };
       return E.post;
@@ -121,7 +141,7 @@ export function createThree(canvas, game) {
       E.post.gtao.dispose?.(); E.post.bloom.dispose?.();
       E.post = null;
     },
-    drawBattle(game2, S, opts) { E.use(); drawBattleThree(E, game2, S, opts); },
+    drawBattle(game2, S, opts) { E.use(); E.syncQuality(); drawBattleThree(E, game2, S, opts); },
     dropBattle(V) { dropBattleThree(E, V); },
   };
   return E;

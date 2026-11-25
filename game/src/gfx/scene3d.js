@@ -32,6 +32,7 @@ import { poseBones, animActive, aimOf, trackWalk } from './anim.js';
 import { buildFx, particleMesh, weatherFx, emitAmbient } from './fx3d.js';
 import { floorTone, floorExtras, scatterCell, wallBlock, buildBackdrop, lampsOf, lampGlow, ambientFx } from './env3d.js';
 import { gfxMode, gfxPrefs, setGfxPref, markGfxBroken, gfxEngine } from './settings.js';
+import { qualityPreset } from './quality.js';
 import { createPost } from './post.js';
 
 const G = GFX.geo;
@@ -631,7 +632,7 @@ function lightVP(Ld, Wd) {
   return m;
 }
 /** Shadow quality: off with «Снизить эффекты» or the setting. */
-const shadowSize = (prefs) => (prefs.reduceFx || prefs.shadows === 'off' ? 0 : GFX.shadow.size[prefs.shadows] || GFX.shadow.size.high);
+const shadowSize = (prefs) => (prefs.reduceFx || prefs.shadows === 'off' ? 0 : (GFX.shadow.size[prefs.shadows] || GFX.shadow.size.high) * qualityPreset().shadow);
 
 export function drawBattle3d(game, S, opts = {}) {
   const X = game.gfx, V = S.v3;
@@ -887,8 +888,9 @@ function renderOld(game, S, F, { inst, groups, shown, A0, b, Wd, prefs, cam, vie
   const bg = keyRGB(GFX.sky[Wd.biome] || GFX.sky.default);
   // post-processing (gfx/post.js): the scene goes into an offscreen target (image + emissive), composited at the end;
   // «Снизить эффекты» or no MRT -> straight to the canvas as before
-  if (!prefs.reduceFx && X.post === undefined) { try { X.post = createPost(gl, { soft: X.soft }); } catch (e) { console.warn('post', e); X.post = null; } }
-  const post = !prefs.reduceFx ? X.post : null;
+  const usePost = !prefs.reduceFx && qualityPreset().oldPost; // quality «low»: no post chain (docs/perf.md)
+  if (usePost && X.post === undefined) { try { X.post = createPost(gl, { soft: X.soft }); } catch (e) { console.warn('post', e); X.post = null; } }
+  const post = usePost ? X.post : null;
   if (post) post.begin(gl.canvas.width, gl.canvas.height, bg);
   else {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

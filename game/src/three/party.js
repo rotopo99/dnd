@@ -37,6 +37,7 @@ const specs = new WeakMap();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wallNow = () => performance.now() / 1000;
 const ZERO = new THREE.Vector3(), CARRY_POS = new THREE.Vector3(...HM.weapon.carry2hPos);
+const SPH = new THREE.Sphere(), TEAM_C = new THREE.Color();
 
 const srgbKey = (k) => { const c = keyRGB(k); return new THREE.Color().setRGB(c[0], c[1], c[2], THREE.SRGBColorSpace); };
 const hashOf = (s) => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h; };
@@ -140,7 +141,12 @@ function build(T, id, R, spec) {
     C.root.traverse((o) => {
       if (!o.isMesh) return;
       o.renderOrder = o.userData.xray ? 1 : 2; // x-ray in the opaque list before the bodies (as the procedural units)
-      if (!o.userData.hull && !o.userData.xray) C.bodies.push(o);
+      if (o.userData.hull || o.userData.xray) return;
+      C.bodies.push(o);
+      o.userData.unit = true; // quality without aoUnits: out of the GTAO g-buffer (three/engine.js)
+      // perf: small parts (face, trims, buckles) do not cast — their shadow lies inside the body's (GFX.three.shadowMinR)
+      if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+      o.userData.caster = o.geometry.boundingSphere.radius >= GFX.three.shadowMinR;
     });
     C.root.visible = false;
     T.scene.add(C.root);
@@ -219,11 +225,19 @@ export function syncParty(T, p, c) {
   if (!p.walking && dt > 0 && R.v < 0.05) R.v = 0;
   R.lx = x; R.lz = z;
   R.k = (R.fixH || p.T.top * p.T.scale) / C.height * R.size; // same height as the template: 2D anchors (bars, bubbles) and picking match
+  if (c.tops) c.tops[id] = Math.max(R.topL, C.height) * R.k; // m over the feet (gfx/scene3d.js unitScreen, three/battle.js pick)
+  // perf: outside the camera frustum (+ margin for the shadow) — not drawn, not animated (bodies are not culled by Three:
+  // the skinned bounding sphere costs a pass over all vertices, the hull / x-ray twins have none)
+  const hh = Math.max(R.topL, C.height) * R.k;
+  SPH.center.set(x, y + hh * 0.5, z); SPH.radius = hh * 0.75 + 1;
+  if (c.frustum && !c.frustum.intersectsSphere(SPH)) { C.root.visible = false; R.lastNow = null; R.lx = null; return true; }
   C.root.position.set(x, y, z);
   C.root.rotation.y = p.a ?? 0;
   C.root.scale.setScalar(R.k);
   C.root.visible = true;
-  if (c.tops) c.tops[id] = Math.max(R.topL, C.height) * R.k; // m over the feet (gfx/scene3d.js unitScreen, three/battle.js pick)
+  // quality (gfx/quality.js): far from the camera focus — no outline, no spring bones; roam crowd — x-ray by the preset
+  const Q = c.Q, far = !!(Q?.near && c.focus && Math.hypot(x - c.focus.x, z - c.focus.z) > Q.near);
+  const xrayOff = Q && !Q.xrayCrowd && p.it.u.team === 'npc';
   animate(R, p, now, dt);
   if (R.W?.carry) { // two-handed carry <-> native shaft (attack_2h)
     const nat = HM.weapon.carry2hNative.includes(C.inst.current()), pv = R.W.pivot, k = Math.min(1, dt * HM.weapon.carryLerp);
@@ -232,7 +246,7 @@ export function syncParty(T, p, c) {
   }
   C.inst.update(dt);
   C.root.updateMatrixWorld(true);
-  stepSprings(C, dt, (HM.physics[c.prefs.physics] ?? 1) * (c.prefs.reduceMotion ? 0.5 : 1));
+  if (!far) stepSprings(C, dt, (HM.physics[c.prefs.physics] ?? 1) * (c.prefs.reduceMotion ? 0.5 : 1));
   // face: emotion of the display state (CINE_FACES), blink as the procedural faces
   const d2 = p.it.d, emo = d2.emoT > 0 && d2.emo ? d2.emo : 'neutral', F = CINE_FACES[emo] || CINE_FACES.neutral;
   const blink = p.dead || d2.down || ((now * 0.37 + (p.st.seed || 0) * 7.3) % 1) < 0.045;
@@ -243,15 +257,15 @@ export function syncParty(T, p, c) {
     m.opacity = p.alpha; m.transparent = p.trans; m.depthWrite = !p.trans;
     m.emissive.copy(m.userData.emissive0); if (fl > 0) m.emissive.addScalar(fl);
   }
-  for (const o of C.bodies) o.castShadow = !p.trans;
+  for (const o of C.bodies) o.castShadow = !p.trans && o.userData.caster !== false;
   const tm = p.team;
   // QA v42 L2: roam NPCs keep a near-dark hull — the team yellow over a thick hull turned the crowd into gold silhouettes
-  R.hull.color.set(HM.outline).lerp(new THREE.Color().setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace), p.it.u.team === 'npc' ? HM.outlineTeamNpc : HM.outlineTeam);
+  R.hull.color.set(HM.outline).lerp(TEAM_C.setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace), p.it.u.team === 'npc' ? HM.outlineTeamNpc : HM.outlineTeam);
   if (R.rim) R.hull.color.lerp(R.rim.c, R.rim.k);
   R.hull.userData.grow.value = p.grow / c.ppm / R.k * (R.rim?.grow || 1);
   R.W?.hullMat?.color.copy(R.hull.color);
   R.xray.color.setRGB(tm[0], tm[1], tm[2], THREE.SRGBColorSpace);
-  for (const o of C.extra) o.visible = o.userData.hull ? !p.trans : !p.trans && !p.dead;
+  for (const o of C.extra) o.visible = o.userData.hull ? !p.trans && !far : !p.trans && !p.dead && !xrayOff;
   return true;
 }
 
