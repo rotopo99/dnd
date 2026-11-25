@@ -13,7 +13,7 @@
 //   stepSprings(C, dt, k)            spring chains after the mixer (k 0 — rest pose)
 //   disposeCharacter(C)              per-instance materials + mixer (geometry / textures stay in the GLB cache)
 import * as THREE from 'three';
-import { instanceGLB, loadGLB, twinGeometry } from './models.js';
+import { instanceGLB, loadGLB, twinGeometry, bodyGeometry, atlasOf } from './models.js';
 import { HERO_MODELS as HM } from '../data/hero-models.js';
 import { heroLook3d } from '../ui/hero-avatar.js';
 import { outfitOf, skinRamp, hairRamp, eyeKey } from '../ui/look-data.js';
@@ -163,6 +163,7 @@ function lumTint(m, gain) {
 #endif`);
   };
   m.customProgramCacheKey = () => `lumTint${gain}`;
+  m.userData.lum = gain; // body merge: slot mode
 }
 
 /**
@@ -198,13 +199,107 @@ export function toonify(C, o = {}) {
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(conv) : conv(mesh.material);
     mesh.castShadow = !L?.opacity; mesh.receiveShadow = true;
+  }
+  // o.faceSkin [r, g, b] (linear Skin colour the face atlas is painted for): the face follows the Skin tint (mutant green)
+  const sk = o.faceSkin && C.mats.find((m) => m.name === 'Skin'), fr = o.faceSkin;
+  if (sk) for (const f of C.faces) f.color.setRGB(Math.min(1, sk.color.r / fr[0]), Math.min(1, sk.color.g / fr[1]), Math.min(1, sk.color.b / fr[2]));
+  C.root.updateMatrixWorld(true);
+  if (HM.mergeBodies) mergeBodies(C, meshes, L);
+  meshes.length = 0;
+  C.root.traverse((m) => { if (m.isMesh) meshes.push(m); });
+  for (const mesh of meshes) {
     if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) C.morph.push(mesh);
     if (mesh.isSkinnedMesh && !L?.opacity && (o.outline || o.xray)) skinned.push(mesh);
   }
   if (skinned.length) twins(C, skinned, o);
-  // o.faceSkin [r, g, b] (linear Skin colour the face atlas is painted for): the face follows the Skin tint (mutant green)
-  const sk = o.faceSkin && C.mats.find((m) => m.name === 'Skin'), fr = o.faceSkin;
-  if (sk) for (const f of C.faces) f.color.setRGB(Math.min(1, sk.color.r / fr[0]), Math.min(1, sk.color.g / fr[1]), Math.min(1, sk.color.b / fr[2]));
+}
+
+const SLOT_MAX = 48;
+/** Merge group of a skinned sub-mesh: same world matrix (glTF multi-primitive meshes sit in sibling groups) and bind matrix;
+ *  under a node the clips animate — its own parent only. Needs C.root.updateMatrixWorld. */
+function groupKey(C, m) {
+  if (!C.animNodes) { C.animNodes = new Set(); for (const c of C.inst.clips.values()) for (const t of c.tracks) C.animNodes.add(t.name.split('.')[0]); }
+  let own = '';
+  for (let p = m.parent; p && p !== C.root; p = p.parent) if (C.animNodes.has(p.name) || C.animNodes.has(p.uuid)) { own = m.parent.uuid; break; }
+  return `${own}|${m.matrixWorld.elements.map((v) => v.toFixed(5))}|${m.bindMatrix.elements.map((v) => v.toFixed(5))}`;
+}
+
+/**
+ * perf pass 3 (docs/perf.md): the toon sub-meshes of one skeleton binding -> ONE skinned mesh (models.js bodyGeometry) with
+ * a material array [body, Face]: 2 draw calls instead of 12-25. Body material (bodyMaterial): per-vertex slot -> uniform
+ * arrays of the source materials (colour with the tints, emissive, uv rect in the texture atlas models.js atlasOf, mode:
+ * no map / map x colour / luminance x gain x colour as lumTint). Face keeps its own material (atlas swap, faceSkin) in draw group 1.
+ * Groups that cannot merge (bind poses disagree, image not decoded, atlas too big) keep their sub-meshes.
+ */
+function mergeBodies(C, meshes, L) {
+  const groups = new Map();
+  for (const m of meshes) {
+    if (!m.isSkinnedMesh || Array.isArray(m.material) || !m.parent) continue;
+    const k = groupKey(C, m);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  }
+  for (const list of groups.values()) {
+    const face = list.find((m) => m.material.name === 'Face'), rest = list.filter((m) => m.material.name !== 'Face');
+    if (rest.length < 2 || rest.length > SLOT_MAX) continue;
+    const order = face ? [...rest, face] : rest;
+    const T = bodyGeometry(order, face ? 1 : 0);
+    const A = T && atlasOf(rest.map((m) => m.material.map));
+    if (!A) continue;
+    const mats = rest.map((m) => m.material), mat = bodyMaterial(mats, A, L);
+    const byName = new Map();
+    for (const m of order) for (const b of m.skeleton.bones) if (!byName.has(b.name)) byName.set(b.name, b);
+    const src = list[0];
+    const b = new THREE.SkinnedMesh(T.geo, face ? [mat, face.material] : mat);
+    b.name = 'Body+';
+    b.bind(new THREE.Skeleton(T.bones.map((n) => byName.get(n)), T.inv.map((x) => x.clone())), src.bindMatrix);
+    b.position.copy(src.position); b.quaternion.copy(src.quaternion); b.scale.copy(src.scale);
+    b.frustumCulled = false; b.castShadow = src.castShadow; b.receiveShadow = true;
+    for (const m of order) for (const [n, i] of Object.entries(m.morphTargetDictionary || {})) b.morphTargetInfluences[b.morphTargetDictionary[n]] = m.morphTargetInfluences[i];
+    src.parent.add(b);
+    for (const m of order) m.parent.remove(m);
+    C.mats = C.mats.filter((m) => !mats.includes(m));
+    for (const m of mats) m.dispose();
+    C.mats.push(mat);
+  }
+}
+
+/** One toon material over merged sub-meshes (mergeBodies): its own color / emissive / opacity stay the knobs of the callers
+ *  (lift gain, hit flash, alpha) applied over every slot; userData.slots [{name, color, emissive}] — the live slot colours. */
+function bodyMaterial(mats, A, L) {
+  const n = Math.ceil(mats.length / 8) * 8;
+  const col = [], em = [], uv = [], mode = [];
+  for (let i = 0; i < n; i++) {
+    const m = mats[i];
+    col.push(m ? m.color.clone() : new THREE.Color(1, 1, 1));
+    em.push(m ? m.emissive.clone() : new THREE.Color(0, 0, 0));
+    uv.push(A.rects[i]?.clone() || new THREE.Vector4());
+    mode.push(m?.map ? m.userData.lum || 0 : -1);
+  }
+  const t = new THREE.MeshToonMaterial({ name: 'Body', color: 0xffffff, map: A.tex, gradientMap: toonRamp(), side: THREE.DoubleSide,
+    transparent: !!L?.opacity, opacity: L?.opacity ?? 1, emissive: 0 });
+  const U = { uSlotCol: { value: col }, uSlotEm: { value: em }, uSlotUV: { value: uv }, uSlotMode: { value: mode } };
+  const V = 'varying vec3 vSlotCol, vSlotEm;\nvarying float vSlotMode;\nvarying vec2 vSlotUv;\nvarying vec4 vSlotRect;';
+  t.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, U);
+    s.vertexShader = s.vertexShader.replace('#include <common>', `#include <common>\nattribute float slot;\nuniform vec3 uSlotCol[${n}], uSlotEm[${n}];\nuniform vec4 uSlotUV[${n}];\nuniform float uSlotMode[${n}];\n${V}`)
+      .replace('#include <uv_vertex>', `#include <uv_vertex>
+  { int si = int( slot + 0.5 ); vSlotCol = uSlotCol[si]; vSlotEm = uSlotEm[si]; vSlotMode = uSlotMode[si];
+    vSlotUv = uv; vSlotRect = uSlotUV[si]; }`);
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>\n${V}`)
+      .replace('#include <map_fragment>', `diffuseColor.rgb *= vSlotCol;
+#ifdef USE_MAP
+  // repeat inside the atlas cell (glTF uv tile up to +-15); gradients of the unwrapped uv: no mip seam at the wrap
+  vec4 sampledDiffuseColor = textureGrad( map, vSlotRect.xy + fract( vSlotUv ) * vSlotRect.zw, dFdx( vSlotUv ) * vSlotRect.zw, dFdy( vSlotUv ) * vSlotRect.zw );
+  vec3 slotTex = vSlotMode > 0.0 ? vec3( dot( sampledDiffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) * vSlotMode ) : sampledDiffuseColor.rgb;
+  if ( vSlotMode > -0.5 ) diffuseColor.rgb *= slotTex;
+#endif`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vSlotEm;');
+  };
+  t.customProgramCacheKey = () => `bodySlots${n}`;
+  t.userData.emissive0 = t.emissive.clone();
+  t.userData.slots = mats.map((m, i) => ({ name: m.name, color: col[i], emissive: em[i] }));
+  return t;
 }
 
 /**
@@ -225,7 +320,7 @@ function twins(C, skinned, o) {
   };
   const groups = new Map();
   for (const m of skinned) {
-    const k = `${m.parent.uuid}|${m.matrix.elements.map((v) => v.toFixed(5))}|${m.bindMatrix.elements.map((v) => v.toFixed(5))}`;
+    const k = groupKey(C, m);
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(m);
   }

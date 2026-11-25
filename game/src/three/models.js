@@ -6,7 +6,10 @@
 // Users: three/character.js (assembly shared by three/cinema.js and three/party.js).
 //   loadGLB(url)                     -> Promise<gltf> (cached; a failed load is dropped from the cache)
 //   instanceGLB(url)                 -> Promise<Inst> {root, mixer, clips, play(name, o), update(dt), attach(gltf), dispose()}
-//   clearModelCache()                dispose cached geometries / materials / textures (context loss, leaving 3D)
+//   twinGeometry(meshes)             -> merged skinned geometry of an outline / x-ray twin (cached) | null
+//   bodyGeometry(meshes, faces)      -> the same + uv, slot attribute, face draw group (merged toon body, cached) | null
+//   atlasOf(maps)                    -> {tex, rects} base colour textures in one canvas atlas (cached) | null
+//   clearModelCache()                dispose cached geometries / materials / textures / atlases (context loss, leaving 3D)
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -94,19 +97,17 @@ export async function instanceGLB(url) {
   return I;
 }
 
-// ---- merged twin geometry (perf, docs/perf.md): the outline hull / x-ray of a character is ONE skinned mesh over all its
-// skinned sub-meshes (same material for all of them) instead of a twin per sub-mesh. Only what the twins need: position,
-// normal, skin (indices into the union bone list `bones` by name), morph targets by name (union `names`, missing — zero).
+// ---- merged skinned geometry (perf, docs/perf.md): ONE skinned mesh over a character's skinned sub-meshes.
+// twinGeometry — outline hull / x-ray (one material): position, normal, skin (indices into the union bone list `bones` by
+// name), morph targets by name (union `names`, missing — zero). bodyGeometry (pass 3) — the toon body: the same + uv and a
+// per-vertex `slot` (sub-mesh index -> material slot of three/character.js bodyMaterial); the last `faces` meshes go to
+// draw group 1 (face atlas material), the rest to group 0; a twin over it uses the whole range.
 const twinCache = new Map();
 const TWIN_MAX = 48;
 const f32 = (a, n, k) => { const o = new Float32Array(n * k); if (a) for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) o[i * k + j] = a.getComponent(i, j); return new THREE.BufferAttribute(o, k); };
 
-/**
- * Twin geometry of skinned meshes sharing the parent / transform / bind matrix -> {geo, bones: [name], inv: [Matrix4]} | null
- * (cached by the source geometries + skeletons; null when the bind poses disagree — the caller keeps per-mesh twins).
- */
-export function twinGeometry(meshes) {
-  const key = meshes.map((m) => `${m.geometry.uuid}:${m.skeleton.bones.map((b) => b.name).join(',')}`).join('|');
+function mergeSkinned(meshes, body, faces) {
+  const key = `${body ? `b${faces}` : 't'}|${meshes.map((m) => `${m.geometry.uuid}:${m.skeleton.bones.map((b) => b.name).join(',')}`).join('|')}`;
   let T = twinCache.get(key);
   if (T !== undefined) { twinCache.delete(key); twinCache.set(key, T); return T; }
   const bones = [], inv = [], at = new Map(), names = [];
@@ -123,7 +124,8 @@ export function twinGeometry(meshes) {
       for (const n of Object.keys(m.morphTargetDictionary || {})) if (!names.includes(n)) names.push(n);
     }
     const mn = meshes.some((m) => m.geometry.morphAttributes.normal);
-    const parts = meshes.map((m) => {
+    let idx = 0, faceStart = 0;
+    const parts = meshes.map((m, k) => {
       const s = m.geometry, A = s.attributes, n = A.position.count, g = new THREE.BufferGeometry();
       g.setAttribute('position', f32(A.position, n, 3));
       g.setAttribute('normal', f32(A.normal, n, 3));
@@ -131,18 +133,27 @@ export function twinGeometry(meshes) {
       for (let i = 0; i < n; i++) for (let j = 0; j < 4; j++) si[i * 4 + j] = map[A.skinIndex.getComponent(i, j)] ?? 0;
       g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
       g.setAttribute('skinWeight', f32(A.skinWeight, n, 4));
+      if (body) {
+        g.setAttribute('uv', f32(A.uv, n, 2));
+        g.setAttribute('slot', new THREE.BufferAttribute(new Uint8Array(n).fill(k), 1));
+      }
       if (s.index) g.setIndex(new THREE.BufferAttribute(Uint32Array.from(s.index.array), 1));
       else g.setIndex(new THREE.BufferAttribute(Uint32Array.from({ length: n }, (_, i) => i), 1));
+      if (k === meshes.length - faces) faceStart = idx;
+      idx += g.index.count;
       if (names.length) {
         const d = m.morphTargetDictionary || {}, M = s.morphAttributes;
         g.morphTargetsRelative = true;
-        g.morphAttributes.position = names.map((k) => { const a = f32(d[k] != null ? M.position?.[d[k]] : null, n, 3); a.name = k; return a; });
-        if (mn) g.morphAttributes.normal = names.map((k) => { const a = f32(d[k] != null ? M.normal?.[d[k]] : null, n, 3); a.name = k; return a; });
+        g.morphAttributes.position = names.map((q) => { const a = f32(d[q] != null ? M.position?.[d[q]] : null, n, 3); a.name = q; return a; });
+        if (mn) g.morphAttributes.normal = names.map((q) => { const a = f32(d[q] != null ? M.normal?.[d[q]] : null, n, 3); a.name = q; return a; });
       }
       return g;
     });
     const geo = mergeGeometries(parts, false);
     for (const g of parts) g.dispose();
+    // mergeGeometries drops the attribute names: restore them (Mesh.updateMorphTargets builds the dictionary by name)
+    if (geo) for (const k in geo.morphAttributes) geo.morphAttributes[k].forEach((at, i) => { at.name = names[i]; });
+    if (geo && body && faces) { geo.addGroup(0, faceStart, 0); geo.addGroup(faceStart, idx - faceStart, 1); }
     if (geo) T = { geo, bones, inv, names };
   }
   twinCache.set(key, T);
@@ -150,9 +161,73 @@ export function twinGeometry(meshes) {
   return T;
 }
 
+/**
+ * Twin geometry of skinned meshes sharing the parent / transform / bind matrix -> {geo, bones: [name], inv: [Matrix4], names} | null
+ * (cached by the source geometries + skeletons; null when the bind poses disagree — the caller keeps per-mesh twins).
+ */
+export const twinGeometry = (meshes) => mergeSkinned(meshes, false, 0);
+/** Body geometry (+ uv, slot = index in `meshes`; the last `faces` meshes — draw group 1) -> as twinGeometry | null. */
+export const bodyGeometry = (meshes, faces = 0) => mergeSkinned(meshes, true, faces);
+
+// ---- texture atlas of a merged body (pass 3): the sub-mesh base colour textures in one canvas texture. Every texture keeps
+// its resolution and gets a wrap-around gutter (1/16 of its size, the source textures repeat) against mip bleeding; cells on
+// a grid of the smallest cell, first fit. rects[i] [u0, v0, su, sv] (glTF uv, flipY false) of maps[i]; null without a map.
+const atlasCache = new Map();
+const ATLAS_MAX = 48, ATLAS_W = 1024, ATLAS_LIM = 4096;
+const gutter = (s) => Math.max(4, s >> 4);
+
+/** Atlas of base colour textures -> {tex: CanvasTexture | null, rects: [Vector4 | null]} | null (no image / too big). */
+export function atlasOf(maps) {
+  const key = maps.map((t) => t?.uuid || '-').join(',');
+  let A = atlasCache.get(key);
+  if (A !== undefined) { atlasCache.delete(key); atlasCache.set(key, A); return A; }
+  A = null;
+  ok: {
+    const uniq = [...new Set(maps.filter(Boolean))];
+    if (!uniq.length) { A = { tex: null, rects: maps.map(() => null) }; break ok; }
+    const dim = uniq.map((t) => { const im = t.image; return { t, w: im?.width || 0, h: im?.height || 0 }; });
+    if (dim.some((d) => !d.w || !d.h)) break ok;
+    const U = Math.min(...dim.map((d) => Math.min(d.w + 2 * gutter(d.w), d.h + 2 * gutter(d.h))));
+    for (const d of dim) { d.gx = gutter(d.w); d.gy = gutter(d.h); d.kw = Math.ceil((d.w + 2 * d.gx) / U); d.kh = Math.ceil((d.h + 2 * d.gy) / U); }
+    const GW = Math.max(Math.floor(ATLAS_W / U), ...dim.map((d) => d.kw));
+    const grid = []; // rows of booleans
+    const free = (r, c, d) => { for (let y = r; y < r + d.kh; y++) for (let x = c; x < c + d.kw; x++) if (grid[y]?.[x]) return false; return true; };
+    for (const d of [...dim].sort((a, b) => b.kw * b.kh - a.kw * a.kh)) {
+      place: for (let r = 0; ; r++) for (let c = 0; c + d.kw <= GW; c++) {
+        if (!free(r, c, d)) continue;
+        for (let y = r; y < r + d.kh; y++) { grid[y] ||= []; for (let x = c; x < c + d.kw; x++) grid[y][x] = true; }
+        d.x = c * U; d.y = r * U;
+        break place;
+      }
+    }
+    const CW = GW * U, CH = grid.length * U;
+    if (CW > ATLAS_LIM || CH > ATLAS_LIM) break ok;
+    const cv = document.createElement('canvas');
+    cv.width = CW; cv.height = CH;
+    const g = cv.getContext('2d');
+    const at = new Map();
+    for (const d of dim) {
+      g.save();
+      g.beginPath(); g.rect(d.x, d.y, d.w + 2 * d.gx, d.h + 2 * d.gy); g.clip();
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) g.drawImage(d.t.image, d.x + d.gx + i * d.w, d.y + d.gy + j * d.h, d.w, d.h);
+      g.restore();
+      at.set(d.t, new THREE.Vector4((d.x + d.gx) / CW, (d.y + d.gy) / CH, d.w / CW, d.h / CH));
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = uniq[0].anisotropy;
+    A = { tex, rects: maps.map((t) => (t ? at.get(t) : null)) };
+  }
+  atlasCache.set(key, A);
+  if (atlasCache.size > ATLAS_MAX) { const [k0, a0] = atlasCache.entries().next().value; atlasCache.delete(k0); a0?.tex?.dispose(); }
+  return A;
+}
+
 export function clearModelCache() {
   for (const t of twinCache.values()) t?.geo.dispose();
   twinCache.clear();
+  for (const a of atlasCache.values()) a?.tex?.dispose();
+  atlasCache.clear();
   for (const p of cache.values()) p.then((g) => g.scene.traverse((o) => {
     if (!o.isMesh) return;
     o.geometry.dispose();

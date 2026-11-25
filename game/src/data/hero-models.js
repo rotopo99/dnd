@@ -18,6 +18,7 @@ export const HERO_MODELS = {
   shape: { bust: ['bust', 1], hips: ['hips', 1], shoulders: ['shoulders', 1], height: ['height', 1] },
   build: { lean: -1, normal: 0, sturdy: 1 },
   // tints: the texture is turned to luminance x palette colour x gain (gain ~ 1 / mean luminance of the texture)
+  mergeBodies: true, // perf pass 3 (docs/perf.md): toon sub-meshes of a character -> one mesh + texture atlas (three/character.js mergeBodies)
   tint: { hair: /^Hair/, hairGain: 12, cloth: /(Main|Suit|Shirt)$/, clothGain: 5, coat: /^(ApronCloth|VestPlate|UshankaTop|RagsScarf)$/, coatGain: 4, pants: /^(fieldPants|RagsShorts)$/, pantsGain: 4 },
   // battle action (gfx/anim.js act kinds) -> clip; the clip is sped up to the action length within clipSpeed
   clip: { swing: 'attack_melee', shoot: 'attack_shoot', cast: 'cast', throw: 'attack_melee', use: 'cast' },
