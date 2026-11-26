@@ -600,7 +600,13 @@ export function createWorldMapScene() {
   }
 
   /** Node labels: priority order, candidates below / above / right / left; skipped on overlap (forced — below anyway). */
+        // leader-line candidates: diagonals and a second ring further out
+        { x: x + half + 4, y: y + half + 3, lead: 1 }, { x: x - half - 4 - w, y: y + half + 3, lead: 1 },
+        { x: x + half + 4, y: y - half - 3 - h, lead: 1 }, { x: x - half - 4 - w, y: y - half - 3 - h, lead: 1 },
+        { x: x - w / 2, y: y + half + 3 + h + 6, lead: 1 }, { x: x - w / 2, y: y - half - 3 - 2 * h - 6, lead: 1 },
+        { x: x + half + 12, y: y + half + 3 + h / 2, lead: 1 }, { x: x - half - 12 - w, y: y + half + 3 + h / 2, lead: 1 },
   function layoutLabels(ctx, sv, order, half, z, boxes) {
+      const over = (r) => [...placed, ...boxes.filter((b) => b !== own && !(b.x === own.x && b.y === own.y))].reduce((a, q) => a + (hit(q, r) ? Math.min(q.x + q.w, r.x + r.w) - Math.max(q.x, r.x) : 0), 0);
     const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     const out = [], placed = [];
     for (const id of order) {
@@ -611,18 +617,22 @@ export function createWorldMapScene() {
       const { x, y } = nodePos(id);
       const font = LABEL_FONT[l.tier] || '12px monospace';
       ctx.font = font;
-      const name = fit(ctx, l.name, 180, font);
-      const w = ctx.measureText(name).width + 6, h = 16;
-      const own = { x: x - half - 2, y: y - half - 2, w: half * 2 + 4, h: half * 2 + 4 };
+      const h = 16, own = { x: x - half - 2, y: y - half - 2, w: half * 2 + 4, h: half * 2 + 4 };
+      let name, rect;
+      for (const maxW of [180, 96]) { // crowded: retry with a shorter (ellipsis) name before forcing an overlap
+      name = fit(ctx, l.name, maxW, font);
+      const w = ctx.measureText(name).width + 6;
       const cands = [
         { x: x - w / 2, y: y + half + 3 }, { x: x - w / 2, y: y - half - 3 - h },
         { x: x + half + 5, y: y - h / 2 }, { x: x - half - 5 - w, y: y - h / 2 },
       ].map((c) => ({ ...c, w, h }));
       const free = (r) => !placed.some((q) => hit(q, r)) && !boxes.some((b) => b !== own && !(b.x === own.x && b.y === own.y) && hit(b, r));
-      const rect = cands.find(free) || (force ? cands[0] : null);
+      rect = cands.find(free) || (maxW === 96 && force ? cands.reduce((m, c) => (over(c) < over(m) ? c : m), cands[0]) : null);
+      if (rect) break;
+      }
       if (!rect) continue;
       placed.push(rect);
-      out.push({ rect, name, font, col: l.tier === 'capital' ? C.a : sv.visited.includes(id) ? C['5'] : C['4'] });
+      out.push({ rect, name, lead: rect.lead ? { x, y } : null, font, col: l.tier === 'capital' ? C.a : sv.visited.includes(id) ? C['5'] : C['4'] });
     }
     return out;
   }
@@ -663,9 +673,14 @@ export function createWorldMapScene() {
     const { shown: qt, hidden: qHidden } = questMarks(sv, ids);
     // QA v49 #19: label layout first — node boxes block labels; region names go around them
     const boxes = ids.map((id) => { const { x, y } = nodePos(id); return { x: x - half - 2, y: y - half - 2, w: half * 2 + 4, h: half * 2 + 4 }; });
-    const labels = layoutLabels(ctx, sv, order, half, z, boxes);
+    const hp0 = nodePos(sv.location); // the hero marker stands over its node: labels keep clear of it
+    const labels = layoutLabels(ctx, sv, order, half, z, [...boxes, { x: hp0.x - 12, y: hp0.y - half - 24, w: 24, h: 24 }]);
     if (z < 2.6) drawRegionNames(ctx, ids, [...boxes, ...labels.map((L) => L.rect)]);
     for (const id of [...order].reverse()) {
+      if (L.lead) { // leader line from the node to the displaced label
+        const r = L.rect, ex = Math.max(r.x, Math.min(L.lead.x, r.x + r.w)), ey = Math.max(r.y, Math.min(L.lead.y, r.y + r.h));
+        ctx.strokeStyle = C['3']; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L.lead.x, L.lead.y); ctx.lineTo(ex, ey); ctx.stroke();
+      }
       const l = LOCATIONS[id];
       const { x, y } = nodePos(id);
       if (x < -20 || y < S.area.y - 20 || x > S.area.x + S.area.w + 20 || y > S.area.y + S.area.h + 20) continue;
