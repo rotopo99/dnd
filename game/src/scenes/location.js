@@ -219,8 +219,9 @@ export function createLocationScene(rawId, opts = {}) {
       const hl = stageHighlights(sv, s.stage);
       const evidence = clues.length ? [{ text: clues.some((f) => sv.flags[f]) ? tf('accuse.clues', { list: clues.filter((f) => sv.flags[f]).map(clueName).filter(Boolean).join(', ') }) : t('accuse.noClues'), color: 'f' }] : [];
       // QA v44 M1: a scene waiting in the queue (c11 at mq4-eve/twist) plays first — the fallback buttons cannot skip it
-      return { label: `${t('loc.decide')}: ${q.name}`, sub: s.gate || s.stage.text, run: (g) => cineInterrupt(g, g.scene, { queueOnly: true }) || g.openModal({
-        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...stageNotes(sv, s.stage, s.qid), ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
+      // QA v56 #3: sub-goals of one stage (`all`) are told apart by their own label / desc
+      return { label: `${t('loc.decide')}: ${s.choice.label || q.name}`, sub: s.gate || s.choice.desc || s.stage.text, run: (g) => cineInterrupt(g, g.scene, { queueOnly: true }) || g.openModal({
+        title: q.name, width: 960, lines: [{ text: s.stage.text }, ...(s.choice.desc ? [{ text: s.choice.desc }] : []), ...stageNotes(sv, s.stage, s.qid), ...evidence, ...(s.gate ? [{ text: s.gate, color: 'c' }] : [])],
         options: [...opts.map((o) => {
           const ok = avail.includes(o) && (!o.requires || requires(g, o.requires));
           const miss = (o.requires?.flags || []).filter((f) => !sv.flags[f]).map(clueName).filter(Boolean);

@@ -124,8 +124,8 @@ export const QUESTS_WAVE5 = [
     // ложный след: без улик отряд идёт к пиратам с кулаками
     st('scene-fail', T('w5.crown.clue.3'), battle('enc-w5-crown', 'raytsentr', 'reveal'), 'reveal'),
     st('trail', J('w5.crown.trail.pirates.1', 'w5.crown.trail.pirates.2'), choice([
-      opt('talk', T('w5.crown.obj.trail'), { ...check(['persuasion', 'deception'], 14, 'trail-fight'), location: 'raytsentr' }, 'reveal'),
-      opt('fight', `${T('w5.crown.obj.trail')} ⚔`, battle('enc-w5-crown', 'raytsentr'), 'reveal'),
+      opt('talk', T('w5.crown.trail.talk'), { ...check(['persuasion', 'deception'], 14, 'trail-fight'), location: 'raytsentr' }, 'reveal'),
+      opt('fight', `${T('w5.crown.trail.fight')} ⚔`, battle('enc-w5-crown', 'raytsentr'), 'reveal'),
     ], { location: 'raytsentr' }), 'reveal'),
     st('trail-fight', T('w5.crown.pirates.fail'), battle('enc-w5-crown', 'raytsentr', 'reveal'), 'reveal'),
     st('reveal', J('w5.crown.grosh.1', 'w5.crown.grosh.2', 'w5.crown.grosh.3', 'w5.crown.grosh.4'), choice([
@@ -153,11 +153,11 @@ export const QUESTS_WAVE5 = [
       opt('handed', T('w5.recruit.handed'), check(['athletics', 'intimidation'], 14, 'bridge-fight'), 'back',
         { effects: { flags: ['recruit-handed'], text: T('w5.recruit.handed.ok') } }),
       opt('lost', T('w5.recruit.lost'), null, 'back', { effects: { flags: ['recruit-lost'], text: T('w5.recruit.lost.ok') } }),
-      opt('killed', T('w5.recruit.killed'), battle('enc-w5-bridge', 'dodze'), 'back',
+      opt('killed', T('w5.recruit.killed'), battle('enc-w5-bridge', 'slavotech'), 'back',
         { effects: { flags: ['recruit-dead'], deeds: ['kill-surrendered'], text: T('w5.recruit.killed.ok') } }),
-    ]), 'back'),
+    ], { location: 'slavotech' }), 'back'), // QA v56 #4: the bridge is on the road out of Славотеч (spec §1.4: on the way)
     // слово / сила не сработали: культисты атакуют; после боя — тащить к Хану или отпустить
-    st('bridge-fight', T('w5.recruit.handed.fail'), battle('enc-w5-bridge', 'dodze', 'fled'), 'drag'),
+    st('bridge-fight', T('w5.recruit.handed.fail'), battle('enc-w5-bridge', 'slavotech', 'fled'), 'drag'),
     st('drag', T('w5.recruit.obj.done'), choice([
       opt('handed', T('w5.recruit.handed'), null, 'back', { effects: { flags: ['recruit-handed'], text: T('w5.recruit.handed.ok') } }),
       opt('lost', T('w5.recruit.lost'), null, 'back', { effects: { flags: ['recruit-lost'], text: T('w5.recruit.lost.ok') } }),
@@ -242,11 +242,11 @@ export const QUESTS_WAVE5 = [
   Q('w5-schedule', 'schedule', 'aztun', 'tekhonki', R.levels.schedule, [
     st('forecast', J('w5.schedule.ask.1', 'w5.schedule.ask.2', 'w5.schedule.forecast.radio'), talk('aztun', 'ancient-bunker'), 'fieldwork'),
     st('fieldwork', head('w5.schedule.obj.fieldwork'), all([1, 2, 3].map((n) => ({
-      kind: 'choice', location: 'svoboda', doneFlag: `w5-node-${n}`, desc: T(`w5.schedule.node.${n}`), options: [
+      kind: 'choice', location: 'svoboda', doneFlag: `w5-node-${n}`, label: T(`w5.schedule.node.label.${n}`), desc: T(`w5.schedule.node.${n}`), options: [
         opt(`fix-${n}`, T('w5.schedule.node.hint'), check(['tech', 'proxy'], 14, `fight-${n}`, { easeBy: [{ flag: 'disp-off', n: -2 }] }), null,
           { effects: { flags: [`w5-node-${n}`, 'w5-sched-tech'], text: T('w5.schedule.node.ok') } }),
         opt(`fight-${n}`, T('w5.schedule.node.fail'), battle('enc-w5-storm', 'svoboda'), null, { effects: { flags: [`w5-node-${n}`] } }),
-      ] }))), 'storm'),
+      ] }))), 'storm', { notes: [{ text: T('w5.schedule.node.noDisp'), requires: { flags: ['disp-off'] } }] }), // QA v56 #3: only without the Dispatcher
     // c13 «Расписание» играет на входе (cine-hooks: svoboda -> stage:w5-schedule/storm); без сцены — тот же выбор кнопками
     st('storm', T('w5.schedule.obj.storm'), choice([
       opt('divert', C13_OPT('divert'), check(['tech', 'proxy'], 15, 'storm-miss'), 'back', { effects: { flags: ['storm-diverted', 'proxy-calmed'] } }),

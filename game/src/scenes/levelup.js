@@ -130,10 +130,15 @@ export function openAsi(game, level, onDone, onCancel = onDone, opts = {}) {
     saveGame(sv);
     onDone?.(g);
   };
+  // QA v56 #7: a capped stat says why inline (no «20 → 20» that looks pickable); +2 with no stat left is greyed too
+  const capOf = (k, n) => u.stats[k] + n > ASI_STAT_MAX;
   const statOpt = (k, n, run) => {
-    const capped = u.stats[k] + n > ASI_STAT_MAX;
-    return { label: `${statName(k)} ${u.stats[k]} → ${Math.min(ASI_STAT_MAX, u.stats[k] + n)}`, disabled: capped, reason: t('lvl.capped'), run };
+    const capped = capOf(k, n);
+    const why = u.stats[k] >= ASI_STAT_MAX ? t('lvl.capped') : tf('lvl.cappedBy', { n: ASI_STAT_MAX });
+    return capped ? { label: `${statName(k)} ${u.stats[k]}`, sub: why, disabled: true, reason: why, run }
+      : { label: `${statName(k)} ${u.stats[k]} → ${u.stats[k] + n}`, run };
   };
+  const plus2Left = STATS.some((k) => !capOf(k, 2));
   const back = (g) => openAsi(g, level, onDone, onCancel, opts);
   // the same talent window for the hero and companions (panel of details, requirements by the member's own build)
   const talentOpt = { label: t('lvl.talent'), run: (g) => openTalentPick(g, (g2, id) => apply(g2, { talent: id }), back, { key: p ? p.npc : 'hero' }) };
@@ -141,7 +146,7 @@ export function openAsi(game, level, onDone, onCancel = onDone, opts = {}) {
     title: p ? tf('comp.asiTitle', { name: NPCS[p.npc].name, n: level }) : tf('lvl.asiTitle', { n: level }), width: 820,
     lines: [{ text: t('lvl.asiText'), color: '4' }],
     options: [
-      { label: t('lvl.plus2'), run: (g) => openP(g, { title: t('lvl.plus2'), options: STATS.map((k) => statOpt(k, 2, (g2) => apply(g2, { stats: { [k]: 2 } }))), onCancel: back }) },
+      { label: t('lvl.plus2'), ...(plus2Left ? {} : { disabled: true, sub: t('lvl.plus2None'), reason: t('lvl.plus2None') }), run: (g) => openP(g, { title: t('lvl.plus2'), options: STATS.map((k) => statOpt(k, 2, (g2) => apply(g2, { stats: { [k]: 2 } }))), onCancel: back }) },
       { label: t('lvl.plus11'), run: (g) => openP(g, {
         title: t('lvl.plus11First'), onCancel: back,
         options: STATS.map((k) => statOpt(k, 1, (g2) => openP(g2, {

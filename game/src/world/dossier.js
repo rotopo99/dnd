@@ -1,5 +1,5 @@
 // Dossier «защита по форме» (docs/specs/content-wave4.md §1). Pure: reads save.flags / hero.items / party only.
-//   dossierRows(save)      rows of DOSSIER (+ companion witnesses) that count now: [{ id, pts }]
+//   dossierRows(save)      rows of DOSSIER (+ companion witnesses) that count now: [{ id, pts, text? (text key) }]
 //   dossierPoints(save)    Σ pts, capped by DOSSIER_RULES.cap (12)
 //   dossierDc(save, goal)  DC of a goal with dcFrom: 'dossier' (inside: 17 − ⌊pts/2⌋, min 11) or dossierPer (verdict: −1 per 3)
 //   courtLimits(save, g)   { successes, failures } of the inside challenge (≥ 6 pts: +1 failure; c11 torn / signature)
@@ -14,7 +14,7 @@ export function dossierRows(save) {
   for (const r of DOSSIER) {
     if (r.unless && flagOn(save, r.unless)) continue;
     const ok = (r.flag && flagOn(save, r.flag)) || (r.any || []).some((f) => flagOn(save, f)) || (r.item && (save?.hero?.items?.[r.item] || 0) > 0);
-    if (ok) out.push({ id: r.id, pts: r.pts });
+    if (ok) out.push({ id: r.id, pts: r.pts, ...(r.text ? { text: r.text } : {}) });
   }
   for (const w of DOSSIER_WITNESSES) if (inPartyLoy(save, w.npc, w.minLoy)) out.push({ id: `witness-${w.npc}`, pts: w.pts });
   return out;

@@ -39,7 +39,7 @@ import { SPIRIT } from '../data/world/cyberspace.js';
 import { restoreBody } from './spirit.js';
 import { findsAt } from './lore.js';
 import { cineStage, CINE_RESULT_NEXT, cineResultStage, CINE_RESULT_FX, CINE_AFTER, cineFlag, CINE_RESULT_SOFTEN } from './cine-hooks.js';
-import { dossierDc, courtLimits, applyDossier, dossierPoints } from './dossier.js';
+import { dossierDc, courtLimits, applyDossier, dossierPoints, dossierRows } from './dossier.js';
 import { doorFarewell, npcName, doorBonus, finaleChoir, eveInterlude } from './wave4.js';
 
 const HEIR_MULT = ATTACK_RULES.onDeath.quests.heirMult ?? 0.75;
@@ -581,7 +581,11 @@ export function questTimerTick(save, data) {
 export function stageNotes(save, stage, qid = null) {
   if (!stage) return [];
   const out = qid ? eveInterlude(save, qid, stage.id) : []; // QA v44: the lull between the mq4-eve waves (radio, barks)
-  if (stage.dossier || stage.showDossier) out.push({ text: tf('w4.dossier', { n: dossierPoints(save) }), color: 'f' });
+  if (stage.dossier || stage.showDossier) {
+    out.push({ text: tf('w4.dossier', { n: dossierPoints(save) }), color: 'f' });
+    // QA v56 #6: rows with their own line (w5.dossier.*) are listed under the score
+    for (const r of dossierRows(save)) if (r.text) out.push({ text: `· ${t(r.text)} (+${r.pts})`, color: 'f', row: true });
+  }
   for (const n of stage.notes || []) if (requiresOk(save, n.requires)) out.push({ text: n.text, color: n.color || 'c' });
   return out;
 }
@@ -600,7 +604,7 @@ export function currentGoalText(save, id) {
   let text = s.goal.kind === 'choice' && st.opt ? s.goal.options.find((o) => o.id === st.opt)?.text || s.text : s.text;
   const lock = stageLocked(save, s);
   if (lock) text += ` (${lock})`;
-  for (const n of stageNotes(save, s)) text += ` · ${n.text}`;
+  for (const n of stageNotes(save, s)) if (!n.row) text += ` · ${n.text}`; // dossier rows only in the stage window
   // QA v40 L6 / B2: progress of an 'all' stage with min / required subgoals and where the rest is
   if (s.goal.kind === 'all' && (s.goal.min || s.goal.goals.some((sg) => sg.required))) {
     const g = s.goal, left = g.goals.filter((sg, i) => !subDone(save, st, sg, i));

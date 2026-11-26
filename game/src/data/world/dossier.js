@@ -1,6 +1,7 @@
 // Досье «защита по форме» (docs/specs/content-wave4.md §1). Судья обязан слушать приобщённые материалы.
 // Очки считаются из флагов (world/dossier.js dossierPoints), не хранятся. Числа крутит balance-tester.
-// Строка: { id, flag | any: [flag] | item, pts, unless?: flag (строка не считается, если флаг стоит) }.
+// Строка: { id, flag | any: [flag] | item, pts, unless?: flag (строка не считается, если флаг стоит), text?: ключ строки
+// (показывается под счётом досье, quests.js stageNotes) }.
 export const DOSSIER = [
   { id: 'victor', flag: 'victor-soul-freed', pts: 1 },
   { id: 'repa', flag: 'repa-block-found', pts: 1 },
@@ -26,8 +27,8 @@ export const DOSSIER = [
   // §2 стадия priest: Жрец переубеждён аргументом «первый осознавший скриптлет»
   { id: 'priest', flag: 'priest-turned', pts: 1 },
   // content-wave5.md §3: свидетели «не лучшего, но честного» (Рябов / Грош / Иволга) и пережившие бурю в Свободе
-  { id: 'w5-witness', any: ['ryabov-defect', 'crown-destroyed', 'recruit-saved'], pts: 1 },
-  { id: 'w5-choir', flag: 'storm-diverted', pts: 1 },
+  { id: 'w5-witness', any: ['ryabov-defect', 'crown-destroyed', 'recruit-saved'], pts: 1, text: 'w5.dossier.witness' },
+  { id: 'w5-choir', flag: 'storm-diverted', pts: 1, text: 'w5.dossier.choir' },
 ];
 // §5 напарники-свидетели: в отряде и лояльность ≥ minLoy → +pts
 export const DOSSIER_WITNESSES = [
