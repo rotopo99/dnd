@@ -28,8 +28,12 @@ const face = (k, i) => 1 + (((k + 1) * 2654435761 + i * 40503) >>> 0) % 20;
 export function openCheckScene(game, o) {
   const back = game.scene;
   const save = game.save;
-  const S = { phase: 'pick', t: 0, btns: [], res: null, memo: null, skipped: false };
-  const states = approachStates(save, o.members, o.scene, o.dc);
+  const S = { phase: 'pick', t: 0, btns: [], res: null, memo: null, skipped: false, roller: null };
+  let states = approachStates(save, o.members, o.scene, o.dc);
+  // QA v55 #4: the player may fix who rolls (as openChallenge «Бросает: … (сменить)»); default — the best per approach
+  const setRoller = (m) => { S.roller = m; states = approachStates(save, o.members, o.scene, o.dc, m); };
+  const pickRoller = (g) => g.openModal({ title: o.title, lines: [{ text: t('ch.rollerPick'), color: 'a' }], onCancel: false,
+    options: [{ label: t('ch.rollerBest'), run: () => setRoller(null) }, ...o.members.map((m) => ({ label: m.name, run: () => setRoller(m) }))] });
   const memo = save && o.memoKey ? save.memo?.[o.memoKey] : null;
   if (memo) {
     // the roll was already made (reload before «Дальше»): the same result, fx not applied again
@@ -145,6 +149,10 @@ export function openCheckScene(game, o) {
           S.btns.push(b);
           y += 64;
         });
+        if (!o.group && o.members.length > 1) {
+          S.btns.push({ x: L.x + 24, y: L.y + L.H - 52, w: Math.min(520, L.W - 232), h: 36, run: pickRoller,
+            label: S.roller ? t('ch.roller').replace('{name}', S.roller.name) : t('ch.rollerAuto') });
+        }
         if (o.cancel !== false) S.btns.push({ x: L.x + L.W - 184, y: L.y + L.H - 52, w: 160, h: 36, label: t('check.cancel'), run: cancel });
       } else this.drawRoll(g, L, y, fl);
       const hover = hitButton(S.btns, g.input.mouse);

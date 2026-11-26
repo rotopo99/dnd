@@ -193,6 +193,13 @@ check('levels', () => {
   for (const [k, lvl] of Object.entries(WAVE5_RULES.levels)) {
     const qid = k === 'trails' ? 'w5-two-trails' : `w5-${k}`;
     const lo = mk({}, { level: lvl - 1 }), hi = mk({}, { level: lvl });
+    // QA v55 #1: w5-crown is a follow-up of «Корона из кубков» — offered only after sq3-sc-crown is done
+    if (qid === 'w5-crown') {
+      assert.ok(!QS.questsOffered(hi, giverOf[qid]).some((q) => q.id === qid), 'w5-crown hidden before sq3-sc-crown');
+      assert.ok(QS.questsOffered(hi, giverOf[qid]).some((q) => q.id === 'sq3-sc-crown'), 'sq3-sc-crown offered first by the same King');
+      for (const s of [lo, hi]) { QS.startQuest(s, 'sq3-sc-crown'); s.quests['sq3-sc-crown'].state = 'done'; }
+      assert.ok(!QS.questsOffered(hi, giverOf[qid]).some((q) => q.id === 'sq3-sc-crown'), 'no two crown quests in one list');
+    }
     assert.ok(!QS.questsOffered(lo, giverOf[qid]).some((q) => q.id === qid), `${qid} hidden at ${lvl - 1}`);
     assert.ok(QS.questsOffered(hi, giverOf[qid]).some((q) => q.id === qid), `${qid} offered at ${lvl}`);
   }

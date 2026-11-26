@@ -353,7 +353,7 @@ const LIST = [
      st('thief', 'Вор — Крысиная Тома: «король должен узнать, каково без короны».', choice(
        opt('return', 'Вернуть корону королю.', null, { rep: { scavengers: 15 } }),
        opt('wear', 'Надеть корону самому. Ненадолго.', fight('w-road-scavengers', 'svalka'), { rep: { scavengers: -10 }, items: [{ item: 'cup-crown', n: 1 }] }),
-     ), 'done')], { xp: 300 }),
+     ), 'done')], { xp: 300 }, { trial: true }), // QA v55 #1: opens w5-crown, so it is open at the same trust (trial) as w5-crown
   Q('sq3-sc-petrovich', 'Он пищит', 'combat', 'scavengers', 'svk-petrovich', 3, 'Ночью к Спутнику лезут налётчики.',
     [st('night', 'Ночной бой у Спутника.', fight('w-road-scavengers', 'sputnik'), 'done')], { xp: 300, rep: { scavengers: 10 } }),
 

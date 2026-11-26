@@ -2294,6 +2294,10 @@ console.log('combat rework: cover, objects, heights, pushes, archetypes, arenas'
     const st2 = CRN.approachStates(s, st.members(s, GAME_DATA), sc, 12);
     assert.ok(st2.every((x) => x.ok));
     assert.equal(st2.find((x) => x.ap.id === 'chips').bonus, 2);
+    // QA v55 #4: a fixed roller («Бросает: … (сменить)») rolls every approach; null — the best per approach
+    const ms2 = st.members(s, GAME_DATA), fixed = ms2[ms2.length - 1];
+    assert.ok(CRN.approachStates(s, ms2, sc, 12, fixed).every((x) => x.member === fixed));
+    assert.deepEqual(CRN.approachStates(s, ms2, sc, 12, null).map((x) => x.member), st2.map((x) => x.member));
     const bluff = st2.find((x) => x.ap.id === 'bluff');
     const crit = CRN.rollApproach({ ...bluff, dc: 5 }, { rng: stubRng([nat(20)]) });
     assert.equal(crit.outcome, 'critSuccess');
@@ -6937,10 +6941,14 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     assert.deepEqual(orphan, [], `flags read, never set: ${orphan.join(', ')}`);
   });
   test('wave5 levels: each quest is hidden one level below and offered at its level', () => {
+    // QA v55 #1: w5-crown follows «Корона из кубков» (sq3-sc-crown done); before that only the old crown is offered
+    const pre = (sv, q) => { if (q.requires?.quest) { QS.startQuest(sv, q.requires.quest.id); sv.quests[q.requires.quest.id].state = 'done'; } return sv; };
     for (const q of W5) {
-      assert.ok(!QS.questsOffered(mk({}, q.level - 1), q.giver).some((x) => x.id === q.id), `${q.id} < ${q.level}`);
-      assert.ok(QS.questsOffered(mk({}, q.level), q.giver).some((x) => x.id === q.id), `${q.id} at ${q.level}`);
+      assert.ok(!QS.questsOffered(pre(mk({}, q.level - 1), q), q.giver).some((x) => x.id === q.id), `${q.id} < ${q.level}`);
+      assert.ok(QS.questsOffered(pre(mk({}, q.level), q), q.giver).some((x) => x.id === q.id), `${q.id} at ${q.level}`);
     }
+    const crown = QS.questsOffered(mk({}, 9), 'glava-musora').map((x) => x.id);
+    assert.ok(crown.includes('sq3-sc-crown') && !crown.includes('w5-crown'), 'one crown quest at a time');
   });
   test('wave5 census: 3 of 5 clues accuse; misses count as tried; a beast mutant smells the coffee', () => {
     const s = mk({}, 7); QS.startQuest(s, 'w5-census'); QS.onArrive(s, 'vonyuchka', GAME_DATA);

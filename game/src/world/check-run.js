@@ -42,14 +42,16 @@ const clampMod = (n) => Math.max(CS.caps.dcModMin, Math.min(CS.caps.dcModMax, n 
  * Approach state: { ap, ok, why, member, skill, info, dc, bonus, adv, chance }.
  * The best member × skill of the approach rolls; item approaches need the item in the backpack; companion approaches —
  * the companion active and conscious. group — everyone rolls (chance — of the best).
+ * roller — a member fixed by the player («Бросает: … (сменить)»): only they roll (QA v55 #4, as in openChallenge).
  */
-export function approachState(save, ms, ap, baseDc) {
+export function approachState(save, ms, ap, baseDc, roller = null) {
   const dc = baseDc + clampMod(ap.dcMod);
   const out = { ap, ok: true, why: null, dc, bonus: ap.bonus || 0, adv: !!ap.adv };
   if (ap.companion && !ms.some((m) => m.key === ap.companion)) { out.ok = false; out.why = tf('cs.needCompanion', { name: NPCS[ap.companion]?.name || ap.companion }); }
   if (ap.item && !((save.hero.items?.[ap.item] || 0) > 0)) { out.ok = false; out.why = out.why || tf('cs.needItem', { item: ITEMS[ap.item]?.name || ap.item }); }
   let best = null;
-  for (const skill of ap.skills || []) for (const m of ms) {
+  const who = roller && ms.includes(roller) ? [roller] : ms;
+  for (const skill of ap.skills || []) for (const m of who) {
     const info = checkInfo(m, skill, out.adv ? t('cs.adv') : null);
     const c = checkChance({ ...info, total: info.total + out.bonus }, dc);
     if (!best || c > best.chance) best = { member: m, skill, info, chance: c };
@@ -58,7 +60,7 @@ export function approachState(save, ms, ap, baseDc) {
 }
 
 /** All approaches of a scene with their state. */
-export const approachStates = (save, ms, scene, baseDc) => scene.approaches.map((ap) => approachState(save, ms, ap, baseDc));
+export const approachStates = (save, ms, scene, baseDc, roller = null) => scene.approaches.map((ap) => approachState(save, ms, ap, baseDc, roller));
 
 /** Outcome id by success and the natural die. */
 export function outcomeKey(success, natural) {

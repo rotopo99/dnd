@@ -117,7 +117,7 @@ export const QUESTS_WAVE5 = [
   { xp: 950, credits: 100 },
   { outcomeBy: [{ key: 'burned', all: ['bread-burned'] }, { key: 'shared', all: ['bread-shared'] }, { key: 'split', all: ['bread-split'] }, { key: 'sold', all: ['bread-sold'] }] }),
 
-  // ================= w5-crown «Корона и кубок» (фетч с подвохом, Свалка, ур. 9) =================
+  // ================= w5-crown «Корона и кубок» (фетч с подвохом, Свалка, ур. 9; после sq3-sc-crown) =================
   Q('w5-crown', 'crown', 'glava-musora', 'scavengers', R.levels.crown, [
     st('scene', J('w5.crown.ask.1', 'w5.crown.ask.2', 'w5.crown.ask.3'), { ...check(['perception', 'analysis'], 13, 'scene-fail'), location: 'svalka' }, 'trail',
       { effects: { text: J('w5.crown.clue.1', 'w5.crown.clue.2') } }),
@@ -136,7 +136,9 @@ export const QUESTS_WAVE5 = [
     ], { location: 'svalka' }), 'done'),
   ],
   { xp: 1000, credits: 150, items: [{ item: 'crown-shard', n: 1 }] },
-  { outcomeBy: [{ key: 'returned', all: ['crown-returned'] }, { key: 'destroyed', all: ['crown-destroyed'] }, { key: 'pirates', all: ['crown-pirates'] }, { key: 'framed', all: ['crown-framed'] }] }),
+  // QA v55 #1: a follow-up of sq3-sc-crown «Корона из кубков» (same King, same premise) — offered only after it is done
+  { requires: { level: R.levels.crown, quest: { id: 'sq3-sc-crown', state: 'done' } },
+    outcomeBy: [{ key: 'returned', all: ['crown-returned'] }, { key: 'destroyed', all: ['crown-destroyed'] }, { key: 'pirates', all: ['crown-pirates'] }, { key: 'framed', all: ['crown-framed'] }] }),
 
   // ================= w5-recruit «Новичок» (эскорт идёт не так, Славотеч -> Додзе, ур. 10) =================
   Q('w5-recruit', 'recruit', 'ken', 'tinBrotherhood', R.levels.recruit, [
