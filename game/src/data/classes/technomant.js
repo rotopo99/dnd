@@ -45,6 +45,9 @@ export default {
     },
   ],
   passives: [
+    // docs/BALANCE-casters-start.md: a naive click-attack start (1d4 pistol) won only 49% of battle 1
+    { id: 'starter-grit', name: 'Стартовая закалка', level: 1, path: null,
+      desc: 'Баланс первого боя: +1 к атаке, +2 к урону дальнего боя.', op: { hit: 1, dmg: { ranged: 2 } } },
     // BAL-BEGIN (docs/qa/BALANCE-metric.md)
     { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
       desc: 'Баланс метрических боёв: +10 ЗДР, +1 урона.', op: { maxHp: 10, dmg: 1 } },

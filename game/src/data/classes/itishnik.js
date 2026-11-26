@@ -46,6 +46,9 @@ export default {
     },
   ],
   passives: [
+    // docs/BALANCE-casters-start.md: a naive click-attack start (1d6 nailgun, KB 13) lost 86% of battle 1
+    { id: 'starter-grit', name: 'Стартовая закалка', level: 1, path: null,
+      desc: 'Баланс первого боя: +1 к атаке, +2 к урону дальнего боя, +1 КБ, +3 ЗДР.', op: { hit: 1, dmg: { ranged: 2 }, kb: 1, maxHp: 3 } },
     // BAL-BEGIN (docs/qa/BALANCE-metric.md)
     { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
       desc: 'Баланс метрических боёв: +15 ЗДР, +2 урона.', op: { maxHp: 15, dmg: 2 } },
@@ -77,6 +80,15 @@ export default {
       desc: '+1 КБ, +10 ЗДР, +2 к урону способностей.', op: { kb: 1, maxHp: 10, dmg: { spell: 2 } } },
   ],
   abilities: [
+    // Q (first ability) = the turret: the offensive opener for a new player (docs/BALANCE-casters-start.md)
+    {
+      id: 'deploy-turret', name: 'Мини-турель', level: 1, path: 'inventor',
+      cost: 4, action: 'action', trigger: null, range: 1, target: 'tile', area: null,
+      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 2,
+      effects: [{ op: 'summon', unit: 'turret', turns: 4 }],
+      desc: 'Ставит турель на соседнюю клетку: стреляет по врагам 4 хода. До 2 раз за бой.',
+      canon: 'rules/class-roadmap.md',
+    },
     // ---------- Общие ----------
     {
       id: 'field-repair', name: 'Экстренный ремонт', level: 1, path: null,
@@ -120,14 +132,6 @@ export default {
     },
 
     // ---------- Путь Изобретателя ----------
-    {
-      id: 'deploy-turret', name: 'Мини-турель', level: 1, path: 'inventor',
-      cost: 4, action: 'action', trigger: null, range: 1, target: 'tile', area: null,
-      roll: 'auto', save: null, onSave: 'none', usesPerBattle: 2,
-      effects: [{ op: 'summon', unit: 'turret', turns: 4 }],
-      desc: 'Ставит турель на соседнюю клетку: стреляет по врагам 4 хода. До 2 раз за бой.',
-      canon: 'rules/class-roadmap.md',
-    },
     {
       id: 'combat-drone', name: 'Боевой дрон', level: 3, path: 'inventor',
       cost: 4, action: 'action', trigger: null, range: 1, target: 'tile', area: null,
