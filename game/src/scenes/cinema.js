@@ -252,10 +252,13 @@ export function createCinemaScene(def, o = {}) {
         // QA v40: every keydown of the step counts, in order — on a slow frame rate mash / seq presses are not merged
         const qk = new Set([...CV.qteKeys, ...q.keys]);
         const ev = inp.presses?.();
-        if (ev) { for (const code of ev) if (code.startsWith('Key') && qk.has(code.slice(3))) cineKey(R, code.slice(3)); }
-        else for (const L of qk) if (inp.wasPressed(`Key${L}`)) cineKey(R, L);
+        // QTE keys are letters ('E' -> KeyE) or full codes ('Space'); QA v56: c13 hold on Space never registered
+        const code = (L) => (L.length === 1 ? `Key${L}` : L);
+        const name = (c) => (c.startsWith('Key') ? c.slice(3) : c);
+        if (ev) { for (const c of ev) if (qk.has(name(c))) cineKey(R, name(c)); }
+        else for (const L of qk) if (inp.wasPressed(code(L))) cineKey(R, L);
         if (inp.mouse.clicked && (q.kind === 'tap' || q.kind === 'mash')) cineKey(R, q.keys[0]);
-        cineHold(R, inp.isDown(`Key${q.keys[0]}`) || inp.mouse.down);
+        cineHold(R, inp.isDown(code(q.keys[0])) || inp.mouse.down);
       } else if (inp.mouse.clicked || inp.wasPressed('Space') || inp.wasPressed('Enter')) cineAdvance(R);
       cineTick(R, dt);
       drain(game);
