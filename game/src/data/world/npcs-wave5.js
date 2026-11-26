@@ -1,5 +1,5 @@
 // Content wave 5 NPCs (docs/specs/content-wave5.md). Format — as density-npcs.js n(). Pushed into NPCS by data/npcs.js.
-// Ids are `w5-*`: the spec's Хрип and Грош are new people (not kl-khrip «Радист Хрип», not ag-grosh «Зазывала Грош»);
+// Ids are `w5-*`: the spec's Лишай and Скрип (ex-Хрип/Грош) are new people (not kl-khrip «Радист Хрип», not ag-grosh «Зазывала Грош»);
 // «Дед Болтик» is not d-boltik (a courier boy) nor zv-boltik (a novice). Locations — canon-map slugs.
 const n = (id, name, faction, race, location, role, services, character, speech, bark, hook, extra = {}) => ({
   id, name, faction, race, key: false, location, role, services, character, speech, bark, hook,
@@ -13,10 +13,10 @@ export const W5_NPCS = [
   n('w5-agitator', 'Агитатор Партии', 'aiParty', 'android', 'putinlyandiya', 'агитатор «недели единства» на нарядной площади', ['quest', 'info'],
     'Верит в рифму сильнее, чем в Партию. Партия об этом не знает.', 'Ямбом, с ударением не туда.',
     'Указ номер семьдесят семь! Зачитать в рифму! Магически! К обеду!', 'Указ должен «зарядить» площадь. Чем хуже рифма, тем сильнее заряд.', { quest: 'w5-edict' }),
-  n('w5-khrip', 'Староста Хрип', 'mutantsBeast', 'mutant-beast', 'vonyuchka', 'староста стаи Вонючки', ['info'],
+  n('w5-khrip', 'Староста Лишай', 'mutantsBeast', 'mutant-beast', 'vonyuchka', 'староста стаи Вонючки', ['info'],
     'Ведёт перепись. Две переписи.', 'Хрипло, коротко.',
     'Все на месте. Кто не на месте, тот ушёл к хорошим.', 'Химера косит стаю. Лекарства есть только на Свалке.'),
-  n('w5-grosh', 'Сторож Грош', 'scavengers', 'human', 'svalka', 'сторож Свалки', ['info'],
+  n('w5-grosh', 'Сторож Скрип', 'scavengers', 'human', 'svalka', 'сторож Свалки', ['info'],
     'Молчит так, будто что-то закопал.', 'Шёпотом, оглядываясь.',
     'Я сторожу. Что сторожу — не скажу. Сторожу же.', 'Корона Короля «жмёт». Он знает почему.'),
   n('w5-ivolga', 'Иволга', 'tinBrotherhood', 'human', 'slavotech', 'юный кандидат в Жестяное братство', ['info'],

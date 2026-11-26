@@ -1,5 +1,5 @@
 // Content wave 5 helpers (docs/specs/content-wave5.md §3). Pure (no DOM). The reactive flags R1–R4 are read here:
-//   w5Topics(save, npcId)    R1(б) Марта, R2(а) Король свалок, R4 Азтун, Кен / Хан / Рябов / Хрип: «расспросить» by flag
+//   w5Topics(save, npcId)    R1(б) Марта, R2(а) Король свалок, R4 Азтун, Кен / Хан / Рябов / Лишай: «расспросить» by flag
 //                            (world/npc-actions.js adds them to the NPC topics)
 //   w5EveMods(encId)         rows of W5_EVE_MODS for a wave of mq4-eve (world/wave4.js eveMods prepends them)
 //   zzPeace(save)            R3: zz-peace and both Zoya and Zarya active in the party

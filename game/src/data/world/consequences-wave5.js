@@ -51,7 +51,7 @@ export const CONSEQUENCES_WAVE5 = {
     default: E({}),
     returned: E({ rep: { scavengers: 20 },
       rumors: [T('w5.crown.rumor')],
-      // через 10 дней Король «слышит» и казнит Гроша
+      // через 10 дней Король «слышит» и казнит Скрипа
       delayed: [D('grosh', 10, T('w5.crown.epi.bad'), {}, { tone: 'bad', radio: 'rd-w5-crown' })] }),
     destroyed: E({ rep: { scavengers: 10 },
       nodes: [{ loc: 'svalka', desc: T('w5.crown.res.destroyed'), glyph: '♔', tone: 'good' }],
