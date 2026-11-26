@@ -38,6 +38,24 @@ ok(!(await page.evaluate(() => window.__game.scene.S.travel)) && (await page.eva
 await shot('qa49-confirm');
 await page.keyboard.press('Digit1'); await wait(300);
 ok(!!(await page.evaluate(() => window.__game.scene.S.travel)), 'travel after confirm');
+// QA v52 #3/#7: broke — the confirm offers «Отработать проезд» (days, no credits); a district hop costs no day
+await page.evaluate(async () => { const m = await import('/game/src/scenes/world-map.js'); const g = window.__game; g.scene.S.travel = null; g.save.hero.credits = 0; g.save.location = 'alpha-harmony'; g.setScene(m.createWorldMapScene()); });
+await wait(600);
+const p2 = await page.evaluate((id) => window.__game.scene.S.pos(id), tgt.id);
+await page.mouse.click(p2.x, p2.y); await wait(300);
+const opts = await page.evaluate(() => (window.__game.modals.at(-1)?.options || []).map((o) => o.label));
+ok(opts.includes('Отработать проезд') && !opts.includes('В путь'), `broke confirm options: ${opts}`);
+await shot('qa52-work-confirm');
+await page.evaluate(() => { const md = window.__game.modals.at(-1); const o = md.options.find((x) => x.label === 'Отработать проезд'); window.__game.closeModal(); o.run(window.__game); });
+await wait(200);
+const tr = await page.evaluate(() => { const T = window.__game.scene.S.travel; return T && { work: T.work, cr: window.__game.save.hero.credits }; });
+ok(tr && tr.work && Object.values(tr.work)[0] > 0 && tr.cr === 0, `work passage travel: ${JSON.stringify(tr)}`);
+const d0 = await page.evaluate(async () => { const m = await import('/game/src/scenes/world-map.js'); const g = window.__game; g.scene.S.travel = null; g.save.location = 'harmony-reactor'; g.setScene(m.createWorldMapScene()); return g.save.day; });
+await wait(600);
+await page.evaluate(() => window.__game.scene.S.travelTo('harmony-sector-d'));
+await wait(2500);
+const d1 = await page.evaluate(() => ({ day: window.__game.save.day, loc: window.__game.save.location, scene: window.__game.scene.id }));
+ok(d1.day === d0 && d1.loc === 'harmony-sector-d', `district trip costs no days: ${d0} -> ${JSON.stringify(d1)}`);
 ok(errors.length === 0, `console errors: ${errors.length}\n${errors.slice(0, 5).join('\n')}`);
 await T.close();
 console.log(fails ? `${fails} FAILED` : 'ALL OK');

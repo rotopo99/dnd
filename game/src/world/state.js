@@ -395,6 +395,8 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   for (const f of r.flags || []) save.flags[f] = true;
   if (r.flag) save.flags[r.flag] = true;
   if (r.terminal) save.terminals[r.terminal.id] = r.terminal.state;
+  // QA v52 #2: { discover: [locIds] } — a quest reveals its places on the map (they get exact quest marks)
+  for (const id of r.discover || []) discover(save, id);
   // { escort: enemyId } — a temporary ally for the next battle (skirmishes.md flag skirm-escort; content-wave3 Узел-4)
   if (r.escort) save.flags['skirm-escort'] = r.escort;
   if (r.rep) for (const [f, d] of Object.entries(r.rep)) out.push(...repToasts(applyRep(save, f, repDelta(save, d, data))));
@@ -878,6 +880,17 @@ export function encounterInfo(encId, data = GAME_DATA) {
     return !!d && (d.boss || d.rank === 'boss');
   });
   return { level: enc.level || 0, boss };
+}
+/**
+ * QA v52 #4: a node battle's difficulty before engaging: { level, power, diff, tier: easy|even|hard|deadly } by
+ * encounter level − partyPower (WORLD_RULES.battleThreat); null when the encounter has no level.
+ */
+export function battleThreat(save, encId, data = GAME_DATA) {
+  const { level } = encounterInfo(encId, data);
+  if (!level) return null;
+  const T = R.battleThreat, power = partyPower(save), diff = level - power;
+  const tier = diff >= T.deadlyOver ? 'deadly' : diff >= T.hardOver ? 'hard' : diff <= T.easyBelow ? 'easy' : 'even';
+  return { level, power: Math.round(power * 10) / 10, diff, tier };
 }
 /**
  * Gate for a random road/camp entry (battle or an event that may end in a battle):

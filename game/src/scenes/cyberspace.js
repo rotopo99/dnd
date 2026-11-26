@@ -204,6 +204,10 @@ export function createCyberspaceScene() {
     save.hero.hp = null; save.hero.mrl = null;
     half(save.hero, buildHero(save, game.data));
     save.cyberspace = null;
+    // QA v52 #5: say where the hero wakes up and why (nearest own terminal), and that strength is halved
+    const wake = { to: LOCATIONS[to]?.name || to, pct: Math.round(CS.returnFrac * 100) };
+    lines.push({ text: to === save.location ? tf('cyber.wakeHere', wake) : tf('cyber.wakeAt', wake), color: 'a' });
+    if (to !== save.location) journal(save, tf('cyber.wakeAt', wake));
     visit(save, to);
     journal(save, ok ? t('cyber.escaped') : t('cyber.failed'));
     saveGame(save);

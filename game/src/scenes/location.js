@@ -22,7 +22,7 @@ import { repTier, factionName, normFaction, tierAtLeast } from '../world/reputat
 import { openPauseMenu, openSaveMenu } from '../ui/save-ui.js';
 import { hotspot } from '../ui/tooltip.js';
 import { resTip, xpInfo, talentTip } from '../ui/tips.js';
-import { members, activeCompanions, grant, restParty, journal, tf, locFaction, hasFlagInParty, effectiveRep, learnTalent, talentOk, openHidden, squadFree, requiresOk } from '../world/state.js';
+import { members, activeCompanions, grant, restParty, journal, tf, locFaction, hasFlagInParty, effectiveRep, learnTalent, talentOk, openHidden, squadFree, requiresOk, battleThreat } from '../world/state.js';
 import { eveWaveIntro } from '../world/wave4.js';
 import { exodusSync, passDays, serviceOff, tollMult, exodusRumor } from '../world/exodus.js';
 import { EXODUS_UI } from '../data/text/exodus.js';
@@ -64,6 +64,18 @@ import { nodeFinds, findsAt } from '../world/lore.js';
 
 const heroOf = (sv) => heroBuild(sv.hero); // portraits v2: build for drawHeroPortrait
 
+// QA v52 #4: node battles show their difficulty (enemy level vs party power) and ask before a far-stronger fight
+const threatSub = (sv, enc) => {
+  const th = battleThreat(sv, enc);
+  return th ? tf('threat.line', { lv: th.level, power: th.power, tier: t(`threat.${th.tier}`) }) : '';
+};
+const threatGate = (sv, enc, run) => (g) => {
+  const th = battleThreat(sv, enc);
+  if (th?.tier !== 'deadly') return run(g);
+  g.openModal({ title: `${t('threat.title')}: ${encounterName(enc)}`, titleColor: 'c', border: 'c', width: 760,
+    lines: [{ text: tf('threat.warn', { lv: th.level, power: th.power }) }],
+    options: [{ label: t('threat.go'), run }, { label: t('loc.questLater'), run: () => {} }] });
+};
 const BASE_W = 1280, BASE_H = 720;
 const PAGE = 7;
 const NPC_NAME_W = 140; // name / role column of an NPC row (buttons get the rest)
@@ -229,8 +241,9 @@ export function createLocationScene(rawId, opts = {}) {
           // content-wave2.md §1.2: a quest battle with onFail (mq3-court judge-fight-hard) — a loss moves the quest, no game over
           ...(goal.onFail ? { onLose: (g2) => { toastAll(g2, failSlot(sv, s, g2.data)); persist(g2); again(g2); } } : {}) });
       // QA v44 pacing: an mq4-eve wave opens with its own beat (name, intro, a cringe line, the terrain of this wave)
-      return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}`,
-        run: !intro ? fight : (g) => g.openModal({ title: intro.name ? tf('w4.waveTitle', { n: intro.n, name: intro.name }) : encounterName(goal.encounter), width: 900, border: 'c', titleColor: 'c',
+      const th = threatSub(sv, goal.encounter);
+      return { label: `${t('loc.fight')}: ${q.name}`, sub: `${s.option?.text || s.stage.text} · ${encounterName(goal.encounter)}${th ? ` · ${th}` : ''}`,
+        run: !intro ? threatGate(sv, goal.encounter, fight) : (g) => g.openModal({ title: intro.name ? tf('w4.waveTitle', { n: intro.n, name: intro.name }) : encounterName(goal.encounter), width: 900, border: 'c', titleColor: 'c',
           lines: [{ text: s.stage.text }, ...intro.lines.map((l) => (l.key ? { text: t(l.key), color: l.color } : l))],
           options: [{ label: t('w4.toWall'), sub: encounterName(goal.encounter), run: fight }, { label: t('loc.questLater'), run: () => {} }] }) };
     }
@@ -243,7 +256,7 @@ export function createLocationScene(rawId, opts = {}) {
     }
     if (goal.kind === 'challenge') {
       const lim = goalLimits(sv, goal); // content-wave4.md §1: the court dossier / c11 consent move the limits
-      return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${lim.successes}/${lim.failures} · ${t('battle.dc')} ${goalDc(sv, goal)}`,
+      return { label: `${t('loc.negotiate')}: ${q.name}`, sub: `${goal.desc || s.option?.text || s.stage.text} · ${t('ch.limits').replace('{s}', lim.successes).replace('{f}', lim.failures)} · ${t('battle.dc')} ${goalDc(sv, goal)}`,
         run: (g) => openChallenge(g, { title: q.name, skills: goal.skills, dc: goalDc(sv, goal), successes: lim.successes, failures: lim.failures, members: ms(g),
           forgiveFirst: hasFlagInParty(sv, g.data, 'challenge-forgive'), onDone: (g2, ok) => (ok ? done(g2) : failed(g2)) }) };
     }
@@ -298,9 +311,10 @@ export function createLocationScene(rawId, opts = {}) {
       if (bd.when === 'quest') continue;
       if (bd.when === 'terminal' && sv.terminals[loc.terminal?.id] !== 'ritual') continue;
       if (bd.once && sv.battlesDone.includes(bd.id)) continue;
-      out.push({ label: `${t('loc.fight')}: ${encounterName(bd.encounter)}`, sub: bd.when === 'terminal' ? t('loc.guards') : t('loc.fightSub'),
-        run: (g) => (bd.when === 'terminal' ? startWorldBattle : startSkirmish)(g, { encounter: bd.encounter, map: bd.map, location: locId, id: bd.id, danger: loc.danger,
-          onWin: (g2) => { toastAll(g2, onBattleWon(sv, bd.encounter, locId, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } }) });
+      const th = threatSub(sv, bd.encounter);
+      out.push({ label: `${t('loc.fight')}: ${encounterName(bd.encounter)}`, sub: `${bd.when === 'terminal' ? t('loc.guards') : t('loc.fightSub')}${th ? ` · ${th}` : ''}`,
+        run: threatGate(sv, bd.encounter, (g) => (bd.when === 'terminal' ? startWorldBattle : startSkirmish)(g, { encounter: bd.encounter, map: bd.map, location: locId, id: bd.id, danger: loc.danger,
+          onWin: (g2) => { toastAll(g2, onBattleWon(sv, bd.encounter, locId, g2.data)); toastAll(g2, autoProgress(sv, g2.data)); persist(g2); again(g2); } })) });
     }
     // caches
     for (const c of [...loc.caches, ...lizaCaches(sv, locId, loc)]) { // content-wave3 §1 rel ≥ 3: + Liza's cache in a dungeon

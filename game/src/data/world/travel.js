@@ -15,7 +15,8 @@ export const SPEED = { district: Infinity, road: 40, trail: 25, wild: 20, sea: 1
 /** Сколько км на один бросок встречи (не меньше 1 броска, если danger > 0; district — 0). */
 export const ENCOUNTER_ROLL_KM = { district: Infinity, road: 300, trail: 200, wild: 150, sea: 500, lake: 400, canoe: 300, tunnel: 200 };
 /** Плата пиратам за море: кредов за каждые 150 км; дружелюбны −50%, союзники — бесплатно. Паром братства бесплатный. */
-export const FARE = { sea: 10, canoe: 30, lake: 0, perKm: 150, friendlyMult: 0.5, allyMult: 0 };
+export const FARE = { sea: 10, canoe: 30, lake: 0, perKm: 150, friendlyMult: 0.5, allyMult: 0, workPerDay: 20 };
+// QA v52 #3: без денег на лодку можно «отработать проезд» — +1 день за каждые workPerDay кредов платы (никогда не застрять).
 /** Морские и лодочные пути закрыты при «враждебны» с пиратами (паром — при «враждебны» с братством). */
 const PIRATE_BOAT = { rep: { faction: 'pirates', min: 'suspicious' } };
 const TIN_FERRY = { rep: { faction: 'tinBrotherhood', min: 'suspicious' } };

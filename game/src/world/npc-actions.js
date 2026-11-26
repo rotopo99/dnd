@@ -14,6 +14,9 @@ import { serviceOff, exodusNpcLine } from './exodus.js';
 import { backstoryTopics, useBackstoryTopic } from './backstory.js';
 import { startQuest, onTalk } from './quests.js';
 import { offeredQuests } from './quest-access.js';
+import { questReachable, placeReachable } from './routing.js';
+import { NPCS } from '../data/npcs.js';
+import { QUESTS, resolveLocation } from './data.js';
 import { saveGame } from '../save.js';
 import { VENDORS } from './vendors.js';
 import { WORLD_RULES } from '../data/world/rules.js';
@@ -63,13 +66,28 @@ export function createNpcActions(ctx) {
   /** Quests an NPC offers under the reputation rules (world.md §3) — world/quest-access.js offeredQuests. */
   // QA v49 #17: ordered for a new player — quests near the hero's level first, then key ones, then by level;
   // the first one (if it fits the level) is «recommended»
-  const fits = (sv, q) => (q.level || 1) <= (sv.hero?.level || 1) + WORLD_RULES.questRecommend.overLevel;
+  // QA v52 #2: and its places can be reached now (region level gate, known route, days incl. working off fares)
+  const fits = (sv, q) => (q.level || 1) <= (sv.hero?.level || 1) + WORLD_RULES.questRecommend.overLevel && questReachable(sv, q);
   const offeredBy = (game, npc) => {
     const sv = save(game);
-    return offeredQuests(sv, game.data, npc).map((q, i) => [q, i])
-      .sort(([a, i], [b, j]) => (fits(sv, b) - fits(sv, a)) || (!!b.key - !!a.key) || ((a.level || 1) - (b.level || 1)) || (i - j)).map(([q]) => q);
+    const ok = new Map(offeredQuests(sv, game.data, npc).map((q) => [q, fits(sv, q)]));
+    return [...ok.keys()].map((q, i) => [q, i])
+      .sort(([a, i], [b, j]) => (ok.get(b) - ok.get(a)) || (!!b.key - !!a.key) || ((a.level || 1) - (b.level || 1)) || (i - j)).map(([q]) => q);
   };
   const recommended = (game, list) => (list.length > 1 && fits(save(game), list[0]) ? list[0] : null);
+  /** QA v52 #2: nothing here fits — the lowest-level quest of another NPC whose giver and places are reachable now. */
+  const closerQuest = (game, npc) => {
+    const sv = save(game), lvl = sv.hero?.level || 1;
+    let best = null;
+    for (const q of Object.values(QUESTS)) {
+      const giver = NPCS[q.giver];
+      if (!giver?.location || q.giver === npc.id || sv.quests[q.id] || (q.level || 1) > lvl + WORLD_RULES.questRecommend.overLevel) continue;
+      if (best && (q.level || 1) >= (best.level || 1)) continue;
+      if (!offeredQuests(sv, game.data, giver).includes(q) || !placeReachable(sv, giver.location) || !questReachable(sv, q)) continue;
+      best = q;
+    }
+    return best;
+  };
 
   /** Trade under the reputation rules: hostile — closed, except black-market (always) and bribe (pay to trade). */
   function tradeAccess(game, npc) {
@@ -185,11 +203,18 @@ export function createNpcActions(ctx) {
     const tag = (q) => [q === rec ? t('loc.questRec') : null, q.key ? t('journal.key') : null, q.level ? tf('loc.questLevel', { n: q.level }) : null].filter(Boolean).join(' · ');
     game.openModal({
       title: tf('loc.questOffers', { npc: npc.name, n: list.length }), width: 900,
-      lines: [{ text: t(rec ? 'loc.questOffersRec' : 'loc.questOffersHint'), color: 'a' }],
+      lines: [{ text: t(rec ? 'loc.questOffersRec' : 'loc.questOffersHint'), color: 'a' }, ...(rec ? [] : closerLine(game, npc))],
       options: [...list.map((q) => ({ label: q === rec ? `★ ${q.name}` : q.name, sub: `${tag(q)}${tag(q) ? ' — ' : ''}${(q.summary || '').slice(0, 70)}${(q.summary || '').length > 70 ? '…' : ''}`,
         run: (g) => offerQuest(g, q, npc.id, (g2) => offerList(g2, npc)) })),
       { label: t('loc.questLater'), run: () => {} }],
     });
+  }
+
+  function closerLine(game, npc) {
+    const c = closerQuest(game, npc);
+    if (!c) return [];
+    const g = NPCS[c.giver];
+    return [{ text: tf('loc.questCloser', { q: c.name, npc: g.name, loc: LOCATIONS[resolveLocation(g.location)]?.name || g.location }), color: 'j' }];
   }
 
   function offerQuest(game, q, npcId, back = null) {

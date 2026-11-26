@@ -158,7 +158,7 @@ const LIST = [
     summary: 'Сера нашла в данных аколита ещё пять ритуальных терминалов. Каждый закрытый — минус враг в финале.',
     stages: [
       { id: 'map', text: 'Сера отмечает терминалы на карте.', goal: { kind: 'talk', npc: 'sera', location: 'alpha-harmony' },
-        effects: { flags: ['terminals-marked'] }, next: 'hunt' },
+        effects: { flags: ['terminals-marked'], discover: ['ostanovka', 'ruins-m38', 'putinlyandiya', 'cc-dead-streets', 'cc-temple'] }, next: 'hunt' },
       { id: 'hunt', text: 'Разобраться с терминалами (можно в любом порядке и не все — квест засчитан при трёх).', goal: { kind: 'all', min: 3, goals: [
         { kind: 'terminal', terminal: 'term-villages', location: 'ostanovka' },
         { kind: 'terminal', terminal: 'term-agrozone', location: 'ruins-m38' },

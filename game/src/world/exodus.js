@@ -55,6 +55,8 @@ export function exodusExtend(save, id, days) {
   save.exodus.ext += n;
   const text = tf('exodus.extended', { n });
   journal(save, text);
+  // QA v52 #6: the first time — one line on what the Exodus is and what the timer means
+  if (!save.flags['exo-explained']) { save.flags['exo-explained'] = true; journal(save, t('exodus.extendedWhy')); return [{ text: `${text} ${t('exodus.extendedWhy')}`, color: 'j' }]; }
   return [{ text, color: 'j' }];
 }
 

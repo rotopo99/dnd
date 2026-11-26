@@ -139,7 +139,8 @@ export function openShop(game, { title, stock, tier = 'neutral', faction = null,
       }
       const sell = [...groups.values()].map((gr) => {
         const it = ITEMS[gr.id];
-        const price = Math.max(1, Math.floor(instValue(gr) * sellRate(it)));
+        // QA v52 #3: instValue reads `item` (the group keeps `id`) — passing the group priced every sale at 1 кр
+        const price = Math.max(1, Math.floor(instValue({ item: gr.id, q: gr.q, mods: gr.mods }) * sellRate(it)));
         const qn = isGear(it) && gr.q !== 'working' && QUALITY[gr.q] ? ` (${QUALITY[gr.q].name})` : '';
         return { label: `${t('shop.sell')}: ${it.name}${qn}${gr.mods.length ? ` +${gr.mods.length}` : ''} ×${gr.n} — ${price}`, keep: true, detail: tipOf(gr.id, price, gr.q, gr.mods),
           run: () => {

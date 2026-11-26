@@ -38,6 +38,7 @@ import { clashAt, clashOnRoute, roadClash, clashName, daysLeft, clashWhere } fro
 import { SPAWN as CLASH_SPAWN } from '../data/world/skirmishes.js';
 import { openClash, clashLines } from './clash.js';
 import { transitOptions, isTransitHub } from '../world/transit.js';
+import { findRoute, routeFare, workDays } from '../world/routing.js';
 
 const restHud = (sv) => { const st = restState(sv); return tf('rest.hud', { n: st.short, max: st.max, food: provisionCount(sv) }); };
 
@@ -104,40 +105,13 @@ function rideTo(game, x, o) {
   if (ex.marks?.length) openExodusRadio(game, ex.marks, go); else go(game);
 }
 
-const baseTripDays = (tr, i) => { const d = hopDays(tr.hops[i].r, tr.night); return tr.march === i ? Math.max(1, d - 1) : d; };
-// content-wave3 §2: pirate Harmony trade routes cut days (tr.cut[i], fixed once per hop in payHop)
-const tripDays = (tr, i) => Math.max(1, baseTripDays(tr, i) - (tr.cut?.[i] || 0));
+// QA v52 #7: a 0-day hop (districts of a city) stays 0 days — march / cuts never turn it into a day
+const baseTripDays = (tr, i) => { const d = hopDays(tr.hops[i].r, tr.night); return tr.march === i && d > 0 ? Math.max(1, d - 1) : d; };
+// content-wave3 §2: pirate Harmony trade routes cut days (tr.cut[i], fixed once per hop in payHop); QA v52 #3: + days to work off the fare
+const tripDays = (tr, i) => { const b = baseTripDays(tr, i); return (b > 0 ? Math.max(1, b - (tr.cut?.[i] || 0)) : 0) + (tr.work?.[i] || 0); };
 
-/** Sea / canoe fare (travel.js FARE): pirates friendly −50%, ally — free. */
-export function routeFare(save, r) {
-  if (!r.fare) return 0;
-  const tier = repTier(save.rep.pirates);
-  const k = tierAtLeast(tier, 'ally') ? FARE.allyMult : tierAtLeast(tier, 'friendly') ? FARE.friendlyMult : 1;
-  return Math.round(r.fare * k);
-}
-
-/** Shortest path by days over known routes. Returns [{ r, from, to }] or null. */
-export function findRoute(save, from, to, pflags) {
-  from = resolveLocation(from); to = resolveLocation(to);
-  const dist = { [from]: 0 }, prev = {};
-  const open = [from];
-  while (open.length) {
-    open.sort((a, b) => dist[a] - dist[b]);
-    const cur = open.shift();
-    if (cur === to) break;
-    for (const r of routesFrom(cur)) {
-      if (!isKnownRoute(save, r, pflags)) continue;
-      const o = otherEnd(r, cur);
-      if (closedLoc(save, o)) continue; // world-consequences.md: access.close
-      const d = dist[cur] + r.days + 0.01;
-      if (dist[o] == null || d < dist[o]) { dist[o] = d; prev[o] = { r, from: cur }; open.push(o); }
-    }
-  }
-  if (dist[to] == null) return null;
-  const out = [];
-  for (let c = to; c !== from; c = prev[c].from) out.unshift({ r: prev[c].r, from: prev[c].from, to: c });
-  return out;
-}
+// findRoute / routeFare live in world/routing.js (no DOM: tests, quest recommendation); re-exported for old callers
+export { findRoute, routeFare };
 
 const ROUTE_STYLE = {
   road: { dash: [], w: 2.5, color: '5' },
@@ -279,21 +253,24 @@ export function createWorldMapScene() {
 
   // ---------------------------------------------------------------- travel
   /** QA v49 #14: travel starts after the confirm window (destination, days, cost, danger, money left); confirmed — skip it (test hook). */
-  function startTravel(game, to, confirmed = false) {
+  function startTravel(game, to, confirmed = false, work = false) {
     const sv = save(game);
     if (to === sv.location) return enterLocation(game);
     const hops = findRoute(sv, sv.location, to, S.pflags);
     if (!hops) { game.toast(t('map.noRoute'), 'c'); return; }
     const fare = hops.reduce((s, h) => s + routeFare(sv, h.r), 0);
     if (!confirmed) { confirmTravel(game, to, hops, fare); return; }
-    if (fare > sv.hero.credits) { game.toast(`${t('map.noFare')}: ${fare} ${t('world.credits')}`, 'c'); return; }
+    if (fare > sv.hero.credits && !work) { game.toast(`${t('map.noFare')}: ${fare} ${t('world.credits')}`, 'c'); return; }
     // world-consequences.md ч.5: peaceful road uses (Survival tracking / forage, Endurance forced march)
     const ru = roadUses(members(sv, game.data), hops, !!S.night);
     for (const x of ru.log) log(x.text, x.color);
     // content-wave3 §2: pirate Harmony — 5% toll on the way out of the hub
     const toll = harmonyExitToll(sv, sv.location, to);
-    if (toll > 0) { sv.hero.credits -= toll; log(tf('w3.exitToll', { n: toll }), 'b'); }
-    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night, encMod: ru.encMod, forage: ru.forage, march: ru.marchHop, cut: {} };
+    const tollPaid = Math.min(toll, sv.hero.credits); // never below 0 credits
+    if (tollPaid > 0) { sv.hero.credits -= tollPaid; log(tf('w3.exitToll', { n: tollPaid }), 'b'); }
+    // QA v52 #3: «work the passage» — paid hops cost days instead of credits
+    const wk = work ? Object.fromEntries(hops.map((h, i) => [i, workDays(routeFare(sv, h.r))]).filter(([, d]) => d > 0)) : null;
+    S.travel = { hops, i: 0, t: 0, day: 0, roll: 0, night: !!S.night, encMod: ru.encMod, forage: ru.forage, march: ru.marchHop, cut: {}, work: wk };
     payHop(game);
     play('uiClick');
   }
@@ -320,8 +297,11 @@ export function createWorldMapScene() {
     const warn = travelWarning(sv, days);
     if (warn) lines.push({ text: EXODUS_UI.confirm.replace('{n}', warn.n).replace('{m}', warn.m), color: 'c' });
     const ok = cost <= sv.hero.credits;
+    // QA v52 #3: a paid trip can always be worked off on the boat — days instead of credits (no soft-lock)
+    const wd = hops.reduce((s, h) => s + workDays(routeFare(sv, h.r)), 0);
+    const work = fare ? [{ label: t('map.tripWork'), sub: tf('map.tripWorkSub', { n: wd, total: days + wd }), run: (g) => startTravel(g, to, true, true) }] : [];
     game.openModal({ title: tf('map.tripTitle', { to: LOCATIONS[to].name }), titleColor: warn ? 'c' : undefined, lines,
-      options: [...(ok ? [{ label: t('map.tripGo'), run: (g) => startTravel(g, to, true) }] : []), { label: t('map.tripStay'), run: () => {} }] });
+      options: [...(ok ? [{ label: t('map.tripGo'), run: (g) => startTravel(g, to, true) }] : []), ...work, { label: t('map.tripStay'), run: () => {} }] });
   }
 
   function payHop(game) {
@@ -331,7 +311,8 @@ export function createWorldMapScene() {
     const cut = base - travelCut(sv, base);
     if (cut > 0) { S.travel.cut[S.travel.i] = cut; log(tf('w3.travelCut', { n: cut }), 'j'); }
     const fare = routeFare(sv, hop.r);
-    if (fare) { sv.hero.credits -= fare; log(`${t('map.fare')}: −${fare} ${t('world.credits')} (${LOCATIONS[hop.to].name})`, 'b'); }
+    if (fare && S.travel.work?.[S.travel.i]) log(tf('map.workLog', { n: S.travel.work[S.travel.i], fare }), 'b');
+    else if (fare) { sv.hero.credits -= fare; log(`${t('map.fare')}: −${fare} ${t('world.credits')} (${LOCATIONS[hop.to].name})`, 'b'); }
   }
 
   function stepTravel(game, dt) {
@@ -600,13 +581,7 @@ export function createWorldMapScene() {
   }
 
   /** Node labels: priority order, candidates below / above / right / left; skipped on overlap (forced — below anyway). */
-        // leader-line candidates: diagonals and a second ring further out
-        { x: x + half + 4, y: y + half + 3, lead: 1 }, { x: x - half - 4 - w, y: y + half + 3, lead: 1 },
-        { x: x + half + 4, y: y - half - 3 - h, lead: 1 }, { x: x - half - 4 - w, y: y - half - 3 - h, lead: 1 },
-        { x: x - w / 2, y: y + half + 3 + h + 6, lead: 1 }, { x: x - w / 2, y: y - half - 3 - 2 * h - 6, lead: 1 },
-        { x: x + half + 12, y: y + half + 3 + h / 2, lead: 1 }, { x: x - half - 12 - w, y: y + half + 3 + h / 2, lead: 1 },
   function layoutLabels(ctx, sv, order, half, z, boxes) {
-      const over = (r) => [...placed, ...boxes.filter((b) => b !== own && !(b.x === own.x && b.y === own.y))].reduce((a, q) => a + (hit(q, r) ? Math.min(q.x + q.w, r.x + r.w) - Math.max(q.x, r.x) : 0), 0);
     const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     const out = [], placed = [];
     for (const id of order) {
@@ -625,7 +600,13 @@ export function createWorldMapScene() {
       const cands = [
         { x: x - w / 2, y: y + half + 3 }, { x: x - w / 2, y: y - half - 3 - h },
         { x: x + half + 5, y: y - h / 2 }, { x: x - half - 5 - w, y: y - h / 2 },
+        // leader-line candidates: diagonals and a second ring further out
+        { x: x + half + 4, y: y + half + 3, lead: 1 }, { x: x - half - 4 - w, y: y + half + 3, lead: 1 },
+        { x: x + half + 4, y: y - half - 3 - h, lead: 1 }, { x: x - half - 4 - w, y: y - half - 3 - h, lead: 1 },
+        { x: x - w / 2, y: y + half + 3 + h + 6, lead: 1 }, { x: x - w / 2, y: y - half - 3 - 2 * h - 6, lead: 1 },
+        { x: x + half + 12, y: y + half + 3 + h / 2, lead: 1 }, { x: x - half - 12 - w, y: y + half + 3 + h / 2, lead: 1 },
       ].map((c) => ({ ...c, w, h }));
+      const over = (r) => [...placed, ...boxes.filter((b) => b !== own && !(b.x === own.x && b.y === own.y))].reduce((a, q) => a + (hit(q, r) ? Math.min(q.x + q.w, r.x + r.w) - Math.max(q.x, r.x) : 0), 0);
       const free = (r) => !placed.some((q) => hit(q, r)) && !boxes.some((b) => b !== own && !(b.x === own.x && b.y === own.y) && hit(b, r));
       rect = cands.find(free) || (maxW === 96 && force ? cands.reduce((m, c) => (over(c) < over(m) ? c : m), cands[0]) : null);
       if (rect) break;
@@ -677,10 +658,6 @@ export function createWorldMapScene() {
     const labels = layoutLabels(ctx, sv, order, half, z, [...boxes, { x: hp0.x - 12, y: hp0.y - half - 24, w: 24, h: 24 }]);
     if (z < 2.6) drawRegionNames(ctx, ids, [...boxes, ...labels.map((L) => L.rect)]);
     for (const id of [...order].reverse()) {
-      if (L.lead) { // leader line from the node to the displaced label
-        const r = L.rect, ex = Math.max(r.x, Math.min(L.lead.x, r.x + r.w)), ey = Math.max(r.y, Math.min(L.lead.y, r.y + r.h));
-        ctx.strokeStyle = C['3']; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L.lead.x, L.lead.y); ctx.lineTo(ex, ey); ctx.stroke();
-      }
       const l = LOCATIONS[id];
       const { x, y } = nodePos(id);
       if (x < -20 || y < S.area.y - 20 || x > S.area.x + S.area.w + 20 || y > S.area.y + S.area.h + 20) continue;
@@ -700,6 +677,10 @@ export function createWorldMapScene() {
       }
     }
     for (const L of labels) {
+      if (L.lead) { // leader line from the node to the displaced label
+        const r = L.rect, ex = Math.max(r.x, Math.min(L.lead.x, r.x + r.w)), ey = Math.max(r.y, Math.min(L.lead.y, r.y + r.h));
+        ctx.strokeStyle = C['3']; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L.lead.x, L.lead.y); ctx.lineTo(ex, ey); ctx.stroke();
+      }
       ctx.fillStyle = 'rgba(16,16,24,0.8)';
       ctx.fillRect(L.rect.x, L.rect.y, L.rect.w, L.rect.h);
       text(ctx, L.name, L.rect.x + L.rect.w / 2, L.rect.y + 2, L.col, L.font, 'center');

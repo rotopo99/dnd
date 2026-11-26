@@ -6936,6 +6936,49 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   });
 }
 {
+  // QA v52 #2/#3/#7: early-game flow — travel never soft-locks, sell prices, quest recommendation by reach
+  const st = await import('../game/src/world/state.js');
+  const RT = await import('../game/src/world/routing.js');
+  const D = await import('../game/src/world/data.js');
+  const { instValue } = await import('../game/src/world/inventory.js');
+  const mk = (origin) => st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin, alignment: 'good', anyStat: null, talents: [] });
+  test('new game: every origin reaches 2+ other places with its start credits, and 2+ with no credits (work the passage)', () => {
+    for (const o of Object.keys(D.ORIGINS)) {
+      const s = mk(o);
+      const far = (xs) => xs.filter((x) => x.days > 0);
+      assert.ok(far(RT.reachable(s).filter((x) => x.paid)).length >= 2, `${o}: paid trips with ${s.hero.credits} cr`);
+      const broke = far(RT.reachable(s, s.location, 0));
+      assert.ok(broke.length >= 2, `${o}: free trips`);
+      // from each of those places the way home exists with 0 credits (no soft-lock after spending everything)
+      for (const x of broke) {
+        const back = { ...s, location: x.id };
+        assert.ok(RT.findRoute(back, x.id, s.location), `${o}: back from ${x.id}`);
+      }
+    }
+  });
+  test('work passage: days per fare, free hops cost nothing', () => {
+    assert.equal(RT.workDays(0), 0);
+    assert.equal(RT.workDays(30), Math.ceil(30 / D.FARE.workPerDay));
+  });
+  test('shop sale price comes from the item (not 1 кр): a group keyed by id is valued through { item }', () => {
+    const it = Object.values(D.ITEMS).find((x) => x.price >= 10 && x.slot === 'consumable');
+    assert.ok(instValue({ item: it.id, q: 'working', mods: [] }) >= 10);
+  });
+  test('quest recommendation: sq-terminals is out of reach at lvl 2 (CC terminals), sq-sector-d is in reach', () => {
+    const s = mk('technikums'); s.hero.level = 2; s.flags['prologue-done'] = true;
+    assert.equal(RT.questReachable(s, D.QUESTS['sq-terminals']), false);
+    assert.equal(RT.questReachable(s, D.QUESTS['sq-sector-d']), true);
+    // taking it reveals the terminal places on the map
+    const qs = st; qs.grant(s, D.QUESTS['sq-terminals'].stages[0].effects);
+    for (const id of ['ostanovka', 'ruins-m38', 'putinlyandiya']) assert.ok(s.discovered.includes(id), id);
+  });
+  test('battle threat: Рощёвые стражи (lvl 5) are «deadly» for a lone lvl-2 hero', () => {
+    const s = mk('technikums'); s.hero.level = 2;
+    assert.equal(st.battleThreat(s, 'v4-mutr-patrol').tier, 'deadly');
+    assert.notEqual(st.battleThreat(s, 'w-harmony-riot').tier, 'deadly');
+  });
+}
+{
   const { buildPack, PACK } = await import('./pack-meta.mjs');
   const fs = await import('node:fs');
   test('model meta pack is in sync (node tools/pack-meta.mjs)', () => {
