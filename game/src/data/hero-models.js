@@ -32,6 +32,11 @@ export const HERO_MODELS = {
   flash: 0.9,                                // hit flash -> emissive white x this
   keepUnseen: 5,                             // s an off-screen (culled) character stays built
   physics: { off: 0, low: 0.5, normal: 1 },  // settings «Физика тела» -> spring bones weight
+  // long robes / coats (tools/blender gait='robe'): the hem springs lag behind the legs, so in the walk / run clips the
+  // back kick of the shin and the foot are pulled towards the bind pose (share of the clip's bend kept) — no boot tip
+  // through / behind the hem (three/character.js robeLegs, before the springs)
+  robe: { models: ['npc_cyberpriest', 'npc_arbitrazh', 'npc_ladov', 'npc_lox', 'enemy_cultist'], clips: ['walk', 'run', 'walk_2h', 'run_2h', 'crouch_walk'],
+    keep: { LowerLeg: 0.4, Foot: 0.4, Toes: 0.3 } },
   // weapon in hand (three/weapons.js): gfx/gear3d.js weaponKind -> category (missing / null — empty hand)
   weapon: {
     cat: { knife: 'blade', sword: 'blade', sabre: 'blade', katana: 'blade', cyberblade: 'blade', axe: 'blade', hammer: 'blunt', club: 'blunt',

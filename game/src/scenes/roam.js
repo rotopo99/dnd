@@ -52,6 +52,7 @@ import { giftOptions, giveGift } from '../world/companions.js';
 import { countAll, dropItem } from '../world/inventory.js';
 import { buildHero } from '../world/state.js';
 import { createLocationScene } from './location.js';
+import { createHubTip, tickHubTip, doneHubTip, drawHubTip } from '../ui/hub-tip.js';
 import {
   roamMapFor, roamGrid, roamNpcIds, placeNpcs, liveObjects, objectAction, approachCell, roamPath, inReach, restorePos, stashKey,
 } from '../world/roam.js';
@@ -989,7 +990,7 @@ export function createRoamScene(rawId, opts = {}) {
   function nav(game, id) {
     if (game.coop?.guest && !GUEST_NAV.has(id)) { game.toast(t('net.hostOnly'), '4'); return; } // co-op: the host leads
     writePos(game);
-    if (id === 'menuView') return toMenu(game);
+    if (id === 'menuView') { doneHubTip(S.hubTip); return toMenu(game); }
     if (id === 'skills') return openSkillActions(game, locId, (g) => { syncSkills(g); layout(g); L.refresh(g); });
     if (id === 'map') { // M / «Карта»: straight to the world map like the node menu, unless leaving is blocked now
       if (S.alarm) return game.toast(t(S.alarm.fight ? 'roam.leaveFight' : 'roam.leaveAlarm'), 'c');
@@ -1172,6 +1173,8 @@ export function createRoamScene(rawId, opts = {}) {
     leader: () => S.party[0],
     update(game, dt) {
       S.time += dt;
+      if (S.hubTip === undefined) S.hubTip = game.coop?.guest ? null : createHubTip(game.save, loc); // QA v48: one-time «Меню узла» hint
+      else S.hubTip = tickHubTip(S.hubTip, dt);
       handSync(game); // doors / notes / secrets change in modals (checks, cache search)
       spotTick(game, dt);
       if (L.pump(game)) return;
@@ -1448,6 +1451,7 @@ export function createRoamScene(rawId, opts = {}) {
       }
       text(ctx, fit(ctx, t('roam.help'), W0 - S.buttons.length * 130 - 40, '12px monospace'), 12, H0 - 36, C['4'], '12px monospace');
       for (const b of S.buttons) button(ctx, b, S.hover === b);
+      drawHubTip(ctx, S.hubTip, W0, H0);
       // sneaking: an «eye» over the leader
       const lb = S.crouch > 0.5 && S.memScr.find((b) => b.m === ld);
       if (lb) {

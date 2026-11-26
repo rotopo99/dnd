@@ -1,6 +1,9 @@
 // Strings of the free node map (docs/specs/free-roam.md, scenes/roam.js).
 export const ROAM_TEXT = {
   'roam.menu': 'Меню узла',
+  // QA v48: one-time hub hint (ui/hub-tip.js)
+  'roam.tipHubWho': 'Сандаун (по рации):',
+  'roam.tipHub': 'Это узел — тут торгуют, лечат и дают работу. Tab — «Меню узла»: все торговцы, услуги и NPC списком, без беготни.',
   'roam.toMap': 'Карта узла',
   'roam.leaveTitle': 'Покинуть узел?',
   'roam.leaveText': 'Партия выйдет на глобальную карту.',

@@ -1598,6 +1598,34 @@ test('rollLoot: deterministic by seed, summons drop nothing, gear by GEAR_DROP, 
     const n2 = normalizeSave(JSON.parse(JSON.stringify(s2)), GAME_DATA);
     assert.equal(n2.quests[id].turnin, true); assert.deepEqual(n2.pendingRadio, ['mq-exodus']);
   });
+  test('w3-vacation night shift costs a game day (like rest / travel) and −6 ЗДР', () => {
+    const s = mk(), id = 'w3-vacation';
+    qs.startQuest(s, id); s.quests[id].stage = 'night';
+    const sl = qs.slots(s, id).find((x) => x.kind === 'choice');
+    assert.ok(sl, 'night choice slot');
+    const day0 = s.day;
+    const out = qs.chooseOption(s, sl, 'wait', GAME_DATA);
+    assert.equal(s.day, day0 + 1);
+    assert.equal(s.quests[id].stage, 'choice');
+    assert.ok(s.flags['vac-night'] && out.some((x) => /дней: 1/.test(x.text)));
+  });
+  const { TRINKETS, LOOT_TABLES, BOSS_RELICS } = await import('../game/src/data/items/loot.js');
+  test('trinkets (items/loot.js TRINKETS) are in the item catalogue with a sell price and drop from tables / relics / caches', () => {
+    const inTables = new Set([...Object.values(LOOT_TABLES).flatMap((tb) => tb.entries.map((e) => e.item)), ...Object.values(BOSS_RELICS)]);
+    const inCaches = new Set(Object.values(LOCS).flatMap((l) => (l.caches || []).flatMap((c) => (c.loot || []).map((x) => x.item))));
+    for (const id of Object.keys(TRINKETS)) {
+      const it = GAME_DATA.ITEMS[id];
+      assert.ok(it && it.cat === 'trinket' && it.unique && it.passives?.length, id);
+      assert.ok(it.price > 0, `${id} sell value`);
+      assert.ok(inTables.has(id), `${id} drops`);
+    }
+    assert.ok([...inCaches].some((id) => TRINKETS[id]), 'a trinket in a cache');
+    // unique: one per loot roll, none when owned
+    const boss = Object.keys(GAME_DATA.ENEMIES).find((e) => GAME_DATA.ENEMIES[e].loot === 'boss-band');
+    const only = { ...GAME_DATA, LOOT_TABLES: { 'boss-band': { ...LOOT_TABLES['boss-band'], rolls: 30, entries: [{ item: 'lox-badge', w: 1, n: 1 }] } }, GEAR_DROP: {} };
+    assert.deepEqual(rollLoot([boss], only, createRng(2)).items.filter((x) => x.id === 'lox-badge'), [{ id: 'lox-badge', n: 1 }]);
+    assert.equal(rollLoot([boss], only, createRng(2), { owned: new Set(['lox-badge']) }).items.length, 0);
+  });
   test('turn-in outcome: id of the chosen option (or end-<key> stage), failed, default', () => {
     const td = { lines: { default: ['d'], marta: ['m'], light: ['l'], failed: ['f'] } };
     assert.equal(qs.questOutcome({ state: 'done', path: ['a', 'marta', 'back'] }, td), 'marta');

@@ -89,8 +89,8 @@ const LIST = [
   t('boss-plague-seed', 'Сердце Семени Чумы', 2, [50, 120], Q_HIGH, [e('antidote', 3, 2), e('hazmat-suit', 1), e('rubber-lining', 1), e('repair-kit', 2, 2)]),
   t('boss-vibe-burner', 'Пепел Выжигателя Вайба', 2, [50, 120], Q_HIGH, [e('anti-cringe-earplugs', 3, 2), e('calmers', 3, 2), e('host-jacket', 1), e('electro-balalaika', 1)]),
   t('boss-ice-ring', 'Призовой фонд Ледяного ринга', 2, [100, 250], Q_HIGH, [e('forsazh-stim', 3), e('bear-blood', 2), e('tishina-syringe', 2), e('brass-knuckles', 1)]),
-  t('boss-monster', 'Сокровище логова', 3, [60, 150], Q_HIGH, [e('rare-parts', 3), e('servo-parts', 3), e('bear-blood', 2), e('army-medkit', 2)]),
-  t('boss-band', 'Общак банды', 3, [80, 160], Q_HIGH, [e('kedrach', 2), e('tishina-smg', 1), e('drum-mag', 1), e('adrenaline-stim', 2), e('codeine-syrup', 3)]),
+  t('boss-monster', 'Сокровище логова', 3, [60, 150], Q_HIGH, [e('rare-parts', 3), e('servo-parts', 3), e('bear-blood', 2), e('army-medkit', 2), e('harmony-core', 1)]),
+  t('boss-band', 'Общак банды', 3, [80, 160], Q_HIGH, [e('kedrach', 2), e('tishina-smg', 1), e('drum-mag', 1), e('adrenaline-stim', 2), e('codeine-syrup', 3), e('lox-badge', 1), e('cup-crown', 1)]),
 ];
 
 export const LOOT_TABLES = Object.fromEntries(LIST.map((x) => [x.id, x]));
@@ -106,23 +106,25 @@ export const BOSS_RELICS = {
   'cult-judge-hand': 'judge-gavel',
 };
 
-// Реликты-амулеты (слот trinket; пассивки работают, пока в инвентаре — как ITEMS.passives в world/locations.js).
+// Реликты-амулеты (cat trinket; пассивки работают, пока в инвентаре — как ITEMS.passives в world/locations.js).
+// В каталоге ITEMS (data/index.js, поля world/locations.js поверх); выпадают: plague-seed-jar / vibe-burner-core — BOSS_RELICS,
+// harmony-core — boss-monster, lox-badge / cup-crown — boss-band (вес 1 из ~10), lox-badge ещё в тайнике dc-pl-archive. unique — одна штука.
 export const TRINKETS = {
-  'plague-seed-jar': { id: 'plague-seed-jar', name: 'Семя Чумы в свинцовой банке', cat: 'trinket', quality: 'relic', unique: true, price: 0,
+  'plague-seed-jar': { id: 'plague-seed-jar', name: 'Семя Чумы в свинцовой банке', cat: 'trinket', quality: 'relic', unique: true, price: 300,
     passives: [{ id: 'item-plague-jar', name: 'Привитый чумой', desc: 'Сопротивление яду, иммунитет к отравлению.', op: { resist: { toxin: 'resist' } } },
       { id: 'item-plague-jar-2', name: 'Привитый чумой', desc: '', op: { immuneStatus: ['poison'] } }],
     desc: 'Чума металла, запаянная в свинец. Механиды хотят её уничтожить, Культ — вернуть.' },
-  'vibe-burner-core': { id: 'vibe-burner-core', name: 'Сердечник Выжигателя Вайба', cat: 'trinket', quality: 'relic', unique: true, price: 0,
+  'vibe-burner-core': { id: 'vibe-burner-core', name: 'Сердечник Выжигателя Вайба', cat: 'trinket', quality: 'relic', unique: true, price: 300,
     passives: [{ id: 'item-vibe-core', name: 'Вайб выжжен', desc: 'Сопротивление кринжу, иммунитет к кринж-эффекту.', op: { resist: { cringe: 'resist' } } },
       { id: 'item-vibe-core-2', name: 'Вайб выжжен', desc: '', op: { immuneStatus: ['cringed'] } }],
     desc: 'Тому, кто его носит, уже ничего не стыдно. Совсем ничего.' },
-  'harmony-core': { id: 'harmony-core', name: 'Сердце Альфа-Гармонии', cat: 'trinket', quality: 'relic', unique: true, price: 0,
+  'harmony-core': { id: 'harmony-core', name: 'Сердце Альфа-Гармонии', cat: 'trinket', quality: 'relic', unique: true, price: 350,
     passives: [{ id: 'item-harmony-core', name: 'Парящий заряд', desc: '1d2 ЭНР в начале каждого хода.', op: { regen: { dice: '1d2', resource: 'enr', every: 'turn' } } }],
     desc: 'Осколок движка платформы, что зависла у утёса. Всё ещё пытается лететь.' },
-  'lox-badge': { id: 'lox-badge', name: 'Жетон агента Lox', cat: 'trinket', quality: 'relic', unique: true, price: 0,
+  'lox-badge': { id: 'lox-badge', name: 'Жетон агента Lox', cat: 'trinket', quality: 'relic', unique: true, price: 200,
     passives: [{ id: 'item-lox-badge', name: 'Агент под прикрытием', desc: 'Преимущество на Скрытность.', op: { advantage: ['stealth'] } }],
     desc: 'Номер стёрт. Клоны Lox узнают его и стреляют первыми.' },
-  'cup-crown': { id: 'cup-crown', name: 'Корона из кубков', cat: 'trinket', quality: 'relic', unique: true, price: 0,
+  'cup-crown': { id: 'cup-crown', name: 'Корона из кубков', cat: 'trinket', quality: 'relic', unique: true, price: 150,
     passives: [{ id: 'item-cup-crown', name: 'Король на час', desc: '+2 ХАР.', op: { statBonus: { cha: 2 } } }],
     desc: 'Украденная корона Короля свалок. Кто носит — тот и король. Мусорщики так считают. Король — нет.', stigma: { scavengers: -20 } },
 };

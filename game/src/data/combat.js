@@ -182,7 +182,7 @@ export const WEATHER = {
   tod: {
     day: { vis: 0 },
     dusk: { vis: 0, overlay: ['1', 0.22] },
-    night: { vis: 6, light: 3, overlay: ['0', 0.55] },
+    night: { vis: 6, light: 3, overlay: ['0', 0.42] }, // QA v48: 0.55 read too dark in runs (visual only)
   },
   weather: {
     clear: { vis: 0 },

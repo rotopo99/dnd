@@ -163,8 +163,10 @@ export const GFX = {
     ao: { radius: 1.5, distanceExponent: 1.0, thickness: 2.0, scale: 1.5, samples: 12, intensity: 1.0 },
     bloom: { strength: 0.42, radius: 0.35, threshold: 0.92 },
     grade: { vignette: 0.22, start: 0.55, max: 0.93, sat: 0.85 },
-    // night: lights x ambient, tint (palette key) x tintK outside the light holes, moonlight key / sky colours, warm pools
-    night: { ambient: 0.6, point: 3.2, dist: 1.6, tint: 'g', tintK: 0.8, moon: 'f', sky: 'g', warmK: 1.2 },
+    // night: lights x ambient, tint (palette key) x tintK outside the light holes, moonlight key / sky colours (sky lerp
+    // skyK), warm pools; floor — minimum light multiplier of night / storm / dusk (QA v48: runs too dark; visual only,
+    // the sight range stays WEATHER.tod / weather vis); fogMax — extra depth fog share in low-visibility weather
+    night: { ambient: 0.8, point: 3.2, dist: 1.6, tint: 'g', tintK: 0.45, moon: 'f', sky: 'g', skyK: 0.5, warmK: 1.2, floor: 0.85, fogMax: 0.1 },
     particleGlow: 2.4,
     // software GL (SwiftShader / llvmpipe — fill rate): no bloom / GTAO, shadow map size x shadow; `?hq=1` keeps full quality
     soft: { bloom: false, gtao: false, shadow: 0.5 },

@@ -36,7 +36,7 @@ export const CACHES_DENSITY = [
 
   // ---- Дальние (СЛ 14–17)
   { id: 'dc-kreml-barracks', node: 'kreml', check: { skill: 'military', dc: 15 }, loot: ['army-medkit', 'frag-grenade'], text: 'Под нарами в казарме — неучтённый армейский запас. Портянка знает, но молчит.' },
-  { id: 'dc-pl-archive', node: 'putinlyandiya', check: { skill: 'hacking', dc: 16 }, loot: ['holo-decoy'], credits: 80, text: 'В архиве талонов — резервный ключ и фальшивая голограмма. Законно ровно настолько, насколько это нужно.' },
+  { id: 'dc-pl-archive', node: 'putinlyandiya', check: { skill: 'hacking', dc: 16 }, loot: ['holo-decoy', 'lox-badge'], credits: 80, text: 'В архиве талонов — резервный ключ и фальшивая голограмма. Законно ровно настолько, насколько это нужно.' },
   { id: 'dc-carwash-vat', node: 'cc-carwash', check: { skill: 'perception', dc: 15 }, loot: ['smoke-grenade', 'flashbang'], flag: 'cx-cult-schedule', text: 'В бочке с шампунем — два свёртка. Алик не будет рад, что вы их нашли. На дне бочки — мокрый лист с графиком культа.' },
   { id: 'dc-sokralnya-altar', node: 'sokralnya', check: { skill: 'religion', dc: 16 }, loot: ['calmers', 'valerian'], text: 'За алтарём — склянки с успокоительным. Послушники принимают его, чтобы вынести службу.' },
   { id: 'dc-gornilo-pit', node: 'pepelnoe-gornilo', check: { skill: 'meditation', dc: 16 }, loot: ['anti-cringe-earplugs'], text: 'В яме у горна — беруши. Видимо, не все кринжгоны выдерживают собственный юмор.' },

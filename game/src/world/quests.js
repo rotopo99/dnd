@@ -21,6 +21,7 @@
 //   to it). While the timer runs an 'all' stage waits for every subgoal; once `min` succeeded a «that's enough» decision appears.
 // Lore finds: entering a stage queues notes `stage:<qid>/<stage>` (world/lore.js).
 import { dropItem } from './inventory.js';
+import { passDays } from './exodus.js';
 import { QUESTS, sameLocation, QUEST_TURNIN, npcHome, resolveLocation } from './data.js';
 import { t } from '../data/text/index.js';
 import { grant, journal, requiresOk, tf, repToasts } from './state.js';
@@ -402,6 +403,8 @@ function toStage(save, qid, next, data, via = null) {
 function applyEffects(save, eff, data, key) {
   if (!eff) return [];
   const out = grant(save, eff, data, { keyChoice: key });
+  // days pass like a rest / travel (Exodus timer, skirmishes, delayed consequences); a zero timer starts its finale on the next day step
+  if (eff.days > 0) out.push({ text: tf('cs.days', { n: eff.days }), color: 'a' }, ...passDays(save, eff.days).out);
   if (eff.talentChoice) save.pendingTalentChoice = [...(save.pendingTalentChoice || []), eff.talentChoice];
   if (eff.text) out.push({ text: eff.text, color: '5' });
   return out;

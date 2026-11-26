@@ -70,7 +70,7 @@ export const QUESTS_WAVE3 = [
       st('petition', 'Контур диктует заявление по форме АИ: одиннадцать голосов, четырнадцать копий. Записать так, чтобы каждый узнал своё.',
         check(['persuasion', 'analysis', 'meditation'], 14, 'night'), 'choice'),
       st('night', 'Заявление не сошлось с формой. Контур включил ночную смену: цех затопляет до утра.',
-        choice([opt('wait', 'Переждать на трубах до утра. Мокро, но по графику.', null, 'choice', { effects: { hp: -6, flags: ['vac-night'], text: 'Ночная смена: награда за отпуск урежется на 30%.' } })]), 'choice'),
+        choice([opt('wait', 'Переждать на трубах до утра. Мокро, но по графику.', null, 'choice', { effects: { hp: -6, days: 1, flags: ['vac-night'], text: 'Ночная смена: награда за отпуск урежется на 30%.' } })]), 'choice'),
       st('choice', 'Заявление готово. Осталось решить, что с ним делать.', choice([
         opt('formal', 'Оформить отпуск: печать окошка № 7 или любой штамп.', check(['persuasion', 'analysis', 'deception'], 13, null, { easeBy: [{ flag: 'customs-stamp', n: 2 }] }), 'back',
           { effects: { flags: ['vac-formal'], items: [{ item: 'rare-parts', n: 2 }] } }),

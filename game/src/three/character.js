@@ -131,6 +131,10 @@ export async function assembleCharacter(F) {
   const metas = await Promise.all(got.map(modelMeta));
   if (metas[0]?.height_m) C.height = metas[0].height_m;
   C.meta = metas[0] || null; // grip2h (two-handed weapon frame in rightHand), loops, npc
+  if (HM.robe.models.includes(F.base)) { // long robe: shin / foot bones damped in the gait clips (robeLegs)
+    C.robe = [];
+    for (const [k, keep] of Object.entries(HM.robe.keep)) for (const side of ['left', 'right']) { const b = C.bones.get(side + k); if (b) C.robe.push({ b, rest: C.rest.get(b.name), keep }); }
+  }
   const seen = new Set();
   for (const m of metas) for (const sb of m?.springBones || []) {
     const joints = [];
@@ -368,9 +372,17 @@ export function setFace(C, tex, keys, blink) {
 
 const _h = new THREE.Vector3(), _d = new THREE.Vector3(), _n = new THREE.Vector3(), _s = new THREE.Vector3();
 const _pq = new THREE.Quaternion(), _wq = new THREE.Quaternion(), _q = new THREE.Quaternion(), _lq = new THREE.Quaternion();
+/** Long robe (HERO_MODELS.robe): in the gait clips pull the shin / foot towards the bind pose (after the mixer). */
+function robeLegs(C) {
+  if (!C.robe?.length || !HM.robe.clips.includes(C.inst.current())) return;
+  for (const r of C.robe) r.b.quaternion.slerp(r.rest, 1 - r.keep);
+  C.root.updateMatrixWorld(true);
+}
+
 /** Spring chains (VRM 1.0 style: inertia, stiffness to the rest direction, gravity, fixed length); after the mixer and
  *  root.updateMatrixWorld. k — weight (0 — rest pose, simulation reset). */
 export function stepSprings(C, dt, k) {
+  robeLegs(C);
   if (!C.springs.length) return;
   dt = Math.min(dt, 1 / 30);
   for (const ch of C.springs) for (const j of ch.joints) {

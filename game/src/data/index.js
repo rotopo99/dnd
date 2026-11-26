@@ -12,6 +12,7 @@ import { WEAPONS, CLASS_PROFICIENCY } from './items/weapons.js';
 import { ARMOR } from './items/armor.js';
 import { MODS, QUALITY } from './items/mods.js';
 import { PACKS } from './items/inventory.js';
+import { TRINKETS } from './items/loot.js';
 import { OFFHAND } from './items/offhand.js';
 import { CONSUMABLES } from './items/consumables.js';
 import { ITEMS as WORLD_ITEMS } from './world/locations.js';
@@ -38,7 +39,7 @@ export const ENCOUNTERS = { ...ENCOUNTERS_V1, ...ENCOUNTERS_V3, ...ENCOUNTERS_V4
  * One item catalogue: v3 gear (items/*) + v1.0 world items (world/locations.js ITEMS). Same id in both
  * (medkit, calmers, grenade) → one record: world fields (use, passives, price, desc) over the v3 battle fields.
  */
-export const ITEMS = { ...WEAPONS, ...ARMOR, ...OFFHAND, ...MODS, ...CONSUMABLES, ...PACKS };
+export const ITEMS = { ...WEAPONS, ...ARMOR, ...OFFHAND, ...MODS, ...CONSUMABLES, ...PACKS, ...TRINKETS };
 for (const [id, it] of Object.entries(WORLD_ITEMS)) ITEMS[id] = { ...(ITEMS[id] || {}), ...it };
 // киберспейс v2: предметы CS_ITEMS (мод «Эхо-катушка» — в items/mods.js); эффекты — world/cyber.js
 for (const [id, it] of Object.entries(CS_ITEMS)) if (!ITEMS[id]) ITEMS[id] = { id, name: it.name, price: it.price, desc: it.desc, cyber: it.slot, ...(it.slot === 'quest' ? { key: true } : {}) };

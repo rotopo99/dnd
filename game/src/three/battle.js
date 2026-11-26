@@ -515,13 +515,13 @@ export function drawBattleThree(E, game, S, opts) {
   if (sc.right !== R) { sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 130; sc.updateProjectionMatrix(); }
   const vis = visionOf(b.map), tod = b.map.tod, NT = GFX.light.night;
   const amount = vis.dark ? NT.amount : tod === 'dusk' ? NT.dusk : 0;
-  const dim = 1 - amount * (1 - T3.night.ambient);
+  const dim = Math.max(T3.night.floor, 1 - amount * (1 - T3.night.ambient));
   T.hemi.intensity = T3.hemi.k * dim;
   T.key.intensity = T3.key * dim;
   T.fill.intensity = prefs.reduceFx ? 0 : T3.fill * dim;
   const nc = colorOf(WEATHER.tod[tod]?.overlay?.[0] || '0');
   const moon = vis.dark ? amount / NT.amount : 0; // night: cold moonlight key, blue sky
-  T.hemi.color.copy(colorOf(T3.hemi.sky)).lerp(vis.dark ? colorOf(T3.night.sky) : nc, vis.dark ? moon * 0.8 : amount * 0.6);
+  T.hemi.color.copy(colorOf(T3.hemi.sky)).lerp(vis.dark ? colorOf(T3.night.sky) : nc, vis.dark ? moon * T3.night.skyK : amount * 0.6);
   T.hemi.groundColor.copy(colorOf(T3.hemi.ground));
   T.key.color.copy(colorOf(T3.keyColor)).lerp(colorOf(T3.night.moon), moon * 0.7);
   const ls = amount && vis.dark ? (S.lights3 || lightSources(b)).slice(0, NT.max) : [];
@@ -552,7 +552,7 @@ export function drawBattleThree(E, game, S, opts) {
   if (prefs.reduceFx) T.scene.fog = null;
   else {
     const fc = colorOf(GFX.fogColor[Wd.biome] || GFX.fogColor.default);
-    const nearD = DIST + (vis.vis ? -4 : FG.near), farD = DIST + (vis.vis ? vis.vis * 2 : FG.far), mx = vis.vis ? Math.min(0.6, FG.max + 0.2) : FG.max;
+    const nearD = DIST + (vis.vis ? -4 : FG.near), farD = DIST + (vis.vis ? vis.vis * 2 : FG.far), mx = vis.vis ? Math.min(0.6, FG.max + T3.night.fogMax) : FG.max;
     if (!T.scene.fog) T.scene.fog = new THREE.Fog(fc, nearD, farD);
     T.scene.fog.color.copy(fc); T.scene.fog.near = nearD; T.scene.fog.far = nearD + (farD - nearD) / mx;
   }

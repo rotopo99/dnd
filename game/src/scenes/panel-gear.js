@@ -377,7 +377,7 @@ export function clickGear(game, S, b, after = () => {}) {
 
 // ----------------------------------------------------------------------------- render
 function drawItem(ctx, it, x, y, w, h, o = {}) {
-  const col = { weapon: C.c, armor: C.b, offhand: C.b, mod: C.a, pack: C.n }[it.slot] || (it.cat === 'consumable' ? C.j : C['4']);
+  const col = { weapon: C.c, armor: C.b, offhand: C.b, mod: C.a, pack: C.n }[it.slot] || (it.cat === 'consumable' ? C.j : it.cat === 'trinket' ? C.h : C['4']);
   ctx.globalAlpha = o.alpha ?? 1;
   panel(ctx, x + 1, y + 1, w - 2, h - 2, o.fill || C['2'], o.border || col);
   const small = Math.min(w, h) < 30;
@@ -391,6 +391,7 @@ function drawItem(ctx, it, x, y, w, h, o = {}) {
   }
   if (o.n > 1) text(ctx, `×${o.n}`, x + w - 3, y + h - 13, C.b, '11px monospace', 'right');
   if (o.q && o.q !== 'working' && o.q !== 'relic') text(ctx, o.q === 'junk' ? '▾' : '★', x + w - 3, y + 2, o.q === 'junk' ? C.n : C.b, '11px monospace', 'right');
+  if (it.cat === 'trinket') text(ctx, '◆', x + w - 3, y + 2, C.h, '11px monospace', 'right');
   if (o.mods?.length) text(ctx, `+${o.mods.length}`, x + 3, y + h - 13, C.a, '11px monospace');
   ctx.globalAlpha = 1;
 }
