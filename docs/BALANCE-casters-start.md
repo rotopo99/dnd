@@ -56,3 +56,10 @@ Prologue battles 2-3 and road fights stay hard for the naive click for most clas
 - Expiry: the passive persists to level 20 (+2 ranged dmg is small there). If wanted, add `maxLevel` to `passiveApplies` (rules/character.js) and set 4.
 - Itishnik sapper / mechanic paths have no turret, so Q is still field-repair there; consider junk-grenade first for the sapper.
 - AI for slavotech (battle 1: 19%).
+
+## Решения режиссёра (2026-11-26)
+- Принято: +1 урона ближнего боя ecolog / reper / cybertech на старте.
+- Принято: подсказка умения — с 1-го хода и указывает на первое атакующее умение (а не на лечение).
+- Принято: путям Айтишника без турели (сапёр, механик) — атакующее умение на Q.
+- Отдельная задача: ИИ Славотеха выигрывает бой 1 лишь в 15–19% (наивный клик — 85%) — баг ИИ.
+- Потолок ≤97% для ИИ снят: ИИ-игра ≈100% почти у всех и до правок, это не цель баланса.
