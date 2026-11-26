@@ -93,7 +93,7 @@ export const QUESTS_WAVE5 = [
         effects: { flags: ['census-fail'], text: T('w5.census.expose.fail') } }),
     ]), 'done'),
   ],
-  { xp: 450, credits: 120, rep: { mutantsBeast: 2 }, items: [{ item: 'rare-parts', n: 2 }] },
+  { xp: 800, credits: 120, rep: { mutantsBeast: 2 }, items: [{ item: 'rare-parts', n: 2 }] },
   { rewardCut: [{ flag: 'census-fail', mul: R.censusFailMul }],
     outcomeBy: [{ key: 'exposed', all: ['census-exposed'] }, { key: 'quiet', all: ['census-quiet'] }, { key: 'freed', all: ['census-freed'] }, { key: 'fail', all: ['census-fail'] }] }),
 
@@ -114,7 +114,7 @@ export const QUESTS_WAVE5 = [
       opt('sell', T('w5.bread.sell'), null, null, { effects: { flags: ['bread-sold'], credits: R.breadBounty, deeds: ['greed'], text: T('w5.bread.sell.ok') } }),
     ]), 'done'),
   ],
-  { xp: 600, credits: 0 },
+  { xp: 950, credits: 100 },
   { outcomeBy: [{ key: 'burned', all: ['bread-burned'] }, { key: 'shared', all: ['bread-shared'] }, { key: 'split', all: ['bread-split'] }, { key: 'sold', all: ['bread-sold'] }] }),
 
   // ================= w5-crown «Корона и кубок» (фетч с подвохом, Свалка, ур. 9) =================
@@ -135,7 +135,7 @@ export const QUESTS_WAVE5 = [
       opt('framed', T('w5.crown.framed'), check(['deception'], 15), null, { effects: { flags: ['crown-framed'], credits: R.crownFine, text: T('w5.crown.framed.ok') } }),
     ], { location: 'svalka' }), 'done'),
   ],
-  { xp: 650, credits: 150, items: [{ item: 'crown-shard', n: 1 }] },
+  { xp: 1000, credits: 150, items: [{ item: 'crown-shard', n: 1 }] },
   { outcomeBy: [{ key: 'returned', all: ['crown-returned'] }, { key: 'destroyed', all: ['crown-destroyed'] }, { key: 'pirates', all: ['crown-pirates'] }, { key: 'framed', all: ['crown-framed'] }] }),
 
   // ================= w5-recruit «Новичок» (эскорт идёт не так, Славотеч -> Додзе, ур. 10) =================
@@ -163,7 +163,7 @@ export const QUESTS_WAVE5 = [
     onward('fled', T('w5.recruit.lost.ok'), T('w5.recruit.obj.done'), 'back', { flags: ['recruit-lost'] }),
     st('back', T('w5.recruit.obj.done'), reach('dodze'), 'done'),
   ],
-  { xp: 700, credits: 100, items: [{ item: 'tin-oath-cord', n: 1 }] },
+  { xp: 1100, credits: 150, items: [{ item: 'tin-oath-cord', n: 1 }] },
   { outcomeBy: [{ key: 'killed', all: ['recruit-dead'] }, { key: 'saved', all: ['recruit-saved'] }, { key: 'handed', all: ['recruit-handed'] }, { key: 'lost', all: ['recruit-lost'] }] }),
 
   // ================= w5-two-trails «Два следа» (личный: Зоя и Заря, ур. 10) =================
@@ -193,7 +193,7 @@ export const QUESTS_WAVE5 = [
       opt('stay', T('w5.trails.stay'), null, null, { effects: { flags: ['zz-stay'], text: T('w5.trails.res.stay') } }),
     ]), 'done'),
   ],
-  { xp: 600, credits: 0 },
+  { xp: 1000, credits: 120 },
   { outcomeBy: [{ key: 'truth', all: ['zz-truth'] }, { key: 'duel', all: ['zz-duel'] }, { key: 'hidden', all: ['zz-hidden'] }, { key: 'stay', all: ['zz-stay'] }] }),
 
   // ================= w5-edict «Стихотворный указ» (кринж-магия, Путинляндия, ур. 11) =================
@@ -230,7 +230,7 @@ export const QUESTS_WAVE5 = [
     // кринж-шторм проигран: площадь всё равно гудит, указ — «литературный враг»
     onward('storm-lost', T('w5.edict.res.good0'), T('w5.edict.obj.done'), 'done', { flags: ['edict-good0'] }),
   ],
-  { xp: 500, credits: 0, items: [{ item: 'rhyme-book', n: 1 }] },
+  { xp: 900, credits: 100, items: [{ item: 'rhyme-book', n: 1 }] },
   { public: true, // «неделя единства»: указ читают все, даже враги Партии (world/quest-access.js questOpen)
     outcomeBy: [{ key: 'truth', all: ['edict-truth'] }, { key: 'hack', all: ['edict-hack'] }, { key: 'good3', all: ['edict-good3'] }, { key: 'good2', all: ['edict-good2'] },
     { key: 'good1', all: ['edict-good1'] }, { key: 'good0', all: ['edict-good0'] }] }),
@@ -256,7 +256,7 @@ export const QUESTS_WAVE5 = [
     onward('storm-turn-fail', T('w5.schedule.res.shielded'), T('w5.schedule.obj.done'), 'back', { flags: ['storm-shielded', 'boltik-dead'] }),
     st('back', T('w5.schedule.obj.done'), talk('aztun', 'ancient-bunker'), 'done'),
   ],
-  { xp: 900, credits: 200, items: [{ item: 'proxy-capacitor', n: 1 }] },
+  { xp: 1300, credits: 200, items: [{ item: 'proxy-capacitor', n: 1 }] },
   { outcomeBy: [{ key: 'diverted', all: ['storm-diverted'] }, { key: 'shielded', all: ['storm-shielded'] }, { key: 'hit', all: ['storm-hit'] }] }),
 ];
 function C13_OPT(id) { return C13_SCHEDULE.beats.choice.choice.opts.find((o) => o.id === id)?.l || id; }

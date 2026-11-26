@@ -13,9 +13,9 @@ export const ITEMS_WAVE5 = {
     desc: `${T['w5.edict.item.rhymebook'] || 'Сборник рифм.'} Пока в рюкзаке — Обман +1.` },
   // w5-schedule: a capacitor of the proxy relay
   'proxy-capacitor': { id: 'proxy-capacitor', name: 'Прокси-конденсатор', price: 0, key: true,
-    passives: [{ id: 'item-proxy-capacitor', name: 'Заряд по расписанию', desc: '+1 к максимуму ЭНР.', op: { maxEnr: 1 } }],
+    passives: [{ id: 'item-proxy-capacitor', name: 'Заряд по расписанию', desc: '+4 к максимуму ЭНР.', op: { maxEnr: 4 } }],
     world: [{ check: 'proxy', bonus: 1 }],
-    desc: 'Снят с ретранслятора у Свободы. Пока в рюкзаке — ЭНР +1 и Прокси-магия +1.' },
+    desc: 'Снят с ретранслятора у Свободы. Пока в рюкзаке — ЭНР +4 и Прокси-магия +1.' },
   // w5-recruit: the oath cord of the Tin Brotherhood
   'tin-oath-cord': { id: 'tin-oath-cord', name: 'Шнур клятвы', price: 60,
     world: [{ check: 'persuasion', bonus: 1 }],
