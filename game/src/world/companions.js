@@ -64,7 +64,8 @@ export function condState(save, npcId, c) {
       const together = inParty(save, c.id);
       if (!c.hard) return { cond: c, ok: true, soft: together, text: tf('comp.cond.notWithSoft', { name: npcName(c.id) }), why };
       // a hard pair is lifted by the personal quest of either of them
-      const lifted = personalDone(save, npcId) || personalDone(save, c.id);
+      // content-wave5.md R3: c.lift — a flag that lifts the pair too (zz-peace: Zoya and Zarya share the fire)
+      const lifted = personalDone(save, npcId) || personalDone(save, c.id) || (!!c.lift && !!save.flags[c.lift]);
       return { cond: c, ok: !together || lifted, text: tf('comp.cond.notWith', { name: npcName(c.id) }), why };
     }
     default: return { cond: c, ok: true, text: c.kind, why };

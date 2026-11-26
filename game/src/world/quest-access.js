@@ -17,7 +17,7 @@ export const isTrialQuest = (q) => !q.key && (q.trial ?? q.id.startsWith('sq-'))
 export const trustTier = (save, f, data) => (f ? repTier(effectiveRep(save, f, data)) : 'neutral');
 /** Is quest q open at trust tier `tier` (bribe — the party has the bribe flag)? */
 export function questOpen(q, tier, bribe = false) {
-  if (q.key) return true;
+  if (q.key || q.public) return true; // content-wave5: `public` — a call to everyone (w5-edict: the Party makes even mutants recite)
   if (tier === 'hostile') return false;
   if (tier === 'suspicious') return bribe || isTrialQuest(q);
   return true;

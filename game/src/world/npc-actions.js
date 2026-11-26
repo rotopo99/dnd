@@ -14,6 +14,7 @@ import { serviceOff, exodusNpcLine } from './exodus.js';
 import { backstoryTopics, useBackstoryTopic } from './backstory.js';
 import { startQuest, onTalk } from './quests.js';
 import { offeredQuests } from './quest-access.js';
+import { w5Topics } from './wave5.js';
 import { questReachable, placeReachable } from './routing.js';
 import { NPCS } from '../data/npcs.js';
 import { QUESTS, resolveLocation } from './data.js';
@@ -160,7 +161,7 @@ export function createNpcActions(ctx) {
     const askTopics = (g) => {
       // world-consequences.md ч.4: backstory questions (TOPIC_TALK) join the NPC's own topics
       const bfac = npcFaction(npc) || normFaction(npcRepFaction(npc));
-      const topics = [...npcTopics(npc), ...backstoryTopics(sv, npc.id, bfac).map((x) => ({ q: `✦ ${x.q}`, a: x.a, bg: x.id }))];
+      const topics = [...npcTopics(npc), ...w5Topics(sv, npc.id), ...backstoryTopics(sv, npc.id, bfac).map((x) => ({ q: `✦ ${x.q}`, a: x.a, bg: x.id }))];
       if (!topics.length || tier === 'hostile') return finishTalk(g);
       g.openModal({
         title: npc.name, onCancel: (g2) => finishTalk(g2),

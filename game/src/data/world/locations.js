@@ -16,6 +16,7 @@
 import { BURGS, MARKERS, MAP_SIZE } from './canon-map.js';
 import { NPCS } from '../npcs.js';
 import { NODE_BATTLES_V4 } from './battles-v4.js';
+import { ITEMS_WAVE5 } from '../items/wave5.js';
 import { CACHES_DENSITY } from './density-caches.js';
 
 export const MAP_SPACE = { w: MAP_SIZE.w, h: MAP_SIZE.h, kmPerPx: MAP_SIZE.kmPerPx, image: 'docs/canon/map/map.png' };
@@ -584,5 +585,6 @@ export const ITEMS = {
     req: { weapon: 'ranged' },
     desc: 'Снайперский прицел. Стрелку (оружие с range > 1) — +1 к атаке; ближникам бесполезен.' },
 };
+Object.assign(ITEMS, ITEMS_WAVE5); // content-wave5 §4: crown-shard, rhyme-book, proxy-capacitor, tin-oath-cord
 // Предметы с world / passives работают, пока лежат в инвентаре героя (экипировки в v1 нет).
 // passives предмета считаются как пассивки таланта, но НЕ занимают лимит боевых талантов (как примочки).

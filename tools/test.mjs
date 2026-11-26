@@ -5664,8 +5664,8 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     return { R, save };
   };
 
-  test('cine: 12 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
-    assert.equal(Object.keys(CINEMATICS).length, 12);
+  test('cine: 13 scene graphs are valid (refs, silence in every choice, reachability, frames / clips / emotions)', () => {
+    assert.equal(Object.keys(CINEMATICS).length, 13); // content-wave5: c13 «Расписание» (hardCap 13, director 2026-11-26)
     for (const d of Object.values(CINEMATICS)) assert.deepEqual(CN.validateCine(d), [], d.id);
     const bad = { id: 'x', start: 'a', cast: {}, beats: { a: { choice: { opts: [{ id: 'o', next: 'nope' }, { id: 'p', next: 'a' }] } }, z: { end: { result: 'r' } } } };
     const e = CN.validateCine(bad).join('\n');
@@ -5679,7 +5679,9 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
       // content-wave4: c11 narrators (Kuksius / Archon / Sera) and c12 branches by fin-* with dossier witnesses
       { 'kuksius-helped': true, 'vessel-hero': true, 'fin-reflash': true, 'ladov-named': true }, { 'archon-ally': true, 'fin-admin-oldgod': true, 'disp-live': true },
       { 'fin-admin-order': true, 'kuksius-helped': true }, { 'fin-admin-scrap': true, 'truth-harmony-public': true }, { 'fin-lox9': true }, { 'fin-vessel': true }, { 'fin-vessel': true, 'lox-dead': true },
-      { 'fin-closed': true, 'fin-lox-leave': true, 'dawn-known': true }];
+      { 'fin-closed': true, 'fin-lox-leave': true, 'dawn-known': true },
+      // content-wave5: c13 by the w3-apology outcome (disp-live / disp-off / none) and the fieldwork tech flag
+      { 'disp-off': true }, { 'disp-off': true, 'w5-sched-tech': true }, { 'w5-sched-tech': true }];
     for (const d of Object.values(CINEMATICS)) {
       const seen = new Set();
       for (let run = 0; run < 240; run++) {
@@ -6465,11 +6467,11 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
   const { COMPANIONS: CR } = await import('../game/src/data/companions.js');
   const { ORIGINS: OR } = await import('../game/src/data/world/origins.js');
   const { PLAYABLE_RACES } = await import('../game/src/data/index.js');
-  const story = Object.values(QR).filter((q) => q.giver && (q.key || q.personal || q.wave1 || q.wave2 || q.wave3));
+  const story = Object.values(QR).filter((q) => q.giver && (q.key || q.personal || q.wave1 || q.wave2 || q.wave3 || q.wave5));
   // intentional locks: a personal quest of a companion whose faction is hostile starts on recruitment (world/companions.js
   // recruit) — needs a recruit path (conditions or alt) without a reputation condition
   const recruitPath = (npc) => { const r = CR[npc]?.recruit; return !!r && [r.conditions, r.alt].some((p) => p?.length && p.every((c) => c.kind !== 'rep')); };
-  test('qa42 M1: every key / personal / wave 1–3 quest giver offers it to every race × origin (or a documented recruit path)', () => {
+  test('qa42 M1: every key / personal / wave 1–3 / wave 5 quest giver offers it to every race × origin (or a documented recruit path)', () => {
     const miss = [];
     for (const race of PLAYABLE_RACES) for (const o of Object.values(OR)) {
       if (o.races && !o.races.includes(race)) continue;
@@ -6844,6 +6846,140 @@ console.log('metric combat stage 4 (exact cones / lines, AI by geometry, bridge 
     const s = mk(); assert.ok(!st.requiresOk(s, QW['mq3-court'].requires));
     s.flags['eve-done'] = true; assert.ok(st.requiresOk(s, QW['mq3-court'].requires));
     assert.ok(st.requiresOk(mk({ 'ladov-named': true }), { dossier: { min: 2 } }) && !st.requiresOk(mk(), { dossier: { min: 1 } }));
+  });
+}
+// ---------------------------------------------------------------- content-wave5.md: seven midgame quests, R1–R4, c13
+{
+  const st = await import('../game/src/world/state.js');
+  const QS = await import('../game/src/world/quests.js');
+  const CQX = await import('../game/src/world/consequences.js');
+  const DS = await import('../game/src/world/dossier.js');
+  const HK = await import('../game/src/world/cine-hooks.js');
+  const CP = await import('../game/src/world/companions.js');
+  const fs = await import('node:fs');
+  const { QUESTS: QW, ENCOUNTERS: EW, LOCATIONS: LW, QUEST_TURNIN: TW } = await import('../game/src/world/data.js');
+  const { NPCS: NW } = await import('../game/src/data/npcs.js');
+  const { CONSEQUENCES: CW } = await import('../game/src/data/world/consequences.js');
+  const W5Q = await import('../game/src/data/world/quests-wave5.js');
+  const W5C = await import('../game/src/data/world/consequences-wave5.js');
+  const { WAVE5_TEXT } = await import('../game/src/data/text/wave5.js');
+  const { CINEMATICS } = await import('../game/src/data/cinematics/index.js');
+  const { DOSSIER, DOSSIER_RULES } = await import('../game/src/data/world/dossier.js');
+  const { ITEMS: IW } = await import('../game/src/data/index.js');
+  const mk = (flags = {}, lvl = 12) => { const s = st.newSave({ name: 'T', race: 'human', cls: 'ranger', path: null, origin: 'pirates', alignment: 'good', anyStat: null, talents: [] }); Object.assign(s.flags, { 'prologue-done': true }, flags); s.hero.level = lvl; s.hero.credits = 500; return s; };
+  const W5 = W5Q.QUESTS_WAVE5;
+  const goalsOf = (q) => q.stages.flatMap((sg) => [sg.goal, ...(sg.goal.options || []).map((o) => o.goal), ...(sg.goal.goals || []), ...(sg.goal.goals || []).flatMap((g) => (g.options || []).map((o) => o.goal))]).filter(Boolean);
+  test('wave5: 7 quests, unique ids, existing NPCs / encounters / nodes / items / stages, ≥ 2 outcomes with turn-in and consequences', () => {
+    assert.equal(W5.length, 7);
+    for (const q of W5) {
+      assert.equal(QW[q.id], q, `${q.id} registered (no id clash)`);
+      assert.ok(NW[q.giver] && LW[NW[q.giver].location] || LW[resolve(NW[q.giver]?.location)], `${q.id}: giver ${q.giver}`);
+      for (const g of goalsOf(q)) {
+        if (g.encounter) assert.ok(EW[g.encounter], `${q.id}: ${g.encounter}`);
+        if (g.npc) assert.ok(NW[g.npc], `${q.id}: ${g.npc}`);
+        if (g.location) assert.ok(LW[g.location] || LW[resolve(g.location)], `${q.id}: ${g.location}`);
+        if (g.onFail) assert.ok(q.stages.some((x) => x.id === g.onFail) || goalsOf(q).length, `${q.id}: ${g.onFail}`);
+      }
+      for (const sg of q.stages) for (const n of [sg.next, ...(sg.goal.options || []).map((o) => o.next)]) if (n && n !== 'done') assert.ok(q.stages.some((x) => x.id === n), `${q.id}/${sg.id}: next ${n}`);
+      for (const it of q.rewards.items || []) assert.ok(IW[it.item], `${q.id}: item ${it.item}`);
+      assert.ok(q.outcomeBy.length >= 2, q.id);
+      for (const o of q.outcomeBy) { assert.ok(CW[q.id][o.key], `${q.id}: consequences ${o.key}`); assert.ok(TW[q.id].lines[o.key], `${q.id}: turn-in ${o.key}`); }
+    }
+  });
+  const resolve = (id) => id && Object.keys(LW).find((k) => k === id);
+  test('wave5 text: every key the quests / consequences read resolves in the writer file (no raw w5.* keys)', () => {
+    const keys = [...W5Q.W5_KEYS_USED, ...W5C.W5_CQ_KEYS];
+    assert.ok(keys.length > 150, `keys ${keys.length}`);
+    assert.deepEqual(keys.filter((k) => WAVE5_TEXT[k] == null), []);
+    const raw = JSON.stringify([W5, W5C.CONSEQUENCES_WAVE5, W5C.EPILOGUE_WAVE5, W5C.RADIO_WAVE5, W5Q.QUEST_TURNIN_WAVE5, W5Q.W5_TOPICS]).match(/"w5\.[a-z]+\.[a-z0-9.]+"/g);
+    assert.equal(raw, null, `raw keys ${raw}`);
+  });
+  test('wave5 flags: every flag a wave-5 quest / consequence / c13 sets is read somewhere, every flag it reads is set', () => {
+    const sets = new Map(), reads = new Set();
+    const set = (f, w) => { if (!sets.has(f)) sets.set(f, w); };
+    const walkReq = (r) => {
+      if (!r || typeof r !== 'object') return;
+      for (const k of ['flag', 'notFlag']) if (typeof r[k] === 'string') reads.add(r[k]);
+      for (const f of r.flags || []) reads.add(f);
+      for (const x of r.any || []) walkReq(x);
+      walkReq(r.not);
+      if (r.ctr) for (const f of Object.keys(W5Q.W5_COUNTERS[r.ctr.id]?.plus || {})) reads.add(f);
+    };
+    for (const q of W5) {
+      for (const o of q.outcomeBy) for (const f of o.all) reads.add(f);
+      for (const c of q.rewardCut || []) reads.add(c.flag);
+      for (const sg of q.stages) {
+        walkReq(sg.requires);
+        for (const n of sg.notes || []) walkReq(n.requires);
+        for (const f of sg.effects?.flags || []) set(f, `${q.id}/${sg.id}`);
+        const opts = [...(sg.goal.options || []), ...(sg.goal.goals || []).flatMap((g) => g.options || [])];
+        for (const g of [sg.goal, ...(sg.goal.goals || [])]) if (g.doneFlag) reads.add(g.doneFlag);
+        for (const g of goalsOf(q)) for (const e of g.easeBy || []) reads.add(e.flag || e);
+        for (const o of opts) { walkReq(o.requires); for (const f of o.effects?.flags || []) set(f, `${q.id}/${sg.id}/${o.id}`); }
+      }
+    }
+    for (const [qid, by] of Object.entries(W5C.CONSEQUENCES_WAVE5)) for (const [o, e] of Object.entries(by)) for (const d of e.delayed) for (const f of d.fx.flags || []) set(f, `${qid}:${o}:${d.id}`);
+    const c13 = CINEMATICS['c13-schedule'];
+    const scan = (o) => { if (!o || typeof o !== 'object') return; if (o.on?.flag) for (const f of Object.keys(o.on.flag)) set(f, 'c13'); for (const v of Object.values(o)) scan(v); };
+    scan(c13.beats);
+    // readers elsewhere in the game: any source file other than the wave-5 setters mentions the flag
+    const src = [];
+    const walkDir = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = `${d}/${f.name}`; if (f.isDirectory()) walkDir(p); else if (p.endsWith('.js') && !/quests-wave5|consequences-wave5|c13-schedule/.test(p)) src.push(fs.readFileSync(p, 'utf8')); } };
+    walkDir('game/src');
+    const all = src.join('\n');
+    const consumers = JSON.stringify([W5Q.W5_TOPICS, W5Q.W5_EVE_MODS, W5Q.W5_NPC_RULES, W5C.EPILOGUE_WAVE5, W5C.RADIO_WAVE5]);
+    // choice memos of the scene itself (like cine-c1-silent): the scene's pick, the outcome flags follow it
+    const memo = new Set(['w5-storm-divert', 'w5-storm-turn']);
+    const dead = [...sets].filter(([f]) => !memo.has(f) && !reads.has(f) && !consumers.includes(`"${f}"`) && !all.includes(`'${f}'`)).map(([f, w]) => `${f} (${w})`);
+    assert.deepEqual(dead, [], `flags set, never read: ${dead.join(', ')}`);
+    const known = (f) => sets.has(f) || all.includes(`'${f}'`);
+    const orphan = [...reads].filter((f) => !known(f));
+    assert.deepEqual(orphan, [], `flags read, never set: ${orphan.join(', ')}`);
+  });
+  test('wave5 levels: each quest is hidden one level below and offered at its level', () => {
+    for (const q of W5) {
+      assert.ok(!QS.questsOffered(mk({}, q.level - 1), q.giver).some((x) => x.id === q.id), `${q.id} < ${q.level}`);
+      assert.ok(QS.questsOffered(mk({}, q.level), q.giver).some((x) => x.id === q.id), `${q.id} at ${q.level}`);
+    }
+  });
+  test('wave5 census: 3 of 5 clues accuse; misses count as tried; a beast mutant smells the coffee', () => {
+    const s = mk({}, 7); QS.startQuest(s, 'w5-census'); QS.onArrive(s, 'vonyuchka', GAME_DATA);
+    assert.equal(s.quests['w5-census'].stage, 'clues');
+    const ids = () => QS.availableOptions(s, QS.slots(s, 'w5-census')[0]).map((o) => o.id);
+    assert.ok(!ids().includes('go') && !ids().includes('coffee-nose') && ids().includes('coffee'));
+    s.hero.race = 'mutant-beast';
+    assert.ok(ids().includes('coffee-nose') && !ids().includes('coffee'));
+    Object.assign(s.flags, { 'w5c-clue-tracks': true, 'w5c-miss-pup': true, 'w5c-miss-ledger': true });
+    assert.ok(ids().includes('go'));
+    assert.equal(st.counterValue(s, 'w5-census-clues'), 1);
+  });
+  test('wave5 c13: storm stage queues c13 once (needQuest), c13-done -> back; 13 scenes, hardCap 13', () => {
+    const s = mk(); QS.startQuest(s, 'w5-schedule');
+    assert.ok(!HK.cinesAt(s, 'stage:w5-schedule/storm').length, 'not before the storm stage');
+    s.quests['w5-schedule'].stage = 'storm';
+    assert.deepEqual(HK.cinesAt(s, 'stage:w5-schedule/storm'), ['c13-schedule']);
+    assert.equal(HK.cineResultStage('w5-schedule', 'storm', 'c13-done'), 'back');
+    s.flags['cine-seen:c13-schedule'] = true;
+    assert.deepEqual(HK.cinesAt(s, 'stage:w5-schedule/storm'), []);
+    assert.equal(Object.keys(CINEMATICS).length, 13);
+  });
+  test('wave5 R3/§3: zz-peace lifts the Zoya / Zarya hard pair; dossier rows +1 / +1, cap stays 12', () => {
+    const s = mk(); st.recruit(s, 'zoya-klyk');
+    const why = () => CP.recruitStatus(s, 'zarya').paths[0].rows.find((r) => r.cond.kind === 'notWith').ok;
+    assert.equal(why(), false);
+    s.flags['zz-peace'] = true;
+    assert.equal(why(), true);
+    assert.ok(DOSSIER.some((r) => r.id === 'w5-witness') && DOSSIER.some((r) => r.id === 'w5-choir'));
+    assert.equal(DS.dossierPoints(mk({ 'recruit-saved': true, 'ryabov-defect': true })), 1, 'witness row counts once');
+    const full = mk(Object.fromEntries(DOSSIER.flatMap((r) => [r.flag, ...(r.any || [])]).filter(Boolean).map((f) => [f, true])));
+    assert.equal(DS.dossierPoints(full), DOSSIER_RULES.cap);
+  });
+  test('wave5 R1: bread-burned / shared move Agrara food prices; slides and radio by outcome', () => {
+    const s = mk(); s.flags['cq:w5-bread:burned'] = true; s.cq = [{ qid: 'w5-bread', o: 'burned', day: 0 }];
+    const e = CW['w5-bread'].burned;
+    assert.ok(e.vendors.some((v) => v.npc === 'ag-pomol' && v.mult > 1));
+    assert.ok(CW['w5-bread'].shared.vendors.some((v) => v.npc === 'ag-pomol' && v.mult < 1));
+    assert.ok(CQX.epilogueSlides(mk({ 'bread-burned': true })).some((x) => x.id === 'epi-bread-burned'));
   });
 }
 // QA v48 #5: no raw text keys in the battle log / unit cards (t() falls back to the key itself).

@@ -217,3 +217,13 @@
 - Домыслы приняты как дополнения (не канон): корона — бракованный маячок сосуда; Иволга — носитель шума Судьи. Записать в `docs/canon/README.md` (раздел расхождений/дополнений).
 - Slug мест и id NPC сверяет программист с `canon-map.js` / `npcs.js`; при расхождении берётся существующий id, спека правится.
 - Разделение работы: сценарист владеет `data/text/wave5*.js` и `data/cinematics/c13-schedule.js`; программист — `data/world/quests-wave5.js`, `consequences-wave5.js`, `world/wave5.js`, подключением и тестами. Ключи текста — `w5.<quest>.<step>[.<option>]`.
+
+## Id в данных (программист, 2026-11-26)
+Сверено с `canon-map.js` / `npcs.js`; где спека расходится — берётся это:
+- Места: Вонючка `vonyuchka`, Гидропоника `gidroponika`, Свалка `svalka` (алиас `king-dumps`), Славотеч `slavotech`, Додзе `dodze`, Путинляндия `putinlyandiya`, Свобода `svoboda`, Аграра `agrara`, Райцентр `raytsentr`. Азтун — NPC (`aztun`, Древний бункер `ancient-bunker`), не место.
+- Существующие NPC: Зоя Клык `zoya-klyk` (дом — `flat-lagoon`; w5-census / w5-two-trails выдаёт и узел Вонючки, если Зоя в отряде), Заря `zarya`, Король свалок `glava-musora`, Кен `ken` (`tin-consulate`), Хан `khan`, Марта `marta`. Еда Аграры — Мельник Помол `ag-pomol`.
+- Новые NPC (`data/world/npcs-wave5.js`): `w5-ryabov`, `w5-agitator`, `w5-khrip`, `w5-grosh`, `w5-ivolga`, `w5-boltik`. Имена Хрип и Грош совпадают с `kl-khrip` (Радист Хрип) и `ag-grosh` (Зазывала Грош) — это другие люди; сценаристу на заметку.
+- `beast-whistle` не заведён: награда w5-census — `rare-parts` ×2 (вариант спеки). `rhyme-book` — предмет мира (Обман +1, пока в рюкзаке), не суточный расходник: суточных бафов у предметов мира нет.
+- Флаги без читателя убраны: `war-scav-pir`, `ai-agitator-witness`. `zz-found` читает слайд `epi-zz-found`, `disp-apologized-public` — радио `rd-w5-disp-public`, `proxy-hit` — радио `rd-w5-schedule`.
+- w5-edict `public: true`: Агитатор выдаёт указ и врагам Партии (мутанты при враждебной АИ) — иначе квест недоступен расам-мутантам.
+- R2(г) `cq-kosochka` (цена) не сделан: R2 читают тема Короля, слайды и mq4-eve.

@@ -25,6 +25,9 @@ export const DOSSIER = [
   { id: 'consent', flag: 'consent-known', pts: 2 },
   // §2 стадия priest: Жрец переубеждён аргументом «первый осознавший скриптлет»
   { id: 'priest', flag: 'priest-turned', pts: 1 },
+  // content-wave5.md §3: свидетели «не лучшего, но честного» (Рябов / Грош / Иволга) и пережившие бурю в Свободе
+  { id: 'w5-witness', any: ['ryabov-defect', 'crown-destroyed', 'recruit-saved'], pts: 1 },
+  { id: 'w5-choir', flag: 'storm-diverted', pts: 1 },
 ];
 // §5 напарники-свидетели: в отряде и лояльность ≥ minLoy → +pts
 export const DOSSIER_WITNESSES = [

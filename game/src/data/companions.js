@@ -125,7 +125,7 @@ const pay = (credits, why) => ({ kind: 'pay', credits, why });
 const align = (is, why) => ({ kind: 'align', is, why });
 const flag = (f, why) => ({ kind: 'flag', flag: f, why });
 const quest = (id, why, state) => ({ kind: 'quest', id, why, ...(state ? { state } : {}) });
-const notWith = (id, hard, why) => ({ kind: 'notWith', id, hard, why });
+const notWith = (id, hard, why, lift) => ({ kind: 'notWith', id, hard, why, ...(lift ? { lift } : {}) }); // lift: flag that lifts it (content-wave5 zz-peace)
 const level = (min, why) => ({ kind: 'level', min, why });
 
 const B = (battleStart, victory, allyDown, extra = {}) => ({ battleStart: [battleStart], victory: [victory], allyDown: [allyDown], ...extra });
@@ -196,7 +196,7 @@ export const COMPANIONS = {
   'zoya-klyk': {
     gender: 'f', home: 'flat-lagoon', quest: 'cq-zoya', altPath: 'beast',
     recruit: { pitch: 'Зубы мои — моё слово. Покажи, что ты не из тех, кто охотится на таких, как я.',
-      conditions: [rep('mutantsBeast', 'neutral', 'Она не идёт с врагом Мутантов-Ж.'), notWith('zarya', true, 'Бывшая Чистильщица — это уже слишком: она не сядет рядом.')],
+      conditions: [rep('mutantsBeast', 'neutral', 'Она не идёт с врагом Мутантов-Ж.'), notWith('zarya', true, 'Бывшая Чистильщица — это уже слишком: она не сядет рядом.', 'zz-peace')],
       alt: [chk(['intimidation', 'survival'], 14, 'Покажи силу и чутьё: она слушает только равных.')] },
     loyalty: { start: 0, deeds: { 'anti-mutant': -10 } },
     leave: { line: 'Стая зовёт. Не провожай.' },
@@ -256,7 +256,7 @@ export const COMPANIONS = {
   'zarya': {
     gender: 'f', home: 'agrozone', quest: 'cq-zarya', altPath: 'avenger',
     recruit: { pitch: 'Я была Чистильщицей. Хочу искупить. Но не перед каждым.',
-      conditions: [notWith('zoya-klyk', true, 'Зоя и Заря — смертельные враги: пока Зоя в партии, Заря не пойдёт.'), align('good', 'Она идёт только к тому, кто не станет повторением её прошлого.')],
+      conditions: [notWith('zoya-klyk', true, 'Зоя и Заря — смертельные враги: пока Зоя в партии, Заря не пойдёт.', 'zz-peace'), align('good', 'Она идёт только к тому, кто не станет повторением её прошлого.')],
       alt: [quest('cq-zarya', 'Или завершить её личный квест — тогда она сама попросится.', 'done')] },
     loyalty: { start: 0, deeds: { cruelty: -8, 'kill-surrendered': -8 } },
     leave: { line: 'Я не могу быть тем, кем была. И не могу быть рядом с теми, кто такой стал.' },

@@ -23,13 +23,14 @@ import { GAME_DATA } from '../data/index.js';
 import { BOSS_PHASES } from '../data/enemies-v4.js';
 import { skillCheck } from '../rules/skills.js';
 import { memberUnit } from './state.js';
+import { w5EveMods, w5DoorLine, w5EveLines } from './wave5.js'; // content-wave5 R1–R4: bread / crown / proxy rows, Zoya & Zarya lines
 
 const f = (save, k) => !!save?.flags?.[k];
 
 export function eveMods(save, encId) {
   if (!EVE_WAVES.includes(encId)) return [];
   const not = (m) => [].concat(m.notFlag || []).some((k) => f(save, k));
-  return EVE_MODS.filter((m) => f(save, m.flag) && !not(m) && (!m.waves || m.waves.includes(encId)));
+  return [...w5EveMods(encId), ...EVE_MODS].filter((m) => f(save, m.flag) && !not(m) && (!m.waves || m.waves.includes(encId)));
 }
 
 const baseOf = (e) => (typeof e === 'string' ? e : e?.enemy || e?.id);
@@ -37,7 +38,8 @@ export function eveSetup(save, encId, enemies = []) {
   const mods = eveMods(save, encId);
   if (!mods.length) return { enemies, allies: [], buffs: [], notes: [], triggers: [] };
   const k = mods.reduce((a, m) => a * (m.hpPct || 1), 1);
-  const out = k === 1 ? enemies : enemies.map((e) => ({ ...(typeof e === 'object' ? e : {}), enemy: baseOf(e), hpPct: Math.round((e?.hpPct || 1) * k * 100) / 100 }));
+  const more = mods.flatMap((m) => m.addEnemies || []); // content-wave5: extra foes (bread-burned marauders, crown-pirates patrol)
+  const out = [...(k === 1 ? enemies : enemies.map((e) => ({ ...(typeof e === 'object' ? e : {}), enemy: baseOf(e), hpPct: Math.round((e?.hpPct || 1) * k * 100) / 100 }))), ...more];
   // allyCap: units / volleys taken from the bottom rows of EVE_MODS up; a capped flag keeps its toast only
   const cap = R.allyCap || { units: 99, volleys: 99 };
   let units = cap.units, volleys = cap.volleys;
@@ -94,7 +96,7 @@ export function doorFarewell(save) {
       out.push({ npc: p.npc, kind: 'leave', line: COMPANIONS[p.npc].leave?.line || '' });
     } else if (loy >= R.door.support && p.state === 'active') {
       save.flags[`door-support-${p.npc}`] = true;
-      out.push({ npc: p.npc, kind: 'support', line: FINALE_BARKS[p.npc] || FINALE_BARK_DEFAULT });
+      out.push({ npc: p.npc, kind: 'support', line: w5DoorLine(save, p.npc) || FINALE_BARKS[p.npc] || FINALE_BARK_DEFAULT });
     }
   }
   return out;
@@ -191,5 +193,6 @@ export function eveInterlude(save, qid, sid) {
   if (own) out.push({ text: I.bark[own], color: 'j' });
   else if (I.barkAny && party.length) out.push({ text: `${npcName(party[0])}: ${I.barkAny}`, color: 'j' });
   if (I.wall) out.push({ text: I.wall, color: '5' });
+  out.push(...w5EveLines(save, Number(m[1])));
   return out;
 }

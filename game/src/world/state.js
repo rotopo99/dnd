@@ -28,6 +28,7 @@ import { normalizeInventory, battleKit, bagOf, eqInst, giveItem, dropItem } from
 import { romanceDeed } from './romance.js';
 import { coopCount } from './coop.js';
 import { W3_COUNTERS, WAVE3_RULES as W3R } from '../data/world/quests-wave3.js';
+import { W5_COUNTERS } from '../data/world/quests-wave5.js';
 import { CINE_RULES } from '../data/cinematics/index.js';
 import { dossierPoints } from './dossier.js';
 
@@ -321,6 +322,7 @@ export function requiresOk(save, req, data = GAME_DATA) {
   // flags (all set), any: [Requires] (one of), not: Requires
   if (req.avgLevel && partyAvgLevel(save) < req.avgLevel) return false;
   if (req.level && (save.hero.level || 1) < req.level) return false; // content-wave3.md: hero level
+  if (req.race && save.hero.race !== req.race) return false; // content-wave5.md: hero race (w5-census beast nose)
   if (req.terminalsOff && FINALE_TERMINALS.filter((id) => save.terminals[id] && save.terminals[id] !== 'ritual').length < req.terminalsOff) return false;
   if (req.visitedRegions && !req.visitedRegions.every((r) => (save.visited || []).some((id) => LOCATIONS[id]?.region === r))) return false;
   if (req.flags && !req.flags.every((f) => save.flags[f])) return false;
@@ -352,7 +354,7 @@ export function requiresOk(save, req, data = GAME_DATA) {
 
 /** content-wave3.md: a counter of W3_COUNTERS — base + Σ plus − Σ minus over the set flags, clamped to [min, max]. */
 export function counterValue(save, id) {
-  const c = W3_COUNTERS[id];
+  const c = W3_COUNTERS[id] || W5_COUNTERS[id]; // content-wave5: census clues, edict verses
   if (!c) return 0;
   const f = save?.flags || {};
   let v = c.base || 0;
@@ -399,6 +401,8 @@ export function grant(save, r = {}, data = GAME_DATA, { keyChoice = false } = {}
   for (const id of r.discover || []) discover(save, id);
   // { escort: enemyId } — a temporary ally for the next battle (skirmishes.md flag skirm-escort; content-wave3 Узел-4)
   if (r.escort) save.flags['skirm-escort'] = r.escort;
+  // content-wave5.md: { leave: [npc] } — companions leave the party (w5-two-trails duel / zz-found)
+  for (const n of r.leave || []) { const p = save.party.find((x) => x.npc === n && x.state !== 'left'); if (p) out.push(...leave(save, p, 'quest')); }
   if (r.rep) for (const [f, d] of Object.entries(r.rep)) out.push(...repToasts(applyRep(save, f, repDelta(save, d, data))));
   if (r.talent && TALENTS[r.talent] && !save.hero.talents.includes(r.talent)) out.push(...learnTalent(save, r.talent, data));
   if (r.recruit && NPCS[r.recruit] && canRecruit(save, r.recruit) !== 'already') { recruit(save, r.recruit); out.push({ text: tf('fx.joined', { name: NPCS[r.recruit].name }), color: 'j' }); }
@@ -728,7 +732,7 @@ export function adjustApproval(save, p, d, { quiet = false } = {}) {
 function leave(save, p, why) {
   const n = NPCS[p.npc];
   p.state = 'left';
-  journal(save, tf(why === 'approval' ? 'fx.leftApproval' : 'fx.leftFaction', { name: n.name }));
+  journal(save, tf(why === 'approval' ? 'fx.leftApproval' : why === 'quest' ? 'fx.leftQuest' : 'fx.leftFaction', { name: n.name }));
   // companions-scenes.md: the leave line (COMPANIONS[id].leave.line); the companion is back at its own node (npcHome)
   const line = COMPANIONS[p.npc]?.leave?.line;
   if (line) journal(save, tf('comp.leaveLine', { name: n.name, line }));

@@ -18,6 +18,7 @@
 //   canon (path in docs/canon/) or invented: true
 
 import { DENSITY_NPCS } from './world/density-npcs.js';
+import { W5_NPCS } from './world/npcs-wave5.js';
 import { COMPANION_NPCS, COMPANIONS } from './companions.js';
 import { NPCS_CYBER_NEW } from './world/quests-cyber.js';
 
@@ -2095,6 +2096,8 @@ LIST.push(...LIST_V3, ...LIST_V4, ...LIST_CYBER);
 // third-exodus.md §3: world density NPCs (id `d-*`), placed by location like v3/v4
 for (const n of DENSITY_NPCS) n.burg = n.location;
 LIST.push(...DENSITY_NPCS);
+for (const n of W5_NPCS) n.burg = n.location; // content-wave5: Рябов, Агитатор, Хрип, Грош, Иволга, Дед Болтик
+LIST.push(...W5_NPCS);
 LIST.push(...COMPANION_NPCS); // companions-scenes.md: 5 new companions
 
 // Companion block per docs/specs/world.md («Контракт с npcs.js»): { race, cls, path, talents, likes, dislikes, home }.

@@ -1,7 +1,7 @@
 // When cinematics start (cinematics.md §7.6): scene `trigger` -> a point in the game, conditions, one-shot flag
 // `cine-seen:<id>`. Pure (no DOM, light imports: quests.js calls cineStage from enterStage).
 //   cinePoint(trigger)         -> 'prologue:battle-1' | 'battle:<encounter>' | 'loc:<id>' | 'stage:<quest>/<stage>' | 'date:<npc>:<n>'
-//   cineReady(save, def)       trigger conditions: once, needFlag, after (flag), req {party, loy, bond}
+//   cineReady(save, def)       trigger conditions: once, needFlag, needQuest {id, stage}, after (flag), req {party, loy, bond}
 //   cinesAt(save, point)       ids ready at the point ('before' triggers first)
 //   cineStage(save, qid, sid)  quest stage entered: CINE_STAGE_FLAGS + queue ready scenes (save.cine.queue)
 //   takeCineQueue(save)        next queued id (main.js setScene on a calm scene)
@@ -24,6 +24,7 @@ export const CINE_POINT_ALIAS = {
   'w3-debate': 'stage:w3-flags/debate',             // c10 (content-wave3 §2): the council debate on the Harmony deck
   'mq4-twist': 'stage:mq4-eve/twist',               // c11 (content-wave4 §3): the consent blank on the Raytsentr wall
   'mq3-verdict': 'final:mq3-court',                 // c12 (content-wave4 §3): right after the verdict, before the epilogue
+  'svoboda': 'stage:w5-schedule/storm',             // c13 (content-wave5 §2): the storm at Svoboda (trigger.needQuest w5-schedule/storm)
 };
 // Flags the triggers wait for, set by quest stages (enterStage).
 export const CINE_STAGE_FLAGS = { 'mq3-court/inside': 'mq3-court' };
@@ -41,6 +42,8 @@ export const CINE_RESULT_NEXT = {
   // content-wave3.md §2: c10 vote won -> the council takes Harmony; draw -> the hero picks one of three flags
   'w3-flags/debate': { 'c10-council': 'council-won', 'c10-draw': 'debate-lost' },
   // content-wave4.md §3: c11 sets the consent-* flags itself — every outcome goes on to the first wave
+  // content-wave5.md §2: c13 sets storm-* / boltik-dead / proxy-* itself — the fallback storm choice is skipped
+  'w5-schedule/storm': { 'c13-done': 'back' },
   'mq4-eve/twist': { 'c11-known': 'wall-1', 'c11-torn': 'wall-1', 'c11-signed': 'wall-1', 'c11-signed-bad': 'wall-1', 'c11-silent': 'wall-1' },
 };
 // content-wave4.md §1: a result stage replaced while a flag stands (dossier ≥ 6 — the Judge fights without his edge).
@@ -80,6 +83,8 @@ export function cineReady(save, def) {
   const tr = def.trigger || {}, f = save?.flags || {};
   if (tr.once !== false && f[`cine-seen:${def.id}`]) return false;
   if (tr.needFlag && !f[tr.needFlag]) return false;
+  // content-wave5: needQuest { id, stage? } — the quest is active (at that stage)
+  if (tr.needQuest) { const q = save?.quests?.[tr.needQuest.id]; if (q?.state !== 'active' || (tr.needQuest.stage && q.stage !== tr.needQuest.stage)) return false; }
   if (tr.after && CINE_POINT_ALIAS[tr.after]?.startsWith('stage:') && !f[tr.after]) return false;
   const rq = def.req;
   if (rq) {

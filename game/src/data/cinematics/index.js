@@ -12,6 +12,7 @@ import { C9_LIZA_DOOR } from './c9-liza-door.js';
 import { C10_VOTE } from './c10-vote.js';
 import { C11_CONSENT } from './c11-consent.js';
 import { C12_VERDICT } from './c12-verdict.js';
+import { C13_SCHEDULE } from './c13-schedule.js';
 
 export const CINE_RULES = {
   subtitle: { cps: 15, minSec: 1.2, gapSec: 0.25, pauseSec: 0.6 },   // длительность реплики = max(minSec, символы / cps)
@@ -32,7 +33,7 @@ export const CINE_RULES = {
   remember: { sec: 2.5 },              // тост «X запомнит это»
   rel: { min: -5, max: 5, companionLoyaltyMul: 2 }, // `rel` NPC; для напарников = addLoyalty(Δ × 2)
   scene: { minSec: 60, maxSec: 240, skipAfterFirstView: true, replayInCodex: true },
-  pacing: { maxPerHourPlay: 1.5, hardCap: 12 },      // ≤ 1.5 сцены на час игры; всего в игре ≤ 12
+  pacing: { maxPerHourPlay: 1.5, hardCap: 13 },      // ≤ 1.5 сцены на час игры; всего в игре ≤ 13 (c13 — решение режиссёра 2026-11-26)
 };
 
 // Тон варианта выбора: значок и цвет подсказки (ключи палитры draw.js C).
@@ -69,7 +70,7 @@ export const SHOT_MOVES = {
 };
 
 // Сцены-площадки (строит art-director/программист из готовых кусков; `stage` в данных сцены).
-export const STAGES = ['dock-riot', 'server-hall', 'reactor-log', 'court-cyber', 'roof-night', 'door-hall', 'collector-hall', 'wall-night'];
+export const STAGES = ['dock-riot', 'server-hall', 'reactor-log', 'court-cyber', 'roof-night', 'door-hall', 'collector-hall', 'wall-night', 'proxy-storm'];
 // Клипы: есть в Blender-пайплайне (idle walk run crouch_walk attack_melee attack_shoot cast hit death)
 // и НУЖНЫЕ новые для сцен (нет в tools/blender/anim.py): talk shrug point lean sit nod shake laugh cry hands_up stagger reach.
 export const CLIPS = ['idle','walk','run','crouch_walk','attack_melee','attack_shoot','cast','hit','death','talk','shrug','point','lean','sit','nod','shake','laugh','cry','hands_up','stagger','reach'];
@@ -80,6 +81,7 @@ export const CINEMATICS = {
   [C4_COURT.id]: C4_COURT, [C5_ZARYA.id]: C5_ZARYA, [C6_LOX_DOOR.id]: C6_LOX_DOOR,
   [C7_HA_REEL.id]: C7_HA_REEL, [C8_LADOV_NAME.id]: C8_LADOV_NAME,
   [C9_LIZA_DOOR.id]: C9_LIZA_DOOR, [C10_VOTE.id]: C10_VOTE,
-  [C11_CONSENT.id]: C11_CONSENT, [C12_VERDICT.id]: C12_VERDICT, // content-wave4.md §3: the late-game turn and the finale (12 = hardCap)
+  [C11_CONSENT.id]: C11_CONSENT, [C12_VERDICT.id]: C12_VERDICT, // content-wave4.md §3: the late-game turn and the finale
+  [C13_SCHEDULE.id]: C13_SCHEDULE, // content-wave5.md §2: «Расписание», w5-schedule/storm (13 = hardCap)
 };
 export const CINEMATIC_ORDER = Object.keys(CINEMATICS);

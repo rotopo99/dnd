@@ -15,7 +15,7 @@ import { ENEMIES } from '../data/enemies.js';
 import { ENEMIES_V3 } from '../data/enemies-v3.js';
 
 // dialogue speaker ids that are not NPC ids
-const SPEAKER_ALIAS = { victor: 'victor-sundown', 'party-victor-soul': 'party-victor', 'liza-named': 'liza' };
+const SPEAKER_ALIAS = { victor: 'victor-sundown', 'party-victor-soul': 'party-victor', 'liza-named': 'liza', boltik: 'w5-boltik', dispatcher: 'w3-dispatcher' }; // c13 cast
 // story speakers without an NPC card
 const SPEAKER_LOOK = {
   acolyte: { id: 'acolyte', race: 'human', faction: 'cult' },
