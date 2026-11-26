@@ -159,6 +159,18 @@ function statusValue(b, u, t, id, turns) {
   return good ? base : -base * 0.5;
 }
 
+/**
+ * How much an ally gets out of a positive buff: attack buffs (hit / dmg) pay only BUFF_USE_CASTER for units that do not
+ * attack with a weapon (casters / supports with save spells — the reper AI kept recasting hymns on itself and casters).
+ * Buffs stack in the rules, so a recast is not discounted.
+ */
+const BUFF_USE_CASTER = 0.4;
+function buffUse(b, t, stat) {
+  if (t.down || !isStanding(t)) return 0;
+  if ((stat === 'hit' || stat === 'dmg') && (t.noAttack || !t.weapon || t.ai === 'caster' || t.ai === 'support')) return BUFF_USE_CASTER;
+  return 1;
+}
+
 function healValue(t, amt, resource) {
   if (resource === 'hp') {
     if (t.down) return 20 + amt;
@@ -236,8 +248,8 @@ export function evalAbility(b, u, a, spec) {
           v += statusValue(b, u, t, op.id, op.turns) * (hostile ? p : 1);
           break;
         case 'buff': {
-          const w = (BUFF_WEIGHT[op.stat] ?? 0.4) * Math.abs(op.value || 0) * Math.min(op.turns || 1, 3);
           const good = (op.value || 0) > 0;
+          const w = (BUFF_WEIGHT[op.stat] ?? 0.4) * Math.abs(op.value || 0) * Math.min(op.turns || 1, 3) * (hostile || !good ? 1 : buffUse(b, t, op.stat));
           v += (hostile ? (good ? -w : w * p) : (good ? w : -w * 0.5));
           break;
         }
@@ -265,7 +277,7 @@ export function evalAbility(b, u, a, spec) {
       const pen = op.nextTurnPenalty ?? a.nextTurnPenalty;
       v += 6 - (pen ? 5 * (typeof pen === 'number' ? pen : (pen.actions || 0) + (pen.bonus || 0) * 0.4) : 0);
     }
-    else if (op.self && op.op === 'buff') v += (BUFF_WEIGHT[op.stat] ?? 0.4) * (op.value || 0) * Math.min(op.turns || 1, 3);
+    else if (op.self && op.op === 'buff') v += (BUFF_WEIGHT[op.stat] ?? 0.4) * (op.value || 0) * Math.min(op.turns || 1, 3) * ((op.value || 0) > 0 ? buffUse(b, u, op.stat) : 1);
     else if (op.self && op.op === 'shield') v += (op.value ?? avgDice(op.dice)) * 0.5;
   }
   const z = zoneOf(a);
@@ -525,8 +537,8 @@ function bridgeEV(b, u, br, dmg) {
 // ---------------------------------------------------------------- movement planning
 
 /** Offensive / support options independent of position: [{ range, noLos, ranged, action:boolean, list:[{t, v}] }]. */
-function buildOptions(b, u) {
-  const t = b.turn;
+function buildOptions(b, u, anySlot) {
+  const t = anySlot ? { actions: 1, bonus: 1 } : b.turn;
   const opts = [];
   const taunt = tauntSource(b, u);
   if (t.actions > 0 && canUseWeapon(b, u)) {
@@ -539,7 +551,7 @@ function buildOptions(b, u) {
       if (v > 0) list.push({ t: e, v });
     }
     const arc = !!u.weapon.arc;
-    if (list.length) opts.push({ range: weaponRange(u), noLos: arc, arc, ranged: !isMeleeWeapon(u), action: true, list: list.sort((x, y) => y.v - x.v) });
+    if (list.length) opts.push({ range: weaponRange(u), noLos: arc, arc, ranged: !isMeleeWeapon(u), hostile: true, action: true, list: list.sort((x, y) => y.v - x.v) });
     if (u.weapon.thrown) {
       const tl = [];
       for (const e of b.units) {
@@ -547,7 +559,7 @@ function buildOptions(b, u) {
         const v = throwEV(b, u, e);
         if (v > 0) tl.push({ t: e, v });
       }
-      if (tl.length) opts.push({ range: u.weapon.thrown, minRange: 2, noLos: false, ranged: true, action: true, list: tl.sort((x, y) => y.v - x.v) });
+      if (tl.length) opts.push({ range: u.weapon.thrown, minRange: 2, noLos: false, ranged: true, hostile: true, action: true, list: tl.sort((x, y) => y.v - x.v) });
     }
   }
   for (const a of u.abilities) {
@@ -567,7 +579,7 @@ function buildOptions(b, u) {
         const v = evalAbility(b, u, single, { unit: e.id });
         if (v > 0.5) list.push({ t: e, v });
       }
-      if (list.length) opts.push({ range: a.area.size || 1, selfArea: true, noLos: false, ranged: false, action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
+      if (list.length) opts.push({ range: a.area.size || 1, selfArea: true, noLos: false, ranged: false, hostile: true, action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
       continue;
     }
     const mv = (a.effects || []).find((e) => e.op === 'move');
@@ -584,9 +596,27 @@ function buildOptions(b, u) {
     if (!list.length) continue;
     const hasW = (a.effects || []).some((e) => e.op === 'weapon');
     const reach = mv ? Math.max(range, mv.tiles + (hasW ? weaponRange(u) : 1)) : hasW ? Math.min(Math.max(range, 1), weaponRange(u)) : range;
-    opts.push({ range: reach, noLos: !!mv, ranged: reach > 1 && a.roll === 'attack', action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
+    opts.push({ range: reach, noLos: !!mv, ranged: reach > 1 && a.roll === 'attack', hostile: a.target === 'enemy' || a.target === 'tile', action: a.action !== 'bonus', list: list.sort((x, y) => y.v - x.v) });
   }
   return opts;
+}
+
+/**
+ * Effective profile for kiting: a ranged / caster / support unit whose best hostile option (any slot) is in melee reach
+ * (no ranged option worth at least AI_MELEE_NOW of it — e.g. out of ENR, or a wrench-and-heals support) does not step
+ * away from adjacent foes (slavotech AI spent its turns disengaging, then healing itself). Tile scoring keeps u.ai:
+ * using it there too sent level-1 supports into melee and lost prologue battle 2.
+ */
+const AI_MELEE_NOW = 0.5;
+function meleeNow(b, u) {
+  if (u.ai === 'melee') return true;
+  let near = 0, far = 0;
+  for (const o of buildOptions(b, u, true)) {
+    if (!o.hostile || !o.list.length) continue;
+    const v = o.list[0].v;
+    if (o.range > 1 && !o.selfArea) far = Math.max(far, v); else near = Math.max(near, v);
+  }
+  return near > 0 && far < near * AI_MELEE_NOW;
 }
 
 function preferredRange(b, u) {
@@ -960,7 +990,7 @@ export function chooseAction(b, unitId) {
   }
 
   // kiting: ranged profiles step away from melee threats before acting
-  if (u.ai !== 'melee' && t.move > 0 && t.aiMoves === 0 && adjacentThreats(b, u) > 0) {
+  if (u.ai !== 'melee' && t.move > 0 && t.aiMoves === 0 && adjacentThreats(b, u) > 0 && !meleeNow(b, u)) {
     const canDisengage = t.bonus > 0 && !t.disengaged;
     const tile = planTile(b, u, { ignoreOA: canDisengage });
     if (tile && tile.current && elsewhere(u, tile) && tile.score > tile.current.score + 1) {
