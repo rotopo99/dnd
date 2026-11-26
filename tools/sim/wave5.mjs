@@ -2,7 +2,8 @@
 // Usage: node tools/sim/wave5.mjs [--n 30] [--seed 1] [--tier 0 (0 = auto by level)] [--lvl +0 (offset)] [--only crown] [--cls a,b] [--bycls]
 //   [--map arena|roam (roam = the real battle: cut of the quest node's free map, party on random cells, foes ROAM.battle.foeGap
 //   tiles toward the nearest exit, as scenes/roam.js provider.cut)] [--chain 1 (fights in a row, HP / ENR / medkits carried; a
-//   down hero gets 1 HP, as world-battle writeBack)] [--rest short|none (between chained fights; default short)] [--sizes 3,4]
+//   down hero gets 1 HP, as world-battle writeBack)] [--rest short|none (between chained fights; default short)]
+//   [--patch 0.25 (HP share healed after each won chained fight; default WAVE5_RULES.stormPatch)] [--sizes 3,4]
 import { GAME_DATA } from '../../game/src/data/index.js';
 import { CLASSES, CLASS_ORDER } from '../../game/src/data/classes/index.js';
 import { ENEMIES_V3 } from '../../game/src/data/enemies-v3.js';
@@ -19,9 +20,11 @@ import { roamMapFor } from '../../game/src/world/roam.js';
 import { roamBattleMap } from '../../game/src/world/roam-battle.js';
 import { ROAM } from '../../game/src/data/world/roam.js';
 import { REST } from '../../game/src/data/world/rest.js';
+import { WAVE5_RULES } from '../../game/src/data/world/quests-wave5.js';
 import { parseMap, blocksMove, T_WATER, T_HAZARD } from '../../game/src/rules/grid.js';
 const args = process.argv.slice(2); const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const REST_MODE = opt('--rest', 'short'); // between chained fights: breather + a short rest (REST.short.max = 2 covers 3 fights) | none
+const PATCH = +opt('--patch', WAVE5_RULES.stormPatch); // «Перевязка в укрытии» after a won chained fight (quests-wave5 fight-N healPct)
 const MAP = opt('--map', 'arena'), CHAIN = +opt('--chain', 1), SIZES = opt('--sizes', '3,4').split(',').map(Number);
 const N = +opt('--n', 30), SEED = +opt('--seed', 1), TIER = +opt('--tier', 0), OFF = +opt('--lvl', 0);
 for (const [k, v] of Object.entries(ENEMIES_V3)) if (!GAME_DATA.ENEMIES[k]) GAME_DATA.ENEMIES[k] = v;
@@ -66,7 +69,7 @@ function shortRest(u, rng) {
 }
 const pc = (x) => `${(100 * x).toFixed(0)}%`;
 const ONLY = opt('--only', null); const CLS = opt('--cls', null)?.split(',') || CLASS_ORDER; const ids = Object.keys(GAME_DATA.ENCOUNTERS).filter((k) => k.startsWith('enc-w5-') && (!ONLY || k.includes(ONLY)));
-console.log(`n/class ${N}, seed ${SEED}, tier ${TIER || 'auto'}, lvl offset ${OFF}, map ${MAP}, chain ${CHAIN}, rest ${CHAIN > 1 ? REST_MODE : '-'}`);
+console.log(`n/class ${N}, seed ${SEED}, tier ${TIER || 'auto'}, lvl offset ${OFF}, map ${MAP}, chain ${CHAIN}, rest ${CHAIN > 1 ? `${REST_MODE} + patch ${PATCH}` : '-'}`);
 console.log('enc'.padEnd(18) + 'lvl tier size  win  minCls  rounds  xp');
 const ALLC = {}; // --bycls: per-class win rate over all wave-5 battles and sizes
 for (const id of ids) { const en = GAME_DATA.ENCOUNTERS[id]; const lvl = en.level + OFF;
@@ -81,7 +84,7 @@ for (const id of ids) { const en = GAME_DATA.ENCOUNTERS[id]; const lvl = en.leve
         fights++; rs += Math.min(b.round, 30); won = b.winner === 'heroes';
         // carry-over (world-battle writeBack): the same unit objects keep hp / enr / items; a down hero stands up at 1 HP
         heroes = b.units.filter((u) => u.team === 'heroes' && u.kind === 'hero' && !u.dead).map((u) => ({ ...u, hp: u.down ? 1 : u.hp, down: false, statuses: [] }));
-        if (won && c < CHAIN - 1 && REST_MODE === 'short') for (const u of heroes) shortRest(u, rng);
+        if (won && c < CHAIN - 1) for (const u of heroes) { u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * PATCH)); if (REST_MODE === 'short') shortRest(u, rng); }
       }
       t++; if (won) { w++; cw++; } } byC[cid] = cw / N; (ALLC[cid] ||= []).push(cw / N); }
     const worst = Object.entries(byC).sort((a, b) => a[1] - b[1])[0];

@@ -36,6 +36,6 @@ const list = [
   // w5-edict: the cringe storm — slogan drones and the Party agitator
   enc('enc-w5-edict', 'Кринж-шторм на площади', 11, 'aiParty', ['putinlyandiya'], [W('drone', 11, 'drone', 'elite', 1.0, 2.6, 2), W('drone', 11, 'drone', 'elite', 1.0, 2.0, 2), W('drone', 11, 'drone', 'elite', 1.0, 2.0, 2), W('ai-agitator', 11, 'agit', 'miniboss', 1.0, 2.0, 2)]),
   // w5-schedule: relay nodes guarded by tekhonki and scriptlets (optional way of the fieldwork)
-  enc('enc-w5-storm', 'Ретранслятор: хор бури', 12, 'tekhonki', ['svoboda'], [X(V('tek', 'cmd', 12), 'tek-cmd-l12', 0.5, 0, 0.85), X(N('tek-proxy-shaman', 12), 'shaman-l12', 0.5, 0, 0.85), W('scriptlet', 12, 'scr2', 'elite', 0.85, 0.8, 0), W('scriptlet', 12, 'scr2', 'elite', 0.85, 0.8, 0)]),
+  enc('enc-w5-storm', 'Ретранслятор: хор бури', 12, 'tekhonki', ['svoboda'], [X(V('tek', 'cmd', 12), 'tek-cmd-l12', 0.5, 0, 0.85), X(N('tek-proxy-shaman', 12), 'shaman-l12', 0.5, 0, 0.85), W('scriptlet', 12, 'scr4', 'elite', 0.8, 0.7, 0), W('scriptlet', 12, 'scr4', 'elite', 0.8, 0.7, 0)]),
 ];
 export const ENCOUNTERS_WAVE5 = Object.fromEntries(list.map((x) => [x.id, x]));

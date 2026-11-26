@@ -44,6 +44,7 @@ export const WAVE5_RULES = {
   trailsLoy: 20,          // zz-truth: лояльность обеих ≥ N — автоуспех
   eveBreadExtra: 2,       // R1(в): bread-burned — +2 мародёра-беженца в первой волне mq4-eve
   proxyCalmHpPct: 0.9,    // R4(б): proxy-calmed — первая волна mq4-eve −10% ЗДР
+  stormPatch: 0.25,       // QA v56 #2: «Перевязка в укрытии» after a won storm node — party HP +25% of max (not ammo / medkits)
 };
 const R = WAVE5_RULES;
 
@@ -245,8 +246,12 @@ export const QUESTS_WAVE5 = [
       kind: 'choice', location: 'svoboda', doneFlag: `w5-node-${n}`, label: T(`w5.schedule.node.label.${n}`), desc: T(`w5.schedule.node.${n}`), options: [
         opt(`fix-${n}`, T('w5.schedule.node.hint'), check(['tech', 'proxy'], 14, `fight-${n}`, { easeBy: [{ flag: 'disp-off', n: -2 }] }), null,
           { effects: { flags: [`w5-node-${n}`, 'w5-sched-tech'], text: T('w5.schedule.node.ok') } }),
-        opt(`fight-${n}`, T('w5.schedule.node.fail'), battle('enc-w5-storm', 'svoboda'), null, { effects: { flags: [`w5-node-${n}`] } }),
-      ] }))), 'storm', { notes: [{ text: T('w5.schedule.node.noDisp'), requires: { flags: ['disp-off'] } }] }), // QA v56 #3: only without the Dispatcher
+        opt(`fight-${n}`, T('w5.schedule.node.fail'), battle('enc-w5-storm', 'svoboda'), null,
+          { effects: { flags: [`w5-node-${n}`], healPct: WAVE5_RULES.stormPatch, text: T('w5.schedule.node.patch') } }),
+      ] }))), 'storm', { notes: [
+      // director: before the first node — three fights may come in a row, rest between them (Азтун on the radio)
+      { text: T('w5.schedule.node.warn'), color: 'a', requires: { not: { any: [1, 2, 3].map((n) => ({ flag: `w5-node-${n}` })) } } },
+      { text: T('w5.schedule.node.noDisp'), requires: { flags: ['disp-off'] } }] }), // QA v56 #3: only without the Dispatcher
     // c13 «Расписание» играет на входе (cine-hooks: svoboda -> stage:w5-schedule/storm); без сцены — тот же выбор кнопками
     st('storm', T('w5.schedule.obj.storm'), choice([
       opt('divert', C13_OPT('divert'), check(['tech', 'proxy'], 15, 'storm-miss'), 'back', { effects: { flags: ['storm-diverted', 'proxy-calmed'] } }),
