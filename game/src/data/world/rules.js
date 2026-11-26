@@ -3,7 +3,7 @@
 export const WORLD_RULES = {
   start: { credits: 50, items: { medkit: 1, ration: 2 }, prologueXp: 350 },
   gate: { sneakDc: 14, talkSkills: ['persuasion', 'deception'], talkDc: 13, toll: 20, parleyDc: 14 },
-  prices: { hostile: 1.5, suspicious: 1.25, neutral: 1, friendly: 0.9, ally: 0.8, sell: 0.4 },
+  prices: { hostile: 1.5, suspicious: 1.25, neutral: 1, friendly: 0.9, ally: 0.8, sell: 0.5 },
   rumorPrice: 10,
   gig: { skill: 'persuasion', dc: 13, credits: 20, rep: 3 },
   bribePerLevel: 20, // flag 'bribe': a social check can be replaced by a bribe
