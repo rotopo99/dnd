@@ -13,7 +13,7 @@ import { C, FONT, FONT_B, LINE, text, wrap, panel } from './draw.js';
 const TXT = {
   who: 'Сандаун (по рации):',
   attack: 'Видишь фанатика? Кликни по нему — это атака. Далеко — сначала кликни по полу рядом, подойдёшь.',
-  skill: 'Q — твой приём класса: «{name}». Сильнее простого удара, но кончается.',
+  skill: '{key} — твой приём класса: «{name}». Сильнее простого удара, но кончается.',
   cover: 'Стрелок бьёт издалека. Встань так, чтобы между вами был ящик: укрытие даёт +2 КБ.',
   burn: 'Горишь! Жми кнопку «Снять: {name}» — потушишь за {kind} и не будешь терять ЗДР каждый ход.',
   medkit: 'Плохо выглядишь. {key} — {item}: {what}.',
@@ -40,6 +40,14 @@ export function quickLine(it) {
   return it.battle?.desc || it.desc || '';
 }
 
+/** Ability that hurts a foe or fields a fighter (damage / weapon strike / drain / summon), not a heal or a self-buff. */
+export function isOffensive(a) {
+  if (!a || a.action === 'reaction') return false;
+  const ops = (a.effects || []).map((e) => e.op);
+  if (ops.includes('summon')) return true;
+  return a.target !== 'ally' && a.target !== 'self' && ops.some((o) => o === 'damage' || o === 'weapon' || o === 'drain');
+}
+
 export function createTutorial(seen = {}) {
   return { seen, cur: null, t: 0, rangedHit: false, attacked: false, turns: 0 };
 }
@@ -48,7 +56,7 @@ export function tutorialEvent(T, S, e) {
   if (!T) return;
   const b = S.b, A = e.actor && b.byId[e.actor], tgt = e.target && b.byId[e.target];
   if (e.type === 'attack' && A && A.id === S.heroId) { T.attacked = true; if (T.cur?.id === 'attack') T.cur.done = true; }
-  if (e.type === 'ability' && A && A.id === S.heroId && T.cur?.id === 'skill') T.cur.done = true;
+  if (e.type === 'ability' && A && A.id === S.heroId && (T.cur?.id === 'skill' || T.cur?.id === 'attack')) T.cur.done = true;
   if (e.type === 'attack' && A && A.team === 'enemies' && tgt && tgt.id === S.heroId && (A.weapon?.range || 1) > 1) T.rangedHit = true;
   if (e.type === 'statusEnd' && tgt && tgt.id === S.heroId && T.cur?.id === 'burn') T.cur.done = true;
   if (e.type === 'turnStart' && A && A.id === S.heroId) T.turns++;
@@ -79,17 +87,22 @@ export function tutorialTick(T, S, dt) {
     const it = b.data.items[q.quick];
     return show(T, 'medkit', fill(TXT.medkit, { key: q.key, item: it.name, what: quickLine(it) }));
   }
-  if (!T.seen.attack) return show(T, 'attack', TXT.attack);
+  // the skill hint rides with the attack hint on turn 1 and names the first offensive ability (not a heal / buff)
+  const skBtn = (S.buttons || []).find((x) => x.a && isOffensive(x.a));
+  const skText = skBtn && !T.seen.skill ? fill(TXT.skill, { key: skBtn.key || '', name: skBtn.a.name }) : null;
+  if (!T.seen.attack) {
+    if (skText) T.seen.skill = true;
+    return show(T, 'attack', skText ? `${TXT.attack} ${skText}` : TXT.attack);
+  }
   if (T.rangedHit && !T.seen.cover) return show(T, 'cover', TXT.cover);
-  const sk = hero.abilities.find((a) => a.action !== 'reaction');
-  if (sk && !T.seen.skill && (T.attacked || T.turns >= 2)) return show(T, 'skill', fill(TXT.skill, { name: sk.name }));
+  if (skText) return show(T, 'skill', skText);
 }
 
 export function drawTutorial(ctx, S) {
   const T = S.tut, L = S.L;
   if (!T?.cur || !L || S.result || S.banner) return;
   const w = Math.min(L.area.w - 40, 620), x = L.area.x + Math.floor((L.area.w - w) / 2);
-  const lines = wrap(ctx, T.cur.text, w - 24, FONT).slice(0, 3);
+  const lines = wrap(ctx, T.cur.text, w - 24, FONT).slice(0, 4);
   const h = 14 + LINE + lines.length * LINE;
   const y = L.area.y + L.area.h - 30 - h; // above the help line: the top of the map is where the camera frames units
   const k = Math.min(1, T.cur.t * 4, (HOLD - T.cur.t) * 2);

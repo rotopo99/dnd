@@ -24,6 +24,9 @@ export default {
     { id: 'techno-shaman', name: 'Путь Техно-Шамана', desc: 'Управление технологиями через магию: разряды, ритуальные апгрейды, ЭМ-шаманство.' },
   ],
   passives: [
+    // docs/BALANCE-casters-start.md: naive melee start won only 62-68% of battle 1
+    { id: 'starter-grit', name: 'Стартовая закалка', level: 1, path: null,
+      desc: 'Баланс первого боя: +1 к урону ближнего боя.', op: { dmg: { melee: 1 } } },
     // BAL-BEGIN (docs/qa/BALANCE-metric.md)
     { id: 'field-tuning-10', name: 'Полевая подгонка (ур. 10)', level: 10, path: null,
       desc: 'Баланс метрических боёв: +8 ЗДР, +1 урона.', op: { maxHp: 8, dmg: 1 } },

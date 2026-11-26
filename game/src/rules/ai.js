@@ -660,7 +660,7 @@ export function planTile(b, u, opts) {
     if (pot === 0 && df && wd >= 0) {
       // melee closes in; ranged approaches to its preferred range only while it can still act, else holds back
       if (melee) s -= wd;
-      else s -= canAct ? Math.abs(wd - pref) * 0.7 : Math.max(0, pref - wd) * 0.7;
+      else s -= canAct || b.turn.aiDashed ? Math.abs(wd - pref) * 0.7 : Math.max(0, pref - wd) * 0.7;
     }
     if (!melee) {
       let adj = 0, near = 0, cover = false;
@@ -802,7 +802,8 @@ function planPointM(b, u, opts) {
     for (const { E } of EP) near = Math.min(near, gapM(P, E) / CELL_M);
     if (pot === 0 && df && wd >= 0) {
       if (melee) s -= wd + near * 0.1;
-      else s -= canAct ? Math.abs(near - pref) * 0.7 : Math.max(0, pref - near) * 0.7;
+      // a unit that dashed to close in still has to close in (else it dashes in place forever: slavotech AI, battle 1)
+      else s -= canAct || b.turn.aiDashed ? Math.abs(near - pref) * 0.7 : Math.max(0, pref - near) * 0.7;
     }
     if (exact && (!melee || low)) {
       // stage 4: cover against each ranged threat that reaches this point (side of the threat), exposure costs
@@ -846,7 +847,9 @@ function planPointM(b, u, opts) {
     // stage 4: walk round harmful surfaces by their real form; what the walk still crosses costs pathHarm x harm
     const parts = b.surfaces && b.surfaces.size ? harmParts(b, u, AM.avoidMin) : [];
     let bestAdj = current.score, valid = 0;
-    for (let k = 0; k < Math.min(order.length, 8) && valid < 3; k++) {
+    // keep looking while nothing beat standing still: after a dash the top points can all sit behind a harmful
+    // surface, and stopping at 3 left the unit dashing in place every turn (slavotech AI, prologue battle 2)
+    for (let k = 0; k < Math.min(order.length, 16) && (valid < 3 ? k < 8 || best === current : best === current && valid < 8); k++) {
       const c = order[k];
       if (c.score <= bestAdj) break;
       let np = parts.length ? navPath(b, u, c.px, c.py, { snap: 0, avoid: parts }) : null, av = !!np && np.cost <= budget + 1e-6 && np.len > 0;

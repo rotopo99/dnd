@@ -90,14 +90,7 @@ export default {
       canon: 'rules/class-roadmap.md',
     },
     // ---------- Общие ----------
-    {
-      id: 'field-repair', name: 'Экстренный ремонт', level: 1, path: null,
-      cost: 3, action: 'bonus', trigger: null, range: 1, target: 'ally', area: null,
-      roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
-      effects: [{ op: 'heal', dice: '1d6', bonus: 'castMod', resource: 'hp' }],
-      desc: 'Себе или соседнему союзнику: восстанавливает 1d6 + ИНТ ЗДР (живым и технике). Стабилизирует упавшего.',
-      canon: 'extra/specialties.md',
-    },
+    // grenade before the heal: Q for paths without a turret (sapper, mechanic) is an offensive ability
     {
       id: 'junk-grenade', name: 'Граната из хлама', level: 1, path: null,
       cost: 4, action: 'action', trigger: null, range: 8, target: 'tile', area: { shape: 'radius', size: 1 },
@@ -105,6 +98,14 @@ export default {
       effects: [{ op: 'damage', dice: '1d8', dmgType: 'fire' }],
       desc: 'Самодельная граната: 1d8 огненного урона всем врагам в радиусе 1 клетки, спасбросок ЛВК — половина.',
       canon: 'rules/class-roadmap.md',
+    },
+    {
+      id: 'field-repair', name: 'Экстренный ремонт', level: 1, path: null,
+      cost: 3, action: 'bonus', trigger: null, range: 1, target: 'ally', area: null,
+      roll: 'auto', save: null, onSave: 'none', usesPerBattle: null,
+      effects: [{ op: 'heal', dice: '1d6', bonus: 'castMod', resource: 'hp' }],
+      desc: 'Себе или соседнему союзнику: восстанавливает 1d6 + ИНТ ЗДР (живым и технике). Стабилизирует упавшего.',
+      canon: 'extra/specialties.md',
     },
     {
       id: 'weakpoint-scan', name: 'Техно-сканирование', level: 1, path: null,

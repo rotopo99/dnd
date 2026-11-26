@@ -388,7 +388,16 @@ export function createBattleScene(opts) {
   function buildQuick(hero) {
     const b = S.b;
     const items = b.data.items;
-    const qItems = Object.keys(hero.inventory || {}).filter((id) => hero.inventory[id] > 0 && combat.isBattleItem(items[id]));
+    // QA v52 #1: slots keep their place for the whole battle — a used-up item leaves its slot empty instead of
+    // shifting the next item onto its key (key 1 = medkit turned into key 1 = grenade after the last medkit)
+    const have = (id) => (hero.inventory?.[id] || 0) > 0;
+    const QO = S.quickOrder || (S.quickOrder = {}), order = QO[hero.id] || (QO[hero.id] = []); // per party member
+    for (const id of Object.keys(hero.inventory || {})) {
+      if (!have(id) || !combat.isBattleItem(items[id]) || order.includes(id)) continue;
+      const free = order.findIndex((x) => !x || !have(x));
+      if (free >= 0) order[free] = id; else order.push(id);
+    }
+    const qItems = order.map((id) => (id && have(id) ? id : null));
     const qn = Math.min(QUICK_KEYS, hero.quickSlots ?? Math.max(2, qItems.length));
     const out = [];
     for (let i = 0; i < qn; i++) {

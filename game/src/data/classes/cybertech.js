@@ -25,6 +25,9 @@ export default {
     { id: 'curses', name: 'Путь Проклятий', desc: 'Проклятия Судьи: ослабляет, глушит и метит врагов на смерть.' },
   ],
   passives: [
+    // docs/BALANCE-casters-start.md: naive melee start won only 62-68% of battle 1
+    { id: 'starter-grit', name: 'Стартовая закалка', level: 1, path: null,
+      desc: 'Баланс первого боя: +1 к урону ближнего боя.', op: { dmg: { melee: 1 } } },
     // BAL-BEGIN (docs/qa/BALANCE-metric.md)
     { id: 'field-tuning-5', name: 'Полевая подгонка (ур. 5)', level: 5, path: null,
       desc: 'Баланс метрических боёв: -10 ЗДР, -1 урона.', op: { maxHp: -10, dmg: -1 } },

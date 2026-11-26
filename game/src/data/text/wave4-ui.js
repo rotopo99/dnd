@@ -27,4 +27,11 @@ export const WAVE4_TEXT = {
   'aura.choir-shield': 'Щит хора: −урон, пока поёт хор',
   'aura.exhibits': 'Витрины: +КБ за экспонат',
   'aura.empty-shelf': 'Пустая полка: урон ×1.25, пока герой лежит',
+  // QA v52 #8: skill challenge — unambiguous limits, roller picked by default
+  'ch.limits': 'нужно успехов: {s}, провалов до поражения: {f}',
+  'ch.progress': 'Успехов {ok} из {s} нужных · провалов {bad} из {f} до поражения · {dc}',
+  'ch.roller': 'Бросает: {name} (сменить)',
+  'ch.rollerAuto': 'Бросает лучший для навыка (сменить)',
+  'ch.rollerPick': 'Кто бросает в этом испытании?',
+  'ch.rollerBest': 'Лучший для каждого навыка',
 };

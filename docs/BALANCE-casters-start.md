@@ -63,3 +63,39 @@ Prologue battles 2-3 and road fights stay hard for the naive click for most clas
 - Принято: путям Айтишника без турели (сапёр, механик) — атакующее умение на Q.
 - Отдельная задача: ИИ Славотеха выигрывает бой 1 лишь в 15–19% (наивный клик — 85%) — баг ИИ.
 - Потолок ≤97% для ИИ снят: ИИ-игра ≈100% почти у всех и до правок, это не цель баланса.
+
+## 5. Applied 2026-11-26 (director decisions + QA v52 combat fixes)
+| change | where |
+|---|---|
+| `starter-grit` L1 passive +1 melee dmg for ecolog / reper / cybertech | `game/src/data/classes/{ecolog,reper,cybertech}.js` |
+| Battle-1 hint: the skill line rides with the attack hint on turn 1 and names the key of the first **offensive** ability (`isOffensive`: damage / weapon / drain / summon) | `game/src/ui/battle-tutorial.js` |
+| Itishnik: `junk-grenade` before `field-repair` -> Q = grenade for sapper / mechanic (inventor keeps Q = turret, W = grenade) | `game/src/data/classes/itishnik.js` |
+| AI bug (slavotech 15-19%): not ability choice — the hero **dashed in place every turn**. After a dash (`actions` = 0) the non-melee planner only kept away from foes (`max(0, pref - near)`), so it stayed put; also the exact planner stopped after 3 path-checked points even when all were worse than standing (harmful surface on the way). Fix: a dashed unit still closes to its preferred range; keep searching (up to 16 / 8 valid) while nothing beats the current spot | `game/src/rules/ai.js` planTile / planPointM |
+| Medkit «12 -> 12» (QA v52 #1): not the heal (engine heals >= 1). Quick slots were rebuilt from the live inventory, so when the last medkit was used key 1 became the next item (zabivnoy: grenade) — pressing 1 + clicking self did nothing. Slots now keep their place for the battle | `game/src/scenes/battle.js` buildQuick |
+
+Battle 1, n=120 (naive / naive+Q / AI):
+| class | before (sect. 3) | now |
+|---|---|---|
+| zabivnoy | 99 / 100 / 95 | 100 / 100 / 98 |
+| technomant | 70 / 80 / 100 | 74 / 82 / 99 |
+| mutant | 99 / 99 / 100 | 98 / 98 / 100 |
+| itishnik | 71 / 89 / 99 | 77 / 93 / 99 |
+| ranger / arbiter / ugolovnik | 97-98 / 98-100 / 100 | 94-98 / 98-100 / 100 |
+| ecolog | 68 / 56 / 97 | **85 / 65 / 99** |
+| reper | 62 / 73 / 100 | **81 / 74 / 99** |
+| slavotech | 85 / 85 / 19 | 93 / 93 / **90** |
+| cybertech | 63 / 47 / 98 | **82 / 55 / 98** |
+
+`tools/sim/prologue.mjs --all --n 150` (naive): every class >= 72% (technomant 72, itishnik 75, reper / cybertech 79, ecolog 83, rest 89-99). The QA bot losses (2 of 3) are not reproduced by the sim (zabivnoy human / skeleton 99%); the bot's medkit key misfire (above) was one cause.
+
+Battle 2 / 3 / road fights, n=40 (naive / AI):
+| class | b2 | b3 | crawlers | pirates |
+|---|---|---|---|---|
+| technomant | 30 / 98 | 40 / 73 | 5 / 78 | 5 / 90 |
+| itishnik | 33 / 100 | 33 / 95 | 3 / 83 | 0 / 90 |
+| ecolog | 33 / 95 | 53 / 98 | 8 / 90 | 3 / 100 |
+| reper | 45 / 98 | 43 / 80 | 73 / 100 | 68 / 100 |
+| slavotech | 57 / 90 | 60 / 75 | 28 / 53 | 15 / 45 |
+| cybertech | 33 / 98 | 43 / 93 | 5 / 100 | 3 / 100 |
+
+Open: naive+Q is still worse than naive for ecolog / cybertech (weak first spells); slavotech AI in road fights stays ~50% (shields / heals on a lone hero — a separate ai.js task).

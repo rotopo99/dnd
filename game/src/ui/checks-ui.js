@@ -98,6 +98,8 @@ export function openCheck(game, o) {
     if (o.skill === 'athletics' && hasWorldFlag(o.members, 'break-door') && !game.visit?.breakDoor) auto(t('check.breakDoor'), () => { game.visit = { ...(game.visit || {}), breakDoor: true }; });
     if (o.skill === 'lockpicking' && hasWorldFlag(o.members, 'silent-pick') && !save.flags['used:silent-pick']) auto(t('check.silentPick'), () => { save.flags['used:silent-pick'] = true; });
   }
+  // QA v52 #8: one performer and nothing else to choose — roll at once, no «Кто бросает?» window with a single option
+  if (opts.length === 1 && o.members?.length === 1 && !o.cancel) return roll(game, o.members[0], checkInfo(o.members[0], o.skill, o.extraAdv));
   if (o.cancel) opts.push({ label: t('check.cancel'), run: () => {} });
   game.openModal({
     title: o.title,
@@ -162,9 +164,25 @@ export function openGroupCheck(game, o) {
   });
 }
 
-/** Skill challenge: { title, lines, skills, dc, successes, failures, members, forgiveFirst?, onDone(game, success) }. */
+/** Skill challenge: { title, lines, skills, dc, successes, failures, members, forgiveFirst?, onDone(game, success) }.
+ *  QA v52 #8: skill buttons show the odds and roll at once — by the best member for that skill, or by the member the
+ *  player fixed with «Бросает: … (сменить)»; no extra «Кто бросает?» window. */
 export function openChallenge(game, o) {
-  const st = { ok: 0, bad: 0, forgiven: !o.forgiveFirst };
+  const st = { ok: 0, bad: 0, forgiven: !o.forgiveFirst, roller: null };
+  const fill = (k, v) => t(k).replace(/\{(\w+)\}/g, (m, x) => (v[x] ?? m));
+  const rollerFor = (sk) => {
+    if (st.roller) return { m: st.roller, c: checkChance(checkInfo(st.roller, sk, null), o.dc) };
+    const top = bestPair(o.members, [sk], o.dc, null);
+    return top ? { m: top.m, c: top.c } : null;
+  };
+  const doRoll = (g, m, sk) => {
+    const res = rollCheck(m, checkInfo(m, sk, null), o.dc);
+    if (res.success) st.ok++;
+    else if (!st.forgiven) st.forgiven = true;
+    else st.bad++;
+    play(res.success ? 'buff' : 'miss');
+    round(g, resultLines(m.name, res));
+  };
   const round = (g, last) => {
     if (st.ok >= o.successes || st.bad >= o.failures) {
       const success = st.ok >= o.successes;
@@ -172,23 +190,20 @@ export function openChallenge(game, o) {
         onCancel: false, options: [{ label: t('battle.continue'), run: (g2) => o.onDone(g2, success) }] });
       return;
     }
+    const options = o.skills.map((sk) => {
+      const r = rollerFor(sk);
+      return { label: skillName(sk), sub: r ? `${r.m.name} · ${Math.round(r.c * 100)}%` : '', run: (g2) => r && doRoll(g2, r.m, sk) };
+    });
+    if (o.members.length > 1) {
+      options.push({ label: st.roller ? fill('ch.roller', { name: st.roller.name }) : t('ch.rollerAuto'),
+        run: (g2) => g2.openModal({ title: o.title, lines: [{ text: t('ch.rollerPick'), color: 'a' }], onCancel: false,
+          options: [{ label: t('ch.rollerBest'), run: (g3) => { st.roller = null; round(g3, last); } },
+            ...o.members.map((m) => ({ label: m.name, run: (g3) => { st.roller = m; round(g3, last); } }))] }) });
+    }
     g.openModal({
       title: o.title,
-      lines: [...(last || o.lines || []), { text: `${t('check.progress')}: ${st.ok}/${o.successes} · ${t('check.fails')}: ${st.bad}/${o.failures} · ${t('battle.dc')} ${o.dc}`, color: 'a' }],
-      onCancel: false,
-      options: o.skills.map((sk) => ({
-        label: skillName(sk), run: (g2) => g2.openModal({
-          title: `${o.title}: ${skillName(sk)}`, onCancel: false, lines: [{ text: t('check.pick'), color: 'a' }],
-          options: performerOptions(o.members, sk, o.dc, null, (g3, m, info) => {
-            const res = rollCheck(m, info, o.dc);
-            if (res.success) st.ok++;
-            else if (!st.forgiven) st.forgiven = true;
-            else st.bad++;
-            play(res.success ? 'buff' : 'miss');
-            round(g3, resultLines(m.name, res));
-          }),
-        }),
-      })),
+      lines: [...(last || o.lines || []), { text: fill('ch.progress', { ok: st.ok, s: o.successes, bad: st.bad, f: o.failures, dc: `${t('battle.dc')} ${o.dc}` }), color: 'a' }],
+      onCancel: false, options,
     });
   };
   round(game, null);
